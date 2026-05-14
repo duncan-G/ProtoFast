@@ -1,0 +1,2 @@
+# Enforce LF line endings on all text files (Linux/macOS standard)
+* text=auto eol=lf

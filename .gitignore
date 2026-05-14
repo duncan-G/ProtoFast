@@ -1,0 +1,94 @@
+# --- Angular / Node ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-store/
+
+# Angular CLI
+.angular/
+dist/
+tmp/
+out-tsc/
+*.tsbuildinfo
+
+# Testing & coverage
+coverage/
+.nyc_output/
+libpeerconnection.log
+testem.log
+/typings/
+
+# IDEs (optional; uncomment if not team-wide)
+# .vscode/
+# .idea/
+
+# --- .NET / Visual Studio ---
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+*.user
+*.userosscache
+*.suo
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+*.VC.VC.opendb
+
+.vs/
+*.rsuser
+*.DotSettings.user
+
+# NuGet
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Build output folders (bin/obj above catch most; these cover alternate layouts)
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]uild/
+
+# MSTest / TestResults
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+# ASP.NET
+*.publishsettings
+*.pubxml
+*.pubxml.user
+*.azurePubxml
+*.publishproj
+PublishProfiles/
+App_Data/Secrets/
+
+# Rider / JetBrains
+.idea/
+*.sln.iml
+
+# --- Proto codegen (buf + Connect) ---
+clients/*/src/lib/gen/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
