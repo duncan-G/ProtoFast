@@ -94,14 +94,11 @@ docker ps \
   this skill uses (`8080`, `9901`, `4200`), scan the names with the
   user before running the cleanup in Step 9b.
 
-## 0f. Confirm the ports we'll bind are free
+## 0f. Confirm no orphan processes from a prior run
 
-```bash
-ss -tlnp 2>/dev/null | grep -E ':(8080|9901|4200|5001|5002|5003)\b' || true
-```
-
-(macOS / no-`ss` fallback: `lsof -nP -iTCP -sTCP:LISTEN`.) Empty
-result means we're clear.
+All ports are Aspire-assigned, so there is no fixed list to check.
+Instead, verify that the DCP container cleanup (Step 0e) found no
+orphans and that `aspire ps` reports no running AppHost.
 
 ## 0g. Pre-commit the env for Aspire's children (principle 3)
 

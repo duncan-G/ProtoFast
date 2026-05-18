@@ -14,8 +14,7 @@ aspire ps    # should report no running AppHost
 
 `aspire stop` does not always clean up the containers it spawned
 (in particular DCP-managed `persistent=false` ones). Leftovers can
-hold host ports — most often `9901` (Envoy admin) and `4200` (Angular
-dev) — and the next `aspire start` then collides.
+hold host ports and the next `aspire start` then collides.
 
 ```bash
 docker ps --filter "label=com.microsoft.developer.usvc-dev.persistent=false" \
@@ -31,30 +30,32 @@ scan the names** — the label selects DCP containers from *any* Aspire
 AppHost on this machine, not just this project's. If anything looks
 unfamiliar, confirm with the user.
 
-## 9c. Confirm host ports are free
+## 9c. Confirm no orphan processes remain
+
+Since all ports are Aspire-assigned (no fixed ports), there is no
+static list to check. Instead, verify that the DCP container cleanup
+in 9b left nothing running and that `aspire ps` reports no AppHost.
+
+## 9d. Recover from a misconfigured AppHost
+
+The project-based AppHost supports `dotnet build` for validation.
+Always build before starting:
 
 ```bash
-ss -tlnp 2>/dev/null | grep -E ':(8080|9901|4200|5001|5002|5003)\b' && echo "still bound" || echo "ports free"
+dotnet build apphost
 ```
 
-(macOS / no-`ss` fallback: `lsof -nP -iTCP -sTCP:LISTEN | grep -E '(8080|9901|4200|5001|5002|5003)'`.)
+If the build fails with a C# compilation error:
 
-If a port is still bound by some non-DCP process, escalate — don't
-kill unknown processes.
+1. Read the error output from `dotnet build`.
+2. Fix `apphost/Program.cs` (or the `.csproj` if it's a reference
+   issue).
+3. Re-run `dotnet build apphost` to confirm the fix.
+4. Re-run Step 9a (stop), then Step 8 (restart).
 
-## 9d. Recover from a misconfigured `apphost.cs`
-
-The file-based AppHost has no `dotnet build` step, so syntactic
-errors only surface on `aspire start`. If startup fails with a C#
-compilation error:
-
-1. Read the error verbatim from the Aspire log file printed in the
-   `aspire start --format Json` output.
-2. Fix `apphost/apphost.cs`.
-3. Re-run Step 9a (stop), then Step 8 (restart).
-
-There is no validate-without-starting mode for file-based AppHosts —
-`aspire start` is the validation pass.
+If startup fails despite a clean build (e.g. runtime errors), read
+the error verbatim from the Aspire log file printed in the
+`aspire start --format Json` output.
 
 ---
 
@@ -81,8 +82,9 @@ the container.
 
 - Rule: every server a container needs to reach must bind on `0.0.0.0`,
   not the default `127.0.0.1`.
-- .NET services: set `applicationUrl` to `http://0.0.0.0:<port>` in
-  `launchSettings.json` (Step 3b).
+- .NET services: set `applicationUrl` to `http://0.0.0.0:0` in
+  `launchSettings.json` (Step 3b). Port `0` lets Aspire assign
+  dynamically.
 - Angular dev server: `--host 0.0.0.0` (Step 4c).
 
 Likely symptom if missing: connections from the container return
@@ -115,5 +117,4 @@ codegen by repeating Step 5 with that client's directory:
 3. Run `npx buf generate` (5c).
 4. Create a `grpc-transport.ts` (5d) with the appropriate `baseUrl`
    for the Envoy route prefix the client uses.
-5. Add a `proxy.conf.json` (Step 4d) if the client has a dev server.
-6. Add `generate:grpc` to the client's npm scripts (4c).
+5. Add `generate:grpc` to the client's npm scripts (4c).

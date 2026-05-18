@@ -1,5 +1,45 @@
 # «projectname»
 
+## Infrastructure
+
+```mermaid
+graph TD
+    subgraph Aspire["Aspire AppHost"]
+        direction TB
+        Dashboard["Dashboard"]
+    end
+
+    Browser["Browser"]
+
+    Envoy["Envoy Front Proxy"]
+
+    subgraph Services[".NET gRPC Services"]
+        Auth["Auth · /auth/*"]
+        Payments["Payments · /payments/*"]
+        Api["Api · /api/*"]
+    end
+
+    subgraph Clients["Angular Clients"]
+        Admin["Admin · SSR · /"]
+        App["App · placeholder"]
+    end
+
+    Browser -->|HTTP| Clients
+    Browser -->|gRPC-Web| Envoy
+    Envoy -->|"/auth/*"| Auth
+    Envoy -->|"/payments/*"| Payments
+    Envoy -->|"/api/*"| Api
+
+    Aspire -.-|orchestrates| Envoy
+    Aspire -.-|orchestrates| Clients
+    Aspire -.-|orchestrates| Services
+```
+
+All ports are dynamically assigned by Aspire at startup — nothing is hardcoded.
+The browser loads the Angular clients directly. gRPC-Web requests from
+the clients flow through Envoy, which routes to the backend services
+by path prefix.
+
 ## Requirements
 
 - Tooling:

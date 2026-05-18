@@ -3,15 +3,15 @@ name: bootstrap-project
 description: >-
   Bootstraps a new project repo from an empty state: asks the user for a
   project name, pre-flights the agent's environment, agrees on a folder
-  layout, scaffolds the Aspire C# AppHost (file-based), scaffolds
+  layout, scaffolds the Aspire C# AppHost (project-based, with .csproj), scaffolds
   the .NET gRPC services under `services/`, scaffolds the Angular SSR
-  `admin` client under `clients/`, wires buf + Connect proto-to-TypeScript
-  codegen, adds an Envoy front proxy with static config, runs a pass/fail
-  smoke check that proves end-to-end gRPC-Web connectivity from the
-  Angular client through Envoy to the backend services, and documents a
-  clean stop. Use when the user asks to initialize, bootstrap, scaffold,
-  or set up a project, or when the repo only contains
-  README/scripts/.cursor and no app code yet.
+  `admin` client under `clients/` with Tailwind CSS v4 for styling,
+  wires buf + Connect proto-to-TypeScript codegen, adds an Envoy front
+  proxy with static config, runs a pass/fail smoke check that proves
+  end-to-end gRPC-Web connectivity from the Angular client through Envoy
+  to the backend services, and documents a clean stop. Use when the user
+  asks to initialize, bootstrap, scaffold, or set up a project, or when
+  the repo only contains README/scripts/.cursor and no app code yet.
 disable-model-invocation: true
 ---
 
@@ -65,20 +65,15 @@ steps; deviations should be deliberate and discussed with the user.
    them — including the command that launches Aspire, since
    orchestrator child processes inherit the env at launch time.
 
-4. **Fixed ports, aligned everywhere.** Each service binds a fixed
-   port in `launchSettings.json`, and Envoy's static config
-   references those same ports. The port assignments are:
-
-   | Service  | Port |
-   |----------|------|
-   | auth     | 5001 |
-   | payments | 5002 |
-   | api      | 5003 |
-   | admin    | 4200 |
-   | Envoy    | 8080 (http), 9901 (admin) |
-
-  Keep these consistent across `launchSettings.json`, `envoy.yaml`,
-  and `proxy.conf.json`.
+4. **Aspire assigns all ports (except its own dashboard).** No
+   service, client, or proxy port is hardcoded. Aspire selects every
+   port at startup and passes it through endpoint references. Envoy
+   routes `/ → admin`; all cluster endpoints (hosts and ports) are
+   injected as environment variables via `WithClusterEndpoint` and
+   substituted by `entrypoint.sh` at container startup (see
+   `references/envoy-proxy.md` 6d, 6f–6g). Do not add fixed port
+   numbers to `launchSettings.json` or Envoy config; rely on
+   Aspire's dynamic assignment throughout.
 
 5. **`«ProjectName»` is a placeholder, not a literal.** Every
    occurrence of `«ProjectName»` in commands, file contents, and
@@ -129,9 +124,8 @@ Bootstrap Progress:
 - [ ] Step 0: Pre-flight
 - [ ] Step 1: Confirm folder layout with the user
 - [ ] Step 2: Scaffold Aspire AppHost
-- [ ] Step 3: Scaffold .NET gRPC services and register them
-- [ ] Step 4: Scaffold Angular `admin` client and register it
-- [ ] Step 5: Wire proto codegen (buf + Connect)
+- [ ] Step 3: Add .NET gRPC services (via add-dotnet-service)
+- [ ] Step 4–5: Add Angular `admin` client + proto codegen (via add-angular-client)
 - [ ] Step 6: Add Envoy proxy
 - [ ] Step 7: Update README
 - [ ] Step 8: Smoke check
@@ -157,8 +151,9 @@ propose-confirm loop.
 
 ```
 <repo root>/
-├── apphost/              # Aspire AppHost (single-folder, lowercase)
-│   ├── apphost.cs        # file-based AppHost (Aspire 13.x)
+├── apphost/              # Aspire AppHost (project-based)
+│   ├── «ProjectName».AppHost.csproj
+│   ├── Program.cs
 │   └── aspire.config.json
 ├── services/             # Backend .NET gRPC services
 │   ├── auth/             # «ProjectName».Auth.csproj
@@ -166,12 +161,16 @@ propose-confirm loop.
 │   └── api/              # «ProjectName».Api.csproj
 ├── clients/              # Angular SSR apps, one per client
 │   ├── admin/            # Admin client (scaffolded during bootstrap)
+│   │   ├── .postcssrc.json # PostCSS config (loads Tailwind v4 plugin)
 │   │   ├── buf.gen.yaml  # Proto codegen config (selects which protos)
-│   │   ├── proxy.conf.json
 │   │   └── src/lib/gen/  # Generated TS from protos (gitignored)
 │   └── app/              # End-user client (placeholder; not scaffolded)
-├── proxy/                # Envoy config
-│   └── envoy.yaml        # Static Envoy config with fixed ports
+├── proxy/                # Envoy config (Dockerfile + templates)
+│   ├── Dockerfile
+│   ├── envoy.yaml.tmpl   # Config template with __PLACEHOLDER__ tokens
+│   ├── entrypoint.sh     # Validates env vars, substitutes, launches Envoy
+│   ├── cors-allow-origins-exact.tmpl
+│   └── cors-allow-origins-with-subdomain.tmpl
 ├── scripts/              # Existing dev-setup scripts
 ├── .cursor/              # MCP + skills (existing)
 ├── .gitignore
@@ -187,8 +186,8 @@ Rules:
 - .NET service folders are short and lowercase
   (`services/auth/`) but `.csproj` / assembly names are
   root-namespaced as `«ProjectName».<Name>`.
-- `apphost/` is lowercase because the Aspire 13.x file-based AppHost
-  has no `.csproj` to anchor a root-namespaced name.
+- `apphost/` is lowercase as the folder name; the `.csproj` inside is
+  root-namespaced as `«ProjectName».AppHost`.
 - Each client has its own `buf.gen.yaml` that selects which service
   protos to generate TypeScript clients for.
 
@@ -196,121 +195,144 @@ Rules:
 
 ### Step 2 — Scaffold the Aspire AppHost
 
-Use the **C#** AppHost (`aspire-empty`).
+Use the **C#** AppHost (`aspire-empty`) with the `--project-based`
+flag to get a `.csproj` + `Program.cs` layout.
 
 ```bash
 aspire new aspire-empty \
-  --name apphost \
+  --name «ProjectName».AppHost \
   --output ./apphost \
   --language csharp \
+  --project-based \
   --non-interactive
 ```
 
-Verify the produced shape (Aspire 13.x default):
+Per principle 2, if `--project-based` is rejected, drop it and check
+the output: some CLI versions default to project-based, others to
+file-based. If the output is file-based (`apphost.cs` with `#:sdk`
+directive, no `.csproj`), delete it and scaffold manually (see below).
 
-- `apphost/apphost.cs` exists and starts with
-  `#:sdk Aspire.AppHost.Sdk@<version>`.
+Verify the produced shape:
+
+- `apphost/«ProjectName».AppHost.csproj` exists and contains
+  `<Sdk Name="Aspire.AppHost.Sdk" .../>`.
+- `apphost/Program.cs` exists with `DistributedApplication.CreateBuilder`.
 - `apphost/aspire.config.json` exists and `appHost.path` points at
-  `apphost.cs`.
-- **No `.csproj`** in `apphost/`.
+  the `.csproj`.
+- **No `#:sdk` directive** in any `.cs` file (that's the file-based
+  shape — wrong).
 
-If any of those is off, stop and ask before continuing — the rest of
-the skill targets the file-based shape.
+If the CLI only produced a file-based AppHost, create the project
+manually:
+
+```bash
+dotnet new console -n «ProjectName».AppHost -o apphost --use-program-main false
+```
+
+Then add the Aspire AppHost SDK to `apphost/«ProjectName».AppHost.csproj`.
+Detect the correct values first:
+
+```bash
+# Target framework from the installed SDK
+dotnet --version | cut -d. -f1,2   # e.g. "9.0" → net9.0
+
+# Latest Aspire AppHost SDK version
+dotnet package search Aspire.AppHost.Sdk --exact-match --take 1 --format json
+```
+
+Use the detected values in the `.csproj`:
+
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <Sdk Name="Aspire.AppHost.Sdk" Version="«AspireSdkVersion»" />
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net«MajorMinor»</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>
+```
+
+And write the initial `apphost/Program.cs`:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+builder.Build().Run();
+```
+
+Run `dotnet build apphost` to confirm it compiles.
 
 The CLI may also create `apphost/.agents/` and `apphost/.vscode/`.
 Leave them as-is.
 
 ---
 
-### Step 3 — Scaffold the .NET gRPC services
+### Step 3 — Add .NET gRPC services
 
-**3a. Scaffold each service.**
+**Read and follow `.cursor/add-dotnet-service/SKILL.md`** for each of
+the three bootstrap services: `auth`, `payments`, `api`.
+
+For each service, supply these inputs:
+
+| Service name | PascalCase | Envoy prefix |
+|---|---|---|
+| `auth` | `Auth` | `/auth/` |
+| `payments` | `Payments` | `/payments/` |
+| `api` | `Api` | `/api/` |
+
+Since `proxy/` does not exist yet at this point, the sub-skill will
+skip Envoy updates — Step 6 creates the full Envoy config from scratch
+for all services at once.
+
+After all three services are added, verify the AppHost builds:
 
 ```bash
-dotnet new grpc -n «ProjectName».Auth     -o services/auth
-dotnet new grpc -n «ProjectName».Payments -o services/payments
-dotnet new grpc -n «ProjectName».Api      -o services/api
+dotnet build apphost
 ```
-
-Build each service in its own invocation:
-
-```bash
-for svc in auth payments api; do dotnet build "services/$svc"; done
-```
-
-**3b. Align `launchSettings.json` ports with Envoy.**
-
-Each service must bind on `0.0.0.0` at the fixed port Envoy expects
-(principle 4, Appendix B). Update the `http` profile's
-`applicationUrl` in each service's
-`Properties/launchSettings.json`:
-
-| Service  | `applicationUrl` (http profile) |
-|----------|-------------------------------|
-| auth     | `http://0.0.0.0:5001`         |
-| payments | `http://0.0.0.0:5002`         |
-| api      | `http://0.0.0.0:5003`         |
-
-**3c. Register in `apphost/apphost.cs`.**
-
-Services are referenced by `.csproj` path via `AddCSharpApp`. Paths
-are resolved relative to `apphost/`.
-
-```csharp
-#:sdk Aspire.AppHost.Sdk@13.3.2
-
-#pragma warning disable ASPIRECSHARPAPPS001
-
-var builder = DistributedApplication.CreateBuilder(args);
-
-var auth     = builder.AddCSharpApp("auth",     "../services/auth/«ProjectName».Auth.csproj");
-var payments = builder.AddCSharpApp("payments", "../services/payments/«ProjectName».Payments.csproj");
-var api      = builder.AddCSharpApp("api",      "../services/api/«ProjectName».Api.csproj");
-
-// admin (JS app) is added in Step 4
-// envoy   (container) is added in Step 6
-
-builder.Build().Run();
-```
-
-Notes:
-
-- Keep the `#:sdk` directive verbatim from the scaffolded file. Use
-  `aspire update` to bump versions — never edit by hand.
-- `AddCSharpApp` is flagged experimental (`ASPIRECSHARPAPPS001`); the
-  pragma above suppresses the warning.
-- Resource names (`auth`, `payments`, `api`) are the labels in the
-  Aspire dashboard and the keys other resources reference. Keep them
-  short and lowercase.
 
 ---
 
-### Step 4 — Scaffold the Angular `admin` client
+### Step 4–5 — Add Angular `admin` client + proto codegen
 
-**Load `references/angular-and-proto.md`** and follow Steps 4a–4e.
-Scaffolds the Angular SSR project into `clients/admin/`, patches npm
-scripts for gRPC codegen + `0.0.0.0` binding, adds the dev-server
-proxy config, and registers the client as an Aspire JS resource via
-`AddJavaScriptApp`.
+**Read and follow `.cursor/add-angular-client/SKILL.md`** for the
+`admin` client.
 
----
+Supply these inputs:
 
-### Step 5 — Wire proto codegen (buf + Connect)
+- **Client name:** `admin`
+- **Protos:** all services (`auth`, `payments`, `api`)
+- **Envoy route prefix:** `/` (catch-all — the primary client)
 
-**Continue in `references/angular-and-proto.md`**, Steps 5a–5f.
-Installs buf + Connect deps, creates `buf.gen.yaml` pointing at
-service protos, runs initial generation, creates the gRPC transport
-provider, wires the Greeter component, and gitignores generated code.
+The sub-skill scaffolds the Angular SSR project, installs Tailwind
+CSS v4, patches npm scripts for Aspire's `PORT` and `0.0.0.0`
+binding, creates the publish-mode Dockerfile, registers the client in
+`apphost/Program.cs` with dual dev/publish modes, and wires buf +
+Connect proto codegen for all three services.
+
+**During bootstrap only:** also follow the Greeter example in
+`add-angular-client/references/proto-codegen.md` (the "Example:
+wiring a Greeter component" section) to prove end-to-end gRPC-Web
+connectivity in the smoke check.
+
+Since `proxy/` does not exist yet, the sub-skill will skip Envoy
+updates — Step 6 creates the full Envoy config.
 
 ---
 
 ### Step 6 — Envoy proxy
 
-**Load `references/envoy-proxy.md`** and follow Steps 6a–6c. Creates
-`proxy/envoy.yaml` with static routes, the `grpc_web` filter, and
-clusters pointing at `host.docker.internal:<port>`. Registers Envoy
-in `apphost.cs` via `AddContainer` with bind-mount and host-gateway
-args. The reference also includes the full `apphost.cs` at this point.
+**Load `references/envoy-proxy.md`** and follow Steps 6a–6h. Creates
+the `proxy/` directory with a Dockerfile, an `envoy.yaml.tmpl` config
+template using `__PLACEHOLDER__` tokens, an `entrypoint.sh` that
+validates environment variables and substitutes tokens at container
+startup, and CORS fragment templates. Adds
+`apphost/EnvoyProxy/EnvoyProxyResourceBuilderExtensions.cs` with
+extension methods (`AddEnvoyProxy`, `WithCorsOriginExact`,
+`WithClusterEndpoint`, `WithAllowedHosts`) that inject cluster
+endpoints, CORS origins, and allowed hosts as environment variables.
+Registers Envoy in `apphost/Program.cs` via `AddDockerfile`. The
+reference includes the full `Program.cs` at this point.
 
 ---
 
@@ -331,13 +353,15 @@ aspire run
 
 This launches:
 
-- Envoy front proxy on http://localhost:8080 (admin UI: http://localhost:9901)
-- Angular `admin` client with SSR on http://localhost:4200 (proxied via Envoy at `/`)
+- Envoy front proxy (proxies all traffic; ports assigned by Aspire)
+- Angular `admin` client with SSR (proxied via Envoy at `/`)
 - .NET gRPC services from `services/` (proxied via Envoy):
   - `auth`     at `/auth/*`
   - `payments` at `/payments/*`
   - `api`      at `/api/*`
 - The Aspire dashboard (URL printed in the terminal on startup)
+
+All resource URLs (including Envoy) are shown in the Aspire dashboard.
 
 `clients/app/` is reserved for an end-user Angular client and is not yet
 scaffolded.
@@ -374,26 +398,27 @@ Capture the dashboard URL from the JSON output. Wait ~20–30 s for
 | Resource | Type | Expected state | Notes |
 |---|---|---|---|
 | `admin-installer` | Executable | Finished, exit 0 | Auto-`npm install` for the JS app |
-| `admin` | Executable | Running, Healthy | `npm start` = proto codegen + `ng serve` |
-| `auth` | Project | Running, Healthy | .NET gRPC service on :5001 |
-| `payments` | Project | Running, Healthy | .NET gRPC service on :5002 |
-| `api` | Project | Running, Healthy | .NET gRPC service on :5003 |
-| `envoy` | Container | Running, Healthy | front proxy on :8080 and :9901 |
+| `admin` | Executable | Running, Healthy | `npm start` = proto codegen + `ng serve` (port is Aspire-assigned) |
+| `auth` | Project | Running, Healthy | .NET gRPC service (port is Aspire-assigned) |
+| `payments` | Project | Running, Healthy | .NET gRPC service (port is Aspire-assigned) |
+| `api` | Project | Running, Healthy | .NET gRPC service (port is Aspire-assigned) |
+| `envoy` | Container | Running, Healthy | front proxy (ports are Aspire-assigned) |
 
-Six rows corresponding to six `.Add...` calls in `apphost.cs`
+Six rows corresponding to six `.Add...` calls in `Program.cs`
 (principle 6).
 
-**Curl checks.** All pass on a clean run:
+**Curl checks.** Obtain the Envoy HTTP and admin URLs from
+`aspire describe --format Json` (they are Aspire-assigned). All pass
+on a clean run:
 
 | # | Check | Command | Pass criterion |
 |---|---|---|---|
-| 1 | Envoy admin UI | `curl -sI http://localhost:9901/` | 200 |
-| 2 | Envoy to admin | `curl -sI http://localhost:8080/` | 200, `text/html` |
-| 3 | SSR rendered | `curl -s http://localhost:8080/ \| head -c 1200` | Rendered Angular markup |
-| 4 | Direct admin | `curl -sI http://localhost:4200/` | 200 |
-| 5 | Envoy to `/auth/` | `curl -si -X POST -H 'content-type: application/grpc-web' http://localhost:8080/auth/` | non-5xx with `grpc-status` header |
-| 6 | Envoy to `/payments/` | same with `/payments/` | as #5 |
-| 7 | Envoy to `/api/` | same with `/api/` | as #5 |
+| 1 | Envoy admin UI | `curl -sI <envoy-admin-url>/` | 200 |
+| 2 | Envoy to admin | `curl -sI <envoy-http-url>/` | 200, `text/html` |
+| 3 | SSR rendered | `curl -s <envoy-http-url>/ \| head -c 1200` | Rendered Angular markup |
+| 4 | Envoy to `/auth/` | `curl -si -X POST -H 'content-type: application/grpc-web' <envoy-http-url>/auth/` | non-5xx with `grpc-status` header |
+| 5 | Envoy to `/payments/` | same with `/payments/` | as #4 |
+| 6 | Envoy to `/api/` | same with `/api/` | as #4 |
 
 If any check fails, stop and consult
 `references/cleanup-and-troubleshooting.md` — the Appendix maps
@@ -406,7 +431,7 @@ work around.
 
 **Load `references/cleanup-and-troubleshooting.md`** and follow
 Steps 9a–9d. Stops the AppHost, cleans orphan DCP containers,
-confirms ports are free, and documents recovery from `apphost.cs`
+confirms ports are free, and documents recovery from AppHost
 compilation errors.
 
 ---
