@@ -1,12 +1,12 @@
 admin:
   address:
-    socket_address: { address: 0.0.0.0, port_value: 9901 }
+    socket_address: { address: 0.0.0.0, port_value: __ENVOY_ADMIN_PORT__ }
 
 static_resources:
   listeners:
     - name: http_listener
       address:
-        socket_address: { address: 0.0.0.0, port_value: 8080 }
+        socket_address: { address: 0.0.0.0, port_value: __PORT__ }
       filter_chains:
         - filters:
             - name: envoy.filters.network.http_connection_manager

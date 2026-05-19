@@ -39,12 +39,6 @@ in two contexts:
 
 ## Step 1 — Gather inputs
 
-Ask the user for:
-
-1. **Client name** — short, lowercase (e.g. `app`, `portal`).
-2. **Which services' protos to generate TS for** — defaults to all
-   directories under `services/` that contain a `Protos/` folder.
-
 Detect `«ProjectName»` from the AppHost `.csproj`:
 
 ```bash
@@ -52,6 +46,23 @@ ls apphost/*.csproj
 ```
 
 The name before `.AppHost.csproj` is the project name.
+
+### Detect the next available production port
+
+Scan `apphost/Program.cs` for existing `AddClientApp` calls and extract
+the `productionPort` arguments already in use. The port sequence starts
+at **4000** and increments by 1. Pick the lowest port in the sequence
+that is not already used (e.g. if 4000 is taken → 4001, if both →
+4002, etc.).
+
+### Ask the user
+
+1. **Client name** — short, lowercase (e.g. `app`, `portal`).
+2. **Production port** — the container port the client SSR server
+   listens on in publish mode. Present the detected default (e.g.
+   "4000" or "4001") and let the user override.
+3. **Which services' protos to generate TS for** — defaults to all
+   directories under `services/` that contain a `Protos/` folder.
 
 ## Step 2 — Scaffold and configure the Angular app
 
@@ -81,7 +92,9 @@ Check whether `proxy/envoy.yaml.tmpl` exists.
 
 ## Guardrails
 
-- Never hardcode ports — Aspire assigns them via the `PORT` env var.
+- In **dev mode** Aspire assigns ports dynamically via the `PORT` env
+  var — never hardcode. In **publish mode** each client has a fixed
+  `productionPort` starting at 4000 (used as `targetPort`).
 - Each client under `clients/` is its own standalone Angular project,
   not a multi-project workspace.
 - Each client has its own `buf.gen.yaml` selecting which service protos

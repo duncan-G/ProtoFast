@@ -7,19 +7,19 @@ var auth     = builder.AddProject<Projects.ProtoFast_Auth>("auth");
 var payments = builder.AddProject<Projects.ProtoFast_Payments>("payments");
 var api      = builder.AddProject<Projects.ProtoFast_Api>("api");
 
-var envoy = builder.AddEnvoyProxy("envoy")
+var proxy = builder.AddEnvoyProxy("envoy")
     .WaitFor(auth)
     .WaitFor(payments)
     .WaitFor(api);
 
-var adminEndpoint = builder.AddClientApp("admin", "../clients/admin", envoy.GetEndpoint("http"));
+var adminEndpoint = builder.AddClientApp("admin", "../clients/admin", 4000, proxy.GetEndpoint("http"));
 
-envoy
+proxy
     .WithCorsOriginExact(builder, adminEndpoint)
     .WithCorsOriginSubdomainRegex(builder, adminEndpoint)
     .WithAllowedHosts(builder);
 
-envoy
+proxy
     .WithClusterEndpoint(builder, "ADMIN", adminEndpoint)
     .WithClusterEndpoint(builder, "AUTH", auth.GetEndpoint("http"))
     .WithClusterEndpoint(builder, "PAYMENTS", payments.GetEndpoint("http"))

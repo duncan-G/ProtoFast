@@ -10,7 +10,7 @@ public static class EnvoyProxyResourceBuilderExtensions
     {
         var envoy = builder
             .AddDockerfile(name, EnvoyConfigPath)
-            .WithHttpEndpoint(targetPort: 8080)
+            .WithHttpEndpoint(targetPort: 20000, env: "PORT")
             .WithEntrypoint("/bin/sh")
             .WithArgs("/etc/envoy/entrypoint.sh");
 
@@ -24,7 +24,7 @@ public static class EnvoyProxyResourceBuilderExtensions
         }
 
         envoy
-            .WithHttpEndpoint(targetPort: 9901, name: "admin", isProxied: false)
+            .WithHttpEndpoint(targetPort: 9901, env: "ENVOY_ADMIN_PORT", name: "admin", isProxied: false)
             .WithUrlForEndpoint("admin", u => u.DisplayText = "Envoy Admin")
             .WithHttpHealthCheck("/ready", statusCode: 200, endpointName: "admin");
 

@@ -42,6 +42,8 @@ sed -e "/^__CORS_ALLOW_ORIGIN_MATCHES__$/r /tmp/cors-allow-origins.yaml" \
 ALLOWED_HOSTS_ARRAY="[\"$(echo "$ALLOWED_HOSTS" | sed 's/,/","/g')\"]"
 
 sed \
+  -e "s|__PORT__|${PORT}|g" \
+  -e "s|__ENVOY_ADMIN_PORT__|${ENVOY_ADMIN_PORT}|g" \
   -e "s|__ALLOWED_HOSTS__|${ALLOWED_HOSTS_ARRAY}|g" \
   -e "s|__ADMIN_HOST__|${ADMIN_HOST}|g" \
   -e "s|__ADMIN_PORT__|${ADMIN_PORT}|g" \

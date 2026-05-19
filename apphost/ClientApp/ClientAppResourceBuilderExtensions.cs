@@ -2,10 +2,23 @@ namespace ProtoFast.AppHost.ClientApp;
 
 public static class ClientAppResourceBuilderExtensions
 {
+    /// <summary>
+    /// Adds a client app to the distributed application. In publish mode, the client is built as a
+    /// Docker container with external HTTP endpoints.
+    /// </summary>
+    /// <param name="builder">The distributed application builder.</param>
+    /// <param name="clientName">The resource name for the client app.</param>
+    /// <param name="clientPath">The file-system path to the client app project directory.</param>
+    /// <param name="productionPort">The container port the client ssr server listens on in publish mode.</param>
+    /// <param name="serverEndpoint">The backend server endpoint injected as <c>SERVER_URL</c>.</param>
+    /// <param name="clientOtelEndpoint">Optional browser-side OpenTelemetry collector endpoint injected as <c>BROWSER_OTEL_ENDPOINT</c>.</param>
+    /// <param name="clientServerOtelEndpoint">Optional server-side OpenTelemetry collector endpoint injected as <c>SERVER_OTEL_ENDPOINT</c>.</param>
+    /// <returns>An <see cref="EndpointReference"/> for the client app's HTTP endpoint.</returns>
     public static EndpointReference AddClientApp(
         this IDistributedApplicationBuilder builder,
         string clientName,
         string clientPath,
+        int productionPort,
         EndpointReference serverEndpoint,
         EndpointReference? clientOtelEndpoint = null,
         EndpointReference? clientServerOtelEndpoint = null)
@@ -13,8 +26,7 @@ public static class ClientAppResourceBuilderExtensions
         if (builder.ExecutionContext.IsPublishMode)
         {
             var clientApp = builder.AddDockerfile(clientName, clientPath)
-                // Allocate a port and inject it as the PORT environment variable
-                .WithHttpEndpoint(env: "PORT")
+                .WithHttpEndpoint(targetPort: productionPort, env: "PORT")
                 .WithExternalHttpEndpoints();
 
             var clientEndpoint = clientApp.GetEndpoint("http", KnownNetworkIdentifiers.PublicInternet);
@@ -27,7 +39,6 @@ public static class ClientAppResourceBuilderExtensions
         }
 
         var clientAppDev = builder.AddJavaScriptApp(clientName, clientPath, runScriptName: "start")
-            // Allocate a port and inject it as the PORT environment variable
             .WithHttpEndpoint(env: "PORT")
             .WithEnvironment("SERVER_URL", serverEndpoint);
             

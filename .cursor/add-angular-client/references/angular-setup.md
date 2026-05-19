@@ -162,10 +162,13 @@ namespace «ProjectName».AppHost.ClientApp;
 
 public static class ClientAppResourceBuilderExtensions
 {
+    /// <summary>
+    /// Fillout summary and params
     public static EndpointReference AddClientApp(
         this IDistributedApplicationBuilder builder,
         string clientName,
         string clientPath,
+        int productionPort,
         EndpointReference serverEndpoint,
         EndpointReference? clientOtelEndpoint = null,
         EndpointReference? clientServerOtelEndpoint = null)
@@ -173,7 +176,7 @@ public static class ClientAppResourceBuilderExtensions
         if (builder.ExecutionContext.IsPublishMode)
         {
             var clientApp = builder.AddDockerfile(clientName, clientPath)
-                .WithHttpEndpoint(env: "PORT")
+                .WithHttpEndpoint(targetPort: productionPort, env: "PORT")
                 .WithExternalHttpEndpoints();
 
             var clientEndpoint = clientApp.GetEndpoint("http", KnownNetworkIdentifiers.PublicInternet);
@@ -218,6 +221,11 @@ Parameters:
 
 - `clientName` / `clientPath` — Aspire resource name and relative path
   to the Angular project (e.g. `"admin"`, `"../clients/admin"`).
+- `productionPort` — the container port the client SSR server listens
+  on in publish mode, passed as `targetPort` to `WithHttpEndpoint`.
+  Ports start at 4000 and increment per client (4000, 4001, …). The
+  skill auto-detects the next available port by scanning existing
+  `AddClientApp` calls in `Program.cs`.
 - `serverEndpoint` — the endpoint the client's SSR server should call
   (typically Envoy's HTTP endpoint).
 - `clientOtelEndpoint` / `clientServerOtelEndpoint` — optional OpenTelemetry
@@ -238,15 +246,17 @@ Then register the client between the services and Envoy (or after the
 last client if one already exists):
 
 ```csharp
-var «clientname»Endpoint = builder.AddClientApp("«clientname»", "../clients/«clientname»", envoy.GetEndpoint("http"));
+var «clientname»Endpoint = builder.AddClientApp("«clientname»", "../clients/«clientname»", «productionPort», envoy.GetEndpoint("http"));
 ```
 
+- `«productionPort»` is the port chosen in Step 1 (e.g. `4000`).
 - **Dev:** `AddJavaScriptApp` runs `npm start`. Aspire auto-creates a
   `«clientname»-installer` resource that runs `npm install` first.
-- **Prod:** `AddDockerfile` builds the Dockerfile. Aspire allocates the
-  port and sets `PORT`.
+  The port is dynamically assigned via `PORT`.
+- **Prod:** `AddDockerfile` builds the Dockerfile. The container
+  listens on `productionPort` (`targetPort`) and Aspire maps it
+  externally via `PORT`.
 - `«clientname»Endpoint` is passed to Envoy registration so the proxy
   can route traffic to this client.
-- No port is specified — Aspire allocates one and passes it via `PORT`.
 - OTel endpoints are optional and can be wired later when adding
   observability.
