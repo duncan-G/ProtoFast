@@ -62,7 +62,8 @@ that is not already used (e.g. if 4000 is taken → 4001, if both →
    listens on in publish mode. Present the detected default (e.g.
    "4000" or "4001") and let the user override.
 3. **Which services' protos to generate TS for** — defaults to all
-   directories under `services/` that contain a `Protos/` folder.
+   services whose API project contains a `Protos/` folder (i.e.
+   `services/*/src/*/Protos/`).
 
 ## Step 2 — Scaffold and configure the Angular app
 

@@ -9,9 +9,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../services/auth/ProtoFast.Auth.csproj" />
-    <ProjectReference Include="../services/payments/ProtoFast.Payments.csproj" />
-    <ProjectReference Include="../services/api/ProtoFast.Api.csproj" />
+    <ProjectReference Include="../services/auth/src/ProtoFast.Auth.Api/ProtoFast.Auth.Api.csproj" />
+    <ProjectReference Include="../services/payments/src/ProtoFast.Payments.Api/ProtoFast.Payments.Api.csproj" />
+    <ProjectReference Include="../services/api/src/ProtoFast.Api/ProtoFast.Api.csproj" />
   </ItemGroup>
 
   <ItemGroup>

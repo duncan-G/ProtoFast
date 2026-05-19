@@ -28,32 +28,35 @@ Dev deps:
 
 ## 3b. Create `clients/«clientname»/buf.gen.yaml`
 
-Each `inputs` entry points at a service's `Protos/` directory. To narrow
-to specific files within a service, add `paths:` under that entry.
+Each `inputs` entry points at a service's `Protos/` directory inside the
+API project. After the standard layout refactor, proto files live at
+`services/«servicename»/src/«ProjectName».«ServiceName».Api/Protos/`. To
+narrow to specific files within a service, add `paths:` under that entry.
 
 ```yaml
 version: v2
 inputs:
-  - directory: ../../services/«service1»/Protos
-  - directory: ../../services/«service2»/Protos
+  - directory: ../../services/«servicename1»/src/«ProjectName».«ServiceName1».Api/Protos
+  - directory: ../../services/«servicename2»/src/«ProjectName».«ServiceName2».Api/Protos
 plugins:
   - local: protoc-gen-es
     out: src/lib/gen
     opt: target=ts
 ```
 
-Replace `«service1»`, `«service2»`, etc. with the actual service folder
-names the user selected. To include all services:
+Replace `«servicename1»`, `«servicename2»`, etc. with the actual service
+folder names and `«ServiceName1»`, `«ServiceName2»` with their
+PascalCase forms. To discover all services with protos:
 
 ```bash
-ls -d services/*/Protos 2>/dev/null
+find services/*/src/*/Protos -maxdepth 0 -type d 2>/dev/null
 ```
 
 To narrow to specific proto files within a service:
 
 ```yaml
 inputs:
-  - directory: ../../services/api/Protos
+  - directory: ../../services/api/src/«ProjectName».Api/Protos
     paths:
       - greet.proto
 ```

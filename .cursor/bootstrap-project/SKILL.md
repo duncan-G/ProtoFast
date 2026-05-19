@@ -301,13 +301,18 @@ dotnet new sln -n «ProjectName»
 dotnet sln add apphost/«ProjectName».AppHost.csproj
 ```
 
-Also add every `.csproj` under `services/shared/`:
+Also add every `.csproj` under `services/shared/`. Use
+`--solution-folder` to place them directly in the desired folder —
+without it, `dotnet sln add` creates nested `<Folder>` elements in
+`.slnx` which are invalid (the schema only allows `<Folder>` as
+direct children of `<Solution>`):
 
 ```bash
 dotnet sln add services/shared/ServiceDefaults/ServiceDefaults.csproj \
   services/shared/Database/Database.csproj \
   services/shared/Database.Abstractions/Database.Abstractions.csproj \
-  services/shared/Exceptions/Exceptions.csproj
+  services/shared/Exceptions/Exceptions.csproj \
+  --solution-folder /services/shared/
 ```
 
 The `dotnet new sln` command produces a `.slnx` file (XML-based

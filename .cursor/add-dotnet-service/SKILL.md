@@ -155,10 +155,15 @@ containing other `<ProjectReference>` entries:
 ## Step 8 — Add to solution
 
 If a `.slnx` or `.sln` file exists at the repo root, add the new
-service project to it:
+service project to it. Use `--solution-folder` to place the project
+directly in the desired folder — without it, `dotnet sln add`
+creates nested `<Folder>` elements in `.slnx` which are invalid
+(the schema only allows `<Folder>` as direct children of
+`<Solution>`):
 
 ```bash
-dotnet sln add services/«servicename»/src/«ProjectName».«ServiceName».Api/«ProjectName».«ServiceName».Api.csproj
+dotnet sln add services/«servicename»/src/«ProjectName».«ServiceName».Api/«ProjectName».«ServiceName».Api.csproj \
+  --solution-folder /services/«servicename»/
 ```
 
 ## Step 9 — Register in `apphost/Program.cs`
