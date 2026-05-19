@@ -89,15 +89,15 @@ steps; deviations should be deliberate and discussed with the user.
    calls.
 
 7. **Every smoke-check expectation has a registration step.** When
-   Step 8 lists N resources, Steps 2–6 contain N corresponding
+   Step 9 lists N resources, Steps 2–7 contain the N corresponding
    `.Add...` calls. Cross-reference by name.
 
 8. **Pre-flight and cleanup are workflow steps, not optional.** Step 0
-   and Step 9 are first-class. The orchestrator's stop command does
+   and Step 10 are first-class. The orchestrator's stop command does
    not always clean up the containers it spawned; pre-flight surfaces
    any holdovers before they collide.
 
-9. **Smoke check is pass/fail.** Step 8 checks return pass or fail.
+9. **Smoke check is pass/fail.** Step 9 checks return pass or fail.
    On the first failure, stop and report — don't silently work around.
    There is no "documented caveat" middle category in this skill.
 
@@ -124,12 +124,13 @@ Bootstrap Progress:
 - [ ] Step 0: Pre-flight
 - [ ] Step 1: Confirm folder layout with the user
 - [ ] Step 2: Scaffold Aspire AppHost
-- [ ] Step 3: Add .NET gRPC services (via add-dotnet-service)
-- [ ] Step 4–5: Add Angular `admin` client + proto codegen (via add-angular-client)
-- [ ] Step 6: Add Envoy proxy
-- [ ] Step 7: Update README
-- [ ] Step 8: Smoke check
-- [ ] Step 9: Cleanup or graceful stop
+- [ ] Step 3: Prepare shared libraries (rename namespaces, update packages)
+- [ ] Step 4: Add .NET gRPC services (via add-dotnet-service)
+- [ ] Step 5–6: Add Angular `admin` client + proto codegen (via add-angular-client)
+- [ ] Step 7: Add Envoy proxy
+- [ ] Step 8: Update README
+- [ ] Step 9: Smoke check
+- [ ] Step 10: Cleanup or graceful stop
 ```
 
 ---
@@ -162,6 +163,11 @@ propose-confirm loop.
 │   └── Properties/
 │       └── launchSettings.json
 ├── services/             # Backend .NET gRPC services
+│   ├── shared/           # Shared libraries (pre-existing in template)
+│   │   ├── ServiceDefaults/   # OpenTelemetry, health checks, service discovery
+│   │   ├── Database/          # EF Core base classes + unit of work
+│   │   ├── Database.Abstractions/  # Interfaces for DB layer
+│   │   └── Exceptions/        # Common gRPC error descriptors
 │   ├── auth/             # «ProjectName».Auth.csproj
 │   ├── payments/         # «ProjectName».Payments.csproj
 │   └── api/              # «ProjectName».Api.csproj
@@ -283,7 +289,31 @@ Leave them as-is.
 
 ---
 
-### Step 3 — Add .NET gRPC services
+### Step 3 — Prepare shared libraries
+
+**Load `references/prepare-shared-libs.md`** and follow it. This step
+updates the pre-existing `services/shared/` projects to match the new
+project name and ensures all NuGet package versions are current.
+
+Summary of what the reference prescribes:
+
+1. Find all `.csproj` files under `services/shared/`.
+2. Replace the template namespace prefix in `<RootNamespace>` and
+   `<InternalsVisibleTo>` elements with `«ProjectName»`.
+3. Find all `.cs` files under `services/shared/` and replace the
+   template namespace prefix in `namespace` declarations and `using`
+   directives with `«ProjectName»`.
+4. For each `<PackageReference>`, query for the latest stable version
+   and update it in place.
+5. Build all shared projects to confirm they compile.
+
+The template namespace prefix is detected from the first
+`<RootNamespace>` value found (e.g. `ProtoFast.ServiceDefaults` →
+prefix is `ProtoFast`).
+
+---
+
+### Step 4 — Add .NET gRPC services
 
 **Read and follow `.cursor/add-dotnet-service/SKILL.md`** for each of
 the three bootstrap services: `auth`, `payments`, `api`.
@@ -297,7 +327,7 @@ For each service, supply these inputs:
 | `api` | `Api` | `/api/` |
 
 Since `proxy/` does not exist yet at this point, the sub-skill will
-skip Envoy updates — Step 6 creates the full Envoy config from scratch
+skip Envoy updates — Step 7 creates the full Envoy config from scratch
 for all services at once.
 
 After all three services are added, verify the AppHost builds:
@@ -308,7 +338,7 @@ dotnet build apphost
 
 ---
 
-### Step 4–5 — Add Angular `admin` client + proto codegen
+### Step 5–6 — Add Angular `admin` client + proto codegen
 
 **Read and follow `.cursor/add-angular-client/SKILL.md`** for the
 `admin` client.
@@ -340,11 +370,11 @@ wiring a Greeter component" section) to prove end-to-end gRPC-Web
 connectivity in the smoke check.
 
 Since `proxy/` does not exist yet, the sub-skill will skip Envoy
-updates — Step 6 creates the full Envoy config.
+updates — Step 7 creates the full Envoy config.
 
 ---
 
-### Step 6 — Envoy proxy
+### Step 7 — Envoy proxy
 
 **Load `references/envoy-proxy.md`** and follow Steps 6a–6h. Creates
 the `proxy/` directory with a Dockerfile, an `envoy.yaml.tmpl` config
@@ -360,7 +390,7 @@ reference includes the full `Program.cs` at this point.
 
 ---
 
-### Step 7 — Update README
+### Step 8 — Update README
 
 Append a "Running the app" section to `README.md`. Do not remove or
 reorder existing content.
@@ -401,7 +431,7 @@ Optionally include a `## Layout` block (the diagram from Step 1).
 
 ---
 
-### Step 8 — Smoke check
+### Step 9 — Smoke check
 
 **Launch.** Use `aspire start` (background) not `aspire run`
 (foreground-blocking). Re-source the version manager in the launching
@@ -451,10 +481,10 @@ work around.
 
 ---
 
-### Step 9 — Cleanup / reset
+### Step 10 — Cleanup / reset
 
 **Load `references/cleanup-and-troubleshooting.md`** and follow
-Steps 9a–9d. Stops the AppHost, cleans orphan DCP containers,
+Steps 10a–10d. Stops the AppHost, cleans orphan DCP containers,
 confirms ports are free, and documents recovery from AppHost
 compilation errors.
 
@@ -480,7 +510,7 @@ editing this file:
 4. **Ship a working configuration.** If a step has a "simpler MVP"
    that produces known-broken behavior plus a "real fix" later, the
    skill teaches only the real fix. There is no "documented caveat"
-   middle category in Step 8.
+   middle category in Step 9.
 5. **Update before the next step.** When a generator output, flag, or
    API drifts, update this file as part of the bootstrap, before
    moving on. The skill is the next agent's contract.
@@ -500,7 +530,7 @@ editing this file:
 - Keep generator output inside the agreed folders (Step 1). If a tool
   insists on a different layout, stop and re-confirm with the user.
 - Never touch another project's resources without explicit user
-  confirmation. Step 0 surfaces them; Step 9 cleans them only after
+  confirmation. Step 0 surfaces them; Step 10 cleans them only after
   asking.
 - The Aspire CLI typically lives at `$HOME/.aspire/bin/aspire`. If
   `aspire` is not on `PATH`, prepend that directory or invoke the

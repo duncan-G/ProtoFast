@@ -34,6 +34,11 @@ in two contexts:
 
 - `apphost/` exists with a working `.csproj` and `Program.cs`.
 - `services/` directory exists.
+- `services/shared/ServiceDefaults/` exists with a ServiceDefaults `.csproj` and
+  `Extensions.cs` exposing `AddServiceDefaults` and `MapDefaultEndpoints`.
+  If it does not exist, create it first using `dotnet new aspire-servicedefaults`
+  and move/rename to match the project convention (see Aspire docs for the
+  standard template contents).
 - `dotnet` CLI is available.
 
 ## Step 1 — Gather inputs
@@ -75,13 +80,57 @@ This guarantees the generated namespace is `«ProjectName».«ServiceName»`
 regardless of folder structure or project name conventions. If the
 element already exists with the correct value, leave it as-is.
 
-## Step 4 — Bind on `0.0.0.0`
+## Step 4 — Add ServiceDefaults reference
+
+Add a `ProjectReference` to the service's `.csproj` pointing at the
+ServiceDefaults project:
+
+```xml
+<ProjectReference Include="../shared/ServiceDefaults/«ProjectName».ServiceDefaults.csproj" />
+```
+
+This gives the service access to `AddServiceDefaults()` and
+`MapDefaultEndpoints()`.
+
+## Step 5 — Wire service defaults in `Program.cs`
+
+Update the service's `Program.cs`:
+
+1. Add `builder.AddServiceDefaults();` immediately after
+   `WebApplication.CreateBuilder(args)`.
+2. Add `app.MapDefaultEndpoints();` after `app.Build()` and before
+   any route mappings.
+
+The result should look like:
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+builder.AddServiceDefaults();
+
+// ... existing service registrations ...
+
+var app = builder.Build();
+
+app.MapDefaultEndpoints();
+
+// ... existing route/endpoint mappings ...
+
+app.Run();
+```
+
+This configures OpenTelemetry (metrics, tracing, logging), health check
+endpoints (`/health`, `/alive`), service discovery, and HTTP client
+resilience for the service — using the OTLP exporter endpoint that the
+AppHost injects via environment variables.
+
+## Step 6 — Bind on `0.0.0.0`
 
 Update `services/«servicename»/Properties/launchSettings.json`: set the
 `http` profile's `applicationUrl` to `http://0.0.0.0:0`. Port `0` lets
 Aspire assign dynamically. Do **not** hardcode a port.
 
-## Step 5 — Add ProjectReference to AppHost
+## Step 7 — Add ProjectReference to AppHost
 
 Add to `apphost/«ProjectName».AppHost.csproj` inside the `<ItemGroup>`
 containing other `<ProjectReference>` entries:
@@ -90,7 +139,7 @@ containing other `<ProjectReference>` entries:
 <ProjectReference Include="../services/«servicename»/«ProjectName».«ServiceName».csproj" />
 ```
 
-## Step 6 — Register in `apphost/Program.cs`
+## Step 8 — Register in `apphost/Program.cs`
 
 Add alongside existing service registrations:
 
@@ -106,7 +155,7 @@ Build to verify:
 dotnet build apphost
 ```
 
-## Step 7 — Update Envoy (post-bootstrap only)
+## Step 9 — Update Envoy (post-bootstrap only)
 
 Check whether `proxy/envoy.yaml.tmpl` exists.
 
