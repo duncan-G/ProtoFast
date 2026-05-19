@@ -562,15 +562,14 @@ Before validating, present the user with optional quality-of-life improvements. 
 
 **Suggest each of these individually — don't apply without asking:**
 
-1. **Cookie and session isolation with `dev.localhost`**: When multiple services run on `localhost`, they share cookies and session storage — which can cause hard-to-debug auth problems. Using `*.dev.localhost` subdomains isolates each service's cookies and storage. Note: URLs still include ports (e.g., `frontend.dev.localhost:5173`), but the subdomain isolation prevents cross-service cookie collisions.
-   > "Would you like me to set up `dev.localhost` subdomains for your services? This gives each service its own cookie/session scope so they don't interfere with each other. URLs will look like `frontend.dev.localhost:5173` — the `*.dev.localhost` domain resolves to 127.0.0.1 automatically on most systems, no `/etc/hosts` changes needed."
+1. **Configure launch profile ports**: The launch profile needs `applicationUrl`, `ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL`, and `ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL`. Ask the user what port they want for the Aspire Dashboard (this is the main UI they'll open in the browser). For all other ports (`ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL`, `ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL`, and the secondary `applicationUrl` port), pick random ports in the 15000–22000 range to avoid conflicts.
+
+   > "What port would you like for the Aspire Dashboard? (This is the URL you'll open in your browser to see resources, logs, and traces.)"
 
    **How to do it — pick the right config file based on AppHost mode** (see "Configuration files — which is which" earlier in this doc):
 
    - **Single-file mode** (`apphost.cs` with `#:sdk` directive) and **polyglot AppHosts** (TypeScript, Python, Go, …): edit the `profiles` section in `aspire.config.json` at the repo root.
    - **Full project mode** (`.csproj` AppHost): edit `Properties/launchSettings.json` inside the AppHost project directory. **Do not edit `aspire.config.json` for project-mode AppHosts** — they read launch profiles from `launchSettings.json`, so changes to `aspire.config.json` will be ignored.
-
-   In both cases, replace `localhost` with `<projectname>.dev.localhost` in `applicationUrl`, and use descriptive subdomains like `otlp.dev.localhost` and `resources.dev.localhost` for the infrastructure URLs. This is the same mechanism `aspire new` uses.
 
    Example — `aspire.config.json` (single-file / polyglot):
 
@@ -578,10 +577,10 @@ Before validating, present the user with optional quality-of-life improvements. 
    {
      "profiles": {
        "https": {
-         "applicationUrl": "https://myproject.dev.localhost:17042;http://myproject.dev.localhost:15042",
+         "applicationUrl": "https://localhost:<user-chosen-port>;http://localhost:<random-port>",
          "environmentVariables": {
-           "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "https://otlp.dev.localhost:21042",
-           "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "https://resources.dev.localhost:22042"
+           "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "https://0.0.0.0:<random-port>",
+           "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "https://localhost:<random-port>"
          }
        }
      }
@@ -595,17 +594,19 @@ Before validating, present the user with optional quality-of-life improvements. 
      "profiles": {
        "https": {
          "commandName": "Project",
-         "applicationUrl": "https://myproject.dev.localhost:17042;http://myproject.dev.localhost:15042",
+         "applicationUrl": "https://localhost:<user-chosen-port>;http://localhost:<random-port>",
          "environmentVariables": {
-           "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "https://otlp.dev.localhost:21042",
-           "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "https://resources.dev.localhost:22042"
+           "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "https://0.0.0.0:<random-port>",
+           "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "https://localhost:<random-port>"
          }
        }
      }
    }
    ```
 
-   Use the project/repo name (lowercased) as the subdomain prefix for `applicationUrl`. Use `otlp` and `resources` for the infrastructure URLs. Keep the existing port numbers — just swap `localhost` for the appropriate `*.dev.localhost` subdomain.
+   Use `localhost` for all URLs except `ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL`. The `<user-chosen-port>` in `applicationUrl` is the primary HTTPS port the user selected for the dashboard. All `<random-port>` values should be distinct random ports in the 15000–22000 range.
+
+   **Critical: `ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL` must bind to `0.0.0.0`** — this is the endpoint that container resources (like an OTel collector) export telemetry to. If it binds to `localhost`, it only listens on the loopback interface (`127.0.0.1`), which is unreachable from Docker containers via `host.docker.internal`. Using `0.0.0.0` makes it listen on all interfaces, including the Docker bridge network (`172.17.0.1`). The AppHost code that builds the collector's `OTEL_EXPORTER_OTLP_ENDPOINT` already rewrites `0.0.0.0` to `host.docker.internal` for container access.
 
 2. **Custom URL labels in the dashboard** (display text only): Rename endpoint URLs in the Aspire dashboard for clarity:
    ```csharp
