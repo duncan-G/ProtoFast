@@ -1,6 +1,22 @@
 admin:
+  access_log_path: /tmp/admin_access.log
   address:
     socket_address: { address: 0.0.0.0, port_value: __ENVOY_ADMIN_PORT__ }
+
+node:
+  id: protofast-proxy
+  cluster: protofast-proxy-cluster
+
+stats_sinks:
+  - name: envoy.stat_sinks.open_telemetry
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.stat_sinks.open_telemetry.v3.SinkConfig
+      grpc_service:
+        envoy_grpc:
+          cluster_name: otel_collector_grpc_cluster
+          authority: __OTEL_GRPC_HOST__
+
+stats_flush_interval: 5s
 
 static_resources:
   listeners:
@@ -25,11 +41,27 @@ static_resources:
                           "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
 __CORS_ALLOW_ORIGIN_MATCHES__
                           allow_methods: "GET,POST,PUT,DELETE,OPTIONS"
-                          allow_headers: "keep-alive,user-agent,cache-control,content-type,content-transfer-encoding,authorization,x-accept-content-transfer-encoding,x-accept-response-streaming,x-user-agent,x-grpc-web,grpc-timeout"
-                          expose_headers: "grpc-status,grpc-message"
+                          allow_headers: "keep-alive,user-agent,cache-control,content-type,content-transfer-encoding,authorization,x-accept-content-transfer-encoding,x-accept-response-streaming,x-user-agent,x-grpc-web,grpc-timeout,traceparent,tracestate,b3,baggage"
+                          expose_headers: "grpc-status,grpc-message,grpc-messages,error-code,error-codes"
                           max_age: "86400"
                           allow_credentials: true
                       routes:
+                        - match:
+                            prefix: "/otlp/v1/"
+                          route:
+                            cluster: otel_collector_http_cluster
+                            prefix_rewrite: "/v1/"
+                            timeout: 0s
+                          tracing:
+                            client_sampling:
+                              numerator: 0
+                              denominator: HUNDRED
+                            random_sampling:
+                              numerator: 0
+                              denominator: HUNDRED
+                            overall_sampling:
+                              numerator: 0
+                              denominator: HUNDRED
                         - match: { prefix: "/auth/" }
                           route:
                             cluster: auth
@@ -65,13 +97,114 @@ __CORS_ALLOW_ORIGIN_MATCHES__
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
                 access_log:
                   - name: envoy.access_loggers.file
+                    filter:
+                      and_filter:
+                        filters:
+                          - header_filter:
+                              header:
+                                name: ":path"
+                                string_match:
+                                  prefix: "/otlp/"
+                                invert_match: true
+                          - header_filter:
+                              header:
+                                name: "x-envoy-original-path"
+                                string_match:
+                                  prefix: "/otlp/"
+                                invert_match: true
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
                       path: /dev/stdout
                       log_format:
-                        text_format: "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" %RESPONSE_CODE% %RESPONSE_FLAGS% %DURATION%ms\n"
-
+                        text_format_source:
+                          inline_string: "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" %RESPONSE_CODE% %RESPONSE_FLAGS% %DURATION%ms\n"
+                  - name: envoy.access_loggers.open_telemetry
+                    filter:
+                      and_filter:
+                        filters:
+                          - header_filter:
+                              header:
+                                name: ":path"
+                                string_match:
+                                  prefix: "/otlp/"
+                                invert_match: true
+                          - header_filter:
+                              header:
+                                name: "x-envoy-original-path"
+                                string_match:
+                                  prefix: "/otlp/"
+                                invert_match: true
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.access_loggers.open_telemetry.v3.OpenTelemetryAccessLogConfig
+                      common_config:
+                        grpc_service:
+                          envoy_grpc:
+                            cluster_name: otel_collector_grpc_cluster
+                            authority: __OTEL_GRPC_HOST__
+                          timeout: 0.5s
+                        log_name: "envoy-proxy"
+                      body:
+                        string_value: |
+                          [%START_TIME%] %REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%
+                          -> %RESPONSE_CODE% flags=%RESPONSE_FLAGS%
+                          detail=%RESPONSE_CODE_DETAILS%
+                          transport=%UPSTREAM_TRANSPORT_FAILURE_REASON%
+                      attributes:
+                        values:
+                          - key: "upstream_cluster"
+                            value: { string_value: "%UPSTREAM_CLUSTER%" }
+                      resource_attributes:
+                        values:
+                          - key: "service.name"
+                            value: { string_value: "envoy-proxy" }
+                          - key: "service.instance.id"
+                            value: { string_value: "__OTEL_INSTANCE_ID__" }
+                tracing:
+                  provider:
+                    name: envoy.tracers.opentelemetry
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.config.trace.v3.OpenTelemetryConfig
+                      service_name: "envoy-proxy"
+                      grpc_service:
+                        envoy_grpc:
+                          cluster_name: otel_collector_grpc_cluster
+                          authority: __OTEL_GRPC_HOST__
+                        timeout: 0.5s
   clusters:
+    - name: otel_collector_http_cluster
+      type: logical_dns
+      dns_lookup_family: V4_ONLY
+      lb_policy: round_robin
+      load_assignment:
+        cluster_name: otel_collector_http_cluster
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: __OTEL_HTTP_HOST__
+                      port_value: __OTEL_HTTP_PORT__
+
+    - name: otel_collector_grpc_cluster
+      type: logical_dns
+      dns_lookup_family: V4_ONLY
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: {}
+      lb_policy: round_robin
+__OTEL_GRPC_TLS_BLOCK__
+      load_assignment:
+        cluster_name: otel_collector_grpc_cluster
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: __OTEL_GRPC_HOST__
+                      port_value: __OTEL_GRPC_PORT__
+
     - name: admin
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN

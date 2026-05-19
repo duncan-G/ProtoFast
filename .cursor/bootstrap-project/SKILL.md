@@ -172,12 +172,15 @@ propose-confirm loop.
 │   │   └── Exceptions/        # Common gRPC error descriptors
 │   ├── auth/             # Auth service
 │   │   ├── src/«ProjectName».Auth.Api/  # gRPC API project
+│   │   │   └── Protos/        # .proto files (co-located with API project)
 │   │   └── tests/             # Test projects (empty initially)
 │   ├── payments/         # Payments service
 │   │   ├── src/«ProjectName».Payments.Api/
+│   │   │   └── Protos/
 │   │   └── tests/
 │   └── api/              # Api service
 │       ├── src/«ProjectName».Api/
+│       │   └── Protos/
 │       └── tests/
 ├── clients/              # Angular SSR apps, one per client
 │   ├── admin/            # Admin client (scaffolded during bootstrap)
@@ -213,7 +216,10 @@ Rules:
 - `apphost/` is lowercase as the folder name; the `.csproj` inside is
   root-namespaced as `«ProjectName».AppHost`.
 - Each client has its own `buf.gen.yaml` that selects which service
-  protos to generate TypeScript clients for.
+  protos to generate TypeScript clients for. Proto files live inside
+  each API project (e.g.
+  `services/auth/src/«ProjectName».Auth.Api/Protos/`), not at the
+  service root.
 
 ---
 
@@ -394,7 +400,9 @@ dotnet build apphost
 Supply these inputs:
 
 - **Client name:** `admin`
-- **Protos:** all services (`auth`, `payments`, `api`)
+- **Protos:** all services (`auth`, `payments`, `api`) — proto files
+  live inside each API project at
+  `services/«servicename»/src/«ProjectName».«ServiceName».Api/Protos/`
 - **Envoy route (for the client itself):** `/` (catch-all)
 - **gRPC transport `«routeprefix»`:** `api` — the Envoy prefix for
   the backend the Greeter calls. **Not** the client's own route

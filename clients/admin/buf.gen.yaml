@@ -1,8 +1,8 @@
 version: v2
 inputs:
-  - directory: ../../services/auth/Protos
-  - directory: ../../services/payments/Protos
-  - directory: ../../services/api/Protos
+  - directory: ../../services/auth/src/ProtoFast.Auth.Api/Protos
+  - directory: ../../services/payments/src/ProtoFast.Payments.Api/Protos
+  - directory: ../../services/api/src/ProtoFast.Api/Protos
 plugins:
   - local: protoc-gen-es
     out: src/lib/gen

@@ -106,7 +106,8 @@ __CORS_ALLOW_ORIGIN_MATCHES__
                       "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
                       path: /dev/stdout
                       log_format:
-                        text_format: "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" %RESPONSE_CODE% %RESPONSE_FLAGS% %DURATION%ms\n"
+                        text_format_source:
+                          inline_string: "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" %RESPONSE_CODE% %RESPONSE_FLAGS% %DURATION%ms\n"
 
   clusters:
     - name: admin
@@ -294,8 +295,6 @@ support):
                           allow_origin_string_match:
                             - exact: "__CORS_ORIGIN_EXACT__"
                             - safe_regex:
-                                google_re2:
-                                  max_program_size: 512
                                 regex: "__CORS_ORIGIN_SUBDOMAIN_REGEX__"
 ```
 
