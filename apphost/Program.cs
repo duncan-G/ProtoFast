@@ -1,18 +1,24 @@
 ﻿using ProtoFast.AppHost.ClientApp;
 using ProtoFast.AppHost.EnvoyProxy;
+using ProtoFast.AppHost.OpenTelemetryCollector;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-var auth     = builder.AddProject<Projects.ProtoFast_Auth>("auth");
-var payments = builder.AddProject<Projects.ProtoFast_Payments>("payments");
-var api      = builder.AddProject<Projects.ProtoFast_Api>("api");
+var otel = builder.AddOpenTelemetryCollector("otel-collector");
+
+var auth     = builder.AddProject<Projects.ProtoFast_Auth_Api>("auth").WithOtlpCollectorReference(otel);
+var payments = builder.AddProject<Projects.ProtoFast_Payments_Api>("payments").WithOtlpCollectorReference(otel);
+var api      = builder.AddProject<Projects.ProtoFast_Api>("api").WithOtlpCollectorReference(otel);
 
 var proxy = builder.AddEnvoyProxy("envoy")
+    .WithOtelCollectorEndpoints(otel)
     .WaitFor(auth)
     .WaitFor(payments)
     .WaitFor(api);
 
-var adminEndpoint = builder.AddClientApp("admin", "../clients/admin", 4000, proxy.GetEndpoint("http"));
+var adminEndpoint = builder.AddClientApp("admin", "../clients/admin", 4000, proxy.GetEndpoint("http"),
+    clientOtelEndpoint: otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName),
+    clientServerOtelEndpoint: otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpGrpcEndpointName));
 
 proxy
     .WithCorsOriginExact(builder, adminEndpoint)

@@ -1,3 +1,5 @@
+using ProtoFast.AppHost.OpenTelemetryCollector;
+
 namespace ProtoFast.AppHost.EnvoyProxy;
 
 public static class EnvoyProxyResourceBuilderExtensions
@@ -72,6 +74,27 @@ public static class EnvoyProxyResourceBuilderExtensions
         var clientScheme = clientEndpoint.Property(EndpointProperty.Scheme);
         var corsOriginSubdomainRegex = ReferenceExpression.Create($"{clientScheme}://*.{clientHost}");
         return envoy.WithEnvironment("CORS_ORIGIN_SUBDOMAIN_REGEX", corsOriginSubdomainRegex);
+    }
+
+    /// <summary>
+    /// Wires the OTel collector's gRPC and HTTP endpoints into envoy-specific env vars
+    /// (<c>OTEL_GRPC_HOST/PORT</c>, <c>OTEL_HTTP_HOST/PORT</c>, <c>OTEL_INSTANCE_ID</c>)
+    /// so the entrypoint can template them into the envoy config.
+    /// </summary>
+    public static IResourceBuilder<ContainerResource> WithOtelCollectorEndpoints(
+        this IResourceBuilder<ContainerResource> envoy,
+        IResourceBuilder<OpenTelemetryCollectorResource> otelCollector)
+    {
+        var grpc = otelCollector.GetEndpoint(OpenTelemetryCollectorResource.OtlpGrpcEndpointName);
+        var http = otelCollector.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName);
+
+        return envoy
+            .WithReference(otelCollector)
+            .WithEnvironment("OTEL_GRPC_HOST", grpc.Property(EndpointProperty.Host))
+            .WithEnvironment("OTEL_GRPC_PORT", grpc.Property(EndpointProperty.Port))
+            .WithEnvironment("OTEL_HTTP_HOST", http.Property(EndpointProperty.Host))
+            .WithEnvironment("OTEL_HTTP_PORT", http.Property(EndpointProperty.Port))
+            .WithEnvironment("OTEL_INSTANCE_ID", envoy.Resource.Name);
     }
 
     /// <remarks>

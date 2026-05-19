@@ -1,0 +1,43 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:${env:OTLP_GRPC_PORT}
+      http:
+        endpoint: 0.0.0.0:${env:OTLP_HTTP_PORT}
+
+# Envoy passes the service name as a resource attribute called "service-name"
+# Map it to the service.name attribute
+processors:
+  batch:
+  resource/service-name:
+    attributes:
+      - key: service.name
+        value: envoy-proxy
+        action: insert
+
+exporters:
+  debug:
+    verbosity: detailed
+  otlp/aspire:
+    endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT}
+    headers:
+      x-otlp-api-key: ${env:ASPIRE_API_KEY}
+    tls:
+      insecure: ${env:ASPIRE_INSECURE}
+      insecure_skip_verify: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/aspire]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/aspire]
+    metrics:
+      receivers: [otlp]
+      processors: [resource/service-name, batch]
+      exporters: [otlp/aspire]
