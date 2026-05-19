@@ -1,6 +1,6 @@
 using Grpc.Core;
 
-namespace ProtoFast.Payments.Services;
+namespace ProtoFast.Payments.Api.Services;
 
 public class GreeterService(ILogger<GreeterService> logger) : Greeter.GreeterBase
 {

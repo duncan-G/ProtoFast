@@ -13,7 +13,7 @@ grep -rh '<RootNamespace>' services/shared/ | head -1
 ```
 
 Extract the prefix (the segment before the first `.`). For example,
-`ThePlot.ServiceDefaults` → prefix is `ThePlot`. This is the string
+`ProjectName.ServiceDefaults` → prefix is `ProjectName`. This is the string
 to replace with `«ProjectName»` everywhere.
 
 ## 3b — Rename namespaces in `.csproj` files
@@ -26,7 +26,7 @@ For each `.csproj` under `services/shared/`, replace:
   `<InternalsVisibleTo Include="«ProjectName».X" />`
 
 Also rename `.csproj` files themselves if they are prefixed with the
-old name. For example, if a project is named `ThePlot.ServiceDefaults.csproj`,
+old name. For example, if a project is named `«OldPrefix».ServiceDefaults.csproj`,
 rename it to `«ProjectName».ServiceDefaults.csproj`. Update any
 `<ProjectReference>` paths in sibling projects that pointed to the old
 filename.

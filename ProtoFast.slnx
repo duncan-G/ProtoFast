@@ -1,0 +1,27 @@
+<Solution>
+  <Folder Name="/apphost/">
+    <Project Path="apphost/ProtoFast.AppHost.csproj" />
+  </Folder>
+  <Folder Name="/services/" />
+  <Folder Name="/services/api/">
+    <Folder Name="/services/api/src/">
+      <Project Path="services/api/src/ProtoFast.Api/ProtoFast.Api.csproj" />
+    </Folder>
+  </Folder>
+  <Folder Name="/services/auth/">
+    <Folder Name="/services/auth/src/">
+      <Project Path="services/auth/src/ProtoFast.Auth.Api/ProtoFast.Auth.Api.csproj" />
+    </Folder>
+  </Folder>
+  <Folder Name="/services/payments/">
+    <Folder Name="/services/payments/src/">
+      <Project Path="services/payments/src/ProtoFast.Payments.Api/ProtoFast.Payments.Api.csproj" />
+    </Folder>
+  </Folder>
+  <Folder Name="/services/shared/">
+    <Project Path="services/shared/Database.Abstractions/Database.Abstractions.csproj" />
+    <Project Path="services/shared/Database/Database.csproj" />
+    <Project Path="services/shared/Exceptions/Exceptions.csproj" />
+    <Project Path="services/shared/ServiceDefaults/ServiceDefaults.csproj" />
+  </Folder>
+</Solution>

@@ -3,15 +3,16 @@ name: bootstrap-project
 description: >-
   Bootstraps a new project repo from an empty state: asks the user for a
   project name, pre-flights the agent's environment, agrees on a folder
-  layout, scaffolds the Aspire C# AppHost (project-based, with .csproj), scaffolds
-  the .NET gRPC services under `services/`, scaffolds the Angular SSR
-  `admin` client under `clients/` with Tailwind CSS v4 for styling,
-  wires buf + Connect proto-to-TypeScript codegen, adds an Envoy front
-  proxy with static config, runs a pass/fail smoke check that proves
-  end-to-end gRPC-Web connectivity from the Angular client through Envoy
-  to the backend services, and documents a clean stop. Use when the user
-  asks to initialize, bootstrap, scaffold, or set up a project, or when
-  the repo only contains README/scripts/.cursor and no app code yet.
+  layout, scaffolds the Aspire C# AppHost (project-based via dotnet new,
+  with .csproj and .slnx solution), scaffolds the .NET gRPC services
+  under `services/`, scaffolds the Angular SSR `admin` client under
+  `clients/` with Tailwind CSS v4 for styling, wires buf + Connect
+  proto-to-TypeScript codegen, adds an Envoy front proxy with static
+  config, runs a pass/fail smoke check that proves end-to-end gRPC-Web
+  connectivity from the Angular client through Envoy to the backend
+  services, and documents a clean stop. Use when the user asks to
+  initialize, bootstrap, scaffold, or set up a project, or when the
+  repo only contains README/scripts/.cursor and no app code yet.
 disable-model-invocation: true
 ---
 
@@ -50,9 +51,9 @@ Follow every rule below. Each is a load-bearing assumption for later
 steps; deviations should be deliberate and discussed with the user.
 
 1. **Generator output is the contract.** After every generator
-   (`aspire new`, `dotnet new`, `ng new`, …), list the produced files
-   and adapt. The skill prescribes one expected shape per generator;
-   if the output differs, stop and ask before continuing.
+   (`dotnet new`, `ng new`, …), list the produced files and adapt.
+   The skill prescribes one expected shape per generator; if the
+   output differs, stop and ask before continuing.
 
 2. **Specify intent, drop unknown flags.** If a generator rejects a
    flag with `Unknown argument: ...`, drop the flag and re-run. Do
@@ -89,7 +90,7 @@ steps; deviations should be deliberate and discussed with the user.
    calls.
 
 7. **Every smoke-check expectation has a registration step.** When
-   Step 9 lists N resources, Steps 2–7 contain the N corresponding
+   Step 9 lists N resources, Steps 2–7 contain N corresponding
    `.Add...` calls. Cross-reference by name.
 
 8. **Pre-flight and cleanup are workflow steps, not optional.** Step 0
@@ -152,6 +153,7 @@ propose-confirm loop.
 
 ```
 <repo root>/
+├── «ProjectName».slnx    # Solution file (all .csproj projects)
 ├── apphost/              # Aspire AppHost (project-based)
 │   ├── «ProjectName».AppHost.csproj
 │   ├── Program.cs
@@ -168,9 +170,15 @@ propose-confirm loop.
 │   │   ├── Database/          # EF Core base classes + unit of work
 │   │   ├── Database.Abstractions/  # Interfaces for DB layer
 │   │   └── Exceptions/        # Common gRPC error descriptors
-│   ├── auth/             # «ProjectName».Auth.csproj
-│   ├── payments/         # «ProjectName».Payments.csproj
-│   └── api/              # «ProjectName».Api.csproj
+│   ├── auth/             # Auth service
+│   │   ├── src/«ProjectName».Auth.Api/  # gRPC API project
+│   │   └── tests/             # Test projects (empty initially)
+│   ├── payments/         # Payments service
+│   │   ├── src/«ProjectName».Payments.Api/
+│   │   └── tests/
+│   └── api/              # Api service
+│       ├── src/«ProjectName».Api/
+│       └── tests/
 ├── clients/              # Angular SSR apps, one per client
 │   ├── admin/            # Admin client (scaffolded during bootstrap)
 │   │   ├── .postcssrc.json # PostCSS config (loads Tailwind v4 plugin)
@@ -195,9 +203,13 @@ Rules:
   root. Pass each generator's output flag.
 - `clients/app/` stays a placeholder (`clients/app/.gitkeep` only if
   git needs the directory tracked).
-- .NET service folders are short and lowercase
-  (`services/auth/`) but `.csproj` / assembly names are
-  root-namespaced as `«ProjectName».<Name>`.
+- Each service has `src/` and `tests/` subdirectories. The gRPC API
+  project lives at `services/«name»/src/«ProjectName».«Name».Api/`
+  (the `.Api` suffix distinguishes it from Domain, Infrastructure,
+  etc. projects added later). Exception: when `«Name»` is already
+  `Api`, the project is just `«ProjectName».Api` (no double suffix).
+  The `tests/` directory starts with a `.gitkeep` and is populated
+  when test projects are added.
 - `apphost/` is lowercase as the folder name; the `.csproj` inside is
   root-namespaced as `«ProjectName».AppHost`.
 - Each client has its own `buf.gen.yaml` that selects which service
@@ -205,54 +217,28 @@ Rules:
 
 ---
 
-### Step 2 — Scaffold the Aspire AppHost
+### Step 2 — Scaffold the Aspire AppHost and solution
 
-Use the **C#** AppHost (`aspire-empty`) with the `--project-based`
-flag to get a `.csproj` + `Program.cs` layout.
+The Aspire CLI's `aspire new` no longer supports a `--project-based`
+flag and defaults to file-based AppHosts (`#:sdk` directive, no
+`.csproj`). Skip `aspire new` entirely — scaffold via `dotnet new`
+and add the Aspire SDK manually.
 
-```bash
-aspire new aspire-empty \
-  --name «ProjectName».AppHost \
-  --output ./apphost \
-  --language csharp \
-  --project-based \
-  --non-interactive
-```
-
-Per principle 2, if `--project-based` is rejected, drop it and check
-the output: some CLI versions default to project-based, others to
-file-based. If the output is file-based (`apphost.cs` with `#:sdk`
-directive, no `.csproj`), delete it and scaffold manually (see below).
-
-Verify the produced shape:
-
-- `apphost/«ProjectName».AppHost.csproj` exists and contains
-  `<Sdk Name="Aspire.AppHost.Sdk" .../>`.
-- `apphost/Program.cs` exists with `DistributedApplication.CreateBuilder`.
-- `apphost/aspire.config.json` exists and `appHost.path` points at
-  the `.csproj`.
-- **No `#:sdk` directive** in any `.cs` file (that's the file-based
-  shape — wrong).
-
-If the CLI only produced a file-based AppHost, create the project
-manually:
+**2a. Create the console project:**
 
 ```bash
 dotnet new console -n «ProjectName».AppHost -o apphost --use-program-main false
 ```
 
-Then add the Aspire AppHost SDK to `apphost/«ProjectName».AppHost.csproj`.
-Detect the correct values first:
+**2b. Detect the Aspire SDK version and target framework:**
 
 ```bash
-# Target framework from the installed SDK
-dotnet --version | cut -d. -f1,2   # e.g. "9.0" → net9.0
-
-# Latest Aspire AppHost SDK version
+dotnet --version | cut -d. -f1,2   # e.g. "10.0" → net10.0
 dotnet package search Aspire.AppHost.Sdk --exact-match --take 1 --format json
 ```
 
-Use the detected values in the `.csproj`:
+**2c. Add the Aspire AppHost SDK** to
+`apphost/«ProjectName».AppHost.csproj`:
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
@@ -266,23 +252,82 @@ Use the detected values in the `.csproj`:
 </Project>
 ```
 
-And write the initial `apphost/Program.cs`:
+**2d. Write the initial `apphost/Program.cs`:**
 
 ```csharp
 var builder = DistributedApplication.CreateBuilder(args);
 builder.Build().Run();
 ```
 
-**Create `apphost/Properties/launchSettings.json`.** `dotnet run`
+**2e. Create `apphost/aspire.config.json`** pointing at the `.csproj`:
+
+```json
+{
+  "appHost": {
+    "path": "«ProjectName».AppHost.csproj"
+  }
+}
+```
+
+**2f. Create `apphost/Properties/launchSettings.json`.** `dotnet run`
 (which `aspire run` invokes) only reads `launchSettings.json` for
 project-based AppHosts — it does not use `aspire.config.json`
 profiles. Without it the AppHost crashes with `ASPNETCORE_URLS
-environment variable was not set`. Copy the profiles from the
-generated `aspire.config.json`, adding `"commandName": "Project"` to
-each. Also update `aspire.config.json` so `appHost.path` points at
-the `.csproj` (not the deleted `.cs`).
+environment variable was not set`. Use a standard profile:
 
-Run `dotnet build apphost` to confirm it compiles.
+```json
+{
+  "profiles": {
+    "http": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "DOTNET_ENVIRONMENT": "Development",
+        "DOTNET_DASHBOARD_OTLP_ENDPOINT_URL": "https://localhost:21147",
+        "DOTNET_RESOURCE_SERVICE_ENDPOINT_URL": "https://localhost:22001"
+      }
+    }
+  }
+}
+```
+
+**2g. Create the solution file** at the repo root and add the
+AppHost plus all shared library projects:
+
+```bash
+dotnet new sln -n «ProjectName»
+dotnet sln add apphost/«ProjectName».AppHost.csproj
+```
+
+Also add every `.csproj` under `services/shared/`:
+
+```bash
+dotnet sln add services/shared/ServiceDefaults/ServiceDefaults.csproj \
+  services/shared/Database/Database.csproj \
+  services/shared/Database.Abstractions/Database.Abstractions.csproj \
+  services/shared/Exceptions/Exceptions.csproj
+```
+
+The `dotnet new sln` command produces a `.slnx` file (XML-based
+solution format) on .NET 10+. Either `.sln` or `.slnx` is fine.
+
+**2h. Build to confirm:**
+
+```bash
+dotnet build apphost
+```
+
+Verify:
+
+- `apphost/«ProjectName».AppHost.csproj` exists with
+  `<Sdk Name="Aspire.AppHost.Sdk" .../>`.
+- `apphost/Program.cs` exists with `DistributedApplication.CreateBuilder`.
+- `apphost/aspire.config.json` exists with `appHost.path` pointing at
+  the `.csproj`.
+- `«ProjectName».slnx` (or `.sln`) exists at the repo root.
+- **No `#:sdk` directive** in any `.cs` file.
 
 The CLI may also create `apphost/.agents/` and `apphost/.vscode/`.
 Leave them as-is.
@@ -307,9 +352,6 @@ Summary of what the reference prescribes:
    and update it in place.
 5. Build all shared projects to confirm they compile.
 
-The template namespace prefix is detected from the first
-`<RootNamespace>` value found (e.g. `ProtoFast.ServiceDefaults` →
-prefix is `ProtoFast`).
 
 ---
 
@@ -330,7 +372,8 @@ Since `proxy/` does not exist yet at this point, the sub-skill will
 skip Envoy updates — Step 7 creates the full Envoy config from scratch
 for all services at once.
 
-After all three services are added, verify the AppHost builds:
+The sub-skill handles `dotnet sln add` for each service (Step 8).
+After all three, verify the AppHost builds:
 
 ```bash
 dotnet build apphost
@@ -484,7 +527,7 @@ work around.
 ### Step 10 — Cleanup / reset
 
 **Load `references/cleanup-and-troubleshooting.md`** and follow
-Steps 10a–10d. Stops the AppHost, cleans orphan DCP containers,
+Steps 9a–9d. Stops the AppHost, cleans orphan DCP containers,
 confirms ports are free, and documents recovery from AppHost
 compilation errors.
 

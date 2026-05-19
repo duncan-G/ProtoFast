@@ -59,9 +59,16 @@ The name before `.AppHost.csproj` is the project name.
 
 ## Step 2 — Scaffold the service
 
+Create the `src/` and `tests/` directories, then scaffold the gRPC
+API project into `src/`. The project name uses the `.Api` suffix to
+distinguish it from Domain, Infrastructure, and other projects added
+later:
+
 ```bash
-dotnet new grpc -n «ProjectName».«ServiceName» -o services/«servicename»
-dotnet build services/«servicename»
+mkdir -p services/«servicename»/src services/«servicename»/tests
+touch services/«servicename»/tests/.gitkeep
+dotnet new grpc -n «ProjectName».«ServiceName».Api -o services/«servicename»/src/«ProjectName».«ServiceName».Api
+dotnet build services/«servicename»/src/«ProjectName».«ServiceName».Api
 ```
 
 Per bootstrap-project principle 2: if a flag is rejected, drop it and
@@ -70,23 +77,25 @@ re-run.
 ## Step 3 — Set RootNamespace
 
 Ensure the `.csproj` has an explicit `<RootNamespace>` of
-`«ProjectName».«ServiceName»` inside the first `<PropertyGroup>`:
+`«ProjectName».«ServiceName».Api` inside the first `<PropertyGroup>`:
 
 ```xml
-<RootNamespace>«ProjectName».«ServiceName»</RootNamespace>
+<RootNamespace>«ProjectName».«ServiceName».Api</RootNamespace>
 ```
 
-This guarantees the generated namespace is `«ProjectName».«ServiceName»`
-regardless of folder structure or project name conventions. If the
-element already exists with the correct value, leave it as-is.
+This guarantees the generated namespace is
+`«ProjectName».«ServiceName».Api` regardless of folder structure or
+project name conventions. If the element already exists with the correct
+value, leave it as-is.
 
 ## Step 4 — Add ServiceDefaults reference
 
 Add a `ProjectReference` to the service's `.csproj` pointing at the
-ServiceDefaults project:
+ServiceDefaults project (path is relative from
+`services/«servicename»/src/«ProjectName».«ServiceName».Api/`):
 
 ```xml
-<ProjectReference Include="../shared/ServiceDefaults/«ProjectName».ServiceDefaults.csproj" />
+<ProjectReference Include="..\..\..\shared\ServiceDefaults\ServiceDefaults.csproj" />
 ```
 
 This gives the service access to `AddServiceDefaults()` and
@@ -96,14 +105,18 @@ This gives the service access to `AddServiceDefaults()` and
 
 Update the service's `Program.cs`:
 
-1. Add `builder.AddServiceDefaults();` immediately after
+1. Add `using «ProjectName».ServiceDefaults;` to the top of the file.
+2. Add `builder.AddServiceDefaults();` immediately after
    `WebApplication.CreateBuilder(args)`.
-2. Add `app.MapDefaultEndpoints();` after `app.Build()` and before
+3. Add `app.MapDefaultEndpoints();` after `app.Build()` and before
    any route mappings.
 
 The result should look like:
 
 ```csharp
+using «ProjectName».«ServiceName».Api.Services;
+using «ProjectName».ServiceDefaults;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
@@ -126,9 +139,9 @@ AppHost injects via environment variables.
 
 ## Step 6 — Bind on `0.0.0.0`
 
-Update `services/«servicename»/Properties/launchSettings.json`: set the
-`http` profile's `applicationUrl` to `http://0.0.0.0:0`. Port `0` lets
-Aspire assign dynamically. Do **not** hardcode a port.
+Update `services/«servicename»/src/«ProjectName».«ServiceName».Api/Properties/launchSettings.json`:
+set the `http` profile's `applicationUrl` to `http://0.0.0.0:0`.
+Port `0` lets Aspire assign dynamically. Do **not** hardcode a port.
 
 ## Step 7 — Add ProjectReference to AppHost
 
@@ -136,15 +149,24 @@ Add to `apphost/«ProjectName».AppHost.csproj` inside the `<ItemGroup>`
 containing other `<ProjectReference>` entries:
 
 ```xml
-<ProjectReference Include="../services/«servicename»/«ProjectName».«ServiceName».csproj" />
+<ProjectReference Include="../services/«servicename»/src/«ProjectName».«ServiceName».Api/«ProjectName».«ServiceName».Api.csproj" />
 ```
 
-## Step 8 — Register in `apphost/Program.cs`
+## Step 8 — Add to solution
+
+If a `.slnx` or `.sln` file exists at the repo root, add the new
+service project to it:
+
+```bash
+dotnet sln add services/«servicename»/src/«ProjectName».«ServiceName».Api/«ProjectName».«ServiceName».Api.csproj
+```
+
+## Step 9 — Register in `apphost/Program.cs`
 
 Add alongside existing service registrations:
 
 ```csharp
-var «servicename» = builder.AddProject<Projects.«ProjectName»_«ServiceName»>("«servicename»");
+var «servicename» = builder.AddProject<Projects.«ProjectName»_«ServiceName»_Api>("«servicename»");
 ```
 
 Dots in the project name become underscores in the source-generated type.
@@ -155,7 +177,7 @@ Build to verify:
 dotnet build apphost
 ```
 
-## Step 9 — Update Envoy (post-bootstrap only)
+## Step 10 — Update Envoy (post-bootstrap only)
 
 Check whether `proxy/envoy.yaml.tmpl` exists.
 
@@ -168,8 +190,14 @@ Check whether `proxy/envoy.yaml.tmpl` exists.
 ## Guardrails
 
 - Never hardcode ports — Aspire assigns them dynamically.
-- Service folder is lowercase (`services/billing/`); `.csproj` and
-  assembly use PascalCase with the root namespace
-  (`«ProjectName».Billing`).
+- Service folder is lowercase (`services/billing/`); the gRPC API
+  `.csproj` lives at `services/billing/src/«ProjectName».Billing.Api/`
+  and uses PascalCase with the root namespace
+  (`«ProjectName».Billing.Api`). The `.Api` suffix leaves room for
+  Domain, Infrastructure, and other projects in the same service.
+  Exception: when `«ServiceName»` is already `Api`, skip the suffix
+  — the project is just `«ProjectName».Api` (no double `.Api.Api`).
+- Each service has `src/` and `tests/` subdirectories. `tests/` starts
+  with a `.gitkeep`.
 - Resource names in `Program.cs` are short lowercase strings matching
   the folder name.
