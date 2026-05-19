@@ -1,0 +1,26 @@
+{
+  "appHost": {
+    "path": "ProtoFast.AppHost.csproj"
+  },
+  "profiles": {
+    "https": {
+      "applicationUrl": "https://localhost:17132;http://localhost:15050",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "DOTNET_ENVIRONMENT": "Development",
+        "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "https://localhost:21251",
+        "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "https://localhost:22011"
+      }
+    },
+    "http": {
+      "applicationUrl": "http://localhost:15050",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "DOTNET_ENVIRONMENT": "Development",
+        "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "http://localhost:19130",
+        "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "http://localhost:20084",
+        "ASPIRE_ALLOW_UNSECURED_TRANSPORT": "true"
+      }
+    }
+  }
+}

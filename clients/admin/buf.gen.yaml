@@ -1,0 +1,9 @@
+version: v2
+inputs:
+  - directory: ../../services/auth/Protos
+  - directory: ../../services/payments/Protos
+  - directory: ../../services/api/Protos
+plugins:
+  - local: protoc-gen-es
+    out: src/lib/gen
+    opt: target=ts

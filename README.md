@@ -1,4 +1,4 @@
-# «projectname»
+# ProtoFast
 
 ## Infrastructure
 
@@ -58,4 +58,34 @@ An idempotent setup script is provided to install any missing tooling. It is cur
 
 ```bash
 bash scripts/setup-dev-dependencies.sh
+```
+
+## Running the app
+
+The whole stack (Aspire AppHost + .NET gRPC services + Angular admin client +
+Envoy proxy) is started via the Aspire CLI from the repo root:
+
+```bash
+aspire run
+```
+
+This launches:
+
+- Envoy front proxy (proxies all traffic; ports assigned by Aspire)
+- Angular `admin` client with SSR (proxied via Envoy at `/`)
+- .NET gRPC services from `services/` (proxied via Envoy):
+  - `auth`     at `/auth/*`
+  - `payments` at `/payments/*`
+  - `api`      at `/api/*`
+- The Aspire dashboard (URL printed in the terminal on startup)
+
+All resource URLs (including Envoy) are shown in the Aspire dashboard.
+
+`clients/app/` is reserved for an end-user Angular client and is not yet
+scaffolded.
+
+Stop everything with `Ctrl+C`, or from another shell:
+
+```bash
+aspire stop
 ```

@@ -57,18 +57,7 @@ The build should succeed with no Tailwind-related errors. If the builder
 doesn't pick up PostCSS, ensure `.postcssrc.json` is at
 `clients/«clientname»/` (the project root), not inside `src/`.
 
-## 2c. Verify SSR scaffolded
-
-- `ls clients/«clientname»/angular.json`
-- `ls clients/«clientname»/src/server.ts` (path may vary by version)
-- `clients/«clientname»/package.json` `scripts` includes a
-  `serve:ssr:*` entry.
-- `angular.json` `architect.build.options` includes both `server` and
-  `ssr` keys.
-
-If any is missing, re-run the generator with `--ssr`.
-
-## 2d. Patch the `start` and `build` scripts
+## 2c. Patch the `start` and `build` scripts
 
 Edit `clients/«clientname»/package.json` scripts:
 
@@ -87,14 +76,39 @@ Edit `clients/«clientname»/package.json` scripts:
 - Both `start` and `build` run codegen first so generated types are
   always current.
 
-## 2e. Dev-server proxy config
+## 2d. Dev-server proxy config
 
-Since all traffic flows through Envoy (the browser hits Envoy, Envoy
-routes to backends by prefix), the Angular dev server does **not** need
-a proxy config. No `proxy.conf.json` is needed — remove it if the
-generator created one, and do not add `proxyConfig` to `angular.json`.
+In dev mode the Angular dev server proxies backend routes to Envoy so
+that the browser's gRPC-Web requests reach the right backend. The
+`AddClientApp` extension injects `SERVER_URL` pointing at Envoy's HTTP
+endpoint.
 
-## 2f. Register the client as an Aspire resource
+Create `clients/«clientname»/proxy.conf.mjs`:
+
+```js
+const serverUrl = process.env.SERVER_URL || 'http://localhost:8080';
+
+export default {
+  '/auth': { target: serverUrl, secure: false, changeOrigin: true },
+  '/payments': { target: serverUrl, secure: false, changeOrigin: true },
+  '/api': { target: serverUrl, secure: false, changeOrigin: true },
+};
+```
+
+Add one entry per service route prefix. The fallback
+`http://localhost:8080` is only for manual runs outside the orchestrator.
+
+Wire it into `angular.json` under
+`projects.«clientname».architect.serve.options`:
+
+```json
+"proxyConfig": "proxy.conf.mjs"
+```
+
+If the generator created a `proxy.conf.json`, replace it with the `.mjs`
+file above.
+
+## 2e. Register the client as an Aspire resource
 
 The client has two hosting modes gated on
 `builder.ExecutionContext.IsPublishMode`:
@@ -137,26 +151,94 @@ CMD ["node", "dist/«clientname»/server/server.mjs"]
 Adapt the `COPY --from=build` paths and `CMD` entry point to match the
 actual `ng build` SSR output layout, which varies by Angular version.
 
-### Registration in `apphost/Program.cs`
+### `AddClientApp` extension method
 
-Add between the services and Envoy (or after the last client if one
-already exists):
+All Angular clients are registered through a single reusable extension
+method that encapsulates the dev/publish branching. If it does not
+already exist, create `apphost/ClientApp/ClientAppResourceBuilderExtensions.cs`:
 
 ```csharp
-EndpointReference «clientname»Endpoint;
-if (builder.ExecutionContext.IsPublishMode)
+namespace «ProjectName».AppHost.ClientApp;
+
+public static class ClientAppResourceBuilderExtensions
 {
-    «clientname»Endpoint = builder.AddDockerfile("«clientname»", "../clients/«clientname»")
-        .WithHttpEndpoint(env: "PORT")
-        .WithExternalHttpEndpoints()
-        .GetEndpoint("http");
+    public static EndpointReference AddClientApp(
+        this IDistributedApplicationBuilder builder,
+        string clientName,
+        string clientPath,
+        EndpointReference serverEndpoint,
+        EndpointReference? clientOtelEndpoint = null,
+        EndpointReference? clientServerOtelEndpoint = null)
+    {
+        if (builder.ExecutionContext.IsPublishMode)
+        {
+            var clientApp = builder.AddDockerfile(clientName, clientPath)
+                .WithHttpEndpoint(env: "PORT")
+                .WithExternalHttpEndpoints();
+
+            var clientEndpoint = clientApp.GetEndpoint("http", KnownNetworkIdentifiers.PublicInternet);
+            clientApp
+                .WithEnvironment("NG_ALLOWED_HOSTS", clientEndpoint.Property(EndpointProperty.Host))
+                .WithEnvironment("SERVER_URL", serverEndpoint)
+                .WithOtelEndpoints(clientOtelEndpoint, clientServerOtelEndpoint);
+
+            return clientEndpoint;
+        }
+
+        var clientAppDev = builder.AddJavaScriptApp(clientName, clientPath, runScriptName: "start")
+            .WithHttpEndpoint(env: "PORT")
+            .WithEnvironment("SERVER_URL", serverEndpoint);
+            
+        clientAppDev.WithOtelEndpoints(clientOtelEndpoint, clientServerOtelEndpoint);
+
+        return clientAppDev.GetEndpoint("http");
+    }
+
+    private static IResourceBuilder<IResourceWithEnvironment> WithOtelEndpoints(
+        this IResourceBuilder<IResourceWithEnvironment> clientApp,
+        EndpointReference? clientOtelEndpoint,
+        EndpointReference? clientServerOtelEndpoint)
+    {
+        if (clientOtelEndpoint is not null)
+        {
+            clientApp = clientApp.WithEnvironment("BROWSER_OTEL_ENDPOINT", clientOtelEndpoint);
+        }
+
+        if (clientServerOtelEndpoint is not null)
+        {
+            clientApp = clientApp.WithEnvironment("SERVER_OTEL_ENDPOINT", clientServerOtelEndpoint);
+        }
+
+        return clientApp;
+    }
 }
-else
-{
-    «clientname»Endpoint = builder.AddJavaScriptApp("«clientname»", "../clients/«clientname»", "start")
-        .WithHttpEndpoint(env: "PORT")
-        .GetEndpoint("http");
-}
+```
+
+Parameters:
+
+- `clientName` / `clientPath` — Aspire resource name and relative path
+  to the Angular project (e.g. `"admin"`, `"../clients/admin"`).
+- `serverEndpoint` — the endpoint the client's SSR server should call
+  (typically Envoy's HTTP endpoint).
+- `clientOtelEndpoint` / `clientServerOtelEndpoint` — optional OpenTelemetry
+  collector endpoints for browser and server-side telemetry.
+
+The method returns an `EndpointReference` for the client, used later by
+Envoy registration (`WithClusterEndpoint`, `WithCorsOriginExact`).
+
+### Registration in `apphost/Program.cs`
+
+Add the `using` directive at the top of `Program.cs`:
+
+```csharp
+using «ProjectName».AppHost.ClientApp;
+```
+
+Then register the client between the services and Envoy (or after the
+last client if one already exists):
+
+```csharp
+var «clientname»Endpoint = builder.AddClientApp("«clientname»", "../clients/«clientname»", envoy.GetEndpoint("http"));
 ```
 
 - **Dev:** `AddJavaScriptApp` runs `npm start`. Aspire auto-creates a
@@ -166,3 +248,5 @@ else
 - `«clientname»Endpoint` is passed to Envoy registration so the proxy
   can route traffic to this client.
 - No port is specified — Aspire allocates one and passes it via `PORT`.
+- OTel endpoints are optional and can be wired later when adding
+  observability.

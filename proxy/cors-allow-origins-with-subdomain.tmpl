@@ -1,0 +1,6 @@
+                          allow_origin_string_match:
+                            - exact: "__CORS_ORIGIN_EXACT__"
+                            - safe_regex:
+                                google_re2:
+                                  max_program_size: 512
+                                regex: "__CORS_ORIGIN_SUBDOMAIN_REGEX__"

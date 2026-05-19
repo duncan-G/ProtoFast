@@ -154,7 +154,13 @@ propose-confirm loop.
 ├── apphost/              # Aspire AppHost (project-based)
 │   ├── «ProjectName».AppHost.csproj
 │   ├── Program.cs
-│   └── aspire.config.json
+│   ├── aspire.config.json
+│   ├── ClientApp/        # Reusable AddClientApp extension method
+│   │   └── ClientAppResourceBuilderExtensions.cs
+│   ├── EnvoyProxy/       # Envoy resource builder extensions
+│   │   └── EnvoyProxyResourceBuilderExtensions.cs
+│   └── Properties/
+│       └── launchSettings.json
 ├── services/             # Backend .NET gRPC services
 │   ├── auth/             # «ProjectName».Auth.csproj
 │   ├── payments/         # «ProjectName».Payments.csproj
@@ -261,6 +267,15 @@ var builder = DistributedApplication.CreateBuilder(args);
 builder.Build().Run();
 ```
 
+**Create `apphost/Properties/launchSettings.json`.** `dotnet run`
+(which `aspire run` invokes) only reads `launchSettings.json` for
+project-based AppHosts — it does not use `aspire.config.json`
+profiles. Without it the AppHost crashes with `ASPNETCORE_URLS
+environment variable was not set`. Copy the profiles from the
+generated `aspire.config.json`, adding `"commandName": "Project"` to
+each. Also update `aspire.config.json` so `appHost.path` points at
+the `.csproj` (not the deleted `.cs`).
+
 Run `dotnet build apphost` to confirm it compiles.
 
 The CLI may also create `apphost/.agents/` and `apphost/.vscode/`.
@@ -302,13 +317,22 @@ Supply these inputs:
 
 - **Client name:** `admin`
 - **Protos:** all services (`auth`, `payments`, `api`)
-- **Envoy route prefix:** `/` (catch-all — the primary client)
+- **Envoy route (for the client itself):** `/` (catch-all)
+- **gRPC transport `«routeprefix»`:** `api` — the Envoy prefix for
+  the backend the Greeter calls. **Not** the client's own route
+  above. Without it, `/greet.Greeter/SayHello` matches the catch-all
+  `/` → Angular SSR → 404 UNIMPLEMENTED. With `/api`, the path
+  becomes `/api/greet.Greeter/SayHello` → Envoy prefix-rewrites →
+  gRPC backend.
 
 The sub-skill scaffolds the Angular SSR project, installs Tailwind
 CSS v4, patches npm scripts for Aspire's `PORT` and `0.0.0.0`
-binding, creates the publish-mode Dockerfile, registers the client in
-`apphost/Program.cs` with dual dev/publish modes, and wires buf +
-Connect proto codegen for all three services.
+binding, creates the publish-mode Dockerfile, creates
+`apphost/ClientApp/ClientAppResourceBuilderExtensions.cs` with a
+reusable `AddClientApp` extension method that encapsulates
+dev/publish mode branching for all Angular clients, registers the
+client in `apphost/Program.cs` via `builder.AddClientApp(...)`, and
+wires buf + Connect proto codegen for all three services.
 
 **During bootstrap only:** also follow the Greeter example in
 `add-angular-client/references/proto-codegen.md` (the "Example:
