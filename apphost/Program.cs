@@ -16,9 +16,13 @@ var proxy = builder.AddEnvoyProxy("envoy")
     .WaitFor(payments)
     .WaitFor(api);
 
-var adminEndpoint = builder.AddClientApp("admin", "../clients/admin", 4000, proxy.GetEndpoint("http"),
-    clientOtelEndpoint: otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName),
-    clientServerOtelEndpoint: otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpGrpcEndpointName));
+var adminEndpoint = builder.AddClientApp(
+    "admin",
+    "../clients/admin",
+    4000,
+    proxy.GetEndpoint("http"),
+    otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName),
+    otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName));
 
 proxy
     .WithCorsOriginExact(builder, adminEndpoint)

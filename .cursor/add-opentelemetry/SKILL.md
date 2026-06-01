@@ -23,6 +23,10 @@ Aspire dashboard (and later to any additional backend).
 
 - `«ProjectName»` — PascalCase root namespace, detected from the AppHost
   `.csproj` filename (e.g. `Nimbus.AppHost.csproj` → `Nimbus`).
+- `«projectname»` — lowercase form of the above (e.g. `nimbus`), used
+  in OTel service names and Envoy node identifiers.
+- `«clientname»` — the client app resource name passed to `AddClientApp`
+  (e.g. `admin`), used in OTel service names to distinguish clients.
 
 ## Prerequisites
 
@@ -99,12 +103,12 @@ and TLS handling. Adds `WithOtelCollectorEndpoints` to
 ## Step 4 — Wire client app OTel endpoints in AppHost
 
 Update the `AddClientApp` call in `apphost/Program.cs` to pass the
-collector's HTTP and gRPC endpoints:
+collector's HTTP endpoints (both browser and SSR use HTTP OTLP):
 
 ```csharp
 var adminEndpoint = builder.AddClientApp("admin", "../clients/admin", 4000, proxy.GetEndpoint("http"),
     clientOtelEndpoint: otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName),
-    clientServerOtelEndpoint: otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpGrpcEndpointName));
+    clientServerOtelEndpoint: otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName));
 ```
 
 If the `AddClientApp` method does not yet accept `clientOtelEndpoint`
@@ -128,7 +132,7 @@ public static EndpointReference AddClientApp(
    - `clientOtelEndpoint` → `BROWSER_OTEL_ENDPOINT` (browser-side OTLP
      HTTP endpoint — the browser sends telemetry here)
    - `clientServerOtelEndpoint` → `SERVER_OTEL_ENDPOINT` (SSR
-     server-side OTLP gRPC endpoint)
+     server-side OTLP HTTP endpoint)
 
 3. Call `WithOtelEndpoints` in both the publish-mode and dev-mode
    branches.
@@ -138,11 +142,17 @@ These env vars are consumed by the client app's OTel instrumentation
 
 ## Step 5 — Configure client app to send telemetry
 
-<!-- To be implemented — this step will configure the Angular client's
-     OpenTelemetry SDK to send browser telemetry to the /otlp/v1/ route
-     and SSR server telemetry directly to the collector's gRPC endpoint
-     using the BROWSER_OTEL_ENDPOINT and SERVER_OTEL_ENDPOINT env vars
-     injected in Step 4. -->
+**Load `references/client-otel.md`** and follow Steps 5a–5g. Installs
+OTel npm packages, creates browser telemetry (`src/lib/telemetry.browser.ts`),
+a ConnectRPC trace interceptor (`src/lib/grpc-trace.interceptor.ts`),
+Node SSR instrumentation (`src/instrumentation.ts`), wires both into
+the Angular entry points, adds an `/otlp` dev-proxy route, and updates
+`Program.cs` to use the collector's HTTP endpoint for SSR.
+
+After this step the browser emits traces and logs through Envoy's
+`/otlp/v1/` passthrough route, every ConnectRPC call gets an OTel
+span with RPC semantic attributes, and the SSR server sends traces
+and logs directly to the collector via HTTP OTLP.
 
 ## Full `apphost/Program.cs` after all steps
 
@@ -167,7 +177,7 @@ var proxy = builder.AddEnvoyProxy("envoy")
 
 var adminEndpoint = builder.AddClientApp("admin", "../clients/admin", 4000, proxy.GetEndpoint("http"),
     clientOtelEndpoint: otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName),
-    clientServerOtelEndpoint: otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpGrpcEndpointName));
+    clientServerOtelEndpoint: otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName));
 
 proxy
     .WithCorsOriginExact(builder, adminEndpoint)
@@ -201,3 +211,13 @@ the `WaitFor` calls; the client app receives the collector endpoints.
 - The CORS `allow_headers` list must include `traceparent`, `tracestate`,
   `b3`, and `baggage` for distributed tracing context propagation from
   the browser.
+- In dev mode the Angular proxy forwards `/otlp` requests through the
+  Node SSR server to Envoy. The Node server's own telemetry exports
+  directly to the collector via `SERVER_OTEL_ENDPOINT` (never through
+  Envoy), but its HTTP auto-instrumentation will capture the `/otlp`
+  pass-through requests. Use `ignoreIncomingRequestHook` to suppress
+  them; otherwise browser telemetry transit will be misreported as
+  Node-originated spans.
+- Aspire injects `OTEL_SERVICE_NAME` into every resource. The Node SSR
+  instrumentation must `delete process.env['OTEL_SERVICE_NAME']` before
+  SDK init so the manually-set `service.name` attribute is used instead.
