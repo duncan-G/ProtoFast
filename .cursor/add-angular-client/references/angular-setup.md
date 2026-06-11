@@ -88,8 +88,8 @@ the generator may have created.
 
 ## 2d. Create the `SERVER_URL` injection token
 
-The client needs to know the Envoy proxy URL (for gRPC transport and
-browser telemetry). In dev mode, the SSR server reads `SERVER_URL`
+The client needs to know its Envoy listener URL (for gRPC transport
+and browser telemetry). In dev mode, the SSR server reads `SERVER_URL`
 from its environment and transfers it to the browser via Angular's
 `TransferState`. The browser reads it from the transfer state and
 falls back to `window.location.origin`.
@@ -160,25 +160,32 @@ export const appConfig: ApplicationConfig = {
 
 This pattern:
 
-- **SSR**: Reads `SERVER_URL` from the env var injected by
-  `AddClientApp` (pointing at Envoy's HTTPS endpoint), stores it in
-  `TransferState` so it's serialized into the HTML.
+- **SSR (dev)**: Reads `SERVER_URL` from the env var injected by
+  `AddClientApp` (pointing at the client's per-client Envoy listener),
+  stores it in `TransferState` so it's serialized into the HTML.
 - **Browser**: Reads from `TransferState` (which was hydrated from the
-  serialized HTML). Falls back to `window.location.origin` if not
-  present (e.g. in production where the browser accesses Envoy
-  directly).
-- **No proxy config needed**: The browser talks directly to the Envoy
-  URL provided by `SERVER_URL`, not through the dev server.
+  serialized HTML). Falls back to `window.location.origin` when empty —
+  which is the publish-mode path: the unified SSR host does not set
+  `SERVER_URL`, and the page, API, and telemetry are all same-origin
+  behind Envoy.
+- **No proxy config needed**: The browser enters through the Envoy
+  listener; the dev server never proxies API calls.
 
 ## 2e. Register the client as an Aspire resource
 
-The client has two hosting modes gated on
-`builder.ExecutionContext.IsPublishMode`:
+In run mode each client is its own Angular dev server; in publish mode
+(and in the `dev-host` smoke-test mode) all clients are served by the
+single unified SSR host container (`clients/host/`):
 
-| Mode | API | What runs |
-|------|-----|-----------|
-| Dev  | `AddJavaScriptApp` | `npm start` → Angular dev server (HTTPS) |
-| Publish | `AddDockerfile` | Container from `clients/«clientname»/Dockerfile` |
+| Mode | What runs | Registered by |
+|------|-----------|---------------|
+| Dev  | `npm start` → Angular dev server (HTTPS) per client | `AddClientApp` |
+| Dev-host / Publish | one `clients` container from `clients/host/Dockerfile` | `AddClientHost` (once, not per client) |
+
+In every mode the client also gets `proxy.WithClient(...)`, which in
+dev creates the client's Envoy listener (fixed internal target ports
+20000, 20001, … in registration order) and in publish wires the
+`«clientname»-domain` parameter into the client's virtual host.
 
 ### Dev-mode package
 
@@ -190,157 +197,112 @@ cd apphost
 aspire add javascript --non-interactive
 ```
 
-### Publish-mode Dockerfile
+### Extension methods
 
-Create `clients/«clientname»/Dockerfile`:
-
-```dockerfile
-FROM node:22-alpine AS build
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
-
-FROM node:22-alpine
-WORKDIR /app
-COPY --from=build /app/dist/«clientname» ./dist/«clientname»
-COPY --from=build /app/package*.json ./
-RUN npm ci --omit=dev
-CMD ["node", "dist/«clientname»/server/server.mjs"]
-```
-
-Adapt the `COPY --from=build` paths and `CMD` entry point to match the
-actual `ng build` SSR output layout, which varies by Angular version.
-
-### `AddClientApp` extension method
-
-All Angular clients are registered through a single reusable extension
-method that encapsulates the dev/publish branching. If it does not
-already exist, create `apphost/ClientApp/ClientAppResourceBuilderExtensions.cs`:
+All Angular clients are registered through reusable extension methods
+in `apphost/ClientApp/ClientAppResourceBuilderExtensions.cs`. These
+already exist in a bootstrapped project; the relevant signatures are:
 
 ```csharp
 namespace «ProjectName».AppHost.ClientApp;
 
 public static class ClientAppResourceBuilderExtensions
 {
-    /// <summary>
-    /// Adds a client app to the distributed application. In publish mode, the client is built as a
-    /// Docker container with external HTTPS endpoints.
-    /// </summary>
+    // Run mode only: one Angular dev server per client. serverEndpoint is the
+    // client's Envoy listener endpoint (returned by proxy.WithClient), injected
+    // as SERVER_URL. Returns the dev server's HTTPS endpoint (the Envoy upstream).
     public static EndpointReference AddClientApp(
         this IDistributedApplicationBuilder builder,
         string clientName,
         string clientPath,
-        int productionPort,
         EndpointReference serverEndpoint,
         EndpointReference? clientOtelEndpoint = null,
-        EndpointReference? clientServerOtelEndpoint = null)
-    {
-        if (builder.ExecutionContext.IsPublishMode)
-        {
-            var clientApp = builder.AddDockerfile(clientName, clientPath)
-                .WithHttpsEndpoint(targetPort: productionPort, env: "PORT")
-                .WithExternalHttpEndpoints();
+        EndpointReference? clientServerOtelEndpoint = null);
 
-            var clientEndpoint = clientApp.GetEndpoint("https", KnownNetworkIdentifiers.PublicInternet);
-            clientApp
-                .WithEnvironment("NG_ALLOWED_HOSTS", clientEndpoint.Property(EndpointProperty.Host))
-                .WithEnvironment("SERVER_URL", serverEndpoint)
-                .WithOtelEndpoints(clientOtelEndpoint, clientServerOtelEndpoint);
-
-            return clientEndpoint;
-        }
-
-        var clientAppDev = builder.AddJavaScriptApp(clientName, clientPath, runScriptName: "start")
-            .WithHttpsEndpoint(env: "PORT")
-            .WithHttpsDeveloperCertificate()
-            .WithHttpsCertificateConfiguration(ctx =>
-            {
-                ctx.EnvironmentVariables["SSL_CERT"] = ctx.CertificatePath;
-                ctx.EnvironmentVariables["SSL_KEY"] = ctx.KeyPath;
-                return Task.CompletedTask;
-            })
-            .WithEnvironment("SERVER_URL", serverEndpoint);
-            
-        clientAppDev.WithOtelEndpoints(clientOtelEndpoint, clientServerOtelEndpoint);
-
-        return clientAppDev.GetEndpoint("https", KnownNetworkIdentifiers.LocalhostNetwork);
-    }
-
-    private static IResourceBuilder<IResourceWithEnvironment> WithOtelEndpoints(
-        this IResourceBuilder<IResourceWithEnvironment> clientApp,
-        EndpointReference? clientOtelEndpoint,
-        EndpointReference? clientServerOtelEndpoint)
-    {
-        if (clientOtelEndpoint is not null)
-        {
-            clientApp = clientApp.WithEnvironment("BROWSER_OTEL_ENDPOINT", clientOtelEndpoint);
-        }
-
-        if (clientServerOtelEndpoint is not null)
-        {
-            clientApp = clientApp.WithEnvironment("SERVER_OTEL_ENDPOINT", clientServerOtelEndpoint);
-        }
-
-        return clientApp;
-    }
+    // Publish mode (and dev-host smoke tests): the unified SSR host container,
+    // built from clients/host/Dockerfile with the repo root as build context.
+    // Registered once for all clients. Returns the host's HTTP endpoint.
+    public static EndpointReference AddClientHost(
+        this IDistributedApplicationBuilder builder,
+        string name,
+        string defaultClient,
+        EndpointReference? clientOtelEndpoint = null,
+        EndpointReference? clientServerOtelEndpoint = null);
 }
 ```
 
-Parameters:
+Dev mode details (`AddClientApp`):
 
-- `clientName` / `clientPath` — Aspire resource name and relative path
-  to the Angular project (e.g. `"admin"`, `"../clients/admin"`).
-- `productionPort` — the container port the client SSR server listens
-  on in publish mode, passed as `targetPort` to `WithHttpsEndpoint`.
-  Ports start at 4000 and increment per client (4000, 4001, …). The
-  skill auto-detects the next available port by scanning existing
-  `AddClientApp` calls in `Program.cs`.
-- `serverEndpoint` — the endpoint the client's SSR server should call
-  (typically Envoy's HTTPS endpoint).
-- `clientOtelEndpoint` / `clientServerOtelEndpoint` — optional OpenTelemetry
-  collector endpoints for browser and server-side telemetry.
-
-Dev mode:
-
-- **`WithHttpsEndpoint`** registers the dev server as HTTPS.
+- **`WithHttpsEndpoint(env: "PORT")`** registers the dev server as
+  HTTPS with an Aspire-assigned port.
 - **`WithHttpsDeveloperCertificate()`** enrolls the app in Aspire's
   developer certificate infrastructure.
 - **`WithHttpsCertificateConfiguration`** injects `SSL_CERT` and
   `SSL_KEY` environment variables with paths to the certificate and
   key files. The `start` script passes these to `ng serve --ssl`.
-- Returns `GetEndpoint("https", KnownNetworkIdentifiers.LocalhostNetwork)`.
-
-The method returns an `EndpointReference` for the client, used later by
-Envoy registration (`WithUpstreamEndpoint`, `WithCorsOriginExact`).
+- Aspire auto-creates a `«clientname»-installer` resource that runs
+  `npm install` first.
 
 ### Registration in `apphost/Program.cs`
 
-Add the `using` directive at the top of `Program.cs`:
+Add the `using` directive at the top of `Program.cs` (if missing):
 
 ```csharp
 using «ProjectName».AppHost.ClientApp;
 ```
 
-Then register the client between the services and Envoy (or after the
-last client if one already exists):
+Then register the client after the existing clients, following the
+established pattern:
 
 ```csharp
-var «clientname»Endpoint = builder.AddClientApp("«clientname»", "../clients/«clientname»", «productionPort», proxy.GetEndpoint("https"));
+var «clientname»Web = proxy.WithClient(builder, "«clientname»");
+
+if (useSsrHost)
+{
+    // AddClientHost is already registered once; nothing per-client here.
+}
+else
+{
+    var «clientname»Dev = builder.AddClientApp(
+        "«clientname»", "../clients/«clientname»", «clientname»Web, otelHttp, otelHttp);
+    proxy.WithUpstreamEndpoint("CLIENT_«CLIENTNAME»", «clientname»Dev);
+}
 ```
 
-- `«productionPort»` is the port chosen in Step 1 (e.g. `4000`).
-- **`proxy.GetEndpoint("https")`** passes Envoy's HTTPS endpoint as
-  `SERVER_URL`, so the Angular SSR server knows where to direct
-  backend requests.
-- **Dev:** `AddJavaScriptApp` runs `npm start` with HTTPS. Aspire
-  auto-creates a `«clientname»-installer` resource that runs
-  `npm install` first. The port is dynamically assigned via `PORT`.
-- **Prod:** `AddDockerfile` builds the Dockerfile. The container
-  listens on `productionPort` (`targetPort`) and Aspire maps it
-  externally via `PORT`.
-- `«clientname»Endpoint` is passed to Envoy registration so the proxy
-  can route traffic to this client.
-- OTel endpoints are optional and can be wired later when adding
-  observability.
+- **`proxy.WithClient(builder, "«clientname»")`** — dev: creates the
+  per-client Envoy listener endpoint (`«clientname»-web` on the envoy
+  resource) and the `CLIENT_«CLIENTNAME»_LISTENER_PORT` env var;
+  publish: creates the `«clientname»-domain` parameter and the
+  `CLIENT_«CLIENTNAME»_DOMAIN` env var. Returns the endpoint to use as
+  `SERVER_URL`.
+- **`AddClientApp`** (dev only) — runs the Angular dev server with the
+  Envoy listener endpoint as `SERVER_URL`.
+- **`WithUpstreamEndpoint("CLIENT_«CLIENTNAME»", …)`** — injects
+  `CLIENT_«CLIENTNAME»_HOST/PORT` so Envoy's entrypoint can build the
+  client's upstream cluster in dev.
+- The `useSsrHost` flag and the single `AddClientHost("clients", …)` /
+  `WithUpstreamEndpoint("CLIENTS_HOST", …)` registration already exist
+  in `Program.cs` — do not duplicate them. If the new client should
+  become the default, update the `defaultClient:` argument and the
+  envoy `DEFAULT_CLIENT` env var.
+- OTel endpoints (`otelHttp`) are optional and can be wired later when
+  adding observability.
+
+## 2f. Guard OTel instrumentation for the unified host
+
+If the client has Node OTel instrumentation (`src/instrumentation.ts`,
+added by the add-opentelemetry skill), it must guard SDK startup so
+that only the first bundle loaded into the unified SSR host process
+starts the SDK:
+
+```typescript
+const otelGlobal = globalThis as { __nodeOtelSdkStarted?: boolean };
+
+if (otelEndpoint && !otelGlobal.__nodeOtelSdkStarted) {
+  otelGlobal.__nodeOtelSdkStarted = true;
+  // ... new NodeSDK(...).start();
+}
+```
+
+Copy the pattern from an existing client (e.g.
+`clients/admin/src/instrumentation.ts`).

@@ -54,12 +54,12 @@ stats_flush_interval: 5s
 - `stats_flush_interval` controls how often metrics are flushed
   (5 seconds is a reasonable default for dev).
 
-## 3c. Update `envoy.rds.yaml.tmpl` — add `/otlp/v1/` route and tracing headers
+## 3c. Update `envoy.vhost.yaml.tmpl` — add `/otlp/v1/` route and tracing headers
 
-In the `routes:` list within the virtual host (in
-`envoy.rds.yaml.tmpl`, not the main config), add the OTLP passthrough
-route **before** all service routes (it must match before the `/`
-catch-all):
+In the `routes:` list within the virtual-host fragment template
+(`envoy.vhost.yaml.tmpl` — rendered once per client listener/domain,
+not the main config), add the OTLP passthrough route **before** all
+service routes (it must match before the `/` catch-all):
 
 ```yaml
         - match:
@@ -97,13 +97,14 @@ And `expose_headers` to include error detail headers:
           expose_headers: "grpc-status,grpc-message,grpc-messages,error-code,error-codes"
 ```
 
-## 3d. Update `envoy.yaml.tmpl` — add OTel access logger and tracing provider
+## 3d. Update `envoy.listener.yaml.tmpl` — add OTel access logger and tracing provider
 
 Replace the existing `access_log:` block under
-`http_connection_manager` in **both** listeners (`http_listener` and
-`quic_listener`) with both a file logger and an OTel logger. Both
-loggers include a filter that excludes `/otlp/` paths to prevent log
-feedback loops:
+`http_connection_manager` in **both** listener blocks of the listener
+fragment template (`envoy.listener.yaml.tmpl` — the TCP block and the
+QUIC block) with both a file logger and an OTel logger. Both loggers
+include a filter that excludes `/otlp/` paths to prevent log feedback
+loops:
 
 ```yaml
                 access_log:
@@ -177,7 +178,8 @@ The `/otlp/` filter uses an `and_filter` on both `:path` and
 header — we need to exclude based on the original path too.
 
 Add a `tracing:` block after `access_log:` (at the same level, inside
-`http_connection_manager`) in **both** listeners:
+`http_connection_manager`) in **both** listener blocks of the
+fragment:
 
 ```yaml
                 tracing:
@@ -256,9 +258,9 @@ require_env OTEL_GRPC_HOST
 require_env OTEL_GRPC_PORT
 ```
 
-Add the OTel gRPC TLS block generation. This goes in the main envoy
-template processing section (after the RDS template processing, before
-the final `sed`):
+Add the OTel gRPC TLS block generation. This goes before the assembly
+`sed` (the one that splices `__LISTENERS__` / `__CLIENT_CLUSTERS__`
+into the main template):
 
 ```bash
 # ACA internal OTLP gRPC ingress is TLS on :443; local Aspire uses cleartext h2c on the OTLP port.
@@ -279,19 +281,20 @@ else
   : > "$OTEL_GRPC_TLS_BLOCK_FILE"
 fi
 
-sed -e "/^__OTEL_GRPC_TLS_BLOCK__$/r ${OTEL_GRPC_TLS_BLOCK_FILE}" \
-    -e "/^__OTEL_GRPC_TLS_BLOCK__$/d" \
-    /etc/envoy/envoy.yaml.tmpl > /tmp/envoy.yaml.tmpl
+sed \
+  -e "/^__LISTENERS__$/r ${LISTENERS_FILE}" \
+  -e "/^__LISTENERS__$/d" \
+  -e "/^__CLIENT_CLUSTERS__$/r ${CLIENT_CLUSTERS_FILE}" \
+  -e "/^__CLIENT_CLUSTERS__$/d" \
+  -e "/^__OTEL_GRPC_TLS_BLOCK__$/r ${OTEL_GRPC_TLS_BLOCK_FILE}" \
+  -e "/^__OTEL_GRPC_TLS_BLOCK__$/d" \
+  "$TMPL/envoy.yaml.tmpl" > /tmp/envoy.yaml.tmpl
 ```
 
 When `OTEL_GRPC_PORT` is `443` (publish mode behind cloud TLS
 ingress), the block injects an `UpstreamTlsContext` with SNI and h2
 ALPN. In dev mode (any other port), the file is empty and the
 placeholder line is simply removed.
-
-Note: `entrypoint.sh` now reads the main template directly from
-`/etc/envoy/envoy.yaml.tmpl` (not from `/tmp/`) since the TLS block
-substitution is the first operation on it.
 
 Add the new OTel substitutions to the final `sed` command (the one
 that writes `/tmp/envoy.yaml`):

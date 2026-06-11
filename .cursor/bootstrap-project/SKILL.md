@@ -67,13 +67,16 @@ steps; deviations should be deliberate and discussed with the user.
    orchestrator child processes inherit the env at launch time.
 
 4. **Aspire assigns all ports (except its own dashboard).** No
-   service, client, or proxy port is hardcoded. Aspire selects every
-   port at startup and passes it through endpoint references. Envoy
-   routes `/ → admin`; all upstream endpoints (hosts and ports) are
-   injected as environment variables via `WithUpstreamEndpoint` and
-   substituted by `entrypoint.sh` at container startup (see
-   `references/envoy-proxy.md` 6d, 6f–6g). Do not add fixed port
-   numbers to `launchSettings.json` or Envoy config; rely on
+   service or client dev-server port is hardcoded. Aspire selects
+   every port at startup and passes it through endpoint references.
+   Envoy gets one HTTPS listener per client (fixed internal target
+   ports 20000, 20001, … assigned in registration order by
+   `WithClient`); each listener routes API prefixes to the services
+   and its catch-all to that client. All upstream endpoints (hosts
+   and ports) are injected as environment variables via
+   `WithUpstreamEndpoint` and rendered by `entrypoint.sh` at
+   container startup (see `references/envoy-proxy.md` 6c, 6h, 6j).
+   Do not add fixed port numbers to `launchSettings.json`; rely on
    Aspire's dynamic assignment throughout.
 
 4a. **HTTPS and HTTP/3 are the default transport.** Envoy terminates
@@ -196,14 +199,19 @@ propose-confirm loop.
 │   │   ├── .postcssrc.json # PostCSS config (loads Tailwind v4 plugin)
 │   │   ├── buf.gen.yaml  # Proto codegen config (selects which protos)
 │   │   └── src/lib/gen/  # Generated TS from protos (gitignored)
+│   ├── host/             # Unified SSR host (serves all clients in publish mode)
+│   │   ├── server.mjs    # Express dispatcher (x-client header → client bundle)
+│   │   ├── package.json
+│   │   └── Dockerfile    # Builds every client; repo root is the build context
 │   └── app/              # End-user client (placeholder; not scaffolded)
-├── proxy/                # Envoy config (Dockerfile + templates)
+├── proxy/                # Envoy config (Dockerfile + fragment templates)
 │   ├── Dockerfile
-│   ├── envoy.yaml.tmpl       # Main config template (listeners, clusters)
-│   ├── envoy.rds.yaml.tmpl   # Route Discovery Service template (routes, CORS, virtual hosts)
-│   ├── entrypoint.sh         # Validates env vars, substitutes, launches Envoy
-│   ├── cors-allow-origins-exact.tmpl
-│   └── cors-allow-origins-with-subdomain.tmpl
+│   ├── envoy.yaml.tmpl           # Base config (admin, clusters, markers)
+│   ├── envoy.listener.yaml.tmpl  # One TCP+QUIC listener pair (per client in dev)
+│   ├── envoy.rds.yaml.tmpl       # Route-config shell
+│   ├── envoy.vhost.yaml.tmpl     # One virtual host (CORS, routes, catch-all)
+│   ├── envoy.cluster.yaml.tmpl   # One web upstream cluster
+│   └── entrypoint.sh             # Renders fragments per ENVOY_MODE, launches Envoy
 ├── scripts/              # Existing dev-setup scripts
 ├── .cursor/              # MCP + skills (existing)
 ├── .gitignore
@@ -424,12 +432,12 @@ Supply these inputs:
 
 The sub-skill scaffolds the Angular SSR project, installs Tailwind
 CSS v4, patches npm scripts for Aspire's `PORT` and `0.0.0.0`
-binding, creates the publish-mode Dockerfile, creates
-`apphost/ClientApp/ClientAppResourceBuilderExtensions.cs` with a
-reusable `AddClientApp` extension method that encapsulates
-dev/publish mode branching for all Angular clients, registers the
-client in `apphost/Program.cs` via `builder.AddClientApp(...)`, and
-wires buf + Connect proto codegen for all three services.
+binding, creates
+`apphost/ClientApp/ClientAppResourceBuilderExtensions.cs` with the
+reusable `AddClientApp` (dev server) and `AddClientHost` (unified SSR
+host) extension methods, registers the client in `apphost/Program.cs`
+via `proxy.WithClient(...)` + `builder.AddClientApp(...)`, and wires
+buf + Connect proto codegen for all three services.
 
 **During bootstrap only:** also follow the Greeter example in
 `add-angular-client/references/proto-codegen.md` (the "Example:
@@ -441,23 +449,25 @@ updates — Step 7 creates the full Envoy config.
 
 ---
 
-### Step 7 — Envoy proxy
+### Step 7 — Envoy proxy + unified SSR host
 
-**Load `references/envoy-proxy.md`** and follow Steps 6a–6h. Creates
-the `proxy/` directory with a Dockerfile, an `envoy.yaml.tmpl` main
-config template (listeners with TLS/QUIC, clusters), an
-`envoy.rds.yaml.tmpl` route config template (virtual hosts, CORS,
-routes), an `entrypoint.sh` that validates environment variables and
-substitutes tokens at container startup, and CORS fragment templates.
-Envoy terminates TLS on both TCP (HTTP/2 + HTTP/1.1) and UDP
-(HTTP/3 QUIC) listeners using Aspire's developer certificate. Adds
-`apphost/EnvoyProxy/EnvoyProxyResourceBuilderExtensions.cs` with
-extension methods (`AddEnvoyProxy`, `WithCorsOriginExact`,
-`WithUpstreamEndpoint`, `WithAllowedHosts`) that inject upstream
-endpoints, CORS origins, TLS certificates, and allowed hosts as
-environment variables. Registers Envoy in `apphost/Program.cs` via
-`AddDockerfile`. The reference includes the full `Program.cs` at this
-point.
+**Load `references/envoy-proxy.md`** and follow Steps 6a–6l. Creates
+the `proxy/` directory with a Dockerfile, fragment templates
+(`envoy.yaml.tmpl` base, `envoy.listener.yaml.tmpl`,
+`envoy.rds.yaml.tmpl`, `envoy.vhost.yaml.tmpl`,
+`envoy.cluster.yaml.tmpl`), and an `entrypoint.sh` that renders the
+config per `ENVOY_MODE` (`dev` = one listener per client routing to
+its dev server; `dev-host`/`publish` = routing to the unified SSR
+host with `x-client` headers). Each listener pair terminates TLS on
+TCP (HTTP/2 + HTTP/1.1) and UDP (HTTP/3 QUIC) using Aspire's
+developer certificate. Also creates the unified SSR host under
+`clients/host/` (Express dispatcher + multi-client Dockerfile) and a
+repo-root `.dockerignore`. Adds
+`apphost/EnvoyProxy/EnvoyProxyResourceBuilderExtensions.cs`
+(`AddEnvoyProxy`, `WithClient`, `WithUpstreamEndpoint`) and the
+`AddClientHost` method, and registers everything in
+`apphost/Program.cs`. The reference includes the full `Program.cs` at
+this point.
 
 ---
 
@@ -532,18 +542,18 @@ Capture the dashboard URL from the JSON output. Wait ~20–30 s for
 Six rows corresponding to six `.Add...` calls in `Program.cs`
 (principle 6).
 
-**Curl checks.** Obtain the Envoy HTTPS and admin URLs from
-`aspire describe --format Json` (they are Aspire-assigned). The
-Envoy endpoint uses a self-signed Aspire developer certificate, so
-pass `-k` (allow insecure) on all HTTPS checks. All pass on a clean
-run:
+**Curl checks.** Obtain the Envoy admin URL and the admin client's
+listener URL (the `admin-web` endpoint on the envoy resource, e.g.
+`https://localhost:20000`) from `aspire describe --format Json`. The
+listener uses a self-signed Aspire developer certificate, so pass
+`-k` (allow insecure) on all HTTPS checks. All pass on a clean run:
 
 | # | Check | Command | Pass criterion |
 |---|---|---|---|
 | 1 | Envoy admin UI | `curl -sI <envoy-admin-url>/` | 200 |
-| 2 | Envoy to admin | `curl -ksI <envoy-https-url>/` | 200, `text/html` |
-| 3 | SSR rendered | `curl -ks <envoy-https-url>/ \| head -c 1200` | Rendered Angular markup |
-| 4 | Envoy to `/auth/` | `curl -ksi -X POST -H 'content-type: application/grpc-web' <envoy-https-url>/auth/` | non-5xx with `grpc-status` header |
+| 2 | Envoy to admin | `curl -ksI <admin-web-url>/` | 200, `text/html` |
+| 3 | SSR rendered | `curl -ks <admin-web-url>/ \| head -c 1200` | Rendered Angular markup |
+| 4 | Envoy to `/auth/` | `curl -ksi -X POST -H 'content-type: application/grpc-web' <admin-web-url>/auth/` | non-5xx with `grpc-status` header |
 | 5 | Envoy to `/payments/` | same with `/payments/` | as #4 |
 | 6 | Envoy to `/api/` | same with `/api/` | as #4 |
 

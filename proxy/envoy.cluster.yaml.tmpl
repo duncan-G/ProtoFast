@@ -1,0 +1,13 @@
+    - name: __CLUSTER_NAME__
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+__CLUSTER_TLS_BLOCK__
+      load_assignment:
+        cluster_name: __CLUSTER_NAME__
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: __CLUSTER_HOST__
+                      port_value: __CLUSTER_PORT__

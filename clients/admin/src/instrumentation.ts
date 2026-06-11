@@ -19,7 +19,13 @@ delete process.env['OTEL_SERVICE_NAME'];
 const isDev = process.env['NODE_ENV'] === 'development';
 const batchConfig = isDev ? { scheduledDelayMillis: 1000 } : undefined;
 
-if (otelEndpoint) {
+// In the unified SSR host every client bundle runs in one process; only the
+// first bundle to load may start the Node SDK (a second start would clobber
+// the global providers and double-patch auto-instrumentations).
+const otelGlobal = globalThis as { __nodeOtelSdkStarted?: boolean };
+
+if (otelEndpoint && !otelGlobal.__nodeOtelSdkStarted) {
+  otelGlobal.__nodeOtelSdkStarted = true;
   const traceExporter = new OTLPTraceExporter({
     url: `${otelEndpoint}/v1/traces`,
   });
