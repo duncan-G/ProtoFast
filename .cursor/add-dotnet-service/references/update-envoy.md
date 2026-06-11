@@ -1,25 +1,25 @@
 # Update Envoy for a new gRPC service
 
-When `proxy/envoy.yaml.tmpl` exists, follow these steps to wire a new
-.NET gRPC service into the Envoy proxy.
+When `proxy/envoy.rds.yaml.tmpl` exists, follow these steps to wire a
+new .NET gRPC service into the Envoy proxy.
 
 Placeholders: `«servicename»` (lowercase), `«SERVICENAME»` (UPPERCASE).
 
 ---
 
-## 1. Add route to `proxy/envoy.yaml.tmpl`
+## 1. Add route to `proxy/envoy.rds.yaml.tmpl`
 
 Insert a new route in the `routes:` list **before** the catch-all
 `- match: { prefix: "/" }` entry:
 
 ```yaml
-                        - match: { prefix: "/«servicename»/" }
-                          route:
-                            cluster: «servicename»
-                            prefix_rewrite: "/"
-                            timeout: 0s
-                            max_stream_duration:
-                              grpc_timeout_header_max: 0s
+        - match: { prefix: "/«servicename»/" }
+          route:
+            cluster: «servicename»
+            prefix_rewrite: "/"
+            timeout: 0s
+            max_stream_duration:
+              grpc_timeout_header_max: 0s
 ```
 
 - `prefix_rewrite: "/"` strips the `/{service}/` prefix so the backend
@@ -60,7 +60,8 @@ require_env «SERVICENAME»_HOST
 require_env «SERVICENAME»_PORT
 ```
 
-Add `sed` substitution lines in the final `sed` command block:
+Add `sed` substitution lines in the main envoy template `sed` command
+block (the one that writes `/tmp/envoy.yaml`):
 
 ```bash
   -e "s|__«SERVICENAME»_HOST__|${«SERVICENAME»_HOST}|g" \
@@ -72,14 +73,18 @@ Add `sed` substitution lines in the final `sed` command block:
 Add `.WaitFor()` to the existing envoy builder chain:
 
 ```csharp
-envoy.WaitFor(«servicename»);
+proxy.WaitFor(«servicename»);
 ```
 
-Add `.WithClusterEndpoint()` alongside existing cluster endpoint calls:
+Add `.WithUpstreamEndpoint()` alongside existing upstream endpoint
+calls:
 
 ```csharp
-envoy.WithClusterEndpoint(builder, "«SERVICENAME»", «servicename».GetEndpoint("http"));
+proxy.WithUpstreamEndpoint("«SERVICENAME»", «servicename».GetEndpoint("http"));
 ```
+
+Backend services still expose cleartext `http` endpoints — Envoy
+terminates TLS at the edge.
 
 ## 5. Rebuild and verify
 

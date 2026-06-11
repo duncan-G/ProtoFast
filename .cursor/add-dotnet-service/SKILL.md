@@ -184,13 +184,14 @@ dotnet build apphost
 
 ## Step 10 — Update Envoy (post-bootstrap only)
 
-Check whether `proxy/envoy.yaml.tmpl` exists.
+Check whether `proxy/envoy.rds.yaml.tmpl` exists.
 
 - **File absent** — skip this step. The caller (`bootstrap-project`)
   creates Envoy later with the full route set.
 - **File present** — **load `references/update-envoy.md`** and follow
-  it to add the service's route, cluster, entrypoint validation, and
-  AppHost Envoy wiring.
+  it to add the service's route (in `envoy.rds.yaml.tmpl`), cluster
+  (in `envoy.yaml.tmpl`), entrypoint validation, and AppHost Envoy
+  wiring.
 
 ## Guardrails
 

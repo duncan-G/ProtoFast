@@ -13,7 +13,7 @@ public static class ClientAppResourceBuilderExtensions
     /// <param name="serverEndpoint">The backend server endpoint injected as <c>SERVER_URL</c>.</param>
     /// <param name="clientOtelEndpoint">Optional browser-side OpenTelemetry collector endpoint injected as <c>BROWSER_OTEL_ENDPOINT</c>.</param>
     /// <param name="clientServerOtelEndpoint">Optional server-side OpenTelemetry collector endpoint injected as <c>SERVER_OTEL_ENDPOINT</c>.</param>
-    /// <returns>An <see cref="EndpointReference"/> for the client app's HTTP endpoint.</returns>
+    /// <returns>An <see cref="EndpointReference"/> for the client app's HTTPS endpoint.</returns>
     public static EndpointReference AddClientApp(
         this IDistributedApplicationBuilder builder,
         string clientName,
@@ -26,10 +26,10 @@ public static class ClientAppResourceBuilderExtensions
         if (builder.ExecutionContext.IsPublishMode)
         {
             var clientApp = builder.AddDockerfile(clientName, clientPath)
-                .WithHttpEndpoint(targetPort: productionPort, env: "PORT")
+                .WithHttpsEndpoint(targetPort: productionPort, env: "PORT")
                 .WithExternalHttpEndpoints();
 
-            var clientEndpoint = clientApp.GetEndpoint("http", KnownNetworkIdentifiers.PublicInternet);
+            var clientEndpoint = clientApp.GetEndpoint("https", KnownNetworkIdentifiers.PublicInternet);
             clientApp
                 .WithEnvironment("NG_ALLOWED_HOSTS", clientEndpoint.Property(EndpointProperty.Host))
                 .WithEnvironment("SERVER_URL", serverEndpoint)
@@ -39,12 +39,19 @@ public static class ClientAppResourceBuilderExtensions
         }
 
         var clientAppDev = builder.AddJavaScriptApp(clientName, clientPath, runScriptName: "start")
-            .WithHttpEndpoint(env: "PORT")
+            .WithHttpsEndpoint(env: "PORT")
+            .WithHttpsDeveloperCertificate()
+            .WithHttpsCertificateConfiguration(ctx =>
+            {
+                ctx.EnvironmentVariables["SSL_CERT"] = ctx.CertificatePath;
+                ctx.EnvironmentVariables["SSL_KEY"] = ctx.KeyPath;
+                return Task.CompletedTask; 
+            })
             .WithEnvironment("SERVER_URL", serverEndpoint);
             
         clientAppDev.WithOtelEndpoints(clientOtelEndpoint, clientServerOtelEndpoint);
 
-        return clientAppDev.GetEndpoint("http");
+        return clientAppDev.GetEndpoint("https", KnownNetworkIdentifiers.LocalhostNetwork);
     }
 
     private static IResourceBuilder<IResourceWithEnvironment> WithOtelEndpoints(

@@ -12,17 +12,24 @@ public static class EnvoyProxyResourceBuilderExtensions
     {
         var envoy = builder
             .AddDockerfile(name, EnvoyConfigPath)
-            .WithHttpEndpoint(targetPort: 20000, env: "PORT")
+            .WithHttpsEndpoint(targetPort: 20000, env: "PORT", isProxied: false)
             .WithEntrypoint("/bin/sh")
             .WithArgs("/etc/envoy/entrypoint.sh");
 
         if (builder.ExecutionContext.IsPublishMode)
         {
-            envoy.WithEndpoint("http", e => e.IsExternal = true);
+            envoy.WithEndpoint("https", e => e.IsExternal = true);
         }
         else
         {
-            envoy = envoy.WithContainerRuntimeArgs("--add-host=host.docker.internal:host-gateway");
+            envoy
+                .WithHttpsCertificateConfiguration(ctx =>
+                {
+                    ctx.EnvironmentVariables["ENVOY_TLS_CERT"] = ctx.CertificatePath;
+                    ctx.EnvironmentVariables["ENVOY_TLS_KEY"] = ctx.KeyPath;
+                    return Task.CompletedTask;
+                })
+                .WithContainerRuntimeArgs("--add-host=host.docker.internal:host-gateway");
         }
 
         envoy
@@ -41,17 +48,15 @@ public static class EnvoyProxyResourceBuilderExtensions
         if (applicationBuilder.ExecutionContext.IsPublishMode)
         {
             var clientHost = clientEndpoint.Property(EndpointProperty.Host);
-            var clientScheme = "https";
             return envoy.WithEnvironment("CORS_ORIGIN_EXACT",
-                ReferenceExpression.Create($"{clientScheme}://{clientHost}"));
+                ReferenceExpression.Create($"https://{clientHost}"));
         }
 
         return envoy.WithEnvironment("CORS_ORIGIN_EXACT", clientEndpoint);
     }
 
-    public static IResourceBuilder<ContainerResource> WithClusterEndpoint(
+    public static IResourceBuilder<ContainerResource> WithUpstreamEndpoint(
         this IResourceBuilder<ContainerResource> envoy,
-        IDistributedApplicationBuilder applicationBuilder,
         string name,
         EndpointReference endpoint)
     {
@@ -98,22 +103,24 @@ public static class EnvoyProxyResourceBuilderExtensions
     }
 
     /// <remarks>
-    /// ACA terminates TLS externally; the browser's Host header has no port, so HostAndPort (which
-    /// includes the internal target port :80) would prevent Envoy's virtual-host domain matching.
+    /// In publish mode the external host typically terminates TLS, so the browser's Host header
+    /// has no port — we use <see cref="EndpointProperty.Host"/> on
+    /// <see cref="KnownNetworkIdentifiers.PublicInternet"/>.
+    /// In dev mode the Aspire dev-cert hostname (<c>*.aspire.dev.internal</c>) may differ from
+    /// <c>localhost</c>, so we use a wildcard to match any Host header — the CORS policy still
+    /// restricts origins.
     /// </remarks>
     public static IResourceBuilder<ContainerResource> WithAllowedHosts(
         this IResourceBuilder<ContainerResource> envoy,
         IDistributedApplicationBuilder applicationBuilder)
     {
-        var endpointProperty = applicationBuilder.ExecutionContext.IsPublishMode
-            ? EndpointProperty.Host
-            : EndpointProperty.HostAndPort;
+        if (applicationBuilder.ExecutionContext.IsPublishMode)
+        {
+            return envoy.WithEnvironment("ALLOWED_HOSTS",
+                envoy.GetEndpoint("https", KnownNetworkIdentifiers.PublicInternet)
+                    .Property(EndpointProperty.Host));
+        }
 
-        var network = applicationBuilder.ExecutionContext.IsPublishMode
-            ? KnownNetworkIdentifiers.PublicInternet
-            : KnownNetworkIdentifiers.LocalhostNetwork;
-
-        return envoy.WithEnvironment("ALLOWED_HOSTS",
-            envoy.GetEndpoint("http", network).Property(endpointProperty));
+        return envoy.WithEnvironment("ALLOWED_HOSTS", "*");
     }
 }

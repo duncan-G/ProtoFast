@@ -69,12 +69,21 @@ steps; deviations should be deliberate and discussed with the user.
 4. **Aspire assigns all ports (except its own dashboard).** No
    service, client, or proxy port is hardcoded. Aspire selects every
    port at startup and passes it through endpoint references. Envoy
-   routes `/ → admin`; all cluster endpoints (hosts and ports) are
-   injected as environment variables via `WithClusterEndpoint` and
+   routes `/ → admin`; all upstream endpoints (hosts and ports) are
+   injected as environment variables via `WithUpstreamEndpoint` and
    substituted by `entrypoint.sh` at container startup (see
    `references/envoy-proxy.md` 6d, 6f–6g). Do not add fixed port
    numbers to `launchSettings.json` or Envoy config; rely on
    Aspire's dynamic assignment throughout.
+
+4a. **HTTPS and HTTP/3 are the default transport.** Envoy terminates
+   TLS on a TCP listener (HTTP/2 + HTTP/1.1 via ALPN) and a UDP
+   listener (HTTP/3 via QUIC) on the same port. The Angular dev
+   server also serves HTTPS using Aspire's developer certificate.
+   Both use `WithHttpsEndpoint` and Aspire's
+   `WithHttpsCertificateConfiguration` to inject cert/key paths as
+   environment variables. Upstream clusters still use cleartext h2c
+   or HTTP/1.1 — TLS terminates at the edge.
 
 5. **`«ProjectName»` is a placeholder, not a literal.** Every
    occurrence of `«ProjectName»` in commands, file contents, and
@@ -190,8 +199,9 @@ propose-confirm loop.
 │   └── app/              # End-user client (placeholder; not scaffolded)
 ├── proxy/                # Envoy config (Dockerfile + templates)
 │   ├── Dockerfile
-│   ├── envoy.yaml.tmpl   # Config template with __PLACEHOLDER__ tokens
-│   ├── entrypoint.sh     # Validates env vars, substitutes, launches Envoy
+│   ├── envoy.yaml.tmpl       # Main config template (listeners, clusters)
+│   ├── envoy.rds.yaml.tmpl   # Route Discovery Service template (routes, CORS, virtual hosts)
+│   ├── entrypoint.sh         # Validates env vars, substitutes, launches Envoy
 │   ├── cors-allow-origins-exact.tmpl
 │   └── cors-allow-origins-with-subdomain.tmpl
 ├── scripts/              # Existing dev-setup scripts
@@ -291,8 +301,9 @@ environment variable was not set`. Use a standard profile:
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "DOTNET_ENVIRONMENT": "Development",
-        "DOTNET_DASHBOARD_OTLP_ENDPOINT_URL": "https://localhost:21147",
-        "DOTNET_RESOURCE_SERVICE_ENDPOINT_URL": "https://localhost:22001"
+        "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "https://0.0.0.0:21147",
+        "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "https://localhost:22001",
+        "ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS": "true"
       }
     }
   }
@@ -433,16 +444,20 @@ updates — Step 7 creates the full Envoy config.
 ### Step 7 — Envoy proxy
 
 **Load `references/envoy-proxy.md`** and follow Steps 6a–6h. Creates
-the `proxy/` directory with a Dockerfile, an `envoy.yaml.tmpl` config
-template using `__PLACEHOLDER__` tokens, an `entrypoint.sh` that
-validates environment variables and substitutes tokens at container
-startup, and CORS fragment templates. Adds
+the `proxy/` directory with a Dockerfile, an `envoy.yaml.tmpl` main
+config template (listeners with TLS/QUIC, clusters), an
+`envoy.rds.yaml.tmpl` route config template (virtual hosts, CORS,
+routes), an `entrypoint.sh` that validates environment variables and
+substitutes tokens at container startup, and CORS fragment templates.
+Envoy terminates TLS on both TCP (HTTP/2 + HTTP/1.1) and UDP
+(HTTP/3 QUIC) listeners using Aspire's developer certificate. Adds
 `apphost/EnvoyProxy/EnvoyProxyResourceBuilderExtensions.cs` with
 extension methods (`AddEnvoyProxy`, `WithCorsOriginExact`,
-`WithClusterEndpoint`, `WithAllowedHosts`) that inject cluster
-endpoints, CORS origins, and allowed hosts as environment variables.
-Registers Envoy in `apphost/Program.cs` via `AddDockerfile`. The
-reference includes the full `Program.cs` at this point.
+`WithUpstreamEndpoint`, `WithAllowedHosts`) that inject upstream
+endpoints, CORS origins, TLS certificates, and allowed hosts as
+environment variables. Registers Envoy in `apphost/Program.cs` via
+`AddDockerfile`. The reference includes the full `Program.cs` at this
+point.
 
 ---
 
@@ -517,16 +532,18 @@ Capture the dashboard URL from the JSON output. Wait ~20–30 s for
 Six rows corresponding to six `.Add...` calls in `Program.cs`
 (principle 6).
 
-**Curl checks.** Obtain the Envoy HTTP and admin URLs from
-`aspire describe --format Json` (they are Aspire-assigned). All pass
-on a clean run:
+**Curl checks.** Obtain the Envoy HTTPS and admin URLs from
+`aspire describe --format Json` (they are Aspire-assigned). The
+Envoy endpoint uses a self-signed Aspire developer certificate, so
+pass `-k` (allow insecure) on all HTTPS checks. All pass on a clean
+run:
 
 | # | Check | Command | Pass criterion |
 |---|---|---|---|
 | 1 | Envoy admin UI | `curl -sI <envoy-admin-url>/` | 200 |
-| 2 | Envoy to admin | `curl -sI <envoy-http-url>/` | 200, `text/html` |
-| 3 | SSR rendered | `curl -s <envoy-http-url>/ \| head -c 1200` | Rendered Angular markup |
-| 4 | Envoy to `/auth/` | `curl -si -X POST -H 'content-type: application/grpc-web' <envoy-http-url>/auth/` | non-5xx with `grpc-status` header |
+| 2 | Envoy to admin | `curl -ksI <envoy-https-url>/` | 200, `text/html` |
+| 3 | SSR rendered | `curl -ks <envoy-https-url>/ \| head -c 1200` | Rendered Angular markup |
+| 4 | Envoy to `/auth/` | `curl -ksi -X POST -H 'content-type: application/grpc-web' <envoy-https-url>/auth/` | non-5xx with `grpc-status` header |
 | 5 | Envoy to `/payments/` | same with `/payments/` | as #4 |
 | 6 | Envoy to `/api/` | same with `/api/` | as #4 |
 

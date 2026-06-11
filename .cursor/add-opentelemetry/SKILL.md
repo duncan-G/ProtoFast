@@ -106,7 +106,7 @@ Update the `AddClientApp` call in `apphost/Program.cs` to pass the
 collector's HTTP endpoints (both browser and SSR use HTTP OTLP):
 
 ```csharp
-var adminEndpoint = builder.AddClientApp("admin", "../clients/admin", 4000, proxy.GetEndpoint("http"),
+var adminEndpoint = builder.AddClientApp("admin", "../clients/admin", 4000, proxy.GetEndpoint("https"),
     clientOtelEndpoint: otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName),
     clientServerOtelEndpoint: otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName));
 ```
@@ -175,9 +175,13 @@ var proxy = builder.AddEnvoyProxy("envoy")
     .WaitFor(payments)
     .WaitFor(api);
 
-var adminEndpoint = builder.AddClientApp("admin", "../clients/admin", 4000, proxy.GetEndpoint("http"),
-    clientOtelEndpoint: otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName),
-    clientServerOtelEndpoint: otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName));
+var adminEndpoint = builder.AddClientApp(
+    "admin",
+    "../clients/admin",
+    4000,
+    proxy.GetEndpoint("https"),
+    otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName),
+    otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName));
 
 proxy
     .WithCorsOriginExact(builder, adminEndpoint)
@@ -185,10 +189,10 @@ proxy
     .WithAllowedHosts(builder);
 
 proxy
-    .WithClusterEndpoint(builder, "ADMIN", adminEndpoint)
-    .WithClusterEndpoint(builder, "AUTH", auth.GetEndpoint("http"))
-    .WithClusterEndpoint(builder, "PAYMENTS", payments.GetEndpoint("http"))
-    .WithClusterEndpoint(builder, "API", api.GetEndpoint("http"));
+    .WithUpstreamEndpoint("ADMIN", adminEndpoint)
+    .WithUpstreamEndpoint("AUTH", auth.GetEndpoint("http"))
+    .WithUpstreamEndpoint("PAYMENTS", payments.GetEndpoint("http"))
+    .WithUpstreamEndpoint("API", api.GetEndpoint("http"));
 
 builder.Build().Run();
 ```
@@ -196,6 +200,9 @@ builder.Build().Run();
 Key ordering: the OTel collector is created first (other resources
 depend on it); Envoy gets `.WithOtelCollectorEndpoints(otel)` before
 the `WaitFor` calls; the client app receives the collector endpoints.
+Note `proxy.GetEndpoint("https")` — the client's `SERVER_URL` must
+point at Envoy's HTTPS endpoint. Backend services still use
+`GetEndpoint("http")` since Envoy talks upstream over cleartext.
 
 ## Guardrails
 

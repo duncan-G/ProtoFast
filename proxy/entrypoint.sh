@@ -25,6 +25,8 @@ require_env PAYMENTS_HOST
 require_env PAYMENTS_PORT
 require_env API_HOST
 require_env API_PORT
+require_env ENVOY_TLS_CERT
+require_env ENVOY_TLS_KEY
 
 if [ -n "$CORS_ORIGIN_SUBDOMAIN_REGEX" ]; then
   CORS_FRAGMENT_TMPL=/etc/envoy/cors-allow-origins-with-subdomain.tmpl
@@ -40,9 +42,19 @@ sed \
   -e "s|__CORS_ORIGIN_SUBDOMAIN_REGEX__|${CORS_ORIGIN_SUBDOMAIN_REGEX}|g" \
   "$CORS_FRAGMENT_TMPL" > /tmp/cors-allow-origins.yaml
 
+# --- Process RDS template ---
 sed -e "/^__CORS_ALLOW_ORIGIN_MATCHES__$/r /tmp/cors-allow-origins.yaml" \
     -e "/^__CORS_ALLOW_ORIGIN_MATCHES__$/d" \
-    /etc/envoy/envoy.yaml.tmpl > /tmp/envoy.yaml.tmpl
+    /etc/envoy/envoy.rds.yaml.tmpl > /tmp/envoy.rds.yaml.tmpl
+
+ALLOWED_HOSTS_ARRAY="[\"$(echo "$ALLOWED_HOSTS" | sed 's/,/","/g')\"]"
+
+sed \
+  -e "s|__PORT__|${PORT}|g" \
+  -e "s|__ALLOWED_HOSTS__|${ALLOWED_HOSTS_ARRAY}|g" \
+  /tmp/envoy.rds.yaml.tmpl > /etc/envoy/discovery/envoy.rds.yaml
+
+# --- Process main envoy template ---
 
 # ACA internal OTLP gRPC ingress is TLS on :443; local Aspire uses cleartext h2c on the OTLP port.
 OTEL_GRPC_TLS_BLOCK_FILE=/tmp/otel_grpc_tls_block.yaml
@@ -64,15 +76,11 @@ fi
 
 sed -e "/^__OTEL_GRPC_TLS_BLOCK__$/r ${OTEL_GRPC_TLS_BLOCK_FILE}" \
     -e "/^__OTEL_GRPC_TLS_BLOCK__$/d" \
-    /tmp/envoy.yaml.tmpl > /tmp/envoy.yaml.tmpl2
-mv /tmp/envoy.yaml.tmpl2 /tmp/envoy.yaml.tmpl
-
-ALLOWED_HOSTS_ARRAY="[\"$(echo "$ALLOWED_HOSTS" | sed 's/,/","/g')\"]"
+    /etc/envoy/envoy.yaml.tmpl > /tmp/envoy.yaml.tmpl
 
 sed \
   -e "s|__PORT__|${PORT}|g" \
   -e "s|__ENVOY_ADMIN_PORT__|${ENVOY_ADMIN_PORT}|g" \
-  -e "s|__ALLOWED_HOSTS__|${ALLOWED_HOSTS_ARRAY}|g" \
   -e "s|__OTEL_INSTANCE_ID__|${OTEL_INSTANCE_ID}|g" \
   -e "s|__OTEL_HTTP_HOST__|${OTEL_HTTP_HOST}|g" \
   -e "s|__OTEL_HTTP_PORT__|${OTEL_HTTP_PORT}|g" \
@@ -86,7 +94,13 @@ sed \
   -e "s|__PAYMENTS_PORT__|${PAYMENTS_PORT}|g" \
   -e "s|__API_HOST__|${API_HOST}|g" \
   -e "s|__API_PORT__|${API_PORT}|g" \
+  -e "s|__ENVOY_TLS_CERT__|${ENVOY_TLS_CERT}|g" \
+  -e "s|__ENVOY_TLS_KEY__|${ENVOY_TLS_KEY}|g" \
   /tmp/envoy.yaml.tmpl > /tmp/envoy.yaml
+
+echo "----- /etc/envoy/discovery/envoy.rds.yaml (route config) -----"
+cat /etc/envoy/discovery/envoy.rds.yaml
+echo "----- end envoy.rds.yaml -----"
 
 echo "----- /tmp/envoy.yaml (full generated config) -----"
 cat /tmp/envoy.yaml

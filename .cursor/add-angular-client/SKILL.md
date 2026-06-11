@@ -3,8 +3,11 @@ name: add-angular-client
 description: >-
   Adds a new Angular SSR client to an existing Aspire-orchestrated project:
   scaffolds under clients/, installs Tailwind CSS v4, patches npm scripts
-  for Aspire's PORT and 0.0.0.0 binding, creates a publish-mode Dockerfile,
-  registers the client in the AppHost (dev + publish modes), wires buf +
+  for Aspire's PORT, 0.0.0.0 binding, and HTTPS dev-server flags, creates
+  a publish-mode Dockerfile, registers the client in the AppHost with HTTPS
+  endpoints and Aspire developer certificate injection (dev + publish
+  modes), creates a SERVER_URL injection token with TransferState for
+  resolving the backend URL in SSR and browser contexts, wires buf +
   Connect proto codegen for gRPC-Web, and updates the Envoy proxy if it
   already exists. Use when the user asks to add a new Angular client,
   frontend app, web UI, or SPA — either during initial bootstrap or after
@@ -96,6 +99,14 @@ Check whether `proxy/envoy.yaml.tmpl` exists.
 - In **dev mode** Aspire assigns ports dynamically via the `PORT` env
   var — never hardcode. In **publish mode** each client has a fixed
   `productionPort` starting at 4000 (used as `targetPort`).
+- The dev server runs HTTPS using Aspire's developer certificate.
+  `AddClientApp` injects `SSL_CERT` and `SSL_KEY` env vars via
+  `WithHttpsCertificateConfiguration`; the `start` script passes them
+  to `ng serve --ssl --ssl-cert --ssl-key`.
+- There is **no dev-server proxy config** (`proxy.conf.mjs`). The
+  browser talks directly to Envoy's HTTPS endpoint. The `SERVER_URL`
+  injection token (resolved via Angular `TransferState`) provides the
+  Envoy URL to both the gRPC transport and browser telemetry.
 - Each client under `clients/` is its own standalone Angular project,
   not a multi-project workspace.
 - Each client has its own `buf.gen.yaml` selecting which service protos

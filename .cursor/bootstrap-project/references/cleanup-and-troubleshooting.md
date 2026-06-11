@@ -104,6 +104,21 @@ change). Use the proxy alternative if upstream needs the original
 Likely symptom if missing: HTTP 400 with body like
 `Header "host" with value "<x>" is not allowed.`.
 
+## D. TLS certificate issues
+
+- Rule: Envoy and the Angular dev server both need TLS certificates.
+  In dev mode, Aspire manages a developer certificate and injects
+  paths via `WithHttpsCertificateConfiguration`.
+- Envoy receives `ENVOY_TLS_CERT` and `ENVOY_TLS_KEY`; the Angular
+  dev server receives `SSL_CERT` and `SSL_KEY`.
+- `entrypoint.sh` validates these env vars on startup — if missing,
+  the container fails with a clear error message.
+
+Likely symptom if missing or misconfigured: `curl` returns
+`SSL: certificate problem` or connection refused on the HTTPS port.
+Use `curl -k` to bypass cert validation when smoke-checking with
+self-signed dev certs.
+
 ---
 
 # Adding proto codegen to a new client

@@ -77,18 +77,16 @@ and a `Greeter` service descriptor.
 Create `clients/«clientname»/src/app/grpc-transport.ts`:
 
 ```typescript
-import { InjectionToken } from '@angular/core';
+import { inject, InjectionToken } from '@angular/core';
 import { type Transport } from '@connectrpc/connect';
 import { createGrpcWebTransport } from '@connectrpc/connect-web';
+import { SERVER_URL } from './server-url';
 
 export const GRPC_TRANSPORT = new InjectionToken<Transport>('grpc-transport', {
   providedIn: 'root',
   factory: () =>
     createGrpcWebTransport({
-      baseUrl:
-        typeof window !== 'undefined'
-          ? `${window.location.origin}/«routeprefix»`
-          : '/«routeprefix»',
+      baseUrl: `${inject(SERVER_URL)}/«routeprefix»`,
     }),
 });
 ```
@@ -98,9 +96,12 @@ backend this client talks to (e.g. `api` for the `/api/` route). For
 clients that call multiple services behind different prefixes, create
 additional transport tokens with those base URLs.
 
-The transport works when the browser accesses Envoy at whatever port
-Aspire assigned. `window.location.origin` picks up the correct host and
-port automatically.
+The transport uses `inject(SERVER_URL)` to resolve the backend URL.
+On the server (SSR), `SERVER_URL` is the Envoy HTTPS endpoint from
+the env var. In the browser, it's read from Angular's `TransferState`
+(falling back to `window.location.origin`). This pattern requires the
+`SERVER_URL` injection token from `server-url.ts` created in Step 2d
+of `references/angular-setup.md`.
 
 ## 3e. Add generated code to `.gitignore`
 

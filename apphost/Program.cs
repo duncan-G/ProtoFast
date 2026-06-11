@@ -20,7 +20,7 @@ var adminEndpoint = builder.AddClientApp(
     "admin",
     "../clients/admin",
     4000,
-    proxy.GetEndpoint("http"),
+    proxy.GetEndpoint("https"),
     otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName),
     otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName));
 
@@ -30,9 +30,9 @@ proxy
     .WithAllowedHosts(builder);
 
 proxy
-    .WithClusterEndpoint(builder, "ADMIN", adminEndpoint)
-    .WithClusterEndpoint(builder, "AUTH", auth.GetEndpoint("http"))
-    .WithClusterEndpoint(builder, "PAYMENTS", payments.GetEndpoint("http"))
-    .WithClusterEndpoint(builder, "API", api.GetEndpoint("http"));
+    .WithUpstreamEndpoint("ADMIN", adminEndpoint)
+    .WithUpstreamEndpoint("AUTH", auth.GetEndpoint("http"))
+    .WithUpstreamEndpoint("PAYMENTS", payments.GetEndpoint("http"))
+    .WithUpstreamEndpoint("API", api.GetEndpoint("http"));
 
 builder.Build().Run();

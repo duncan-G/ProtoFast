@@ -26,7 +26,8 @@ export function initBrowserTelemetry(): void {
     return;
   }
 
-  const otelBase = `${window.location.origin}/otlp/v1`;
+  const serverUrl = getServerUrlFromTransferState() || window.location.origin;
+  const otelBase = `${serverUrl}/otlp/v1`;
 
   const resource = resourceFromAttributes({
     'service.name': 'admin-client',
@@ -77,4 +78,20 @@ export function initBrowserTelemetry(): void {
       }),
     ],
   });
+}
+
+/**
+ * Reads SERVER_URL from Angular's SSR transfer state script tag before
+ * Angular bootstraps, so OTLP exports target the Envoy proxy (which has
+ * the /otlp/v1/ route) instead of the Node SSR server.
+ */
+function getServerUrlFromTransferState(): string | null {
+  try {
+    const el = document.getElementById('ng-state');
+    if (!el?.textContent) return null;
+    const state = JSON.parse(el.textContent);
+    return state['serverUrl'] || null;
+  } catch {
+    return null;
+  }
 }

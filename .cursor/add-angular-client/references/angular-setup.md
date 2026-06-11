@@ -63,7 +63,7 @@ Edit `clients/«clientname»/package.json` scripts:
 
 ```json
 "generate:grpc": "npx buf generate",
-"start": "npm run generate:grpc && ng serve --host 0.0.0.0 --port ${PORT:-4200} --allowed-hosts",
+"start": "npm run generate:grpc && ng serve --host 0.0.0.0 --port ${PORT:-4200} --ssl --ssl-cert \"${SSL_CERT}\" --ssl-key \"${SSL_KEY}\" --allowed-hosts",
 "build": "npm run generate:grpc && ng build",
 ```
 
@@ -71,42 +71,104 @@ Edit `clients/«clientname»/package.json` scripts:
 - `--host 0.0.0.0` binds the dev server so containers can reach it.
 - `--port ${PORT:-4200}` reads the listen port from Aspire's `PORT`
   env var; falls back to 4200 for manual runs outside the orchestrator.
+- `--ssl --ssl-cert "${SSL_CERT}" --ssl-key "${SSL_KEY}"` enables HTTPS
+  using the certificate paths injected by Aspire's
+  `WithHttpsCertificateConfiguration`.
 - `--allowed-hosts` accepts connections from any hostname (needed when
   Aspire's assigned URL differs from `localhost`).
 - Both `start` and `build` run codegen first so generated types are
   always current.
 
-## 2d. Dev-server proxy config
+Also remove `proxyConfig` from `angular.json` if the generator added
+it — there is no dev-server proxy. Under
+`projects.«clientname».architect.serve`, delete the `options` block
+containing `proxyConfig` (or just the `proxyConfig` key if other
+options exist). Delete any `proxy.conf.json` or `proxy.conf.mjs`
+the generator may have created.
 
-In dev mode the Angular dev server proxies backend routes to Envoy so
-that the browser's gRPC-Web requests reach the right backend. The
-`AddClientApp` extension injects `SERVER_URL` pointing at Envoy's HTTP
-endpoint.
+## 2d. Create the `SERVER_URL` injection token
 
-Create `clients/«clientname»/proxy.conf.mjs`:
+The client needs to know the Envoy proxy URL (for gRPC transport and
+browser telemetry). In dev mode, the SSR server reads `SERVER_URL`
+from its environment and transfers it to the browser via Angular's
+`TransferState`. The browser reads it from the transfer state and
+falls back to `window.location.origin`.
 
-```js
-const serverUrl = process.env.SERVER_URL || 'http://localhost:8080';
+Create `clients/«clientname»/src/app/server-url.ts`:
 
-export default {
-  '/auth': { target: serverUrl, secure: false, changeOrigin: true },
-  '/payments': { target: serverUrl, secure: false, changeOrigin: true },
-  '/api': { target: serverUrl, secure: false, changeOrigin: true },
+```typescript
+import { InjectionToken, makeStateKey } from '@angular/core';
+
+export const SERVER_URL_KEY = makeStateKey<string>('serverUrl');
+export const SERVER_URL = new InjectionToken<string>('SERVER_URL');
+```
+
+Update `clients/«clientname»/src/app/app.config.server.ts` to read
+the env var and store it in transfer state:
+
+```typescript
+import { mergeApplicationConfig, ApplicationConfig, inject, TransferState } from '@angular/core';
+import { provideServerRendering, withRoutes } from '@angular/ssr';
+import { appConfig } from './app.config';
+import { serverRoutes } from './app.routes.server';
+import { SERVER_URL, SERVER_URL_KEY } from './server-url';
+
+const serverConfig: ApplicationConfig = {
+  providers: [
+    provideServerRendering(withRoutes(serverRoutes)),
+    {
+      provide: SERVER_URL,
+      useFactory: () => {
+        const transferState = inject(TransferState);
+        const url = process.env['SERVER_URL'] ?? '';
+        transferState.set(SERVER_URL_KEY, url);
+        return url;
+      },
+    },
+  ]
+};
+
+export const config = mergeApplicationConfig(appConfig, serverConfig);
+```
+
+Update `clients/«clientname»/src/app/app.config.ts` to read from
+transfer state on the browser:
+
+```typescript
+import { ApplicationConfig, inject, provideBrowserGlobalErrorListeners, TransferState } from '@angular/core';
+import { provideRouter } from '@angular/router';
+
+import { routes } from './app.routes';
+import { provideClientHydration, withEventReplay } from '@angular/platform-browser';
+import { SERVER_URL, SERVER_URL_KEY } from './server-url';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideBrowserGlobalErrorListeners(),
+    provideRouter(routes),
+    provideClientHydration(withEventReplay()),
+    {
+      provide: SERVER_URL,
+      useFactory: () => {
+        const transferState = inject(TransferState);
+        return transferState.get(SERVER_URL_KEY, window.location.origin);
+      },
+    },
+  ]
 };
 ```
 
-Add one entry per service route prefix. The fallback
-`http://localhost:8080` is only for manual runs outside the orchestrator.
+This pattern:
 
-Wire it into `angular.json` under
-`projects.«clientname».architect.serve.options`:
-
-```json
-"proxyConfig": "proxy.conf.mjs"
-```
-
-If the generator created a `proxy.conf.json`, replace it with the `.mjs`
-file above.
+- **SSR**: Reads `SERVER_URL` from the env var injected by
+  `AddClientApp` (pointing at Envoy's HTTPS endpoint), stores it in
+  `TransferState` so it's serialized into the HTML.
+- **Browser**: Reads from `TransferState` (which was hydrated from the
+  serialized HTML). Falls back to `window.location.origin` if not
+  present (e.g. in production where the browser accesses Envoy
+  directly).
+- **No proxy config needed**: The browser talks directly to the Envoy
+  URL provided by `SERVER_URL`, not through the dev server.
 
 ## 2e. Register the client as an Aspire resource
 
@@ -115,7 +177,7 @@ The client has two hosting modes gated on
 
 | Mode | API | What runs |
 |------|-----|-----------|
-| Dev  | `AddJavaScriptApp` | `npm start` → Angular dev server |
+| Dev  | `AddJavaScriptApp` | `npm start` → Angular dev server (HTTPS) |
 | Publish | `AddDockerfile` | Container from `clients/«clientname»/Dockerfile` |
 
 ### Dev-mode package
@@ -163,7 +225,9 @@ namespace «ProjectName».AppHost.ClientApp;
 public static class ClientAppResourceBuilderExtensions
 {
     /// <summary>
-    /// Fillout summary and params
+    /// Adds a client app to the distributed application. In publish mode, the client is built as a
+    /// Docker container with external HTTPS endpoints.
+    /// </summary>
     public static EndpointReference AddClientApp(
         this IDistributedApplicationBuilder builder,
         string clientName,
@@ -176,10 +240,10 @@ public static class ClientAppResourceBuilderExtensions
         if (builder.ExecutionContext.IsPublishMode)
         {
             var clientApp = builder.AddDockerfile(clientName, clientPath)
-                .WithHttpEndpoint(targetPort: productionPort, env: "PORT")
+                .WithHttpsEndpoint(targetPort: productionPort, env: "PORT")
                 .WithExternalHttpEndpoints();
 
-            var clientEndpoint = clientApp.GetEndpoint("http", KnownNetworkIdentifiers.PublicInternet);
+            var clientEndpoint = clientApp.GetEndpoint("https", KnownNetworkIdentifiers.PublicInternet);
             clientApp
                 .WithEnvironment("NG_ALLOWED_HOSTS", clientEndpoint.Property(EndpointProperty.Host))
                 .WithEnvironment("SERVER_URL", serverEndpoint)
@@ -189,12 +253,19 @@ public static class ClientAppResourceBuilderExtensions
         }
 
         var clientAppDev = builder.AddJavaScriptApp(clientName, clientPath, runScriptName: "start")
-            .WithHttpEndpoint(env: "PORT")
+            .WithHttpsEndpoint(env: "PORT")
+            .WithHttpsDeveloperCertificate()
+            .WithHttpsCertificateConfiguration(ctx =>
+            {
+                ctx.EnvironmentVariables["SSL_CERT"] = ctx.CertificatePath;
+                ctx.EnvironmentVariables["SSL_KEY"] = ctx.KeyPath;
+                return Task.CompletedTask;
+            })
             .WithEnvironment("SERVER_URL", serverEndpoint);
             
         clientAppDev.WithOtelEndpoints(clientOtelEndpoint, clientServerOtelEndpoint);
 
-        return clientAppDev.GetEndpoint("http");
+        return clientAppDev.GetEndpoint("https", KnownNetworkIdentifiers.LocalhostNetwork);
     }
 
     private static IResourceBuilder<IResourceWithEnvironment> WithOtelEndpoints(
@@ -222,17 +293,27 @@ Parameters:
 - `clientName` / `clientPath` — Aspire resource name and relative path
   to the Angular project (e.g. `"admin"`, `"../clients/admin"`).
 - `productionPort` — the container port the client SSR server listens
-  on in publish mode, passed as `targetPort` to `WithHttpEndpoint`.
+  on in publish mode, passed as `targetPort` to `WithHttpsEndpoint`.
   Ports start at 4000 and increment per client (4000, 4001, …). The
   skill auto-detects the next available port by scanning existing
   `AddClientApp` calls in `Program.cs`.
 - `serverEndpoint` — the endpoint the client's SSR server should call
-  (typically Envoy's HTTP endpoint).
+  (typically Envoy's HTTPS endpoint).
 - `clientOtelEndpoint` / `clientServerOtelEndpoint` — optional OpenTelemetry
   collector endpoints for browser and server-side telemetry.
 
+Dev mode:
+
+- **`WithHttpsEndpoint`** registers the dev server as HTTPS.
+- **`WithHttpsDeveloperCertificate()`** enrolls the app in Aspire's
+  developer certificate infrastructure.
+- **`WithHttpsCertificateConfiguration`** injects `SSL_CERT` and
+  `SSL_KEY` environment variables with paths to the certificate and
+  key files. The `start` script passes these to `ng serve --ssl`.
+- Returns `GetEndpoint("https", KnownNetworkIdentifiers.LocalhostNetwork)`.
+
 The method returns an `EndpointReference` for the client, used later by
-Envoy registration (`WithClusterEndpoint`, `WithCorsOriginExact`).
+Envoy registration (`WithUpstreamEndpoint`, `WithCorsOriginExact`).
 
 ### Registration in `apphost/Program.cs`
 
@@ -246,13 +327,16 @@ Then register the client between the services and Envoy (or after the
 last client if one already exists):
 
 ```csharp
-var «clientname»Endpoint = builder.AddClientApp("«clientname»", "../clients/«clientname»", «productionPort», envoy.GetEndpoint("http"));
+var «clientname»Endpoint = builder.AddClientApp("«clientname»", "../clients/«clientname»", «productionPort», proxy.GetEndpoint("https"));
 ```
 
 - `«productionPort»` is the port chosen in Step 1 (e.g. `4000`).
-- **Dev:** `AddJavaScriptApp` runs `npm start`. Aspire auto-creates a
-  `«clientname»-installer` resource that runs `npm install` first.
-  The port is dynamically assigned via `PORT`.
+- **`proxy.GetEndpoint("https")`** passes Envoy's HTTPS endpoint as
+  `SERVER_URL`, so the Angular SSR server knows where to direct
+  backend requests.
+- **Dev:** `AddJavaScriptApp` runs `npm start` with HTTPS. Aspire
+  auto-creates a `«clientname»-installer` resource that runs
+  `npm install` first. The port is dynamically assigned via `PORT`.
 - **Prod:** `AddDockerfile` builds the Dockerfile. The container
   listens on `productionPort` (`targetPort`) and Aspire maps it
   externally via `PORT`.

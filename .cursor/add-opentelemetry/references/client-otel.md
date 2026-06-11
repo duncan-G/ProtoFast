@@ -1,9 +1,9 @@
 # Step 5 — Configure client app to send telemetry
 
 Two telemetry paths: **browser** traces/logs flow through Envoy's
-`/otlp/v1/` passthrough route (same-origin, no CORS issues); **SSR
-server** traces/logs go directly to the collector's HTTP endpoint via
-`SERVER_OTEL_ENDPOINT`.
+`/otlp/v1/` passthrough route (using the `SERVER_URL` from transfer
+state to build the base URL); **SSR server** traces/logs go directly
+to the collector's HTTP endpoint via `SERVER_OTEL_ENDPOINT`.
 
 ## 5a. Install npm dependencies
 
@@ -23,9 +23,11 @@ npm install \
 
 ## 5b. Create `src/lib/telemetry.browser.ts`
 
-Browser-side OTel initialisation. Uses the same-origin `/otlp/v1/`
-path (routed through Envoy to the collector) so no injection tokens or
-`TransferState` are needed.
+Browser-side OTel initialisation. Reads the `SERVER_URL` from Angular's
+transfer state (serialized in the `#ng-state` script tag during SSR)
+to determine the Envoy proxy URL. Falls back to
+`window.location.origin` if not available (e.g. in production where
+the browser accesses Envoy directly).
 
 ```typescript
 import {
@@ -51,7 +53,8 @@ export function initBrowserTelemetry(): void {
     return;
   }
 
-  const otelBase = `${window.location.origin}/otlp/v1`;
+  const serverUrl = getServerUrlFromTransferState() || window.location.origin;
+  const otelBase = `${serverUrl}/otlp/v1`;
 
   const resource = resourceFromAttributes({
     'service.name': '«projectname»-«clientname»',
@@ -103,13 +106,31 @@ export function initBrowserTelemetry(): void {
     ],
   });
 }
+
+/**
+ * Reads SERVER_URL from Angular's SSR transfer state script tag before
+ * Angular bootstraps, so OTLP exports target the Envoy proxy (which has
+ * the /otlp/v1/ route) instead of the Node SSR server.
+ */
+function getServerUrlFromTransferState(): string | null {
+  try {
+    const el = document.getElementById('ng-state');
+    if (!el?.textContent) return null;
+    const state = JSON.parse(el.textContent);
+    return state['serverUrl'] || null;
+  } catch {
+    return null;
+  }
+}
 ```
 
 Design choices:
 
-- **Same-origin `/otlp/v1/`** — the browser always sends telemetry
-  relative to its own origin. In dev mode this is proxied to Envoy via
-  `proxy.conf.mjs`; in production Envoy is the origin.
+- **`getServerUrlFromTransferState()`** reads the Envoy URL from
+  Angular's transfer state before Angular bootstraps. This avoids
+  needing an injection token (telemetry init runs before DI is
+  available). The SSR server stores `SERVER_URL` in transfer state
+  under the `serverUrl` key (see `add-angular-client` Step 2d).
 - **No `XMLHttpRequestInstrumentation`** — Angular 21 uses `fetch()`
   natively; XHR instrumentation is unnecessary weight.
 - **`ignoreUrls`** excludes `/otlp/v1/` to prevent recursive tracing
@@ -180,19 +201,17 @@ Wire into the transport by adding `interceptors: [traceInterceptor]`
 to `createGrpcWebTransport()` in `src/app/grpc-transport.ts`:
 
 ```typescript
-import { InjectionToken } from '@angular/core';
+import { inject, InjectionToken } from '@angular/core';
 import { type Transport } from '@connectrpc/connect';
 import { createGrpcWebTransport } from '@connectrpc/connect-web';
 import { traceInterceptor } from '../lib/grpc-trace.interceptor';
+import { SERVER_URL } from './server-url';
 
 export const GRPC_TRANSPORT = new InjectionToken<Transport>('grpc-transport', {
   providedIn: 'root',
   factory: () =>
     createGrpcWebTransport({
-      baseUrl:
-        typeof window !== 'undefined'
-          ? `${window.location.origin}/api`
-          : '/api',
+      baseUrl: `${inject(SERVER_URL)}/api`,
       interceptors: [traceInterceptor],
     }),
 });
@@ -271,13 +290,10 @@ Design choices:
 - **`instrumentation-dns` / `instrumentation-net` disabled** — low
   signal-to-noise ratio for an SSR server; they add volume without
   actionable insight.
-- **`instrumentation-http` with `ignoreIncomingRequestHook`** — in dev
-  mode, browser telemetry requests to `/otlp/v1/...` are proxied through
-  the Node dev server (via `proxy.conf.mjs`) before reaching Envoy.
-  Without this hook, the Node HTTP instrumentation would capture those
-  proxy requests as its own spans/logs, producing misleading telemetry
-  that appears to originate from the Node server. The hook suppresses
-  incoming `/otlp` requests so only genuine SSR traffic is instrumented.
+- **`instrumentation-http` with `ignoreIncomingRequestHook`** —
+  suppresses `/otlp` requests so only genuine SSR traffic appears in
+  the Node server's telemetry (browser telemetry transit would
+  otherwise be misreported as Node-originated spans).
 
 ## 5e. Wire telemetry into Angular entry points
 
@@ -305,65 +321,54 @@ import { AngularNodeAppEngine, ... } from '@angular/ssr/node';
 // ... rest of server.ts unchanged
 ```
 
-## 5f. Update `proxy.conf.mjs` for dev mode
-
-Add the `/otlp` path so the Angular dev server proxies browser
-telemetry requests to Envoy (which forwards to the collector via its
-`/otlp/v1/` passthrough route):
-
-```javascript
-const serverUrl = process.env.SERVER_URL || 'http://localhost:8080';
-
-export default {
-  '/otlp': { target: serverUrl, secure: false, changeOrigin: true },
-  '/auth': { target: serverUrl, secure: false, changeOrigin: true },
-  '/payments': { target: serverUrl, secure: false, changeOrigin: true },
-  '/api': { target: serverUrl, secure: false, changeOrigin: true },
-};
-```
-
-**Two distinct telemetry paths in dev mode:**
-
-1. **Browser telemetry data** (traces/logs the browser exports) flows
-   Browser → Node dev server (proxy) → Envoy → OTel Collector. The
-   Node server is only a pass-through here.
-2. **Node server's own telemetry** (spans/logs generated by its HTTP
-   instrumentation) exports directly to the OTel Collector via
-   `SERVER_OTEL_ENDPOINT` — it never goes through Envoy.
-
-Because the `/otlp` proxy requests transit through Node's HTTP layer,
-the Node HTTP auto-instrumentation will capture them and generate
-spans/logs as if the Node server itself originated that traffic. The
-`ignoreIncomingRequestHook` in Step 5d suppresses these `/otlp`
-requests so only genuine SSR traffic appears in the Node server's
-telemetry.
-
-## 5g. Update `apphost/Program.cs` — use HTTP endpoint for SSR
+## 5f. Update `apphost/Program.cs` — use HTTP endpoint for SSR
 
 Change `clientServerOtelEndpoint` from gRPC to HTTP since the Node
 SSR server uses HTTP OTLP exporters:
 
 ```csharp
-var adminEndpoint = builder.AddClientApp("admin-api", "../clients/admin", 4000, proxy.GetEndpoint("http"),
-    clientOtelEndpoint: otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName),
-    clientServerOtelEndpoint: otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName));
+var adminEndpoint = builder.AddClientApp(
+    "admin",
+    "../clients/admin",
+    4000,
+    proxy.GetEndpoint("https"),
+    otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName),
+    otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName));
 ```
 
 Both endpoints now use `OtlpHttpEndpointName` (port 4318).
 `BROWSER_OTEL_ENDPOINT` is injected but unused by the browser (it uses
-same-origin `/otlp/v1/`); it remains available for future use.
+`SERVER_URL`-based `/otlp/v1/`); it remains available for future use.
+Note `proxy.GetEndpoint("https")` — the client's `SERVER_URL` must
+point at Envoy's HTTPS endpoint.
+
+## Telemetry flow
+
+In the current architecture (HTTPS everywhere, no dev-server proxy):
+
+1. **Browser telemetry data** (traces/logs the browser exports) flows
+   Browser → Envoy HTTPS → OTel Collector. The browser reads
+   `SERVER_URL` from Angular transfer state to find Envoy's URL and
+   sends to `{serverUrl}/otlp/v1/traces` (and `/logs`).
+2. **Node server's own telemetry** (spans/logs generated by its HTTP
+   instrumentation) exports directly to the OTel Collector via
+   `SERVER_OTEL_ENDPOINT` — it never goes through Envoy.
+
+The `ignoreIncomingRequestHook` in Step 5d is still important because
+the SSR server may receive requests that transit through it (e.g.
+health checks or other middleware) and `/otlp` paths should not
+generate misleading telemetry.
 
 ## Files created / modified summary
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/lib/telemetry.browser.ts` | Create | Browser OTel init (traces + logs via OTLP HTTP) |
+| `src/lib/telemetry.browser.ts` | Create | Browser OTel init (traces + logs via OTLP HTTP to Envoy) |
 | `src/lib/grpc-trace.interceptor.ts` | Create | ConnectRPC interceptor for RPC span creation |
 | `src/instrumentation.ts` | Create | Node SSR OTel init (traces + logs via OTLP HTTP) |
 | `src/main.ts` | Modify | Call `initBrowserTelemetry()` before bootstrap |
 | `src/server.ts` | Modify | Import `./instrumentation` as first line |
 | `src/app/grpc-transport.ts` | Modify | Add `traceInterceptor` to transport interceptors |
-| `proxy.conf.mjs` | Modify | Add `/otlp` proxy route for dev mode |
 | `apphost/Program.cs` | Modify | Use HTTP endpoint for `clientServerOtelEndpoint` |
 
 ## Environment variable summary
@@ -371,5 +376,5 @@ same-origin `/otlp/v1/`); it remains available for future use.
 | Env var | Source | Used by |
 |---|---|---|
 | `SERVER_OTEL_ENDPOINT` | Collector HTTP endpoint (port 4318) | `src/instrumentation.ts` — SSR OTLP HTTP export |
-| `BROWSER_OTEL_ENDPOINT` | Collector HTTP endpoint (port 4318) | Injected but unused — browser uses same-origin `/otlp/v1/` |
-| `SERVER_URL` | Envoy proxy endpoint | `proxy.conf.mjs` — dev-mode proxy target (including `/otlp`) |
+| `BROWSER_OTEL_ENDPOINT` | Collector HTTP endpoint (port 4318) | Injected but unused — browser uses `SERVER_URL` + `/otlp/v1/` |
+| `SERVER_URL` | Envoy HTTPS proxy endpoint | `src/lib/telemetry.browser.ts` — browser OTel export base URL (via transfer state) |

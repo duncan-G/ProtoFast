@@ -4,7 +4,7 @@
   "scripts": {
     "ng": "ng",
     "generate:grpc": "npx buf generate",
-    "start": "npm run generate:grpc && ng serve --host 0.0.0.0 --port ${PORT:-4200} --allowed-hosts",
+    "start": "npm run generate:grpc && ng serve --host 0.0.0.0 --port ${PORT:-4200} --ssl --ssl-cert \"${SSL_CERT}\" --ssl-key \"${SSL_KEY}\" --allowed-hosts",
     "build": "npm run generate:grpc && ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
