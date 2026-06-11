@@ -12,6 +12,7 @@ import express from 'express';
 // Add new clients here (the add-angular-client skill does this).
 const clientLoaders = {
   admin: () => import('./admin/dist/admin/server/server.mjs'),
+  protofast: () => import('./protofast/dist/protofast/server/server.mjs'),
 };
 
 const defaultClient =

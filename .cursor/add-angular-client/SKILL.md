@@ -107,6 +107,33 @@ and adds generated code to `.gitignore`.
 If `clients/host/` does not exist yet (mid-bootstrap), skip this step —
 the orchestrator creates the unified host with the full client set.
 
+## Step 5 — Wire OpenTelemetry into the client
+
+If the project has OpenTelemetry set up (`apphost/OpenTelemetryCollector/`
+exists and `AddOpenTelemetryCollector` appears in `apphost/Program.cs`),
+**load `../add-opentelemetry/references/client-otel.md`** and follow it
+for the new client. It installs the OTel npm packages, creates browser
+telemetry (`src/lib/telemetry.browser.ts`), the ConnectRPC trace
+interceptor (`src/lib/grpc-trace.interceptor.ts`), and Node SSR
+instrumentation (`src/instrumentation.ts`), and wires them into
+`src/main.ts`, `src/server.ts`, and `src/app/grpc-transport.ts`.
+
+When registering the client in `apphost/Program.cs`, pass the
+collector's HTTP endpoint for both OTel parameters:
+
+```csharp
+var «clientname»Dev = builder.AddClientApp(
+    "«clientname»", "../clients/«clientname»", «clientname»Web, otelHttp, otelHttp);
+```
+
+If another client under `clients/` is already instrumented, mirror its
+telemetry files (and OTel package versions) instead of the reference
+verbatim — the existing client reflects the project's current
+conventions and any fixes applied since the reference was written.
+
+If the project does not have OTel yet, skip this step — the
+`add-opentelemetry` skill wires every client when it runs.
+
 ## Guardrails
 
 - In **dev mode** Aspire assigns the dev-server port dynamically via

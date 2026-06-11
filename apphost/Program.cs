@@ -26,6 +26,7 @@ var otelHttp = otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointN
 
 // Clients: each gets its own Envoy listener (dev) or domain virtual host (publish).
 var adminWeb = proxy.WithClient(builder, "admin");
+var protofastWeb = proxy.WithClient(builder, "protofast");
 
 if (useSsrHost)
 {
@@ -38,6 +39,9 @@ else
 {
     var adminDev = builder.AddClientApp("admin", "../clients/admin", adminWeb, otelHttp, otelHttp);
     proxy.WithUpstreamEndpoint("CLIENT_ADMIN", adminDev);
+
+    var protofastDev = builder.AddClientApp("protofast", "../clients/protofast", protofastWeb, otelHttp, otelHttp);
+    proxy.WithUpstreamEndpoint("CLIENT_PROTOFAST", protofastDev);
 }
 
 proxy
