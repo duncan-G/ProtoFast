@@ -129,8 +129,16 @@ Design choices:
 - **`getServerUrlFromTransferState()`** reads the Envoy URL from
   Angular's transfer state before Angular bootstraps. This avoids
   needing an injection token (telemetry init runs before DI is
-  available). The SSR server stores `SERVER_URL` in transfer state
-  under the `serverUrl` key (see `add-angular-client` Step 2d).
+  available). **Hard prerequisite:** the SSR server must store
+  `SERVER_URL` in transfer state under the `serverUrl` key via
+  `provideAppInitializer` in `app.config.server.ts` — NOT inside the
+  `SERVER_URL` token's `useFactory` (see `add-angular-client` Step 2d).
+  Factories are lazy, so a client whose SSR-rendered routes never
+  inject the token would leave `#ng-state` without `serverUrl`, and
+  telemetry would fall back to `window.location.origin` — exporting
+  OTLP to the Node SSR server (which has no `/otlp/v1/` route) instead
+  of Envoy. Verify this before wiring telemetry: render the page and
+  confirm the `#ng-state` script tag contains a `serverUrl` entry.
 - **No `XMLHttpRequestInstrumentation`** — Angular 21 uses `fetch()`
   natively; XHR instrumentation is unnecessary weight.
 - **`ignoreUrls`** excludes `/otlp/v1/` to prevent recursive tracing

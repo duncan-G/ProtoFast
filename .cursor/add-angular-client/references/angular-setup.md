@@ -107,7 +107,7 @@ Update `clients/«clientname»/src/app/app.config.server.ts` to read
 the env var and store it in transfer state:
 
 ```typescript
-import { mergeApplicationConfig, ApplicationConfig, inject, TransferState } from '@angular/core';
+import { mergeApplicationConfig, ApplicationConfig, inject, provideAppInitializer, TransferState } from '@angular/core';
 import { provideServerRendering, withRoutes } from '@angular/ssr';
 import { appConfig } from './app.config';
 import { serverRoutes } from './app.routes.server';
@@ -116,20 +116,32 @@ import { SERVER_URL, SERVER_URL_KEY } from './server-url';
 const serverConfig: ApplicationConfig = {
   providers: [
     provideServerRendering(withRoutes(serverRoutes)),
+    // Unconditional: runs on every SSR bootstrap, so the browser can read
+    // serverUrl from #ng-state even when no component injects SERVER_URL.
+    provideAppInitializer(() => {
+      inject(TransferState).set(SERVER_URL_KEY, process.env['SERVER_URL'] ?? '');
+    }),
     {
       provide: SERVER_URL,
-      useFactory: () => {
-        const transferState = inject(TransferState);
-        const url = process.env['SERVER_URL'] ?? '';
-        transferState.set(SERVER_URL_KEY, url);
-        return url;
-      },
+      useFactory: () => process.env['SERVER_URL'] ?? '',
     },
   ]
 };
 
 export const config = mergeApplicationConfig(appConfig, serverConfig);
 ```
+
+> **Important — the transfer-state write must be unconditional.** Do NOT
+> move the `transferState.set(...)` call into the `SERVER_URL` provider's
+> `useFactory`. DI factories are lazy: they only run if something injects
+> the token during server rendering. A client whose first-paint routes
+> never inject `SERVER_URL` (directly or via the gRPC transport) would
+> never serialize `serverUrl` into `#ng-state`, and browser telemetry
+> (`add-opentelemetry` Step 5b reads `#ng-state` before Angular bootstraps)
+> would fall back to `window.location.origin` — sending OTLP requests to
+> the Node SSR server, which has no `/otlp/v1/` route, instead of Envoy.
+> `provideAppInitializer` runs on every SSR bootstrap regardless of what
+> the rendered page injects.
 
 Update `clients/«clientname»/src/app/app.config.ts` to read from
 transfer state on the browser:
@@ -160,9 +172,10 @@ export const appConfig: ApplicationConfig = {
 
 This pattern:
 
-- **SSR (dev)**: Reads `SERVER_URL` from the env var injected by
-  `AddClientApp` (pointing at the client's per-client Envoy listener),
-  stores it in `TransferState` so it's serialized into the HTML.
+- **SSR (dev)**: An app initializer reads `SERVER_URL` from the env var
+  injected by `AddClientApp` (pointing at the client's per-client Envoy
+  listener) and stores it in `TransferState` on every render so it's
+  always serialized into the HTML.
 - **Browser**: Reads from `TransferState` (which was hydrated from the
   serialized HTML). Falls back to `window.location.origin` when empty —
   which is the publish-mode path: the unified SSR host does not set
