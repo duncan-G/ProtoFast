@@ -102,27 +102,29 @@ and TLS handling. Adds `WithOtelCollectorEndpoints` to
 
 ## Step 4 — Wire client app OTel endpoints in AppHost
 
-Update the `AddClientApp` call in `apphost/Program.cs` to pass the
+Update the `AddClientApp` calls (and the `AddClientHost` call, if the
+unified SSR host is registered) in `apphost/Program.cs` to pass the
 collector's HTTP endpoints (both browser and SSR use HTTP OTLP):
 
 ```csharp
-var adminEndpoint = builder.AddClientApp("admin", "../clients/admin", 4000, proxy.GetEndpoint("https"),
-    clientOtelEndpoint: otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName),
-    clientServerOtelEndpoint: otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName));
+var otelHttp = otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName);
+
+var adminDev = builder.AddClientApp("admin", "../clients/admin", adminWeb, otelHttp, otelHttp);
+// and, in the useSsrHost branch:
+var clientsHost = builder.AddClientHost("clients", defaultClient: "admin", otelHttp, otelHttp);
 ```
 
-If the `AddClientApp` method does not yet accept `clientOtelEndpoint`
-and `clientServerOtelEndpoint` parameters, update
+If `AddClientApp` / `AddClientHost` do not yet accept
+`clientOtelEndpoint` and `clientServerOtelEndpoint` parameters, update
 `apphost/ClientApp/ClientAppResourceBuilderExtensions.cs`:
 
-1. Add optional parameters to `AddClientApp`:
+1. Add optional parameters to both methods:
 
 ```csharp
 public static EndpointReference AddClientApp(
     this IDistributedApplicationBuilder builder,
     string clientName,
     string clientPath,
-    int productionPort,
     EndpointReference serverEndpoint,
     EndpointReference? clientOtelEndpoint = null,
     EndpointReference? clientServerOtelEndpoint = null)
@@ -134,8 +136,8 @@ public static EndpointReference AddClientApp(
    - `clientServerOtelEndpoint` → `SERVER_OTEL_ENDPOINT` (SSR
      server-side OTLP HTTP endpoint)
 
-3. Call `WithOtelEndpoints` in both the publish-mode and dev-mode
-   branches.
+3. Call `WithOtelEndpoints` in both `AddClientApp` and
+   `AddClientHost`.
 
 These env vars are consumed by the client app's OTel instrumentation
 (configured in Step 5).
@@ -146,8 +148,8 @@ These env vars are consumed by the client app's OTel instrumentation
 OTel npm packages, creates browser telemetry (`src/lib/telemetry.browser.ts`),
 a ConnectRPC trace interceptor (`src/lib/grpc-trace.interceptor.ts`),
 Node SSR instrumentation (`src/instrumentation.ts`), wires both into
-the Angular entry points, adds an `/otlp` dev-proxy route, and updates
-`Program.cs` to use the collector's HTTP endpoint for SSR.
+the Angular entry points, and updates `Program.cs` to use the
+collector's HTTP endpoint for SSR.
 
 After this step the browser emits traces and logs through Envoy's
 `/otlp/v1/` passthrough route, every ConnectRPC call gets an OTel
@@ -169,27 +171,33 @@ var auth     = builder.AddProject<Projects.«ProjectName»_Auth_Api>("auth").Wit
 var payments = builder.AddProject<Projects.«ProjectName»_Payments_Api>("payments").WithOtlpCollectorReference(otel);
 var api      = builder.AddProject<Projects.«ProjectName»_Api>("api").WithOtlpCollectorReference(otel);
 
-var proxy = builder.AddEnvoyProxy("envoy")
+var useSsrHost = builder.ExecutionContext.IsPublishMode
+    || bool.TryParse(builder.Configuration["SsrHost:Dev"], out var ssrHostDev) && ssrHostDev;
+
+var proxy = builder.AddEnvoyProxy("envoy", useSsrHost)
     .WithOtelCollectorEndpoints(otel)
     .WaitFor(auth)
     .WaitFor(payments)
     .WaitFor(api);
 
-var adminEndpoint = builder.AddClientApp(
-    "admin",
-    "../clients/admin",
-    4000,
-    proxy.GetEndpoint("https"),
-    otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName),
-    otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName));
+var otelHttp = otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName);
+
+var adminWeb = proxy.WithClient(builder, "admin");
+
+if (useSsrHost)
+{
+    var clientsHost = builder.AddClientHost("clients", defaultClient: "admin", otelHttp, otelHttp);
+    proxy
+        .WithUpstreamEndpoint("CLIENTS_HOST", clientsHost)
+        .WithEnvironment("DEFAULT_CLIENT", "admin");
+}
+else
+{
+    var adminDev = builder.AddClientApp("admin", "../clients/admin", adminWeb, otelHttp, otelHttp);
+    proxy.WithUpstreamEndpoint("CLIENT_ADMIN", adminDev);
+}
 
 proxy
-    .WithCorsOriginExact(builder, adminEndpoint)
-    .WithCorsOriginSubdomainRegex(builder, adminEndpoint)
-    .WithAllowedHosts(builder);
-
-proxy
-    .WithUpstreamEndpoint("ADMIN", adminEndpoint)
     .WithUpstreamEndpoint("AUTH", auth.GetEndpoint("http"))
     .WithUpstreamEndpoint("PAYMENTS", payments.GetEndpoint("http"))
     .WithUpstreamEndpoint("API", api.GetEndpoint("http"));
@@ -199,10 +207,11 @@ builder.Build().Run();
 
 Key ordering: the OTel collector is created first (other resources
 depend on it); Envoy gets `.WithOtelCollectorEndpoints(otel)` before
-the `WaitFor` calls; the client app receives the collector endpoints.
-Note `proxy.GetEndpoint("https")` — the client's `SERVER_URL` must
-point at Envoy's HTTPS endpoint. Backend services still use
-`GetEndpoint("http")` since Envoy talks upstream over cleartext.
+the `WaitFor` calls; the client app (or the unified SSR host) receives
+the collector endpoints. Note `proxy.WithClient(builder, "admin")` —
+the client's `SERVER_URL` is its per-client Envoy listener endpoint.
+Backend services still use `GetEndpoint("http")` since Envoy talks
+upstream over cleartext.
 
 ## Guardrails
 
@@ -218,13 +227,16 @@ point at Envoy's HTTPS endpoint. Backend services still use
 - The CORS `allow_headers` list must include `traceparent`, `tracestate`,
   `b3`, and `baggage` for distributed tracing context propagation from
   the browser.
-- In dev mode the Angular proxy forwards `/otlp` requests through the
-  Node SSR server to Envoy. The Node server's own telemetry exports
-  directly to the collector via `SERVER_OTEL_ENDPOINT` (never through
-  Envoy), but its HTTP auto-instrumentation will capture the `/otlp`
-  pass-through requests. Use `ignoreIncomingRequestHook` to suppress
-  them; otherwise browser telemetry transit will be misreported as
-  Node-originated spans.
+- The browser sends telemetry to `{SERVER_URL}/otlp/v1/` (its Envoy
+  listener). The Node server's own telemetry exports directly to the
+  collector via `SERVER_OTEL_ENDPOINT` (never through Envoy). If any
+  `/otlp` requests transit the Node server, use
+  `ignoreIncomingRequestHook` to suppress them; otherwise browser
+  telemetry transit will be misreported as Node-originated spans.
+- In the unified SSR host all client bundles share one Node process —
+  `src/instrumentation.ts` must guard SDK startup with the
+  `globalThis.__nodeOtelSdkStarted` flag so only the first bundle
+  starts the SDK.
 - Aspire injects `OTEL_SERVICE_NAME` into every resource. The Node SSR
   instrumentation must `delete process.env['OTEL_SERVICE_NAME']` before
   SDK init so the manually-set `service.name` attribute is used instead.

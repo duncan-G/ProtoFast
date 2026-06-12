@@ -129,8 +129,16 @@ Design choices:
 - **`getServerUrlFromTransferState()`** reads the Envoy URL from
   Angular's transfer state before Angular bootstraps. This avoids
   needing an injection token (telemetry init runs before DI is
-  available). The SSR server stores `SERVER_URL` in transfer state
-  under the `serverUrl` key (see `add-angular-client` Step 2d).
+  available). **Hard prerequisite:** the SSR server must store
+  `SERVER_URL` in transfer state under the `serverUrl` key via
+  `provideAppInitializer` in `app.config.server.ts` — NOT inside the
+  `SERVER_URL` token's `useFactory` (see `add-angular-client` Step 2d).
+  Factories are lazy, so a client whose SSR-rendered routes never
+  inject the token would leave `#ng-state` without `serverUrl`, and
+  telemetry would fall back to `window.location.origin` — exporting
+  OTLP to the Node SSR server (which has no `/otlp/v1/` route) instead
+  of Envoy. Verify this before wiring telemetry: render the page and
+  confirm the `#ng-state` script tag contains a `serverUrl` entry.
 - **No `XMLHttpRequestInstrumentation`** — Angular 21 uses `fetch()`
   natively; XHR instrumentation is unnecessary weight.
 - **`ignoreUrls`** excludes `/otlp/v1/` to prevent recursive tracing
@@ -241,7 +249,13 @@ delete process.env['OTEL_SERVICE_NAME'];
 const isDev = process.env['NODE_ENV'] === 'development';
 const batchConfig = isDev ? { scheduledDelayMillis: 1000 } : undefined;
 
-if (otelEndpoint) {
+// In the unified SSR host every client bundle runs in one process; only the
+// first bundle to load may start the Node SDK (a second start would clobber
+// the global providers and double-patch auto-instrumentations).
+const otelGlobal = globalThis as { __nodeOtelSdkStarted?: boolean };
+
+if (otelEndpoint && !otelGlobal.__nodeOtelSdkStarted) {
+  otelGlobal.__nodeOtelSdkStarted = true;
   const traceExporter = new OTLPTraceExporter({
     url: `${otelEndpoint}/v1/traces`,
   });
@@ -327,20 +341,19 @@ Change `clientServerOtelEndpoint` from gRPC to HTTP since the Node
 SSR server uses HTTP OTLP exporters:
 
 ```csharp
-var adminEndpoint = builder.AddClientApp(
-    "admin",
-    "../clients/admin",
-    4000,
-    proxy.GetEndpoint("https"),
-    otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName),
-    otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName));
+var otelHttp = otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName);
+
+var adminDev = builder.AddClientApp(
+    "admin", "../clients/admin", adminWeb, otelHttp, otelHttp);
 ```
 
 Both endpoints now use `OtlpHttpEndpointName` (port 4318).
 `BROWSER_OTEL_ENDPOINT` is injected but unused by the browser (it uses
 `SERVER_URL`-based `/otlp/v1/`); it remains available for future use.
-Note `proxy.GetEndpoint("https")` — the client's `SERVER_URL` must
-point at Envoy's HTTPS endpoint.
+Note `adminWeb` — the client's `SERVER_URL` is its per-client Envoy
+listener endpoint returned by `proxy.WithClient(builder, "admin")`.
+When the unified SSR host is registered (`AddClientHost`), pass the
+same two OTel endpoints to it as well.
 
 ## Telemetry flow
 

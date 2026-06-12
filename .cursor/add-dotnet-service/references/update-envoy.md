@@ -1,13 +1,17 @@
 # Update Envoy for a new gRPC service
 
-When `proxy/envoy.rds.yaml.tmpl` exists, follow these steps to wire a
+When `proxy/envoy.yaml.tmpl` exists, follow these steps to wire a
 new .NET gRPC service into the Envoy proxy.
 
 Placeholders: `«servicename»` (lowercase), `«SERVICENAME»` (UPPERCASE).
 
 ---
 
-## 1. Add route to `proxy/envoy.rds.yaml.tmpl`
+## 1. Add route to `proxy/envoy.vhost.yaml.tmpl`
+
+Service routes live in the **virtual-host fragment template** — it is
+rendered once per client listener (dev) or per client domain (publish),
+so every client gets the API routes automatically.
 
 Insert a new route in the `routes:` list **before** the catch-all
 `- match: { prefix: "/" }` entry:
@@ -28,8 +32,9 @@ Insert a new route in the `routes:` list **before** the catch-all
 
 ## 2. Add cluster to `proxy/envoy.yaml.tmpl`
 
-Append to the `clusters:` list. gRPC services require
-`http2_protocol_options` for h2c upstream:
+Append to the `clusters:` list, **before** the `__CLIENT_CLUSTERS__`
+marker line (client clusters are generated there at startup). gRPC
+services require `http2_protocol_options` for h2c upstream:
 
 ```yaml
     - name: «servicename»
@@ -60,8 +65,8 @@ require_env «SERVICENAME»_HOST
 require_env «SERVICENAME»_PORT
 ```
 
-Add `sed` substitution lines in the main envoy template `sed` command
-block (the one that writes `/tmp/envoy.yaml`):
+Add `sed` substitution lines in the final `sed` command block (the one
+that writes `/tmp/envoy.yaml`):
 
 ```bash
   -e "s|__«SERVICENAME»_HOST__|${«SERVICENAME»_HOST}|g" \

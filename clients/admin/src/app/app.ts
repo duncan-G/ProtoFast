@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { createClient } from '@connectrpc/connect';
 import { Greeter } from '../lib/gen/greet_pb';
@@ -8,6 +8,7 @@ import { GRPC_TRANSPORT } from './grpc-transport';
   selector: 'app-root',
   imports: [RouterOutlet],
   templateUrl: './app.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './app.scss',
 })
 export class App {

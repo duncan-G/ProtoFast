@@ -1,0 +1,420 @@
+<div class="min-h-screen bg-slate-950 text-slate-100 antialiased">
+  <!-- ============================== NAV ============================== -->
+  <header
+    class="sticky top-0 z-50 border-b border-slate-800/80 bg-slate-950/80 backdrop-blur"
+  >
+    <nav class="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+      <a href="#" class="flex items-center gap-2">
+        <span
+          class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-amber-300 to-orange-500"
+        >
+          <svg
+            class="h-5 w-5 text-slate-950"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M14.615 1.595a.75.75 0 0 1 .359.852L12.982 9.75h7.268a.75.75 0 0 1 .548 1.262l-10.5 11.25a.75.75 0 0 1-1.272-.71l1.992-7.302H3.75a.75.75 0 0 1-.548-1.262l10.5-11.25a.75.75 0 0 1 .913-.143Z"
+              clip-rule="evenodd"
+            />
+          </svg>
+        </span>
+        <span class="text-lg font-bold tracking-tight">Protofast</span>
+      </a>
+
+      <div class="hidden items-center gap-8 text-sm font-medium text-slate-300 md:flex">
+        <a href="#how-it-works" class="transition hover:text-white">How it works</a>
+        <a href="#features" class="transition hover:text-white">Features</a>
+        <a href="#timeline" class="transition hover:text-white">The 30 minutes</a>
+        <a href="#pricing" class="transition hover:text-white">Pricing</a>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <a
+          href="#"
+          class="hidden rounded-lg px-4 py-2 text-sm font-medium text-slate-300 transition hover:text-white sm:block"
+        >
+          Sign in
+        </a>
+        <a
+          href="#"
+          class="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300"
+        >
+          Start building
+        </a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ============================== HERO ============================== -->
+    <section class="relative overflow-hidden">
+      <!-- soft glow behind the hero -->
+      <div
+        class="pointer-events-none absolute -top-40 left-1/2 h-[32rem] w-[60rem] -translate-x-1/2 rounded-full bg-orange-500/10 blur-3xl"
+        aria-hidden="true"
+      ></div>
+
+      <div class="relative mx-auto max-w-7xl px-6 pt-20 pb-16 text-center sm:pt-28">
+        <p
+          class="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/80 px-4 py-1.5 text-xs font-medium text-slate-300"
+        >
+          <span class="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-400"></span>
+          From prompt to production in under 30 minutes
+        </p>
+
+        <h1 class="mx-auto max-w-4xl text-4xl font-bold tracking-tight text-balance sm:text-6xl">
+          Describe your app.
+          <span
+            class="bg-gradient-to-r from-amber-300 via-orange-400 to-rose-400 bg-clip-text text-transparent"
+          >
+            Agents build it.
+          </span>
+          Live in 30 minutes.
+        </h1>
+
+        <p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-pretty text-slate-400">
+          Protofast turns a plain-English description into a working web and mobile
+          prototype — with real authentication, real payments, and production hosting.
+          No code, no setup, no waiting.
+        </p>
+
+        <!-- Prompt-box mockup: the product's entire interface, as the hero CTA -->
+        <div
+          class="mx-auto mt-10 max-w-2xl rounded-2xl border border-slate-700 bg-slate-900 p-3 text-left shadow-2xl shadow-orange-500/5"
+        >
+          <p class="px-3 py-4 text-base text-slate-300 sm:text-lg">
+            A booking app for dog groomers with calendar scheduling, client profiles, and
+            Stripe payments<span class="animate-pulse text-amber-400">▍</span>
+          </p>
+          <div class="flex items-center justify-between gap-3 px-3 pb-2">
+            <span class="text-xs text-slate-500">Describe any app, any industry</span>
+            <a
+              href="#"
+              class="rounded-lg bg-gradient-to-r from-amber-400 to-orange-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:from-amber-300 hover:to-orange-400"
+            >
+              Prototype it →
+            </a>
+          </div>
+        </div>
+        <p class="mt-4 text-xs text-slate-500">
+          No credit card required · Your first prototype is free
+        </p>
+
+        <!-- Hero stats -->
+        <dl class="mx-auto mt-14 grid max-w-3xl grid-cols-1 gap-6 sm:grid-cols-3">
+          <div class="rounded-xl border border-slate-800 bg-slate-900/50 px-6 py-5">
+            <dt class="text-sm text-slate-400">Idea to production</dt>
+            <dd class="mt-1 text-3xl font-bold text-amber-400">&lt; 30 min</dd>
+          </div>
+          <div class="rounded-xl border border-slate-800 bg-slate-900/50 px-6 py-5">
+            <dt class="text-sm text-slate-400">Auth &amp; payments</dt>
+            <dd class="mt-1 text-3xl font-bold text-amber-400">Built in</dd>
+          </div>
+          <div class="rounded-xl border border-slate-800 bg-slate-900/50 px-6 py-5">
+            <dt class="text-sm text-slate-400">Platforms per prompt</dt>
+            <dd class="mt-1 text-3xl font-bold text-amber-400">Web + mobile</dd>
+          </div>
+        </dl>
+
+        <!-- Hero visual -->
+        <div class="mx-auto mt-16 aspect-[16/9] max-w-5xl">
+          <app-image-placeholder
+            description="Full-width screenshot of the Protofast build console mid-run: a left panel shows a live agent activity feed (Architect, UI, API, Auth, Payments agents each checking off tasks), while the right panel shows the in-progress prototype rendered side by side in a browser frame and a phone frame. A progress bar at the top reads '14:32 elapsed — deploying payment webhooks'."
+          />
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== SOCIAL PROOF ============================== -->
+    <section class="border-y border-slate-800/80 bg-slate-900/30">
+      <div class="mx-auto max-w-7xl px-6 py-12">
+        <p class="text-center text-sm font-medium tracking-widest text-slate-500 uppercase">
+          Teams prototyping with Protofast
+        </p>
+        <div class="mx-auto mt-6 h-16 max-w-4xl">
+          <app-image-placeholder
+            description="A single row of five or six grayscale company logos (startups and agencies), evenly spaced, at roughly 60% opacity so they read as social proof without competing with the page."
+          />
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== HOW IT WORKS ============================== -->
+    <section id="how-it-works" class="scroll-mt-24">
+      <div class="mx-auto max-w-7xl px-6 py-24">
+        <div class="mx-auto max-w-2xl text-center">
+          <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">
+            Three steps. One of them is yours.
+          </h2>
+          <p class="mt-4 text-lg text-slate-400">
+            You describe. The agents design, build, wire, and deploy. That's the whole
+            workflow.
+          </p>
+        </div>
+
+        <div class="mt-16 grid gap-8 md:grid-cols-3">
+          @for (step of steps; track step.index) {
+            <div class="rounded-2xl border border-slate-800 bg-slate-900/50 p-8">
+              <span
+                class="bg-gradient-to-br from-amber-300 to-orange-500 bg-clip-text text-5xl font-bold text-transparent"
+              >
+                {{ step.index }}
+              </span>
+              <h3 class="mt-4 text-xl font-semibold">{{ step.title }}</h3>
+              <p class="mt-3 leading-relaxed text-slate-400">{{ step.description }}</p>
+            </div>
+          }
+        </div>
+
+        <div class="mx-auto mt-16 aspect-[21/9] max-w-5xl">
+          <app-image-placeholder
+            description="Stylized orchestration diagram: a chat bubble with the user's one-sentence prompt on the left, branching into five glowing agent nodes (Architect, UI, API, Auth, Payments) working in parallel in the middle, converging into a single deployed-app node on the right marked with a green 'LIVE' badge and a URL. Amber/orange connection lines on a dark background to match the page palette."
+          />
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== FEATURES ============================== -->
+    <section id="features" class="scroll-mt-24 border-t border-slate-800/80 bg-slate-900/30">
+      <div class="mx-auto max-w-7xl px-6 py-24">
+        <div class="mx-auto max-w-2xl text-center">
+          <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">
+            A real product, not a clickable mockup
+          </h2>
+          <p class="mt-4 text-lg text-slate-400">
+            Everything a launchable app needs is part of every build — not an add-on you
+            bolt on later.
+          </p>
+        </div>
+
+        <div class="mt-16 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          @for (feature of features; track feature.title) {
+            <div
+              class="rounded-2xl border border-slate-800 bg-slate-950/60 p-7 transition hover:border-slate-700"
+            >
+              <span
+                class="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-amber-400/10"
+              >
+                <svg
+                  class="h-6 w-6 text-amber-400"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" [attr.d]="feature.iconPath" />
+                </svg>
+              </span>
+              <h3 class="mt-5 text-lg font-semibold">{{ feature.title }}</h3>
+              <p class="mt-2 leading-relaxed text-slate-400">{{ feature.description }}</p>
+            </div>
+          }
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== TIMELINE ============================== -->
+    <section id="timeline" class="scroll-mt-24">
+      <div class="mx-auto max-w-7xl px-6 py-24">
+        <div class="grid items-start gap-16 lg:grid-cols-2">
+          <div>
+            <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">
+              What 30 minutes actually looks like
+            </h2>
+            <p class="mt-4 text-lg text-slate-400">
+              This isn't a demo-day estimate. It's the clock on a typical build, from the
+              moment you submit your description to a production URL you can text to a
+              friend.
+            </p>
+
+            <ol class="mt-10 space-y-0 border-l border-slate-800">
+              @for (entry of timeline; track entry.time) {
+                <li class="relative pb-8 pl-8 last:pb-0">
+                  <span
+                    class="absolute top-1 -left-[5px] h-2.5 w-2.5 rounded-full bg-amber-400"
+                  ></span>
+                  <span class="font-mono text-sm font-semibold text-amber-400">{{ entry.time }}</span>
+                  <h3 class="mt-1 font-semibold">{{ entry.title }}</h3>
+                  <p class="mt-1 text-sm leading-relaxed text-slate-400">{{ entry.description }}</p>
+                </li>
+              }
+            </ol>
+          </div>
+
+          <div class="aspect-[4/5] lg:sticky lg:top-28">
+            <app-image-placeholder
+              description="Tall screenshot of the build timeline view in the Protofast app: a vertical progress rail with timestamped agent events (e.g. 'UI Agent: generated booking calendar component', 'Payments Agent: Stripe webhook verified'), each with a green check. The final entry shows a confetti burst and a 'Your app is live — protofast.app/dog-groomer-pro' link card with an Open button."
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== TESTIMONIAL ============================== -->
+    <section class="border-y border-slate-800/80 bg-slate-900/30">
+      <div class="mx-auto max-w-4xl px-6 py-20 text-center">
+        <blockquote class="text-2xl leading-relaxed font-medium text-balance text-slate-200">
+          “I described the app over lunch. By the time I finished my sandwich, customers
+          could sign up and pay. I've had sprints that delivered less than that sandwich.”
+        </blockquote>
+        <div class="mt-8 flex items-center justify-center gap-4">
+          <div class="h-12 w-12">
+            <app-image-placeholder
+              description="Circular headshot of the quoted founder, warm lighting, neutral background."
+            />
+          </div>
+          <div class="text-left">
+            <p class="font-semibold">Placeholder Name</p>
+            <p class="text-sm text-slate-400">Founder, Placeholder Co.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== PRICING ============================== -->
+    <section id="pricing" class="scroll-mt-24">
+      <div class="mx-auto max-w-7xl px-6 py-24">
+        <div class="mx-auto max-w-2xl text-center">
+          <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">
+            Cheaper than one hour of a contractor
+          </h2>
+          <p class="mt-4 text-lg text-slate-400">
+            Every plan ships production apps with auth and payments. Pick how often you
+            want the magic.
+          </p>
+        </div>
+
+        <div class="mx-auto mt-16 grid max-w-5xl gap-8 lg:grid-cols-3">
+          @for (tier of pricingTiers; track tier.name) {
+            <div
+              class="relative flex flex-col rounded-2xl border p-8"
+              [class.border-amber-400]="tier.highlighted"
+              [class.bg-slate-900]="tier.highlighted"
+              [class.border-slate-800]="!tier.highlighted"
+              [class.bg-slate-900/40]="!tier.highlighted"
+            >
+              @if (tier.highlighted) {
+                <span
+                  class="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-amber-400 px-3 py-1 text-xs font-bold text-slate-950"
+                >
+                  Most popular
+                </span>
+              }
+              <h3 class="text-lg font-semibold">{{ tier.name }}</h3>
+              <p class="mt-1 text-sm text-slate-400">{{ tier.blurb }}</p>
+              <p class="mt-6">
+                <span class="text-4xl font-bold">{{ tier.price }}</span>
+                <span class="ml-1 text-sm text-slate-400">{{ tier.period }}</span>
+              </p>
+              <ul class="mt-8 flex-1 space-y-3 text-sm text-slate-300">
+                @for (item of tier.features; track item) {
+                  <li class="flex items-start gap-3">
+                    <svg
+                      class="mt-0.5 h-4 w-4 shrink-0 text-amber-400"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z"
+                        clip-rule="evenodd"
+                      />
+                    </svg>
+                    {{ item }}
+                  </li>
+                }
+              </ul>
+              <a
+                href="#"
+                class="mt-8 rounded-lg px-4 py-2.5 text-center text-sm font-semibold transition"
+                [class.bg-amber-400]="tier.highlighted"
+                [class.text-slate-950]="tier.highlighted"
+                [class.hover:bg-amber-300]="tier.highlighted"
+                [class.bg-slate-800]="!tier.highlighted"
+                [class.text-white]="!tier.highlighted"
+                [class.hover:bg-slate-700]="!tier.highlighted"
+              >
+                {{ tier.cta }}
+              </a>
+            </div>
+          }
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== FINAL CTA ============================== -->
+    <section class="relative overflow-hidden border-t border-slate-800/80">
+      <div
+        class="pointer-events-none absolute bottom-0 left-1/2 h-72 w-[50rem] -translate-x-1/2 rounded-full bg-orange-500/10 blur-3xl"
+        aria-hidden="true"
+      ></div>
+      <div class="relative mx-auto max-w-4xl px-6 py-24 text-center">
+        <h2 class="text-3xl font-bold tracking-tight text-balance sm:text-5xl">
+          Your next idea could be live before this meeting ends.
+        </h2>
+        <p class="mx-auto mt-4 max-w-xl text-lg text-slate-400">
+          Describe it once. Get a production app with sign-in, payments, and a shareable
+          URL — in less time than a standup that ran long.
+        </p>
+        <div class="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+          <a
+            href="#"
+            class="rounded-lg bg-gradient-to-r from-amber-400 to-orange-500 px-8 py-3.5 text-base font-semibold text-slate-950 transition hover:from-amber-300 hover:to-orange-400"
+          >
+            Build your first prototype free
+          </a>
+          <a
+            href="#how-it-works"
+            class="rounded-lg border border-slate-700 px-8 py-3.5 text-base font-semibold text-slate-200 transition hover:border-slate-500"
+          >
+            See how it works
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============================== FOOTER ============================== -->
+  <footer class="border-t border-slate-800/80">
+    <div
+      class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-6 py-10 sm:flex-row"
+    >
+      <div class="flex items-center gap-2">
+        <span
+          class="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-amber-300 to-orange-500"
+        >
+          <svg
+            class="h-4 w-4 text-slate-950"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M14.615 1.595a.75.75 0 0 1 .359.852L12.982 9.75h7.268a.75.75 0 0 1 .548 1.262l-10.5 11.25a.75.75 0 0 1-1.272-.71l1.992-7.302H3.75a.75.75 0 0 1-.548-1.262l10.5-11.25a.75.75 0 0 1 .913-.143Z"
+              clip-rule="evenodd"
+            />
+          </svg>
+        </span>
+        <span class="font-semibold">Protofast</span>
+      </div>
+      <nav class="flex flex-wrap items-center justify-center gap-6 text-sm text-slate-400">
+        <a href="#how-it-works" class="transition hover:text-white">How it works</a>
+        <a href="#features" class="transition hover:text-white">Features</a>
+        <a href="#pricing" class="transition hover:text-white">Pricing</a>
+        <a href="#" class="transition hover:text-white">Privacy</a>
+        <a href="#" class="transition hover:text-white">Terms</a>
+      </nav>
+      <p class="text-sm text-slate-500">© 2026 Protofast. Built fast, obviously.</p>
+    </div>
+  </footer>
+</div>

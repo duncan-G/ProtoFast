@@ -1,0 +1,12 @@
+# Applies to builds whose context is the repo root (clients/host/Dockerfile).
+.git
+**/node_modules
+**/dist
+**/.angular
+**/bin
+**/obj
+**/src/lib/gen
+apphost
+proxy
+docs
+*.md
