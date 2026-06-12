@@ -93,6 +93,7 @@ public static class EnvoyProxyResourceBuilderExtensions
         {
             var domain = applicationBuilder.AddParameter(
                 $"{clientName}-domain", $"{clientName}.example.com", publishValueAsDefault: true);
+            clientsAnnotation.Domains.Add(domain.Resource);
             envoy.WithEnvironment($"CLIENT_{envName}_DOMAIN", domain);
             return envoy.GetEndpoint("https");
         }
@@ -104,6 +105,37 @@ public static class EnvoyProxyResourceBuilderExtensions
             .WithUrlForEndpoint(endpointName, u => u.DisplayText = $"{clientName} (web)");
 
         return envoy.GetEndpoint(endpointName);
+    }
+
+    /// <summary>
+    /// The hostnames browsers use to reach the clients through the proxy: the client domain
+    /// parameters in publish mode, or <c>localhost</c> in run mode (per-client listeners
+    /// differ only by port). Feed this to the SSR host's <c>NG_ALLOWED_HOSTS</c>.
+    /// </summary>
+    public static ReferenceExpression GetClientHostnames(this IResourceBuilder<ContainerResource> envoy)
+    {
+        var domains = envoy.Resource.Annotations
+            .OfType<EnvoyClientsAnnotation>()
+            .Single()
+            .Domains;
+
+        if (domains.Count == 0)
+        {
+            return ReferenceExpression.Create($"localhost");
+        }
+
+        var expression = new ReferenceExpressionBuilder();
+        for (var i = 0; i < domains.Count; i++)
+        {
+            if (i > 0)
+            {
+                expression.AppendLiteral(",");
+            }
+
+            expression.Append($"{domains[i]}");
+        }
+
+        return expression.Build();
     }
 
     public static IResourceBuilder<ContainerResource> WithUpstreamEndpoint(
@@ -143,5 +175,7 @@ public static class EnvoyProxyResourceBuilderExtensions
     private sealed class EnvoyClientsAnnotation : IResourceAnnotation
     {
         public List<string> Clients { get; } = [];
+
+        public List<ParameterResource> Domains { get; } = [];
     }
 }

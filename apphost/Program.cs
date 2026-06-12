@@ -30,7 +30,8 @@ var protofastWeb = proxy.WithClient(builder, "protofast");
 
 if (useSsrHost)
 {
-    var clientsHost = builder.AddClientHost("clients", defaultClient: "admin", otelHttp, otelHttp);
+    var clientsHost = builder.AddClientHost(
+        "clients", defaultClient: "admin", proxy.GetClientHostnames(), otelHttp, otelHttp);
     proxy
         .WithUpstreamEndpoint("CLIENTS_HOST", clientsHost)
         .WithEnvironment("DEFAULT_CLIENT", "admin");
