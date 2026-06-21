@@ -37,19 +37,22 @@ locals {
 resource "aws_instance" "app" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
-  subnet_id              = data.aws_subnets.default.ids[0]
+  subnet_id              = aws_default_subnet.default.id
   vpc_security_group_ids = [aws_security_group.instance.id]
   iam_instance_profile   = aws_iam_instance_profile.instance.name
 
-  # Public IP for outbound only (no inbound SG rules); SSM/ECR/tunnel egress.
-  associate_public_ip_address = true
+  # IPv6-only egress: no billable public IPv4. One public IPv6 whose only route
+  # out is the egress-only gateway covers SSM/ECR/tunnel/CloudWatch.
+  associate_public_ip_address = false
+  ipv6_address_count          = 1
 
   user_data                   = local.user_data
   user_data_replace_on_change = true
 
   metadata_options {
-    http_tokens   = "required" # IMDSv2 only
-    http_endpoint = "enabled"
+    http_tokens        = "required" # IMDSv2 only
+    http_endpoint      = "enabled"
+    http_protocol_ipv6 = "enabled" # IMDS reachable on the IPv6-only box
   }
 
   root_block_device {

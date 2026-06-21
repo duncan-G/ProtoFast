@@ -5,6 +5,16 @@ set -euxo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
 
+# --- IPv6-only egress: force AWS tooling onto dualstack endpoints -------------
+# The default *.amazonaws.com endpoints are IPv4-only; this box has no public
+# IPv4, so every AWS call (CLI, ECR credential helper, SDKs invoked by deploys)
+# must resolve to the dualstack endpoints. Persisted in /etc/environment so all
+# PAM sessions — including SSM Run Command shells — inherit it. The SSM agent
+# itself gets the same via a systemd drop-in below.
+export AWS_USE_DUALSTACK_ENDPOINT=true
+grep -q '^AWS_USE_DUALSTACK_ENDPOINT=' /etc/environment \
+  || echo 'AWS_USE_DUALSTACK_ENDPOINT=true' >> /etc/environment
+
 # --- Docker engine + compose plugin ------------------------------------------
 apt-get update -y
 apt-get install -y ca-certificates curl gnupg unzip
@@ -27,8 +37,19 @@ systemctl enable --now docker
 
 # --- AWS SSM agent (Session Manager + Run Command; no SSH) --------------------
 snap install amazon-ssm-agent --classic || true
-systemctl enable --now snap.amazon-ssm-agent.amazon-ssm-agent.service || \
+
+# The agent must talk to SSM over IPv6 too — give its unit the dualstack env.
+ssm_unit="snap.amazon-ssm-agent.amazon-ssm-agent.service"
+mkdir -p "/etc/systemd/system/$${ssm_unit}.d"
+cat > "/etc/systemd/system/$${ssm_unit}.d/dualstack.conf" <<'CONF'
+[Service]
+Environment=AWS_USE_DUALSTACK_ENDPOINT=true
+CONF
+systemctl daemon-reload
+
+systemctl enable --now "$${ssm_unit}" || \
   systemctl enable --now amazon-ssm-agent || true
+systemctl restart "$${ssm_unit}" || systemctl restart amazon-ssm-agent || true
 
 # --- AWS CLI v2 (for ECR login in deploy.sh) ---------------------------------
 if ! command -v aws >/dev/null 2>&1; then
