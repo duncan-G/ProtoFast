@@ -73,7 +73,12 @@ canned templates don't fit. Minimum permissions for what `infra/` manages:
 | **Account** | Access: Apps and Policies | Edit  | the telemetry Access app/policy — *only if telemetry on* |
 | **Zone**    | DNS                       | Edit  | the proxied CNAME records                               |
 | **Zone**    | Zone Settings             | Edit  | `always_use_https` + `ssl=full`                         |
+| **Zone**    | Cache Rules               | Edit  | the `cloudflare_ruleset` cache rules (`cdn.tf`)         |
 | **Zone**    | Zone                      | Read  | the `data "cloudflare_zone"` lookup                     |
+
+Note: **Cache Rules** is its own permission, *not* part of **Zone Settings** —
+the cache config lives in the rulesets engine (`cloudflare_ruleset` in `cdn.tf`),
+so without it `terraform apply` 403s on the `rulesets` endpoint.
 
 Resource scoping: **Account Resources → Include → your account**, and **Zone
 Resources → Include → your zone**. The zone is referenced, never created, so no

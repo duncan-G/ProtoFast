@@ -20,7 +20,7 @@ data "aws_subnets" "default" {
 
 resource "aws_security_group" "instance" {
   name        = "${var.project}-app"
-  description = "ProtoFast app server — egress only, zero ingress."
+  description = "ProtoFast app server - egress only, zero ingress."
   vpc_id      = data.aws_vpc.default.id
 
   # No ingress rules at all: admin access is via SSM Session Manager, public
