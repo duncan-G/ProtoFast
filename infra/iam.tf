@@ -2,8 +2,11 @@
 # (so `docker compose pull` needs zero credentials on the box). The permissions
 # boundary from bootstrap is attached to satisfy the no-escalation rule.
 
-data "aws_iam_policy" "boundary" {
-  name = "${var.project}-boundary"
+# The boundary ARN is deterministic (account id + project name), so construct it
+# directly rather than looking it up by name. A name-based lookup would force
+# iam:ListPolicies, a permission the infra role deliberately does not hold.
+locals {
+  boundary_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${var.project}-boundary"
 }
 
 data "aws_iam_policy_document" "instance_trust" {
@@ -20,7 +23,7 @@ data "aws_iam_policy_document" "instance_trust" {
 resource "aws_iam_role" "instance" {
   name                 = "${var.project}-instance"
   assume_role_policy   = data.aws_iam_policy_document.instance_trust.json
-  permissions_boundary = data.aws_iam_policy.boundary.arn
+  permissions_boundary = local.boundary_arn
 }
 
 resource "aws_iam_role_policy_attachment" "ssm_core" {
