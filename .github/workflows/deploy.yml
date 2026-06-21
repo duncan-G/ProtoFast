@@ -156,7 +156,7 @@ jobs:
             --document-name AWS-RunShellScript \
             --comment "deploy ${TAG}" \
             --parameters commands="[
-              \"set -euo pipefail\",
+              \"set -eu\",
               \"mkdir -p /opt/protofast\",
               \"echo $COMPOSE_B64 | base64 -d > /opt/protofast/docker-compose.yml\",
               \"echo $DEPLOY_B64 | base64 -d > /opt/protofast/deploy.sh\",
