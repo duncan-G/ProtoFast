@@ -37,6 +37,8 @@ data "aws_iam_policy_document" "boundary" {
       "iam:DeleteRolePolicy",
       "iam:CreateInstanceProfile",
       "iam:DeleteInstanceProfile",
+      "iam:TagInstanceProfile",
+      "iam:UntagInstanceProfile",
       "iam:AddRoleToInstanceProfile",
       "iam:RemoveRoleFromInstanceProfile",
       "iam:CreateServiceLinkedRole",

@@ -24,7 +24,7 @@ resource "cloudflare_ruleset" "cache" {
     {
       ref         = "cache_hashed_assets"
       description = "Cache Angular hashed bundles and static assets aggressively"
-      expression  = "(http.request.uri.path matches \"\\\\.[0-9a-f]{8,}\\\\.(js|css|mjs|woff2|woff|ttf|png|jpg|jpeg|webp|avif|svg|ico|gif)$\") or (http.request.uri.path matches \"\\\\.(woff2|woff|ttf)$\")"
+      expression  = "(http.request.uri.path.extension in {\"js\" \"mjs\" \"css\" \"woff2\" \"woff\" \"ttf\" \"png\" \"jpg\" \"jpeg\" \"webp\" \"avif\" \"svg\" \"ico\" \"gif\"})"
       action      = "set_cache_settings"
       action_parameters = {
         cache = true
