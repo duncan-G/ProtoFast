@@ -37,6 +37,19 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "this" {
   config_src    = "cloudflare"
 }
 
+# Cloudflare provider v5 removed the tunnel's `tunnel_token` attribute, and the
+# replacement data source doesn't actually return a token (cloudflare/
+# terraform-provider-cloudflare#5149). Construct the run token ourselves: it's
+# base64(json({a: account, t: tunnel id, s: secret})), where `s` is the same
+# base64 secret fed to the tunnel above.
+locals {
+  tunnel_token = base64encode(jsonencode({
+    a = var.cloudflare_account_id
+    t = cloudflare_zero_trust_tunnel_cloudflared.this.id
+    s = random_id.tunnel_secret.b64_std
+  }))
+}
+
 # Ingress: every client hostname → https://envoy:8443 with noTLSVerify (the cert
 # is the baked self-signed one; traffic never leaves the Docker network). The
 # final catch-all 404 rule is required by Cloudflare.

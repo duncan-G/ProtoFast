@@ -28,7 +28,7 @@ locals {
     admin_domain              = var.admin_domain
     protofast_domain          = var.protofast_domain
     default_client            = "admin"
-    tunnel_token              = cloudflare_zero_trust_tunnel_cloudflared.this.tunnel_token
+    tunnel_token              = local.tunnel_token
     grpc_health_probe_version = var.grpc_health_probe_version
     grpc_health_probe_arch    = var.instance_arch
   })

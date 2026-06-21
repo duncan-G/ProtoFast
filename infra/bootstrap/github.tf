@@ -6,10 +6,10 @@
 # token — see the README for the `gh variable set` commands to run by hand then.
 
 locals {
-  repo_name     = split("/", var.github_repo)[1]
-  ecr_registry  = "${local.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
-  gh_enabled    = var.manage_github_repo ? 1 : 0
-  cf_token_set  = var.manage_github_repo && var.cloudflare_api_token != "" ? 1 : 0
+  repo_name    = split("/", var.github_repo)[1]
+  ecr_registry = "${local.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
+  gh_enabled   = var.manage_github_repo ? 1 : 0
+  cf_token_set = var.manage_github_repo && var.cloudflare_api_token != "" ? 1 : 0
 
   github_variables = {
     AWS_REGION          = var.aws_region
@@ -28,8 +28,8 @@ resource "github_actions_variable" "repo" {
 }
 
 resource "github_actions_secret" "cloudflare_api_token" {
-  count           = local.cf_token_set
-  repository      = local.repo_name
-  secret_name     = "CLOUDFLARE_API_TOKEN"
-  value           = var.cloudflare_api_token
+  count       = local.cf_token_set
+  repository  = local.repo_name
+  secret_name = "CLOUDFLARE_API_TOKEN"
+  value       = var.cloudflare_api_token
 }
