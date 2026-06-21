@@ -51,7 +51,7 @@ jobs:
       run:
         working-directory: infra
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -64,7 +64,7 @@ jobs:
           terraform_version: "1.10.5"
 
       - name: Terraform init
-        run: terraform init -backend-config="bucket=${{ vars.TFSTATE_BUCKET }}"
+        run: terraform init -backend-config="bucket=${{ vars.TFSTATE_BUCKET }}" -backend-config="region=${{ vars.AWS_REGION }}"
 
       - name: Terraform fmt check
         continue-on-error: true # informational — surfaces drift without blocking

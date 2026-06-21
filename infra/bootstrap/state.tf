@@ -5,12 +5,9 @@
 resource "aws_s3_bucket" "state" {
   bucket = var.state_bucket_name
 
-  # TEMPORARY: relocating the bucket to another region. Revert both of these to
-  # the protected form (prevent_destroy = true, drop force_destroy) once the
-  # bucket is recreated — state is precious.
-  force_destroy = true
+  # Protected: state is precious. Guard against accidental destruction.
   lifecycle {
-    prevent_destroy = false
+    prevent_destroy = true
   }
 }
 
