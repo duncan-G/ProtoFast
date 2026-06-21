@@ -91,13 +91,23 @@ public static class Extensions
             // Add a default liveness check to ensure app is responsive
             .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
 
+        // Surface the same health checks over the standard gRPC Health protocol so the
+        // production deploy script can probe these gRPC services with grpc_health_probe.
+        builder.Services.AddGrpcHealthChecks();
+
         return builder;
     }
 
     public static WebApplication MapDefaultEndpoints(this WebApplication app)
     {
-        // Adding health checks endpoints to applications in non-development environments has security implications.
-        // See https://aka.ms/dotnet/aspire/healthchecks for details before enabling these endpoints in non-development environments.
+        // The gRPC Health service is the production probe (consumed by grpc_health_probe in
+        // the deploy health-check loop), so it is mapped in all environments. It only exposes
+        // SERVING/NOT_SERVING status, not the detailed HTTP health report below.
+        app.MapGrpcHealthChecksService();
+
+        // The detailed HTTP /health + /alive endpoints have security implications in
+        // non-development environments (they can leak check names/details).
+        // See https://aka.ms/dotnet/aspire/healthchecks before enabling them in production.
         if (app.Environment.IsDevelopment())
         {
             // All health checks must pass for app to be considered ready to accept traffic after starting

@@ -5,6 +5,8 @@
     <RootNamespace>ProtoFast.Auth.Api</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <ContainerRepository>protofast-auth</ContainerRepository>
+    <ContainerFamily>noble-chiseled</ContainerFamily>
   </PropertyGroup>
 
   <ItemGroup>

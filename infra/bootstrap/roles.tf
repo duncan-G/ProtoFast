@@ -1,0 +1,230 @@
+locals {
+  account_id = data.aws_caller_identity.current.account_id
+  oidc_arn   = aws_iam_openid_connect_provider.github_actions.arn
+
+  ecr_repo_arns = [
+    for name in var.ecr_repositories :
+    "arn:aws:ecr:${var.aws_region}:${local.account_id}:repository/${name}"
+  ]
+
+  state_bucket_arn = aws_s3_bucket.state.arn
+}
+
+# ---------------------------------------------------------------------------
+# protofast-infra — broad infra lifecycle (EC2, VPC, ECR-create, IAM-with-boundary).
+# Assumed by the infra.yml workflow. The trust policy's `sub` condition below
+# requires the `infra` GitHub Environment, so only runs that pass that
+# Environment's approval gate can assume this role. No route53 actions — DNS is
+# managed entirely in Cloudflare, not AWS.
+# ---------------------------------------------------------------------------
+data "aws_iam_policy_document" "infra_trust" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = [local.oidc_arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:${var.github_repo}:environment:infra"]
+    }
+  }
+}
+
+resource "aws_iam_role" "infra" {
+  name                 = "${var.project}-infra"
+  assume_role_policy   = data.aws_iam_policy_document.infra_trust.json
+  permissions_boundary = aws_iam_policy.boundary.arn
+}
+
+data "aws_iam_policy_document" "infra" {
+  statement {
+    sid    = "ComputeAndRegistry"
+    effect = "Allow"
+    actions = [
+      "ec2:*",
+      "ecr:*",
+      "ssm:*",
+      "ssmmessages:*",
+      "ec2messages:*",
+      "cloudwatch:*",
+      "logs:*",
+      "kms:*",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "StateBucket"
+    effect = "Allow"
+    actions = [
+      "s3:ListBucket",
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+    ]
+    resources = [local.state_bucket_arn, "${local.state_bucket_arn}/*"]
+  }
+
+  # IAM for app roles (e.g. the EC2 instance profile). CreateRole is constrained
+  # by the boundary (RequireBoundaryOnCreatedRoles) to prevent escalation.
+  statement {
+    sid    = "ManageAppRoles"
+    effect = "Allow"
+    actions = [
+      "iam:GetRole",
+      "iam:GetRolePolicy",
+      "iam:ListRolePolicies",
+      "iam:ListAttachedRolePolicies",
+      "iam:ListInstanceProfilesForRole",
+      "iam:CreateRole",
+      "iam:DeleteRole",
+      "iam:TagRole",
+      "iam:UntagRole",
+      "iam:PassRole",
+      "iam:AttachRolePolicy",
+      "iam:DetachRolePolicy",
+      "iam:PutRolePolicy",
+      "iam:DeleteRolePolicy",
+      "iam:PutRolePermissionsBoundary",
+      "iam:CreateInstanceProfile",
+      "iam:DeleteInstanceProfile",
+      "iam:GetInstanceProfile",
+      "iam:AddRoleToInstanceProfile",
+      "iam:RemoveRoleFromInstanceProfile",
+      "iam:CreateServiceLinkedRole",
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "infra" {
+  name   = "${var.project}-infra"
+  role   = aws_iam_role.infra.id
+  policy = data.aws_iam_policy_document.infra.json
+}
+
+# ---------------------------------------------------------------------------
+# protofast-deploy — narrow: ECR push to the configured repos + tag-scoped
+# ssm:SendCommand to the prod instance. Assumed by the deploy.yml workflow on
+# push/dispatch; the trust policy's `sub` condition below scopes it to the main
+# branch (refs/heads/main), so feature branches and PRs cannot deploy.
+# ---------------------------------------------------------------------------
+data "aws_iam_policy_document" "deploy_trust" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = [local.oidc_arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:${var.github_repo}:ref:refs/heads/main"]
+    }
+  }
+}
+
+resource "aws_iam_role" "deploy" {
+  name                 = "${var.project}-deploy"
+  assume_role_policy   = data.aws_iam_policy_document.deploy_trust.json
+  permissions_boundary = aws_iam_policy.boundary.arn
+}
+
+data "aws_iam_policy_document" "deploy" {
+  statement {
+    sid       = "EcrAuth"
+    effect    = "Allow"
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "EcrPush"
+    effect = "Allow"
+    actions = [
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:BatchGetImage",
+      "ecr:GetDownloadUrlForLayer",
+      "ecr:InitiateLayerUpload",
+      "ecr:UploadLayerPart",
+      "ecr:CompleteLayerUpload",
+      "ecr:PutImage",
+    ]
+    resources = local.ecr_repo_arns
+  }
+
+  # Deploy is delivered via SSM Run Command, scoped to the prod instance tag plus
+  # the managed shell document (no SSH, no inbound ports).
+  statement {
+    sid       = "SsmSendToTaggedInstance"
+    effect    = "Allow"
+    actions   = ["ssm:SendCommand"]
+    resources = ["arn:aws:ec2:${var.aws_region}:${local.account_id}:instance/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "ssm:resourceTag/${var.instance_tag_key}"
+      values   = [var.instance_tag_value]
+    }
+  }
+
+  statement {
+    sid       = "SsmSendDocument"
+    effect    = "Allow"
+    actions   = ["ssm:SendCommand"]
+    resources = ["arn:aws:ssm:${var.aws_region}::document/AWS-RunShellScript"]
+  }
+
+  statement {
+    sid    = "SsmTrackAndSession"
+    effect = "Allow"
+    actions = [
+      "ssm:GetCommandInvocation",
+      "ssm:ListCommands",
+      "ssm:ListCommandInvocations",
+      "ssm:DescribeInstanceInformation",
+      "ssm:StartSession",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid       = "DescribeInstances"
+    effect    = "Allow"
+    actions   = ["ec2:DescribeInstances"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid       = "ReadLogs"
+    effect    = "Allow"
+    actions   = ["logs:GetLogEvents", "logs:FilterLogEvents", "logs:DescribeLogGroups", "logs:DescribeLogStreams"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid       = "ReadState"
+    effect    = "Allow"
+    actions   = ["s3:GetObject", "s3:ListBucket"]
+    resources = [local.state_bucket_arn, "${local.state_bucket_arn}/*"]
+  }
+}
+
+resource "aws_iam_role_policy" "deploy" {
+  name   = "${var.project}-deploy"
+  role   = aws_iam_role.deploy.id
+  policy = data.aws_iam_policy_document.deploy.json
+}

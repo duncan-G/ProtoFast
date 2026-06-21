@@ -1,0 +1,89 @@
+# Infrastructure lifecycle. Manual dispatch with an action: plan / apply / destroy.
+# Assumes protofast-infra via GitHub OIDC. The infra role's trust is scoped to
+# `environment:infra`, so the job declares `environment: infra`; put required
+# reviewers on that GitHub Environment to gate apply/destroy (and, by trust
+# scoping, every run). "Update" is just editing infra/*.tf and re-running apply
+# — Terraform diffs and converges.
+#
+# Repo VARIABLES: AWS_REGION, AWS_INFRA_ROLE_ARN, TFSTATE_BUCKET,
+#   CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_ZONE, ADMIN_DOMAIN, PROTOFAST_DOMAIN
+#   (optional TELEMETRY_DOMAIN, TELEMETRY_ACCESS_EMAILS — the latter a JSON array,
+#   e.g. ["you@example.com"]; both must be set for telemetry to enable).
+#   SECRET: CLOUDFLARE_API_TOKEN.
+name: infra
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform action"
+        required: true
+        type: choice
+        options: [plan, apply, destroy]
+        default: plan
+
+concurrency:
+  group: infra-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+  TF_VAR_cloudflare_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+  TF_VAR_cloudflare_zone: ${{ vars.CLOUDFLARE_ZONE }}
+  TF_VAR_admin_domain: ${{ vars.ADMIN_DOMAIN }}
+  TF_VAR_protofast_domain: ${{ vars.PROTOFAST_DOMAIN }}
+  TF_VAR_telemetry_domain: ${{ vars.TELEMETRY_DOMAIN }}
+  # List var: the repo variable must hold a JSON array, e.g. ["you@example.com"].
+  # Fallback to [] when unset — Terraform can't parse "" as a list(string).
+  TF_VAR_telemetry_access_emails: ${{ vars.TELEMETRY_ACCESS_EMAILS || '[]' }}
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    environment: infra # required reviewers here gate apply/destroy
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_INFRA_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.10.5"
+
+      - name: Terraform init
+        run: terraform init -backend-config="bucket=${{ vars.TFSTATE_BUCKET }}"
+
+      - name: Terraform fmt check
+        continue-on-error: true # informational — surfaces drift without blocking
+        run: terraform fmt -check -recursive
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        run: terraform plan -input=false -out=tf.plan
+
+      - name: Terraform apply
+        if: ${{ inputs.action == 'apply' }}
+        run: terraform apply -input=false -auto-approve tf.plan
+
+      - name: Terraform destroy
+        if: ${{ inputs.action == 'destroy' }}
+        run: terraform destroy -input=false -auto-approve
+
+      - name: Outputs
+        if: ${{ inputs.action == 'apply' }}
+        run: terraform output

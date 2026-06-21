@@ -1,0 +1,23 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DebugShell",
+      "Effect": "Allow",
+      "Action": ["ssm:StartSession", "ssm:DescribeInstanceInformation", "ssm:DescribeSessions", "ssm:GetConnectionStatus"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ReadLogsAndPullImages",
+      "Effect": "Allow",
+      "Action": ["logs:Get*", "logs:FilterLogEvents", "logs:Describe*", "ecr:GetAuthorizationToken", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability", "ecr:Describe*"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "NoSendCommandOrWrites",
+      "Effect": "Deny",
+      "Action": ["ssm:SendCommand", "iam:*", "organizations:*", "account:*"],
+      "Resource": "*"
+    }
+  ]
+}
