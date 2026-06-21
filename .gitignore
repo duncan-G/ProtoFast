@@ -89,6 +89,26 @@ App_Data/Secrets/
 # --- Proto codegen (buf + Connect) ---
 clients/*/src/lib/gen/
 
+# --- Terraform ---
+# Provider plugins / modules, crash logs, and CLI var files.
+**/.terraform/*
+*.tfplan
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+# Bootstrap (and any other local-state) configs keep state on disk — never commit it.
+infra/bootstrap/*.tfstate
+infra/bootstrap/*.tfstate.*
+infra/bootstrap/.terraform.lock.hcl
+
 # --- OS ---
 .DS_Store
 Thumbs.db

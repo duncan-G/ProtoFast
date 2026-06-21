@@ -1,0 +1,28 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "WorkloadAdmin",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:*",
+        "ecr:*",
+        "s3:*",
+        "ssm:*",
+        "ssmmessages:*",
+        "ec2messages:*",
+        "cloudwatch:*",
+        "logs:*",
+        "kms:*",
+        "iam:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DenyOrgAndAccount",
+      "Effect": "Deny",
+      "Action": ["organizations:*", "account:*", "aws-portal:*"],
+      "Resource": "*"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars (gitignored) or pass with -var. github_repo is the
+# only required value and should be DERIVED, not hand-typed:
+#
+#   terraform apply \
+#     -var "github_repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)"
+
+# github_repo = "owner/repo"          # required — derive from git, do not hard-code
+# aws_region        = "us-west-2"
+# state_bucket_name = "protofast-tfstate"   # must be globally unique
+
+# Set to write GitHub repo variables/secret automatically (needs GITHUB_TOKEN / gh auth):
+# manage_github_repo   = true
+# cloudflare_api_token = "cf-zone-and-tunnel-scoped-token"   # stored as CLOUDFLARE_API_TOKEN secret

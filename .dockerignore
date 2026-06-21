@@ -9,4 +9,7 @@
 apphost
 proxy
 docs
+infra
+deploy
+.github
 *.md

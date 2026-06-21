@@ -1,0 +1,31 @@
+# Copy to terraform.tfvars (gitignored) or pass with -var / a workflow var file.
+#
+# This file only covers Terraform *input variables*. To actually run an apply you
+# ALSO need (these are NOT variables):
+#
+#   1. CLOUDFLARE_API_TOKEN  — env var read by the cloudflare provider. Scopes:
+#        Zone:DNS:Edit, Zone:Zone Settings:Edit,
+#        Account:Cloudflare Tunnel:Edit, Account:Access: Apps and Policies:Edit
+#   2. AWS credentials       — env (AWS_*) locally, or the OIDC role in infra.yml
+#   3. Backend bucket        — terraform init -backend-config="bucket=<name>"
+#                              (the S3 state bucket created by infra/bootstrap)
+#
+# Prerequisite: infra/bootstrap must be applied first (creates the state bucket,
+# ECR repos, OIDC role, and the tagged EC2 instance).
+
+# --- Cloudflare (zone already registered + authoritative in Cloudflare) ---
+cloudflare_account_id = "<cloudflare-account-id>"
+cloudflare_zone       = "protofast.dev"        # apex; the zone must already be active
+admin_domain          = "admin.protofast.dev"  # subdomain (covered by Universal SSL)
+protofast_domain      = "protofast.dev"         # apex (proxied CNAME → flattened automatically)
+
+# --- Telemetry dashboard (optional; Phase 4.1) ---
+# Leave telemetry_access_emails empty to skip the hostname + Access app and use
+# `aws ssm start-session` port-forwarding instead.
+# telemetry_domain        = "telemetry.protofast.dev"
+# telemetry_access_emails = ["you@example.com"]
+
+# --- Compute (optional overrides) ---
+# aws_region    = "us-east-1"
+# instance_type = "t4g.medium"
+# instance_arch = "arm64"
