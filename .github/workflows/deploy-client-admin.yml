@@ -1,0 +1,37 @@
+name: deploy-client-admin
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "clients/admin/**"
+      - "services/**/Protos/**"
+      - ".github/workflows/deploy-client-admin.yml"
+      - ".github/workflows/_component-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing artifact tag to (re)deploy or roll back to. Blank = build current source."
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-client-admin
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_component-deploy.yml
+    with:
+      component: client-admin
+      build: client-s3
+      target: admin
+      kind: client
+      hash_paths: "clients/admin :(glob)services/**/Protos/**"
+      project: clients/admin
+      tag: ${{ inputs.tag }}
+    secrets: inherit

@@ -99,10 +99,16 @@ and adds generated code to `.gitignore`.
 
 ## Step 4 — Register with the unified SSR host
 
-**Load `references/update-envoy.md`** and follow it. Adds the client to
-`clients/host/server.mjs` (dispatch map) and `clients/host/Dockerfile`
-(build + deps stages and COPY lines), so the publish-mode image and the
-`dev-host` smoke-test mode can serve the new client.
+**Load `references/update-envoy.md`** and follow it. The unified host is
+generic — it bakes in no client assets and has no per-client loader map,
+so you do **not** edit `clients/host/server.mjs` or
+`clients/host/Dockerfile`. Instead you: (1) add a
+`.github/workflows/deploy-client-«clientname».yml` workflow (each client
+builds to S3 and deploys independently), and (2) register `«clientname»`
+in the `CLIENTS` env var (the instance seed in `infra/`; the first deploy
+also self-registers it on a running box). The host discovers clients from
+`CLIENTS` and pulls each pinned build from S3 at start
+(docs/independent-deployment-plan.md §7).
 
 If `clients/host/` does not exist yet (mid-bootstrap), skip this step —
 the orchestrator creates the unified host with the full client set.

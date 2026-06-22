@@ -18,6 +18,11 @@ output "ecr_registry" {
   value       = local.ecr_registry
 }
 
+output "assets_bucket" {
+  description = "S3 bucket holding per-client SSR builds (clients/<name>/<tag>/)."
+  value       = aws_s3_bucket.assets.id
+}
+
 output "hostnames" {
   description = "Public hostnames served through the tunnel."
   value       = values(local.tunnel_hostnames)

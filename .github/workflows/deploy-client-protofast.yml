@@ -1,0 +1,37 @@
+name: deploy-client-protofast
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "clients/protofast/**"
+      - "services/**/Protos/**"
+      - ".github/workflows/deploy-client-protofast.yml"
+      - ".github/workflows/_component-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing artifact tag to (re)deploy or roll back to. Blank = build current source."
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-client-protofast
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_component-deploy.yml
+    with:
+      component: client-protofast
+      build: client-s3
+      target: protofast
+      kind: client
+      hash_paths: "clients/protofast :(glob)services/**/Protos/**"
+      project: clients/protofast
+      tag: ${{ inputs.tag }}
+    secrets: inherit

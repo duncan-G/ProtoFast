@@ -1,0 +1,330 @@
+# Reusable per-component deployment pipeline. Every
+# deploy-<component>.yml workflow pins its identity and calls this once. It does
+# test → build/reuse → deploy for EXACTLY ONE component:
+#
+#   * tag is the content hash of the component's inputs (or the dispatch tag),
+#     so identical inputs reuse an existing artifact and skip the build;
+#   * the artifact is one ECR image (services/envoy/otel/host) or one S3 prefix
+#     (clients/<name>/<tag>/);
+#   * deploy ships compose + deploy.sh via SSM and runs
+#     `deploy.sh apply <component>=<tag>`, which recreates only that component
+#     and runs its scoped health check (reverting that one component on failure).
+#
+# Repo VARIABLES (set by infra/bootstrap): AWS_REGION, AWS_DEPLOY_ROLE_ARN,
+#   ECR_REGISTRY, ASSETS_BUCKET.
+name: _component-deploy
+
+on:
+  workflow_call:
+    inputs:
+      component:
+        description: "Component id: auth|payments|api|envoy|otel-collector|clients-host|client-admin|client-protofast"
+        required: true
+        type: string
+      build:
+        description: "Build type: dotnet | buildx | client-s3"
+        required: true
+        type: string
+      target:
+        description: "ECR repo name (image builds) or client name (client-s3 → clients/<name>/ S3 prefix)"
+        required: true
+        type: string
+      kind:
+        description: "service | host | client (informational; deploy.sh derives behaviour from the component)"
+        required: true
+        type: string
+      hash_paths:
+        description: "Space-separated git pathspecs hashed into the content tag (globs allowed, matched by git)."
+        required: true
+        type: string
+      project:
+        description: "dotnet project path | buildx context dir | client dir (clients/<name>)"
+        required: false
+        type: string
+      tag:
+        description: "Existing artifact tag to (re)deploy or roll back to. Blank = build current source."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write # GitHub OIDC → AWS
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR: ${{ vars.ECR_REGISTRY }}
+  ASSETS_BUCKET: ${{ vars.ASSETS_BUCKET }}
+  ARCH: arm64 # matches the t4g (ARM) instance
+  INSTANCE_TAG_KEY: "protofast:role"
+  INSTANCE_TAG_VALUE: "app-server"
+  # NOTE: the on-host tools (docker compose plugin + grpc_health_probe) are NOT
+  # this pipeline's concern — they're installed once at instance launch by
+  # cloud-init (infra/templates/user_data.sh.tftpl), which curls them directly
+  # from github (the box is dual-stack, so plain-IPv4 github.com is reachable).
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # --- .NET service: build (compile-check) + run tests when present -------
+      - if: inputs.build == 'dotnet'
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+      - if: inputs.build == 'dotnet'
+        name: dotnet build + test (${{ inputs.component }})
+        run: |
+          set -euo pipefail
+          dotnet build "${{ inputs.project }}" -c Release
+          if find "services/${{ inputs.component }}/tests" -name '*.csproj' 2>/dev/null | grep -q .; then
+            dotnet test "services/${{ inputs.component }}" -c Release
+          else
+            echo "no test projects under services/${{ inputs.component }}/tests; skipping dotnet test"
+          fi
+
+      # --- Angular client: unit tests (vitest in Node, no browser) ------------
+      - if: inputs.build == 'client-s3'
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - if: inputs.build == 'client-s3'
+        name: client unit tests (${{ inputs.component }})
+        # generate:grpc first since the test script (unlike build) doesn't run buf codegen.
+        run: |
+          set -euo pipefail
+          cd "${{ inputs.project }}"
+          npm ci
+          npm run generate:grpc
+          npm test -- --watch=false
+
+      # buildx components (envoy, otel-collector, clients-host) have no unit tests.
+      - if: inputs.build == 'buildx'
+        run: echo "no unit tests for ${{ inputs.component }} (build=buildx)"
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Content-addressed tag: a hash of this component's inputs. Identical inputs
+      # → identical tag, so reverts and no-op merges hit an existing artifact and
+      # skip the build. A workflow_dispatch `tag` input overrides (redeploy / roll
+      # back to an exact existing artifact without building).
+      - name: Resolve tag
+        id: tag
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.tag }}" ]; then
+            tag="${{ inputs.tag }}"
+          else
+            # ls-files (not ls-tree) so glob pathspec magic — `:(glob)…/**` for
+            # the cross-directory proto match — is supported. `-s` emits
+            # mode+blob-sha+path, so the digest changes iff tracked content does.
+            read -ra paths <<< "${{ inputs.hash_paths }}"
+            hash=$(git ls-files -s -- "${paths[@]}" | git hash-object --stdin | cut -c1-16)
+            tag="c-${hash}"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "resolved ${{ inputs.component }} tag=${tag}"
+
+      # buildx components (envoy, otel-collector, clients-host) cross-build arm64
+      # on the amd64 runner, so they need QEMU + a buildx builder. Skipped for
+      # dotnet (SDK container publish) and client-s3 (ng build) which don't.
+      - if: inputs.build == 'buildx'
+        name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+      - if: inputs.build == 'buildx'
+        name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # Existence check decides reuse: ECR image for builds, S3 prefix for clients.
+      - name: Check artifact exists
+        id: exists
+        run: |
+          set -euo pipefail
+          tag="${{ steps.tag.outputs.tag }}"
+          if [ "${{ inputs.build }}" = "client-s3" ]; then
+            if aws s3 ls "s3://${ASSETS_BUCKET}/clients/${{ inputs.target }}/${tag}/" >/dev/null 2>&1; then
+              echo "exists=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "exists=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            if aws ecr describe-images --repository-name "${{ inputs.target }}" \
+                 --image-ids imageTag="${tag}" >/dev/null 2>&1; then
+              echo "exists=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "exists=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Fail if dispatch tag is missing
+        if: inputs.tag != '' && steps.exists.outputs.exists == 'false'
+        run: |
+          echo "requested tag '${{ inputs.tag }}' has no artifact for ${{ inputs.component }}" >&2
+          exit 1
+
+      # --- buildx image (envoy, otel-collector, clients-host) ---
+      - if: inputs.build == 'buildx' && steps.exists.outputs.exists == 'false'
+        name: Build & push image (buildx)
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ inputs.project }}
+          platforms: linux/${{ env.ARCH }}
+          push: true
+          tags: ${{ env.ECR }}/${{ inputs.target }}:${{ steps.tag.outputs.tag }}
+
+      # --- .NET service via the SDK container publish (pushes directly to ECR) ---
+      - if: inputs.build == 'dotnet' && steps.exists.outputs.exists == 'false'
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+      - if: inputs.build == 'dotnet' && steps.exists.outputs.exists == 'false'
+        name: Build & push .NET service
+        run: |
+          set -euo pipefail
+          dotnet publish "${{ inputs.project }}" -c Release /t:PublishContainer \
+            -p ContainerRegistry="${ECR}" \
+            -p ContainerRepository="${{ inputs.target }}" \
+            -p ContainerImageTag="${{ steps.tag.outputs.tag }}" \
+            -p ContainerRuntimeIdentifier="linux-${ARCH}"
+
+      # --- Angular client → S3 (ng build, then sync the SSR output) ---
+      - if: inputs.build == 'client-s3' && steps.exists.outputs.exists == 'false'
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - if: inputs.build == 'client-s3' && steps.exists.outputs.exists == 'false'
+        name: Build & upload client to S3
+        run: |
+          set -euo pipefail
+          name="${{ inputs.target }}"
+          tag="${{ steps.tag.outputs.tag }}"
+          ( cd "${{ inputs.project }}" && npm ci && npm run build )
+          aws s3 sync --delete \
+            "${{ inputs.project }}/dist/${name}/" \
+            "s3://${ASSETS_BUCKET}/clients/${name}/${tag}/"
+
+      - if: steps.exists.outputs.exists == 'true'
+        run: echo "${{ inputs.component }} artifact ${{ steps.tag.outputs.tag }} already exists — reusing"
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    # NOTE: deliberately NO `environment:` here — setting one changes the OIDC
+    # `sub` to ...:environment:<name>, which would not match the protofast-deploy
+    # role's trust (...:ref:refs/heads/main). Release authority is governed on the
+    # GitHub side via branch protection on main + who may run workflow_dispatch.
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve target instance
+        id: target
+        run: |
+          set -euo pipefail
+          id=$(aws ec2 describe-instances \
+            --filters "Name=tag:${INSTANCE_TAG_KEY},Values=${INSTANCE_TAG_VALUE}" \
+                      "Name=instance-state-name,Values=running" \
+            --query 'Reservations[].Instances[].InstanceId' --output text)
+          [ -n "$id" ] || { echo "no running instance with ${INSTANCE_TAG_KEY}=${INSTANCE_TAG_VALUE}" >&2; exit 1; }
+          echo "instance_id=$id" >> "$GITHUB_OUTPUT"
+
+      # Ship the compose file + deploy script to the instance and run
+      # `deploy.sh apply <component>=<tag>`. SSM Run Command — no SSH, no ports.
+      - name: Deploy via SSM
+        env:
+          TAG: ${{ needs.build.outputs.tag }}
+          COMPONENT: ${{ inputs.component }}
+        run: |
+          set -euo pipefail
+          COMPOSE_B64=$(base64 -w0 deploy/docker-compose.yml)
+          DEPLOY_B64=$(base64 -w0 deploy/deploy.sh)
+
+          cmd_id=$(aws ssm send-command \
+            --instance-ids "${{ steps.target.outputs.instance_id }}" \
+            --document-name AWS-RunShellScript \
+            --comment "deploy ${COMPONENT}=${TAG}" \
+            --parameters commands="[
+              \"set -eu\",
+              \"mkdir -p /opt/protofast\",
+              \"echo $COMPOSE_B64 | base64 -d > /opt/protofast/docker-compose.yml\",
+              \"echo $DEPLOY_B64 | base64 -d > /opt/protofast/deploy.sh\",
+              \"chmod +x /opt/protofast/deploy.sh\",
+              \"ECR=${ECR} /opt/protofast/deploy.sh apply ${COMPONENT}=${TAG}\"
+            ]" \
+            --query 'Command.CommandId' --output text)
+
+          echo "SSM command: $cmd_id"
+
+          # Poll until terminal; surface the on-instance output and fail loudly.
+          while :; do
+            status=$(aws ssm get-command-invocation \
+              --command-id "$cmd_id" \
+              --instance-id "${{ steps.target.outputs.instance_id }}" \
+              --query 'Status' --output text 2>/dev/null || echo Pending)
+            case "$status" in
+              Success) break ;;
+              Failed|Cancelled|TimedOut) echo "deploy $status"; break ;;
+              *) sleep 8 ;;
+            esac
+          done
+
+          aws ssm get-command-invocation \
+            --command-id "$cmd_id" \
+            --instance-id "${{ steps.target.outputs.instance_id }}" \
+            --query '{Status:Status,Out:StandardOutputContent,Err:StandardErrorContent}' \
+            --output text
+
+          [ "$status" = "Success" ]
+
+      # Prune superseded S3 client prefixes beyond KEEP_RELEASES (the box never
+      # holds client assets on disk, so this is the client analogue of deploy.sh's
+      # local ECR image prune). Keeps the most recent prefixes for fast rollback.
+      - name: Prune old client assets (S3)
+        if: inputs.build == 'client-s3'
+        env:
+          KEEP_RELEASES: "5"
+        run: |
+          set -euo pipefail
+          name="${{ inputs.target }}"
+          prefix="clients/${name}/"
+          # List immediate <tag>/ prefixes, newest last by LastModified of their
+          # objects is unavailable here; fall back to lexical order of tags, which
+          # is stable but arbitrary — so instead keep the N most-recently-modified.
+          mapfile -t tags < <(aws s3api list-objects-v2 \
+            --bucket "${ASSETS_BUCKET}" --prefix "${prefix}" --delimiter / \
+            --query 'CommonPrefixes[].Prefix' --output text | tr '\t' '\n' | sed '/^$/d')
+          # Sort tags by the LastModified of their newest object, drop the keepers.
+          declare -A mtime
+          for t in "${tags[@]}"; do
+            lm=$(aws s3api list-objects-v2 --bucket "${ASSETS_BUCKET}" --prefix "$t" \
+              --query 'sort_by(Contents,&LastModified)[-1].LastModified' --output text 2>/dev/null || echo "")
+            mtime["$t"]="${lm:-1970-01-01T00:00:00.000Z}"
+          done
+          # Newest first; everything after KEEP_RELEASES is removed.
+          to_delete=$(for t in "${tags[@]}"; do echo "${mtime[$t]}|$t"; done \
+            | sort -r | awk -F'|' -v keep="${KEEP_RELEASES}" 'NR>keep {print $2}')
+          for t in $to_delete; do
+            echo "pruning s3://${ASSETS_BUCKET}/${t}"
+            aws s3 rm --recursive "s3://${ASSETS_BUCKET}/${t}" >/dev/null
+          done

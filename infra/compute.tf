@@ -57,9 +57,14 @@ resource "aws_instance" "app" {
   user_data_replace_on_change = true
 
   metadata_options {
-    http_tokens        = "required" # IMDSv2 only
-    http_endpoint      = "enabled"
-    http_protocol_ipv6 = "enabled" # IMDS reachable over IPv6 too (dual-stack)
+    http_tokens   = "required" # IMDSv2 only
+    http_endpoint = "enabled"
+    # The clients-host entrypoint runs the AWS CLI INSIDE a container and needs
+    # instance-profile creds from IMDS. A container sits one network hop behind
+    # the host (container -> docker bridge -> host), so the default hop limit of
+    # 1 makes IMDS unreachable from any container. Allow the extra hop.
+    http_put_response_hop_limit = 2
+    http_protocol_ipv6          = "enabled" # IMDS also reachable over IPv6 (dual-stack)
   }
 
   root_block_device {

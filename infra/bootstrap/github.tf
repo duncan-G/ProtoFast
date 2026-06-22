@@ -1,6 +1,7 @@
-# Wire the bootstrap outputs into the GitHub repo so the CI workflows (infra.yml,
-# deploy.yml) can consume them: role ARNs + region + ECR registry + state bucket
-# as repo VARIABLES, and the Cloudflare API token as the single repo SECRET. This
+# Wire the bootstrap outputs into the GitHub repo so the CI workflows (infra.yml
+# and the per-component deploy-*.yml → _component-deploy.yml) can consume them:
+# role ARNs + region + ECR registry + assets bucket + state bucket as repo
+# VARIABLES, and the Cloudflare API token as the single repo SECRET. This
 # is what lets the workflows assume the OIDC roles without any hand-copied config.
 # Gated by manage_github_repo so the bootstrap still applies without a GitHub
 # token — see the README for the `gh variable set` commands to run by hand then.
@@ -17,6 +18,9 @@ locals {
     AWS_DEPLOY_ROLE_ARN = aws_iam_role.deploy.arn
     ECR_REGISTRY        = local.ecr_registry
     TFSTATE_BUCKET      = aws_s3_bucket.state.id
+    # Deterministic assets-bucket name (matches infra/assets.tf); the client
+    # deploy workflows sync builds to s3://<ASSETS_BUCKET>/clients/<name>/<tag>/.
+    ASSETS_BUCKET = "${var.project}-assets-${local.account_id}"
   }
 }
 

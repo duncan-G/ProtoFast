@@ -7,11 +7,19 @@
 #
 # There are NO published host ports: cloudflared dials out to Cloudflare and
 # reaches Envoy over the internal Docker network. The EC2 security group allows
-# no ingress at all (deployment-plan §1).
+# no ingress at all.
 #
-# Every app image is ${ECR}/<name>:${TAG}. The deploy script writes ECR + TAG to
-# /opt/protofast/.env so the whole stack rolls forward/back as one tag set
-# (deployment-plan §4.1). Locally: `ECR=local TAG=dev docker compose up`.
+# Each component is deployed INDEPENDENTLY (docs/independent-deployment-plan.md):
+# every image is referenced by its OWN content-hash tag variable
+# (${ENVOY_TAG}, ${AUTH_TAG}, …) rather than one shared ${TAG}. The deploy
+# script (deploy/deploy.sh) reads .env (stable: ECR, domains, ASSETS_BUCKET,
+# CLIENTS) + versions.env (one *_TAG per component) and recreates only the
+# container whose tag changed. Locally: provide both env files, e.g.
+# `docker compose --env-file .env --env-file versions.env up`.
+#
+# Client apps are NOT baked into the clients-host image. They are built to static
+# SSR output and uploaded to S3 by their own workflows; the clients-host
+# entrypoint pulls each pinned client from S3 on (re)start (plan §7).
 
 x-otel-grpc: &otel-grpc "http://otel-collector:4317"
 
@@ -30,12 +38,12 @@ services:
         condition: service_started
 
   envoy:
-    image: ${ECR}/protofast-envoy:${TAG}
+    image: ${ECR}/protofast-envoy:${ENVOY_TAG}
     restart: unless-stopped
     environment:
       ENVOY_MODE: publish
-      CLIENTS: admin,protofast
-      DEFAULT_CLIENT: admin
+      CLIENTS: ${CLIENTS:-admin,protofast}
+      DEFAULT_CLIENT: ${DEFAULT_CLIENT:-admin}
       # Publish listener cloudflared targets (https://envoy:8443).
       PORT: "8443"
       ENVOY_ADMIN_PORT: "9901"
@@ -73,12 +81,22 @@ services:
         condition: service_healthy
 
   clients:
-    # Unified SSR host (clients/host/Dockerfile, repo-root build context).
-    image: ${ECR}/protofast-clients-host:${TAG}
+    # Unified SSR host (clients/host/Dockerfile). No client assets are baked in:
+    # the entrypoint pulls each pinned client from S3 before starting server.mjs.
+    image: ${ECR}/protofast-clients-host:${CLIENTS_HOST_TAG}
     restart: unless-stopped
+    # env_file injects the stable seed (.env: ECR, domains, ASSETS_BUCKET,
+    # CLIENTS, DEFAULT_CLIENT) and the per-component manifest (versions.env: every
+    # *_TAG, including each CLIENT_<NAME>_TAG the entrypoint pulls). Listing the
+    # manifest here means a new client needs NO compose edit — only a versions.env
+    # line + its name in CLIENTS.
+    env_file:
+      - .env
+      - versions.env
     environment:
       PORT: "4000"
-      DEFAULT_CLIENT: admin
+      ASSETS_DIR: /assets
+      DEFAULT_CLIENT: ${DEFAULT_CLIENT:-admin}
       NG_ALLOWED_HOSTS: "${CLIENT_ADMIN_DOMAIN:-admin.example.com},${CLIENT_PROTOFAST_DOMAIN:-protofast.example.com}"
       # Only Envoy reaches this host, so its forwarded headers are trustworthy.
       NG_TRUST_PROXY_HEADERS: "x-forwarded-for,x-forwarded-proto"
@@ -86,9 +104,16 @@ services:
       # telemetry posts same-origin to /otlp, which Envoy routes to the collector.
       SERVER_OTEL_ENDPOINT: "http://otel-collector:4318"
       BROWSER_OTEL_ENDPOINT: "/otlp"
+      # The AWS CLI in the entrypoint pulls client assets from S3 using the
+      # instance profile. The box is dual-stack, so the CLI's defaults work: the
+      # standard S3 endpoint over IPv4, and IMDS at 169.254.169.254. Reaching
+      # IMDS from inside this container requires the instance's IMDS hop limit to
+      # be >= 2 (set in infra/compute.tf). Only the region must be provided.
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
 
   auth:
-    image: ${ECR}/protofast-auth:${TAG}
+    image: ${ECR}/protofast-auth:${AUTH_TAG}
     restart: unless-stopped
     environment: &dotnet-env
       ASPNETCORE_ENVIRONMENT: Production
@@ -97,7 +122,7 @@ services:
       ASPNETCORE_KESTREL__ENDPOINTDEFAULTS__PROTOCOLS: Http2
       OTEL_EXPORTER_OTLP_ENDPOINT: *otel-grpc
     volumes:
-      # Static grpc_health_probe binary installed on the host (user_data),
+      # Static grpc_health_probe binary installed on the host (deploy.sh),
       # bind-mounted in so the chiseled image needs no extra layer.
       - /usr/local/bin/grpc_health_probe:/usr/local/bin/grpc_health_probe:ro
     healthcheck: &grpc-health
@@ -108,7 +133,7 @@ services:
       start_period: 20s
 
   payments:
-    image: ${ECR}/protofast-payments:${TAG}
+    image: ${ECR}/protofast-payments:${PAYMENTS_TAG}
     restart: unless-stopped
     environment: *dotnet-env
     volumes:
@@ -116,7 +141,7 @@ services:
     healthcheck: *grpc-health
 
   api:
-    image: ${ECR}/protofast-api:${TAG}
+    image: ${ECR}/protofast-api:${API_TAG}
     restart: unless-stopped
     environment: *dotnet-env
     volumes:
@@ -124,7 +149,7 @@ services:
     healthcheck: *grpc-health
 
   otel-collector:
-    image: ${ECR}/protofast-otel-collector:${TAG}
+    image: ${ECR}/protofast-otel-collector:${OTEL_TAG}
     restart: unless-stopped
     environment:
       OTLP_GRPC_PORT: "4317"
@@ -138,9 +163,8 @@ services:
         condition: service_started
 
   aspire-dashboard:
-    # Ephemeral, in-memory telemetry UI (deployment-plan §8 — swap later).
-    # Not published; reached via a CF Access-gated tunnel hostname or SSM
-    # port-forward (deployment-plan §5, Phase 4.1).
+    # Ephemeral, in-memory telemetry UI. Not published; reached via a CF
+    # Access-gated tunnel hostname or SSM port-forward.
     image: mcr.microsoft.com/dotnet/aspire-dashboard:latest
     restart: unless-stopped
     environment:
@@ -150,5 +174,5 @@ services:
 
 secrets:
   tunnel-token:
-    # Written root-only by cloud-init user_data (deployment-plan §3.1).
+    # Written root-only by cloud-init user_data.
     file: /opt/protofast/tunnel-token

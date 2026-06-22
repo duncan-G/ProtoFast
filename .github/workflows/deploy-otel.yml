@@ -1,0 +1,36 @@
+name: deploy-otel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "otel-collector/**"
+      - ".github/workflows/deploy-otel.yml"
+      - ".github/workflows/_component-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing artifact tag to (re)deploy or roll back to. Blank = build current source."
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-otel
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_component-deploy.yml
+    with:
+      component: otel-collector
+      build: buildx
+      target: protofast-otel-collector
+      kind: service
+      hash_paths: "otel-collector"
+      project: ./otel-collector
+      tag: ${{ inputs.tag }}
+    secrets: inherit

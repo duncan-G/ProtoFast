@@ -1,3 +1,9 @@
+# Readiness endpoint the per-component deploy health-checks (deploy.sh): a
+# GET http://otel-collector:13133/ returns 200 once the pipelines are up.
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
 receivers:
   otlp:
     protocols:
@@ -28,6 +34,7 @@ exporters:
       insecure_skip_verify: true
 
 service:
+  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]

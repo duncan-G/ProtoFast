@@ -13,6 +13,11 @@ output "ecr_registry" {
   value       = local.ecr_registry
 }
 
+output "assets_bucket" {
+  description = "S3 bucket for per-client SSR builds (set as repo variable ASSETS_BUCKET; created by infra/assets.tf)."
+  value       = "${var.project}-assets-${local.account_id}"
+}
+
 output "infra_role_arn" {
   description = "ARN the infra workflow assumes (set as repo variable AWS_INFRA_ROLE_ARN)."
   value       = aws_iam_role.infra.arn

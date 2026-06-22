@@ -1,0 +1,37 @@
+name: deploy-payments
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/payments/**"
+      - "services/shared/**"
+      - ".github/workflows/deploy-payments.yml"
+      - ".github/workflows/_component-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing artifact tag to (re)deploy or roll back to. Blank = build current source."
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-payments
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_component-deploy.yml
+    with:
+      component: payments
+      build: dotnet
+      target: protofast-payments
+      kind: service
+      hash_paths: "services/payments services/shared"
+      project: services/payments/src/ProtoFast.Payments.Api
+      tag: ${{ inputs.tag }}
+    secrets: inherit
