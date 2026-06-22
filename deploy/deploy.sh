@@ -57,6 +57,35 @@ set_env() {
 # Read a KEY from .env (after it is populated).
 get_env() { grep -E "^${1}=" "$ENV_FILE" | head -n1 | cut -d= -f2-; }
 
+# Ensure the github-only on-host binaries are present. The instance is IPv6-only
+# and github.com is IPv4-only, so cloud-init cannot curl them; instead CI bundles
+# them into ${ECR}/protofast-tools:<tag>, which the box pulls over the ECR
+# dualstack endpoint (the one path that works over IPv6). Idempotent: a box that
+# already has both (steady state, or a re-run) does nothing. This also self-heals
+# the very first deploy onto a freshly provisioned instance.
+COMPOSE_PLUGIN="/usr/libexec/docker/cli-plugins/docker-compose"
+PROBE="/usr/local/bin/grpc_health_probe"
+ensure_tools() {
+  local tag="$1" ecr cid img
+  if docker compose version >/dev/null 2>&1 && [ -x "$PROBE" ]; then
+    return 0
+  fi
+  ecr="$(get_env ECR)"
+  img="${ecr}/protofast-tools:${tag}"
+  log "provisioning on-host tools from ${img}"
+  docker pull "$img"
+  cid="$(docker create "$img")"
+  mkdir -p "$(dirname "$COMPOSE_PLUGIN")"
+  docker cp "${cid}:/docker-compose" "$COMPOSE_PLUGIN"
+  docker cp "${cid}:/grpc_health_probe" "$PROBE"
+  docker rm -f "$cid" >/dev/null
+  chmod +x "$COMPOSE_PLUGIN" "$PROBE"
+  if ! docker compose version >/dev/null 2>&1; then
+    echo "docker compose plugin still unavailable after provisioning from ${img}" >&2
+    exit 1
+  fi
+}
+
 bring_up() {
   local tag="$1"
   set_env TAG "$tag"
@@ -143,6 +172,7 @@ fi
 
 # --- deploy ---
 log "deploying ${NEW_SHA}"
+ensure_tools "$NEW_SHA"
 bring_up "$NEW_SHA"
 
 if health_check; then

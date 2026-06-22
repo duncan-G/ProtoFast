@@ -76,17 +76,10 @@ variable "instance_tag_value" {
   default     = "app-server"
 }
 
-variable "grpc_health_probe_version" {
-  description = "Version of grpc_health_probe installed on the instance and bind-mounted into the service containers."
-  type        = string
-  default     = "0.4.34"
-}
-
-variable "docker_compose_version" {
-  description = "Docker Compose v2 plugin version. AL2023's docker package doesn't bundle Compose, so user_data installs this plugin binary."
-  type        = string
-  default     = "2.39.4"
-}
+# NOTE: the Docker Compose plugin and grpc_health_probe versions live in the CI
+# deploy workflow (.github/workflows/deploy.yml), which builds them into the
+# protofast-tools image. They are no longer fetched on the instance, so there's
+# no terraform var for them here.
 
 variable "ecr_repositories" {
   description = "ECR repositories to create (must match the compose image names)."
@@ -98,5 +91,10 @@ variable "ecr_repositories" {
     "protofast-payments",
     "protofast-api",
     "protofast-otel-collector",
+    # Not a service image: a tiny bundle of the on-host binaries (docker compose
+    # plugin + grpc_health_probe). The instance is IPv6-only and github.com is
+    # IPv4-only, so these are delivered over the ECR dualstack endpoint instead of
+    # curled from github. CI builds it; deploy.sh extracts from it (deploy.sh).
+    "protofast-tools",
   ]
 }

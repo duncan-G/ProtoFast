@@ -3,13 +3,18 @@
 # only — the instance is cattle; deploys do the rest. Idempotent enough to re-run.
 #
 # AL2023 already ships the AWS CLI v2 and the SSM agent (preinstalled + enabled),
-# so we install neither — only what AL2023 lacks: the Docker engine, the Compose
-# v2 plugin, the ECR credential helper, and grpc_health_probe.
+# so we install neither — only what AL2023 lacks: the Docker engine and the ECR
+# credential helper, both from the AL2023 repos (reachable over IPv6 via dnf).
 #
-# Ordering matters: the SSM dualstack fix runs FIRST, before anything that can
-# fail (the github.com downloads below have no IPv6 path). With `set -e`, a failed
-# download must not abort the script before SSM is configured — otherwise the box
-# is unreachable (no SSH, no inbound) and undebuggable.
+# NOT installed here: the Docker Compose v2 plugin and grpc_health_probe. Those
+# are github-only, and this box is IPv6-only while github.com is IPv4-only — a
+# curl would hang and, under `set -e`, abort cloud-init. They are delivered over
+# the ECR dualstack endpoint instead: CI bundles them into the protofast-tools
+# image and deploy.sh extracts them onto the host on the first deploy (see
+# deploy/deploy.sh ensure_tools).
+#
+# Ordering still matters: the SSM dualstack fix runs FIRST, before anything that
+# could fail, so the box stays reachable (no SSH, no inbound) for debugging.
 set -euxo pipefail
 
 # --- IPv6-only egress: force AWS tooling onto dualstack endpoints -------------
@@ -57,22 +62,11 @@ cat > /root/.docker/config.json <<'JSON'
 { "credHelpers": { "${ecr_registry}": "ecr-login" } }
 JSON
 
-# --- Docker Compose v2 plugin (github.com — no IPv6; see ordering note above) -
-# AL2023's docker package does NOT bundle Compose, so install the plugin binary.
-compose_plugin=/usr/libexec/docker/cli-plugins/docker-compose
-if [ ! -x "$${compose_plugin}" ]; then
-  mkdir -p "$(dirname "$${compose_plugin}")"
-  curl -fsSL -o "$${compose_plugin}" \
-    "https://github.com/docker/compose/releases/download/v${docker_compose_version}/docker-compose-linux-${docker_compose_arch}"
-  chmod +x "$${compose_plugin}"
-fi
-
-# --- grpc_health_probe (github.com — no IPv6; static, bind-mounted to services)
-if [ ! -x /usr/local/bin/grpc_health_probe ]; then
-  curl -fsSL -o /usr/local/bin/grpc_health_probe \
-    "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v${grpc_health_probe_version}/grpc_health_probe-linux-${grpc_health_probe_arch}"
-  chmod +x /usr/local/bin/grpc_health_probe
-fi
+# NOTE: the Docker Compose v2 plugin and grpc_health_probe are NOT installed
+# here (github is IPv4-only; this box is IPv6-only — see header). deploy.sh pulls
+# them from the protofast-tools ECR image over the dualstack endpoint on the
+# first deploy and `docker cp`s them to /usr/libexec/docker/cli-plugins/ and
+# /usr/local/bin/ respectively.
 
 # --- Deploy root -------------------------------------------------------------
 mkdir -p /opt/protofast
