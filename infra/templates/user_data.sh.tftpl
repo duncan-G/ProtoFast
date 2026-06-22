@@ -5,6 +5,11 @@
 # AL2023 already ships the AWS CLI v2 and the SSM agent (preinstalled + enabled),
 # so we install neither — only what AL2023 lacks: the Docker engine, the Compose
 # v2 plugin, the ECR credential helper, and grpc_health_probe.
+#
+# Ordering matters: the SSM dualstack fix runs FIRST, before anything that can
+# fail (the github.com downloads below have no IPv6 path). With `set -e`, a failed
+# download must not abort the script before SSM is configured — otherwise the box
+# is unreachable (no SSH, no inbound) and undebuggable.
 set -euxo pipefail
 
 # --- IPv6-only egress: force AWS tooling onto dualstack endpoints -------------
@@ -17,13 +22,42 @@ export AWS_USE_DUALSTACK_ENDPOINT=true
 grep -q '^AWS_USE_DUALSTACK_ENDPOINT=' /etc/environment \
   || echo 'AWS_USE_DUALSTACK_ENDPOINT=true' >> /etc/environment
 
+# --- AWS SSM agent (preinstalled): upgrade, then force dualstack for IPv6 -----
+# Done first so the instance stays manageable even if a later step fails. The
+# agent must talk to SSM over IPv6 too. It does NOT read AWS_USE_DUALSTACK_ENDPOINT
+# (that var is honoured only by the CLI/SDKs); the agent has its own config key,
+# Agent.UseDualStackEndpoint, in amazon-ssm-agent.json. Without an *active*
+# dualstack setting it resolves the IPv4-only *.amazonaws.com endpoints (no AAAA
+# records) and never registers on this IPv6-only box.
+#
+# UseDualStackEndpoint is honoured only by agent >= 3.3.270.0. AL2023's
+# PREINSTALLED agent is frozen at AMI-build time and can predate that (unlike the
+# Ubuntu snap, which tracked "latest"), so it would silently ignore the config
+# and keep calling the IPv4 endpoint. Upgrade to the repo's latest first — dnf
+# reaches AL2023's repos over IPv6.
+dnf upgrade -y amazon-ssm-agent || true
+
+ssm_cfg_dir=/etc/amazon/ssm
+mkdir -p "$${ssm_cfg_dir}"
+cat > "$${ssm_cfg_dir}/amazon-ssm-agent.json" <<'JSON'
+{ "Agent": { "Region": "${aws_region}", "UseDualStackEndpoint": true } }
+JSON
+systemctl enable --now amazon-ssm-agent || true
+systemctl restart amazon-ssm-agent
+
 # --- Docker engine + ECR credential helper (from the AL2023 repos) -----------
 # docker pulls auth via the instance role through the credential helper; AL2023's
-# helper is recent enough for the ECR dualstack endpoint (needs >= 0.10.0).
+# helper must be >= 0.10.0 for the ECR dualstack endpoint (verify: dnf info).
 dnf install -y docker amazon-ecr-credential-helper
 systemctl enable --now docker
 
-# --- Docker Compose v2 plugin -------------------------------------------------
+# ECR credential helper config: pulls auth via the instance role.
+mkdir -p /root/.docker
+cat > /root/.docker/config.json <<'JSON'
+{ "credHelpers": { "${ecr_registry}": "ecr-login" } }
+JSON
+
+# --- Docker Compose v2 plugin (github.com — no IPv6; see ordering note above) -
 # AL2023's docker package does NOT bundle Compose, so install the plugin binary.
 compose_plugin=/usr/libexec/docker/cli-plugins/docker-compose
 if [ ! -x "$${compose_plugin}" ]; then
@@ -33,28 +67,7 @@ if [ ! -x "$${compose_plugin}" ]; then
   chmod +x "$${compose_plugin}"
 fi
 
-# --- ECR credential helper config: pulls auth via the instance role ----------
-mkdir -p /root/.docker
-cat > /root/.docker/config.json <<'JSON'
-{ "credHelpers": { "${ecr_registry}": "ecr-login" } }
-JSON
-
-# --- AWS SSM agent (preinstalled): force dualstack so it registers over IPv6 --
-# The agent must talk to SSM over IPv6 too. It does NOT read
-# AWS_USE_DUALSTACK_ENDPOINT (that var is honoured only by the CLI/SDKs); the
-# agent has its own config key, Agent.UseDualStackEndpoint, in
-# amazon-ssm-agent.json. Without it the agent resolves the IPv4-only
-# *.amazonaws.com endpoints (no AAAA records) and never registers on this
-# IPv6-only box. Requires SSM Agent >= 3.3.270.0 (AL2023's is well past that).
-ssm_cfg_dir=/etc/amazon/ssm
-mkdir -p "$${ssm_cfg_dir}"
-cat > "$${ssm_cfg_dir}/amazon-ssm-agent.json" <<'JSON'
-{ "Agent": { "Region": "${aws_region}", "UseDualStackEndpoint": true } }
-JSON
-systemctl enable --now amazon-ssm-agent || true
-systemctl restart amazon-ssm-agent || true
-
-# --- grpc_health_probe (static; bind-mounted into the service containers) -----
+# --- grpc_health_probe (github.com — no IPv6; static, bind-mounted to services)
 if [ ! -x /usr/local/bin/grpc_health_probe ]; then
   curl -fsSL -o /usr/local/bin/grpc_health_probe \
     "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v${grpc_health_probe_version}/grpc_health_probe-linux-${grpc_health_probe_arch}"
