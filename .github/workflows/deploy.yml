@@ -70,8 +70,26 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4
 
+      # ECR tags are immutable, so re-running for an already-built commit would
+      # fail on push. Since the tag is the commit SHA, an existing image was
+      # built from identical source — check per-repo and skip what's present so
+      # re-runs are idempotent.
+      - name: Check which images already exist
+        id: exists
+        run: |
+          set -euo pipefail
+          check() {
+            aws ecr describe-images --repository-name "$1" \
+              --image-ids imageTag="${TAG}" >/dev/null 2>&1 \
+              && echo "true" || echo "false"
+          }
+          echo "envoy=$(check protofast-envoy)"               >> "$GITHUB_OUTPUT"
+          echo "clients_host=$(check protofast-clients-host)" >> "$GITHUB_OUTPUT"
+          echo "otel=$(check protofast-otel-collector)"       >> "$GITHUB_OUTPUT"
+
       # --- container images via Buildx (arm64) ---
       - name: Build & push envoy
+        if: steps.exists.outputs.envoy == 'false'
         uses: docker/build-push-action@v7
         with:
           context: ./proxy
@@ -80,6 +98,7 @@ jobs:
           tags: ${{ env.ECR }}/protofast-envoy:${{ env.TAG }}
 
       - name: Build & push clients-host (repo-root context)
+        if: steps.exists.outputs.clients_host == 'false'
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -89,6 +108,7 @@ jobs:
           tags: ${{ env.ECR }}/protofast-clients-host:${{ env.TAG }}
 
       - name: Build & push otel-collector
+        if: steps.exists.outputs.otel == 'false'
         uses: docker/build-push-action@v7
         with:
           context: ./otel-collector
@@ -108,6 +128,10 @@ jobs:
             "payments:services/payments/src/ProtoFast.Payments.Api" \
             "api:services/api/src/ProtoFast.Api"; do
             name="${svc%%:*}"; path="${svc##*:}"
+            if aws ecr describe-images --repository-name "protofast-${name}" \
+                 --image-ids imageTag="${TAG}" >/dev/null 2>&1; then
+              echo "protofast-${name}:${TAG} already exists, skipping"; continue
+            fi
             dotnet publish "$path" -c Release /t:PublishContainer \
               -p ContainerRegistry="${ECR}" \
               -p ContainerRepository="protofast-${name}" \
