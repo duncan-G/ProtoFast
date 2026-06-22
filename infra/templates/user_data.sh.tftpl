@@ -1,79 +1,58 @@
 #!/usr/bin/env bash
-# cloud-init for the ProtoFast app server. One-time setup
+# cloud-init for the ProtoFast app server (Amazon Linux 2023). One-time setup
 # only — the instance is cattle; deploys do the rest. Idempotent enough to re-run.
+#
+# AL2023 already ships the AWS CLI v2 and the SSM agent (preinstalled + enabled),
+# so we install neither — only what AL2023 lacks: the Docker engine, the Compose
+# v2 plugin, the ECR credential helper, and grpc_health_probe.
 set -euxo pipefail
-
-export DEBIAN_FRONTEND=noninteractive
 
 # --- IPv6-only egress: force AWS tooling onto dualstack endpoints -------------
 # The default *.amazonaws.com endpoints are IPv4-only; this box has no public
 # IPv4, so every AWS call (CLI, ECR credential helper, SDKs invoked by deploys)
 # must resolve to the dualstack endpoints. Persisted in /etc/environment so all
 # PAM sessions — including SSM Run Command shells — inherit it. The SSM agent
-# itself gets the same via a systemd drop-in below.
+# itself gets the same via its own config key below.
 export AWS_USE_DUALSTACK_ENDPOINT=true
 grep -q '^AWS_USE_DUALSTACK_ENDPOINT=' /etc/environment \
   || echo 'AWS_USE_DUALSTACK_ENDPOINT=true' >> /etc/environment
 
-# --- Docker engine + compose plugin ------------------------------------------
-apt-get update -y
-apt-get install -y ca-certificates curl gnupg unzip
-
-if ! command -v docker >/dev/null 2>&1; then
-  install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-    | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-  chmod a+r /etc/apt/keyrings/docker.gpg
-
-  . /etc/os-release
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-https://download.docker.com/linux/ubuntu $${VERSION_CODENAME} stable" \
-    > /etc/apt/sources.list.d/docker.list
-
-  apt-get update -y
-  apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-fi
+# --- Docker engine + ECR credential helper (from the AL2023 repos) -----------
+# docker pulls auth via the instance role through the credential helper; AL2023's
+# helper is recent enough for the ECR dualstack endpoint (needs >= 0.10.0).
+dnf install -y docker amazon-ecr-credential-helper
 systemctl enable --now docker
 
-# --- AWS SSM agent (Session Manager + Run Command; no SSH) --------------------
-snap install amazon-ssm-agent --classic || true
+# --- Docker Compose v2 plugin -------------------------------------------------
+# AL2023's docker package does NOT bundle Compose, so install the plugin binary.
+compose_plugin=/usr/libexec/docker/cli-plugins/docker-compose
+if [ ! -x "$${compose_plugin}" ]; then
+  mkdir -p "$(dirname "$${compose_plugin}")"
+  curl -fsSL -o "$${compose_plugin}" \
+    "https://github.com/docker/compose/releases/download/v${docker_compose_version}/docker-compose-linux-${docker_compose_arch}"
+  chmod +x "$${compose_plugin}"
+fi
 
+# --- ECR credential helper config: pulls auth via the instance role ----------
+mkdir -p /root/.docker
+cat > /root/.docker/config.json <<'JSON'
+{ "credHelpers": { "${ecr_registry}": "ecr-login" } }
+JSON
+
+# --- AWS SSM agent (preinstalled): force dualstack so it registers over IPv6 --
 # The agent must talk to SSM over IPv6 too. It does NOT read
 # AWS_USE_DUALSTACK_ENDPOINT (that var is honoured only by the CLI/SDKs); the
 # agent has its own config key, Agent.UseDualStackEndpoint, in
 # amazon-ssm-agent.json. Without it the agent resolves the IPv4-only
 # *.amazonaws.com endpoints (no AAAA records) and never registers on this
-# IPv6-only box. Requires SSM Agent >= 3.3.270.0 (snap latest is well past that).
+# IPv6-only box. Requires SSM Agent >= 3.3.270.0 (AL2023's is well past that).
 ssm_cfg_dir=/etc/amazon/ssm
 mkdir -p "$${ssm_cfg_dir}"
 cat > "$${ssm_cfg_dir}/amazon-ssm-agent.json" <<'JSON'
 { "Agent": { "Region": "${aws_region}", "UseDualStackEndpoint": true } }
 JSON
-
-ssm_unit="snap.amazon-ssm-agent.amazon-ssm-agent.service"
-systemctl enable --now "$${ssm_unit}" || \
-  systemctl enable --now amazon-ssm-agent || true
-snap restart amazon-ssm-agent || \
-  systemctl restart "$${ssm_unit}" || systemctl restart amazon-ssm-agent || true
-
-# --- AWS CLI v2 (for ECR login in deploy.sh) ---------------------------------
-if ! command -v aws >/dev/null 2>&1; then
-  case "${grpc_health_probe_arch}" in
-    arm64) awscli_arch="aarch64" ;;
-    *)     awscli_arch="x86_64" ;;
-  esac
-  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$${awscli_arch}.zip" -o /tmp/awscliv2.zip
-  unzip -q /tmp/awscliv2.zip -d /tmp
-  /tmp/aws/install
-  rm -rf /tmp/aws /tmp/awscliv2.zip
-fi
-
-# --- amazon-ecr-credential-helper: docker pulls auth via the instance role ----
-apt-get install -y amazon-ecr-credential-helper || true
-mkdir -p /root/.docker
-cat > /root/.docker/config.json <<'JSON'
-{ "credHelpers": { "${ecr_registry}": "ecr-login" } }
-JSON
+systemctl enable --now amazon-ssm-agent || true
+systemctl restart amazon-ssm-agent || true
 
 # --- grpc_health_probe (static; bind-mounted into the service containers) -----
 if [ ! -x /usr/local/bin/grpc_health_probe ]; then

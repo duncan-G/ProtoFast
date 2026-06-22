@@ -82,6 +82,12 @@ variable "grpc_health_probe_version" {
   default     = "0.4.34"
 }
 
+variable "docker_compose_version" {
+  description = "Docker Compose v2 plugin version. AL2023's docker package doesn't bundle Compose, so user_data installs this plugin binary."
+  type        = string
+  default     = "2.39.4"
+}
+
 variable "ecr_repositories" {
   description = "ECR repositories to create (must match the compose image names)."
   type        = list(string)

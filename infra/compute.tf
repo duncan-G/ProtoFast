@@ -4,23 +4,26 @@
 
 data "aws_caller_identity" "current" {}
 
-# Canonical Ubuntu 24.04 LTS (Noble), matched to the instance architecture.
-data "aws_ami" "ubuntu" {
-  most_recent = true
-  owners      = ["099720109477"] # Canonical
-
-  filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-${var.instance_arch}-server-*"]
-  }
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
+# Latest Amazon Linux 2023 AMI for the instance architecture. AL2023 ships the
+# AWS CLI v2 and SSM agent preinstalled (so user_data installs neither) and
+# carries a recent amazon-ecr-credential-helper in its repos. Resolved via the
+# public SSM parameter AWS keeps current, so there's no hard-coded AMI ID to age.
+data "aws_ssm_parameter" "al2023" {
+  name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-${local.ssm_arch}"
 }
 
 locals {
-  ecr_registry = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
+  # Dualstack endpoint (.dkr-ecr.<region>.on.aws), not the IPv4-only
+  # .dkr.ecr.<region>.amazonaws.com one: the instance is IPv6-only, so image
+  # pulls must resolve over IPv6. Same underlying registry/repos as the standard
+  # endpoint — CI still pushes to the IPv4 endpoint, which is fine.
+  ecr_registry = "${data.aws_caller_identity.current.account_id}.dkr-ecr.${var.aws_region}.on.aws"
+
+  # Architecture naming differs per artifact: the AL2023 SSM AMI parameter and
+  # AWS use arm64/x86_64; the Docker Compose release assets use aarch64/x86_64;
+  # grpc_health_probe uses var.instance_arch (arm64/amd64) directly.
+  ssm_arch     = var.instance_arch == "arm64" ? "arm64" : "x86_64"
+  compose_arch = var.instance_arch == "arm64" ? "aarch64" : "x86_64"
 
   user_data = templatefile("${path.module}/templates/user_data.sh.tftpl", {
     ecr_registry              = local.ecr_registry
@@ -31,18 +34,22 @@ locals {
     tunnel_token              = local.tunnel_token
     grpc_health_probe_version = var.grpc_health_probe_version
     grpc_health_probe_arch    = var.instance_arch
+    docker_compose_version    = var.docker_compose_version
+    docker_compose_arch       = local.compose_arch
   })
 }
 
 resource "aws_instance" "app" {
-  ami                    = data.aws_ami.ubuntu.id
+  ami                    = data.aws_ssm_parameter.al2023.value
   instance_type          = var.instance_type
   subnet_id              = aws_default_subnet.default.id
   vpc_security_group_ids = [aws_security_group.instance.id]
   iam_instance_profile   = aws_iam_instance_profile.instance.name
 
   # IPv6-only egress: no billable public IPv4. One public IPv6 whose only route
-  # out is the egress-only gateway covers SSM/ECR/tunnel/CloudWatch.
+  # out is the egress-only gateway covers SSM/ECR/tunnel/CloudWatch. ECR is
+  # reached over its dualstack endpoint (<acct>.dkr-ecr.<region>.on.aws) — see
+  # local.ecr_registry.
   associate_public_ip_address = false
   ipv6_address_count          = 1
 
