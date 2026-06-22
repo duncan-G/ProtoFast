@@ -14,23 +14,28 @@ data "aws_ssm_parameter" "al2023" {
 
 locals {
   # Dualstack endpoint (.dkr-ecr.<region>.on.aws), not the IPv4-only
-  # .dkr.ecr.<region>.amazonaws.com one: the instance is IPv6-only, so image
-  # pulls must resolve over IPv6. Same underlying registry/repos as the standard
-  # endpoint — CI still pushes to the IPv4 endpoint, which is fine.
+  # .dkr.ecr.<region>.amazonaws.com one: it resolves over both IPv4 and IPv6, so
+  # image pulls prefer IPv6 where available. Same underlying registry/repos as the
+  # standard endpoint — CI still pushes to the IPv4 endpoint, which is fine.
   ecr_registry = "${data.aws_caller_identity.current.account_id}.dkr-ecr.${var.aws_region}.on.aws"
 
-  # The AL2023 SSM AMI parameter uses arm64/x86_64. The Compose plugin and
-  # grpc_health_probe are no longer fetched on the box (the deploy pipeline ships
-  # them via ECR — see deploy/deploy.sh), so no compose/probe arch mapping here.
+  # The AL2023 SSM AMI parameter uses arm64/x86_64.
   ssm_arch = var.instance_arch == "arm64" ? "arm64" : "x86_64"
 
+  # Compose release assets use aarch64/x86_64; grpc_health_probe uses arm64/amd64.
+  compose_arch = var.instance_arch == "arm64" ? "aarch64" : "x86_64"
+
   user_data = templatefile("${path.module}/templates/user_data.sh.tftpl", {
-    ecr_registry     = local.ecr_registry
-    aws_region       = var.aws_region
-    admin_domain     = var.admin_domain
-    protofast_domain = var.protofast_domain
-    default_client   = "admin"
-    tunnel_token     = local.tunnel_token
+    ecr_registry              = local.ecr_registry
+    aws_region                = var.aws_region
+    admin_domain              = var.admin_domain
+    protofast_domain          = var.protofast_domain
+    default_client            = "admin"
+    tunnel_token              = local.tunnel_token
+    compose_plugin_version    = var.compose_plugin_version
+    compose_arch              = local.compose_arch
+    grpc_health_probe_version = var.grpc_health_probe_version
+    grpc_health_probe_arch    = var.instance_arch
   })
 }
 
@@ -41,11 +46,11 @@ resource "aws_instance" "app" {
   vpc_security_group_ids = [aws_security_group.instance.id]
   iam_instance_profile   = aws_iam_instance_profile.instance.name
 
-  # IPv6-only egress: no billable public IPv4. One public IPv6 whose only route
-  # out is the egress-only gateway covers SSM/ECR/tunnel/CloudWatch. ECR is
-  # reached over its dualstack endpoint (<acct>.dkr-ecr.<region>.on.aws) — see
-  # local.ecr_registry.
-  associate_public_ip_address = false
+  # Dual-stack egress (no inbound SG rules): a public IPv4 for plain-IPv4
+  # destinations (github, etc.) plus a public IPv6, used where supported such as
+  # the ECR dualstack endpoint (<acct>.dkr-ecr.<region>.on.aws — see
+  # local.ecr_registry). Covers SSM/ECR/tunnel/CloudWatch.
+  associate_public_ip_address = true
   ipv6_address_count          = 1
 
   user_data                   = local.user_data
@@ -54,7 +59,7 @@ resource "aws_instance" "app" {
   metadata_options {
     http_tokens        = "required" # IMDSv2 only
     http_endpoint      = "enabled"
-    http_protocol_ipv6 = "enabled" # IMDS reachable on the IPv6-only box
+    http_protocol_ipv6 = "enabled" # IMDS reachable over IPv6 too (dual-stack)
   }
 
   root_block_device {
