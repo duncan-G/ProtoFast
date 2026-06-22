@@ -52,6 +52,7 @@ gh variable set AWS_REGION          --body "$(terraform output -raw aws_region)"
 gh variable set AWS_INFRA_ROLE_ARN  --body "$(terraform output -raw infra_role_arn)"
 gh variable set AWS_DEPLOY_ROLE_ARN --body "$(terraform output -raw deploy_role_arn)"
 gh variable set ECR_REGISTRY        --body "$(terraform output -raw ecr_registry)"
+gh variable set ASSETS_BUCKET       --body "$(terraform output -raw assets_bucket)"
 gh secret   set CLOUDFLARE_API_TOKEN
 ```
 

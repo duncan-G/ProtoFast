@@ -8,6 +8,10 @@ locals {
   ]
 
   state_bucket_arn = aws_s3_bucket.state.arn
+
+  # Deterministic assets-bucket name (matches infra/assets.tf), so the deploy
+  # role can be granted write without depending on the main stack's outputs.
+  assets_bucket_arn = "arn:aws:s3:::${var.project}-assets-${local.account_id}"
 }
 
 # ---------------------------------------------------------------------------
@@ -208,6 +212,30 @@ data "aws_iam_policy_document" "deploy" {
     effect    = "Allow"
     actions   = ["ec2:DescribeInstances"]
     resources = ["*"]
+  }
+
+  # Publish client SSR builds to the assets bucket under clients/<name>/<tag>/,
+  # and prune superseded tags beyond KEEP_RELEASES. Scoped to the clients/ prefix.
+  statement {
+    sid       = "AssetsList"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = [local.assets_bucket_arn]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["clients/*"]
+    }
+  }
+  statement {
+    sid    = "AssetsWrite"
+    effect = "Allow"
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+    ]
+    resources = ["${local.assets_bucket_arn}/clients/*"]
   }
 
   statement {

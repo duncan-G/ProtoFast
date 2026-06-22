@@ -4,28 +4,40 @@
  * from the subdomain in publish mode, or the per-client listener in dev-host
  * mode); unknown or missing values fall back to DEFAULT_CLIENT.
  *
- * Each client's built server bundle exports `reqHandler` and only calls
- * listen() when run as the main module, so importing them here is safe.
+ * Clients are NOT baked into this image. The entrypoint (entrypoint.sh) pulls
+ * each pinned client's built assets from S3 into ASSETS_DIR/<name>/ before this
+ * process starts, so the set of clients is discovered at runtime from the
+ * `CLIENTS` env var (comma-separated) rather than a hard-coded loader map. Each
+ * client's built server bundle exports `reqHandler` and only calls listen()
+ * when run as the main module, so importing them here is safe.
  */
 import express from 'express';
+import { pathToFileURL } from 'node:url';
 
-// Add new clients here (the add-angular-client skill does this).
-const clientLoaders = {
-  admin: () => import('./admin/dist/admin/server/server.mjs'),
-  protofast: () => import('./protofast/dist/protofast/server/server.mjs'),
-};
+const assetsDir = process.env['ASSETS_DIR'] || '/assets';
 
-const defaultClient =
-  process.env['DEFAULT_CLIENT'] || Object.keys(clientLoaders)[0];
+const clientNames = (process.env['CLIENTS'] || '')
+  .split(',')
+  .map((name) => name.trim())
+  .filter(Boolean);
+
+if (clientNames.length === 0) {
+  throw new Error('CLIENTS env var is empty; no clients to serve');
+}
+
+const defaultClient = process.env['DEFAULT_CLIENT'] || clientNames[0];
 
 const handlers = new Map();
-for (const [name, load] of Object.entries(clientLoaders)) {
-  const { reqHandler } = await load();
+for (const name of clientNames) {
+  // Each client's assets were synced to <assetsDir>/<name>/{server,browser}/
+  // by the entrypoint; import its self-contained server bundle by absolute path.
+  const entry = pathToFileURL(`${assetsDir}/${name}/server/server.mjs`).href;
+  const { reqHandler } = await import(entry);
   handlers.set(name, reqHandler);
 }
 
 if (!handlers.has(defaultClient)) {
-  throw new Error(`DEFAULT_CLIENT "${defaultClient}" is not a known client`);
+  throw new Error(`DEFAULT_CLIENT "${defaultClient}" is not in CLIENTS`);
 }
 
 const app = express();

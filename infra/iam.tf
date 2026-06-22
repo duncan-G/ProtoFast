@@ -56,6 +56,35 @@ resource "aws_iam_role_policy" "instance_ecr" {
   policy = data.aws_iam_policy_document.instance_ecr.json
 }
 
+# Read-only on the assets bucket so the clients-host entrypoint can
+# `aws s3 sync` each pinned client's build from clients/<name>/<tag>/ using the
+# instance profile (no credentials on the box). Write stays with the deploy role.
+data "aws_iam_policy_document" "instance_assets" {
+  statement {
+    sid       = "AssetsList"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.assets.arn]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["clients/*"]
+    }
+  }
+  statement {
+    sid       = "AssetsGet"
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.assets.arn}/clients/*"]
+  }
+}
+
+resource "aws_iam_role_policy" "instance_assets" {
+  name   = "${var.project}-instance-assets"
+  role   = aws_iam_role.instance.id
+  policy = data.aws_iam_policy_document.instance_assets.json
+}
+
 resource "aws_iam_instance_profile" "instance" {
   name = "${var.project}-instance"
   role = aws_iam_role.instance.name
