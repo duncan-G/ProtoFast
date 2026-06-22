@@ -76,10 +76,19 @@ variable "instance_tag_value" {
   default     = "app-server"
 }
 
-# NOTE: the Docker Compose plugin and grpc_health_probe versions live in the CI
-# deploy workflow (.github/workflows/deploy.yml), which builds them into the
-# protofast-tools image. They are no longer fetched on the instance, so there's
-# no terraform var for them here.
+# On-host binaries fetched from github by cloud-init (user_data). The instance is
+# dual-stack, so github.com (IPv4) is reachable directly — no extras needed.
+variable "compose_plugin_version" {
+  description = "Docker Compose v2 plugin version installed on the instance (no leading v)."
+  type        = string
+  default     = "2.39.4"
+}
+
+variable "grpc_health_probe_version" {
+  description = "grpc_health_probe version installed on the instance (no leading v)."
+  type        = string
+  default     = "0.4.34"
+}
 
 variable "ecr_repositories" {
   description = "ECR repositories to create (must match the compose image names)."
@@ -91,10 +100,5 @@ variable "ecr_repositories" {
     "protofast-payments",
     "protofast-api",
     "protofast-otel-collector",
-    # Not a service image: a tiny bundle of the on-host binaries (docker compose
-    # plugin + grpc_health_probe). The instance is IPv6-only and github.com is
-    # IPv4-only, so these are delivered over the ECR dualstack endpoint instead of
-    # curled from github. CI builds it; deploy.sh extracts from it (deploy.sh).
-    "protofast-tools",
   ]
 }

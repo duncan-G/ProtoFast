@@ -4,55 +4,20 @@
 #
 # AL2023 already ships the AWS CLI v2 and the SSM agent (preinstalled + enabled),
 # so we install neither — only what AL2023 lacks: the Docker engine and the ECR
-# credential helper, both from the AL2023 repos (reachable over IPv6 via dnf).
+# credential helper (from the AL2023 repos via dnf), plus the github-only Docker
+# Compose v2 plugin and grpc_health_probe (curled directly — the instance is
+# dual-stack, so plain-IPv4 github.com is reachable with no extras).
 #
-# NOT installed here: the Docker Compose v2 plugin and grpc_health_probe. Those
-# are github-only, and this box is IPv6-only while github.com is IPv4-only — a
-# curl would hang and, under `set -e`, abort cloud-init. They are delivered over
-# the ECR dualstack endpoint instead: CI bundles them into the protofast-tools
-# image and deploy.sh extracts them onto the host on the first deploy (see
-# deploy/deploy.sh ensure_tools).
-#
-# Ordering still matters: the SSM dualstack fix runs FIRST, before anything that
-# could fail, so the box stays reachable (no SSH, no inbound) for debugging.
+# Ordering: the SSM agent is enabled FIRST, before anything that could fail, so
+# the box stays reachable (no SSH, no inbound) for debugging.
 set -euxo pipefail
 
-# --- IPv6-only egress: force AWS tooling onto dualstack endpoints -------------
-# The default *.amazonaws.com endpoints are IPv4-only; this box has no public
-# IPv4, so every AWS call (CLI, ECR credential helper, SDKs invoked by deploys)
-# must resolve to the dualstack endpoints. Persisted in /etc/environment so all
-# PAM sessions — including SSM Run Command shells — inherit it. The SSM agent
-# itself gets the same via its own config key below.
-export AWS_USE_DUALSTACK_ENDPOINT=true
-grep -q '^AWS_USE_DUALSTACK_ENDPOINT=' /etc/environment \
-  || echo 'AWS_USE_DUALSTACK_ENDPOINT=true' >> /etc/environment
-
-# --- AWS SSM agent (preinstalled): upgrade, then force dualstack for IPv6 -----
-# Done first so the instance stays manageable even if a later step fails. The
-# agent must talk to SSM over IPv6 too. It does NOT read AWS_USE_DUALSTACK_ENDPOINT
-# (that var is honoured only by the CLI/SDKs); the agent has its own config key,
-# Agent.UseDualStackEndpoint, in amazon-ssm-agent.json. Without an *active*
-# dualstack setting it resolves the IPv4-only *.amazonaws.com endpoints (no AAAA
-# records) and never registers on this IPv6-only box.
-#
-# UseDualStackEndpoint is honoured only by agent >= 3.3.270.0. AL2023's
-# PREINSTALLED agent is frozen at AMI-build time and can predate that (unlike the
-# Ubuntu snap, which tracked "latest"), so it would silently ignore the config
-# and keep calling the IPv4 endpoint. Upgrade to the repo's latest first — dnf
-# reaches AL2023's repos over IPv6.
-dnf upgrade -y amazon-ssm-agent || true
-
-ssm_cfg_dir=/etc/amazon/ssm
-mkdir -p "$${ssm_cfg_dir}"
-cat > "$${ssm_cfg_dir}/amazon-ssm-agent.json" <<'JSON'
-{ "Agent": { "Region": "${aws_region}", "UseDualStackEndpoint": true } }
-JSON
+# --- AWS SSM agent (preinstalled) --------------------------------------------
+# Enabled first so the instance stays manageable even if a later step fails.
 systemctl enable --now amazon-ssm-agent || true
-systemctl restart amazon-ssm-agent
 
 # --- Docker engine + ECR credential helper (from the AL2023 repos) -----------
-# docker pulls auth via the instance role through the credential helper; AL2023's
-# helper must be >= 0.10.0 for the ECR dualstack endpoint (verify: dnf info).
+# docker pulls auth via the instance role through the credential helper.
 dnf install -y docker amazon-ecr-credential-helper
 systemctl enable --now docker
 
@@ -62,11 +27,21 @@ cat > /root/.docker/config.json <<'JSON'
 { "credHelpers": { "${ecr_registry}": "ecr-login" } }
 JSON
 
-# NOTE: the Docker Compose v2 plugin and grpc_health_probe are NOT installed
-# here (github is IPv4-only; this box is IPv6-only — see header). deploy.sh pulls
-# them from the protofast-tools ECR image over the dualstack endpoint on the
-# first deploy and `docker cp`s them to /usr/libexec/docker/cli-plugins/ and
-# /usr/local/bin/ respectively.
+# --- Docker Compose v2 plugin (github) ---------------------------------------
+compose_plugin=/usr/libexec/docker/cli-plugins/docker-compose
+if ! docker compose version >/dev/null 2>&1; then
+  mkdir -p "$(dirname "$${compose_plugin}")"
+  curl -fsSL -o "$${compose_plugin}" \
+    "https://github.com/docker/compose/releases/download/v${compose_plugin_version}/docker-compose-linux-${compose_arch}"
+  chmod +x "$${compose_plugin}"
+fi
+
+# --- grpc_health_probe (static; bind-mounted into the service containers) -----
+if [ ! -x /usr/local/bin/grpc_health_probe ]; then
+  curl -fsSL -o /usr/local/bin/grpc_health_probe \
+    "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v${grpc_health_probe_version}/grpc_health_probe-linux-${grpc_health_probe_arch}"
+  chmod +x /usr/local/bin/grpc_health_probe
+fi
 
 # --- Deploy root -------------------------------------------------------------
 mkdir -p /opt/protofast

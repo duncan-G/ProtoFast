@@ -26,11 +26,6 @@ env:
   ARCH: arm64 # matches the t4g (ARM) instance
   INSTANCE_TAG_KEY: "protofast:role"
   INSTANCE_TAG_VALUE: "app-server"
-  # On-host binaries the IPv6-only instance can't curl from IPv4-only github.com.
-  # Downloaded here (the runner has IPv4) and shipped via the ECR dualstack
-  # endpoint in the protofast-tools image; deploy.sh extracts them on the box.
-  DOCKER_COMPOSE_VERSION: "2.39.4"
-  GRPC_HEALTH_PROBE_VERSION: "0.4.34"
 
 jobs:
   test:
@@ -91,7 +86,6 @@ jobs:
           echo "envoy=$(check protofast-envoy)"               >> "$GITHUB_OUTPUT"
           echo "clients_host=$(check protofast-clients-host)" >> "$GITHUB_OUTPUT"
           echo "otel=$(check protofast-otel-collector)"       >> "$GITHUB_OUTPUT"
-          echo "tools=$(check protofast-tools)"               >> "$GITHUB_OUTPUT"
 
       # --- container images via Buildx (arm64) ---
       - name: Build & push envoy
@@ -121,30 +115,6 @@ jobs:
           platforms: linux/${{ env.ARCH }}
           push: true
           tags: ${{ env.ECR }}/protofast-otel-collector:${{ env.TAG }}
-
-      # On-host tools bundle (docker compose plugin + grpc_health_probe). The
-      # instance is IPv6-only and can't reach IPv4-only github.com, so we fetch
-      # the binaries here (the runner has IPv4) and ship them in an image the box
-      # pulls over the ECR dualstack endpoint. deploy.sh cp's them onto the host.
-      - name: Build & push tools bundle
-        if: steps.exists.outputs.tools == 'false'
-        run: |
-          set -euo pipefail
-          # Compose release assets use aarch64/x86_64; grpc_health_probe uses arm64/amd64.
-          case "${ARCH}" in
-            arm64) compose_arch=aarch64; probe_arch=arm64 ;;
-            amd64) compose_arch=x86_64;  probe_arch=amd64 ;;
-            *) echo "unsupported ARCH=${ARCH}" >&2; exit 1 ;;
-          esac
-          ctx="$(mktemp -d)"
-          curl -fsSL -o "${ctx}/docker-compose" \
-            "https://github.com/docker/compose/releases/download/v${DOCKER_COMPOSE_VERSION}/docker-compose-linux-${compose_arch}"
-          curl -fsSL -o "${ctx}/grpc_health_probe" \
-            "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-${probe_arch}"
-          chmod +x "${ctx}/docker-compose" "${ctx}/grpc_health_probe"
-          cp deploy/tools/Dockerfile "${ctx}/Dockerfile"
-          docker buildx build --platform "linux/${ARCH}" --push \
-            -t "${ECR}/protofast-tools:${TAG}" "${ctx}"
 
       # --- .NET services via the SDK container publish (pushes directly to ECR) ---
       - uses: actions/setup-dotnet@v5
