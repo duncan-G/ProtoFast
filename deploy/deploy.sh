@@ -128,6 +128,19 @@ prune_old_images() {
   done
 }
 
+# The registry host is the same for every deploy. cloud-init seeds it into .env
+# at boot, but the deploy job also passes ECR (from the ECR_REGISTRY repo var) so
+# the deploy is self-sufficient even if that seed is missing or stale. Persist it
+# (like TAG) and fail loudly if we still have no registry — an empty ECR renders
+# image refs as "/protofast-<name>:<tag>", which Docker rejects.
+if [ -n "${ECR:-}" ]; then
+  set_env ECR "$ECR"
+fi
+if [ -z "$(get_env ECR)" ]; then
+  echo "ECR is not set in ${ENV_FILE} and no ECR was passed to deploy.sh" >&2
+  exit 1
+fi
+
 # --- deploy ---
 log "deploying ${NEW_SHA}"
 bring_up "$NEW_SHA"
