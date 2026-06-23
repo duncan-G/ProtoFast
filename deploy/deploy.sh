@@ -257,6 +257,17 @@ for pair in "$@"; do
   [ -f "$VERSIONS_FILE" ] && cp "$VERSIONS_FILE" "$VERSIONS_PREV" || : > "$VERSIONS_PREV"
   set_env "$VERSIONS_FILE" "$KEY" "$NEW_TAG"
 
+  # A client pin made before the clients host exists: there is no host container
+  # to recreate, and its image tag is unset so the ref ".../protofast-clients-host:"
+  # is unresolvable (Docker would reject it). The build job has already pushed this
+  # client's assets to S3 and the pin is now in the manifest, so the next
+  # clients-host deploy reads versions.env and pulls this client from S3. Record
+  # the pin and skip the on-box rollout rather than failing the deploy.
+  if [ "$KIND" = client ] && [ -z "$(get_env "$VERSIONS_FILE" CLIENTS_HOST_TAG)" ]; then
+    log "${COMPONENT}=${NEW_TAG} pinned; clients host not deployed yet — assets are in S3, skipping recreate"
+    continue
+  fi
+
   apply_kind
 
   if health_check; then
