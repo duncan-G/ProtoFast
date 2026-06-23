@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Scheduled logical backup of Host B's Postgres (§6.3 — the durable restore path;
 # clean shutdown protects the volume, backups protect against everything else).
-# pg_dump the keycloak + sessions DBs through the running container and upload each
+# pg_dump the keycloak + auth DBs through the running container and upload each
 # gzip to s3://<assets-bucket>/backups/postgres/<db>/<utc-timestamp>.sql.gz.
 #
 # Run by the protofast-pgbackup.timer systemd unit (installed by Host B cloud-init)
@@ -29,7 +29,7 @@ compose() {
 
 ts="$(date -u +%Y%m%dT%H%M%SZ)"
 rc=0
-for db in keycloak sessions; do
+for db in keycloak auth; do
   key="backups/postgres/${db}/${ts}.sql.gz"
   log "dumping ${db} -> s3://${BUCKET}/${key}"
   # pg_dump as the keycloak superuser over the container's local socket (trust),

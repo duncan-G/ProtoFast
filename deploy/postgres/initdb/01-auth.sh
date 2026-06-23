@@ -1,8 +1,8 @@
 #!/bin/sh
 # First-init only (runs solely on an EMPTY data dir — §3.2). POSTGRES_DB creates
-# Keycloak's `keycloak` DB; this adds auth's durable `sessions` DB + its owning
-# `auth` role. Because the EBS volume persists, this fires exactly once: adding a
-# sessions DB to an already-populated volume means running these by hand.
+# Keycloak's `keycloak` DB; this adds auth's durable `auth` DB + its owning
+# `auth` role. Because the EBS volume persists, this fires exactly once: adding an
+# auth DB to an already-populated volume means running these by hand.
 #
 # Implemented as a shell init script (not a static .sql) so the role password can
 # be read from the mounted secret rather than baked into a committed file. The
@@ -27,8 +27,8 @@ SQL
 
 # CREATE DATABASE must be outside a DO/transaction block and is not idempotent, so
 # guard it with a separate existence check via the shell.
-if ! psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'sessions'" \
+if ! psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'auth'" \
      --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" | grep -q 1; then
   psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
-    -c "CREATE DATABASE sessions OWNER auth"
+    -c "CREATE DATABASE auth OWNER auth"
 fi
