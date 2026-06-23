@@ -58,7 +58,9 @@ resource "aws_iam_role_policy" "instance_ecr" {
 
 # Read-only on the assets bucket so the clients-host entrypoint can
 # `aws s3 sync` each pinned client's build from clients/<name>/<tag>/ using the
-# instance profile (no credentials on the box). Write stays with the deploy role.
+# instance profile (no credentials on the box), plus first-boot bootstrap from
+# the deploy/ prefix. The ONLY write the box does is publishing the version
+# manifest back to deploy/versions.env; everything else stays with the deploy role.
 data "aws_iam_policy_document" "instance_assets" {
   statement {
     sid       = "AssetsList"
@@ -68,14 +70,28 @@ data "aws_iam_policy_document" "instance_assets" {
     condition {
       test     = "StringLike"
       variable = "s3:prefix"
-      values   = ["clients/*"]
+      values   = ["clients/*", "deploy/*"]
     }
   }
   statement {
     sid       = "AssetsGet"
     effect    = "Allow"
     actions   = ["s3:GetObject"]
-    resources = ["${aws_s3_bucket.assets.arn}/clients/*"]
+    # clients/* for the clients-host entrypoint; deploy/* for cloud-init's
+    # first-boot bootstrap (docker-compose.yml, deploy.sh, versions.env).
+    resources = [
+      "${aws_s3_bucket.assets.arn}/clients/*",
+      "${aws_s3_bucket.assets.arn}/deploy/*",
+    ]
+  }
+  # Publish the version manifest after each successful deploy so a replaced
+  # instance can self-bootstrap to last-known-good (deploy.sh push_manifest).
+  # Write is scoped to exactly this one key — the box writes nothing else.
+  statement {
+    sid       = "ManifestPut"
+    effect    = "Allow"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.assets.arn}/deploy/versions.env"]
   }
 }
 

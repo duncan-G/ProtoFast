@@ -116,12 +116,34 @@ domain_for() {
 # --- health-check building blocks (all run inside the compose network; nothing
 # is published to the host) -------------------------------------------------
 
-# One client vhost through Envoy's publish listener (self-signed → -k).
+# One client vhost end-to-end through Envoy's publish listener to the SSR host
+# (self-signed → -k). Used by host/client checks, where SSR readiness is the
+# point. NOT used for envoy: it would gate an envoy deploy on the clients-host
+# upstream rendering /, which is out of scope for a --no-deps envoy rollout.
 vhost_ok() {
   local domain="$1"
   docker run --rm --network "$NETWORK" curlimages/curl:latest \
     -ksS -o /dev/null -w '' --max-time 5 \
     -H "Host: ${domain}" "https://envoy:8443/"
+}
+
+# Envoy-scoped checks via the admin API (binds 0.0.0.0:ENVOY_ADMIN_PORT, reached
+# as envoy:9901 on the compose network). These confirm Envoy itself is serving
+# without traversing to any upstream.
+
+# Listeners initialised and server live.
+envoy_ready() {
+  docker run --rm --network "$NETWORK" curlimages/curl:latest \
+    -fsS -o /dev/null --max-time 5 "http://envoy:9901/ready"
+}
+
+# A client domain is present in Envoy's loaded (RDS) route config, i.e. the vhost
+# is configured and routable — independent of whether its SSR upstream is up.
+vhost_configured() {
+  local domain="$1"
+  docker run --rm --network "$NETWORK" curlimages/curl:latest \
+    -fsS --max-time 5 "http://envoy:9901/config_dump" \
+    | grep -q "\"${domain}\""
 }
 
 # gRPC health in a service container (probe binary is bind-mounted into the image).
@@ -141,8 +163,18 @@ health_once() {
   case "$KIND" in
     service)
       grpc_ok "$SVC" || { rc=1; log "grpc health not serving: ${SVC}"; } ;;
-    envoy|host)
-      # Exercise every client vhost through Envoy / the freshly recreated host.
+    envoy)
+      # Envoy-scoped: the listener is up and every client vhost is loaded in the
+      # route config. Deliberately does NOT traverse to the SSR upstream — an
+      # envoy deploy (--no-deps) must not be gated on clients-host readiness.
+      envoy_ready || { rc=1; log "envoy admin not ready"; }
+      IFS=','; for name in $(clients_list); do
+        name="$(printf '%s' "$name" | tr -d '[:space:]')"; [ -n "$name" ] || continue
+        vhost_configured "$(domain_for "$name")" || { rc=1; log "vhost not configured: $(domain_for "$name")"; }
+      done; unset IFS ;;
+    host)
+      # Exercise every client vhost end-to-end through Envoy to the freshly
+      # recreated SSR host (this is where SSR readiness genuinely matters).
       IFS=','; for name in $(clients_list); do
         name="$(printf '%s' "$name" | tr -d '[:space:]')"; [ -n "$name" ] || continue
         vhost_ok "$(domain_for "$name")" || { rc=1; log "vhost not ready: $(domain_for "$name")"; }
@@ -213,10 +245,67 @@ prune_old_images() {
   done
 }
 
+# Publish the version manifest to S3 (deploy/versions.env) so a replaced instance
+# can self-bootstrap to last-known-good: cloud-init pulls this manifest plus the
+# compose file + this script and brings the whole stack up (user_data.sh.tftpl).
+# versions.env is the source of truth for what is running, but it lives on the box
+# and dies with it — this is the durable, off-box copy. Reflects the FINAL on-box
+# state (post-rollback), so S3 always mirrors what is actually running.
+push_manifest() {
+  local bucket region
+  bucket="$(get_env "$ENV_FILE" ASSETS_BUCKET)"
+  region="$(get_env "$ENV_FILE" AWS_REGION)"
+  [ -n "$bucket" ] || { log "ASSETS_BUCKET unset; not publishing manifest"; return 0; }
+  [ -f "$VERSIONS_FILE" ] || return 0
+  if aws s3 cp "$VERSIONS_FILE" "s3://${bucket}/deploy/versions.env" \
+       ${region:+--region "$region"} >/dev/null 2>&1; then
+    log "published manifest to s3://${bucket}/deploy/versions.env"
+  else
+    log "WARNING: failed to publish manifest to s3://${bucket}/deploy/versions.env"
+  fi
+}
+
+# --- bootstrap: bring the whole stack up from the persisted manifest --------
+# Run by cloud-init on a fresh/replaced instance, which has the engine + .env but
+# nothing running. Unlike `apply` (one --no-deps container), this starts the
+# ENTIRE topology — including the tagless edge (cloudflared) and dashboard — and
+# lets compose's depends_on/health gating order the bring-up. A complete manifest
+# is the normal steady state; with a partial one (not every component deployed
+# yet) we start only the services whose image tag resolves, so a blank *_TAG
+# never collapses an image ref to "<ecr>/protofast-<name>:".
+SERVICE_TAGS="envoy:ENVOY_TAG clients:CLIENTS_HOST_TAG auth:AUTH_TAG payments:PAYMENTS_TAG api:API_TAG otel-collector:OTEL_TAG"
+bootstrap() {
+  if [ ! -f "$VERSIONS_FILE" ]; then
+    log "no versions.env; nothing to bootstrap (first deploy will converge)"
+    return 0
+  fi
+  local missing="" ready="cloudflared aspire-dashboard" svc tagvar pair
+  for pair in $SERVICE_TAGS; do
+    svc="${pair%%:*}"; tagvar="${pair#*:}"
+    if [ -n "$(get_env "$VERSIONS_FILE" "$tagvar")" ]; then
+      ready="$ready $svc"
+    else
+      missing="$missing $svc"
+    fi
+  done
+  if [ -z "$missing" ]; then
+    log "bootstrap: full manifest present; bringing entire stack up"
+    compose up -d
+  else
+    log "bootstrap: partial manifest (missing:$missing); bringing up ready services only"
+    # shellcheck disable=SC2086  # word-splitting $ready into service args is intended
+    compose up -d --no-deps $ready
+  fi
+}
+
 # --- argument parsing ------------------------------------------------------
-[ "${1:-}" = "apply" ] || { echo "usage: $0 apply <component>=<tag> [...]" >&2; exit 2; }
-shift
-[ "$#" -ge 1 ] || { echo "usage: $0 apply <component>=<tag> [...]" >&2; exit 2; }
+usage() { echo "usage: $0 apply <component>=<tag> [...]   |   $0 bootstrap" >&2; exit 2; }
+MODE="${1:-}"
+case "$MODE" in
+  apply)     shift; [ "$#" -ge 1 ] || usage ;;
+  bootstrap) shift; [ "$#" -eq 0 ] || usage ;;
+  *)         usage ;;
+esac
 
 # Serialise manifest writes across concurrent deploys (plan §8 invariant).
 exec 9>"$LOCK_FILE"
@@ -232,6 +321,12 @@ fi
 if [ -z "$(get_env "$ENV_FILE" ECR)" ]; then
   echo "ECR is not set in ${ENV_FILE} and no ECR was passed to deploy.sh" >&2
   exit 1
+fi
+
+# bootstrap mode brings the whole stack up from the persisted manifest, then exits.
+if [ "$MODE" = bootstrap ]; then
+  bootstrap
+  exit 0
 fi
 
 # --- apply each component=tag pair -----------------------------------------
@@ -288,5 +383,8 @@ for pair in "$@"; do
     RC=1
   fi
 done
+
+# Mirror the final on-box manifest to S3 so a replaced instance self-heals to it.
+push_manifest
 
 exit "$RC"

@@ -227,7 +227,9 @@ data "aws_iam_policy_document" "deploy" {
   }
 
   # Publish client SSR builds to the assets bucket under clients/<name>/<tag>/,
-  # and prune superseded tags beyond KEEP_RELEASES. Scoped to the clients/ prefix.
+  # and prune superseded tags beyond KEEP_RELEASES. Also publish the deploy
+  # artifacts (docker-compose.yml, deploy.sh) under deploy/ so a replaced
+  # instance can self-bootstrap from cloud-init. Scoped to those two prefixes.
   statement {
     sid       = "AssetsList"
     effect    = "Allow"
@@ -236,7 +238,7 @@ data "aws_iam_policy_document" "deploy" {
     condition {
       test     = "StringLike"
       variable = "s3:prefix"
-      values   = ["clients/*"]
+      values   = ["clients/*", "deploy/*"]
     }
   }
   statement {
@@ -247,7 +249,10 @@ data "aws_iam_policy_document" "deploy" {
       "s3:PutObject",
       "s3:DeleteObject",
     ]
-    resources = ["${local.assets_bucket_arn}/clients/*"]
+    resources = [
+      "${local.assets_bucket_arn}/clients/*",
+      "${local.assets_bucket_arn}/deploy/*",
+    ]
   }
 
   statement {

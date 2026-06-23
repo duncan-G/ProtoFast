@@ -43,7 +43,7 @@ services:
     environment:
       ENVOY_MODE: publish
       CLIENTS: ${CLIENTS:-admin,protofast}
-      DEFAULT_CLIENT: ${DEFAULT_CLIENT:-admin}
+      DEFAULT_CLIENT: ${DEFAULT_CLIENT:-protofast}
       # Publish listener cloudflared targets (https://envoy:8443).
       PORT: "8443"
       ENVOY_ADMIN_PORT: "9901"
@@ -96,7 +96,7 @@ services:
     environment:
       PORT: "4000"
       ASSETS_DIR: /assets
-      DEFAULT_CLIENT: ${DEFAULT_CLIENT:-admin}
+      DEFAULT_CLIENT: ${DEFAULT_CLIENT:-protofast}
       NG_ALLOWED_HOSTS: "${CLIENT_ADMIN_DOMAIN:-admin.example.com},${CLIENT_PROTOFAST_DOMAIN:-protofast.example.com}"
       # Only Envoy reaches this host, so its forwarded headers are trustworthy.
       NG_TRUST_PROXY_HEADERS: "x-forwarded-for,x-forwarded-proto"

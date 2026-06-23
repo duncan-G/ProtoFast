@@ -297,6 +297,17 @@ jobs:
 
           [ "$status" = "Success" ]
 
+      # Publish the deploy artifacts (compose topology + deploy script) to S3 so a
+      # replaced instance self-bootstraps from cloud-init: user_data pulls these
+      # plus the version manifest (deploy/versions.env, written by deploy.sh after
+      # this apply) and brings the whole stack up. Repo is the source of truth for
+      # these two; only published on a clean deploy. Scoped to the deploy/ prefix.
+      - name: Publish deploy artifacts to S3
+        run: |
+          set -euo pipefail
+          aws s3 cp deploy/docker-compose.yml "s3://${ASSETS_BUCKET}/deploy/docker-compose.yml"
+          aws s3 cp deploy/deploy.sh          "s3://${ASSETS_BUCKET}/deploy/deploy.sh"
+
       # Prune superseded S3 client prefixes beyond KEEP_RELEASES (the box never
       # holds client assets on disk, so this is the client analogue of deploy.sh's
       # local ECR image prune). Keeps the most recent prefixes for fast rollback.

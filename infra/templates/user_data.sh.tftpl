@@ -59,14 +59,42 @@ ${tunnel_token}
 TOKEN
 chmod 600 /opt/protofast/tunnel-token
 
-# Seed .env (deploy.sh rewrites only TAG; ECR + domains are stable). No TAG yet —
-# the first deploy sets it.
+# Seed .env: the STABLE values compose reads alongside the per-component
+# versions.env manifest (ECR, region, CLIENTS, ASSETS_BUCKET, client domains).
+# deploy.sh never rewrites this file (except to persist ECR); the *_TAG values
+# live in versions.env, written by the first deploy. CLIENTS + ASSETS_BUCKET are
+# required by the clients-host entrypoint (clients/host/entrypoint.sh).
 cat > /opt/protofast/.env <<ENV
 ECR=${ecr_registry}
+AWS_REGION=${aws_region}
+CLIENTS=${clients}
+ASSETS_BUCKET=${assets_bucket}
 CLIENT_ADMIN_DOMAIN=${admin_domain}
 CLIENT_PROTOFAST_DOMAIN=${protofast_domain}
 DEFAULT_CLIENT=${default_client}
 ENV
 chmod 600 /opt/protofast/.env
+
+# --- First-boot bootstrap (cattle self-heal) ---------------------------------
+# A replaced instance has the engine + .env but nothing running, and deploys are
+# per-component (nothing redeploys auth just because the box was rebuilt). Pull
+# the last published desired state from S3 — the compose topology, this deploy
+# script, and the version manifest (written to deploy/versions.env by deploy.sh
+# after every successful deploy) — and bring the whole stack up. The box converges
+# on last-known-good with no external trigger.
+#
+# On the very first ever boot (nothing deployed yet) the manifest is absent, so
+# the `aws s3 cp` of versions.env fails: skip the bootstrap and let the first
+# per-component deploy populate everything. set -e does not fire on an `if` test.
+if aws s3 cp "s3://${assets_bucket}/deploy/versions.env" /opt/protofast/versions.env --region "${aws_region}"; then
+  aws s3 cp "s3://${assets_bucket}/deploy/docker-compose.yml" /opt/protofast/docker-compose.yml --region "${aws_region}"
+  aws s3 cp "s3://${assets_bucket}/deploy/deploy.sh"          /opt/protofast/deploy.sh          --region "${aws_region}"
+  chmod +x /opt/protofast/deploy.sh
+  # ECR is read from the seeded .env (dualstack endpoint, with a credHelper entry);
+  # no need to pass it. A bootstrap failure is non-fatal — the next deploy converges.
+  /opt/protofast/deploy.sh bootstrap || echo "bootstrap failed; next deploy will converge"
+else
+  echo "no published manifest at s3://${assets_bucket}/deploy/versions.env; skipping bootstrap"
+fi
 
 echo "protofast cloud-init complete"

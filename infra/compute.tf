@@ -38,7 +38,9 @@ locals {
     aws_region                = var.aws_region
     admin_domain              = var.admin_domain
     protofast_domain          = var.protofast_domain
-    default_client            = "admin"
+    default_client            = "protofast"
+    clients                   = "admin,protofast"
+    assets_bucket             = aws_s3_bucket.assets.bucket
     tunnel_token              = local.tunnel_token
     compose_plugin_version    = var.compose_plugin_version
     compose_arch              = local.compose_arch
