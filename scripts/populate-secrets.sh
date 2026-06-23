@@ -2,8 +2,10 @@
 # Populate / rotate the single ProtoFast app secret (§4.4).
 #
 # Secret values live ONLY in Secrets Manager — never in Terraform state. Terraform
-# creates the empty shell ("PLACEHOLDER", with ignore_changes); this script writes
-# the real values out of band. Run it once after the first `terraform apply`, and
+# creates the empty shell with NO version (the CI role is denied the value APIs);
+# this script writes the first and every subsequent version out of band — so the
+# secret has no version at all until you run it. Run it once after the first
+# `terraform apply`, and
 # again whenever you add a key or rotate a value. It is additive + idempotent:
 # existing keys are preserved unless you pass them explicitly, and any auto-managed
 # key that is still missing is generated.

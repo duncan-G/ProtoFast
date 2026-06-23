@@ -88,6 +88,47 @@ data "aws_iam_policy_document" "infra" {
     resources = [local.assets_bucket_arn, "${local.assets_bucket_arn}/*"]
   }
 
+  # The single application secret (infra/secrets.tf). The infra plane owns only the
+  # empty SHELL's lifecycle — create/describe/tag/delete — never its value. Terraform
+  # manages no version, and the values are written out-of-band (console /
+  # scripts/populate-secrets.sh), so the CI role needs nothing on the value plane.
+  # The DenyAppSecretValues statement below makes that boundary explicit and
+  # tamper-proof. Scoped to this project's secret namespace; the trailing wildcard
+  # also covers the 6-char random suffix AWS appends to the secret ARN.
+  statement {
+    sid    = "AppSecretShell"
+    effect = "Allow"
+    actions = [
+      "secretsmanager:CreateSecret",
+      "secretsmanager:DescribeSecret",
+      "secretsmanager:TagResource",
+      "secretsmanager:UntagResource",
+      "secretsmanager:GetResourcePolicy",
+      "secretsmanager:DeleteSecret",
+      "secretsmanager:RestoreSecret",
+    ]
+    resources = ["arn:aws:secretsmanager:${var.aws_region}:${local.account_id}:secret:${var.project}/*"]
+  }
+
+  # Hard wall: the GitHub Actions infra role can NEVER read or write secret values.
+  # An explicit Deny overrides any Allow (now or added later by mistake), so the CI
+  # plane is structurally barred from the value APIs. UpdateSecret is denied too
+  # because that API can also set SecretString — it's the one metadata path that
+  # could otherwise smuggle a value write. The cost is small and intended: changing
+  # the shell's description via Terraform would require an operator apply, but
+  # description is static and recovery_window_in_days is only consumed at delete
+  # time, so a normal create / no-op apply never calls UpdateSecret.
+  statement {
+    sid    = "DenyAppSecretValues"
+    effect = "Deny"
+    actions = [
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:PutSecretValue",
+      "secretsmanager:UpdateSecret",
+    ]
+    resources = ["arn:aws:secretsmanager:${var.aws_region}:${local.account_id}:secret:${var.project}/*"]
+  }
+
   # IAM for app roles (e.g. the EC2 instance profile). CreateRole is constrained
   # by the boundary (RequireBoundaryOnCreatedRoles) to prevent escalation.
   statement {
