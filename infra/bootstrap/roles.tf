@@ -106,6 +106,7 @@ data "aws_iam_policy_document" "infra" {
       "secretsmanager:GetResourcePolicy",
       "secretsmanager:DeleteSecret",
       "secretsmanager:RestoreSecret",
+      "secretsmanager:UpdateSecret"
     ]
     resources = ["arn:aws:secretsmanager:${var.aws_region}:${local.account_id}:secret:${var.project}/*"]
   }
@@ -124,7 +125,6 @@ data "aws_iam_policy_document" "infra" {
     actions = [
       "secretsmanager:GetSecretValue",
       "secretsmanager:PutSecretValue",
-      "secretsmanager:UpdateSecret",
     ]
     resources = ["arn:aws:secretsmanager:${var.aws_region}:${local.account_id}:secret:${var.project}/*"]
   }
