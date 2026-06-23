@@ -109,6 +109,21 @@ resource "aws_iam_role_policy" "instance_assets" {
   policy = data.aws_iam_policy_document.instance_assets.json
 }
 
+data "aws_iam_policy_document" "instance_secrets" {
+  statement {
+    sid       = "ReadAppSecret"
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [aws_secretsmanager_secret.app.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "instance_secrets" {
+  name   = "${var.project}-instance-secrets"
+  role   = aws_iam_role.instance.id
+  policy = data.aws_iam_policy_document.instance_secrets.json
+}
+
 resource "aws_iam_instance_profile" "instance" {
   name = "${var.project}-instance"
   role = aws_iam_role.instance.name

@@ -66,14 +66,13 @@ locals {
   })
 
   user_data_host_b = templatefile("${path.module}/templates/user_data.host_b.sh.tftpl", {
-    common_setup         = local.common_setup
-    ecr_registry         = local.ecr_registry
-    aws_region           = var.aws_region
-    keycloak_domain      = var.keycloak_domain
-    assets_bucket        = aws_s3_bucket.assets.bucket
-    host_a_ip            = local.host_a_private_ip
-    kc_db_password   = random_password.kc_db.result
-    auth_db_password = random_password.auth_db.result
+    common_setup    = local.common_setup
+    ecr_registry    = local.ecr_registry
+    aws_region      = var.aws_region
+    keycloak_domain = var.keycloak_domain
+    assets_bucket   = aws_s3_bucket.assets.bucket
+    host_a_ip       = local.host_a_private_ip
+    app_secret_id = aws_secretsmanager_secret.app.name
   })
 }
 

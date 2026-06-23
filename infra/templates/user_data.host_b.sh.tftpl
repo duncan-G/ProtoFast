@@ -21,14 +21,25 @@ mkdir -p /mnt/pgdata
 mount /dev/sdf /mnt/pgdata
 grep -q /mnt/pgdata /etc/fstab || echo '/dev/sdf /mnt/pgdata ext4 defaults,nofail 0 2' >> /etc/fstab
 
-# --- DB secrets (root-only; §4.4) --------------------------------------------
-# kc-db-password: Postgres superuser + Keycloak. auth-db-password: auth's
-# `auth` role (read by the Postgres init script). The SAME auth value is
-# also injected into auth's connection string via AUTH_DB_PASSWORD below —
-# keep the two in sync (§3.2).
+# --- Secrets: pull the single app secret, fan out by service prefix (§4.4) ----
+# One Secrets Manager secret holds every value as ';'-separated Service_Key=value
+# pairs. We fetch it with the instance role (scoped to this secret ARN) and pick
+# out the keys this host needs:
+#   Infra_KcDbPassword -> kc-db-password  (Postgres superuser + Keycloak)
+#   Auth_DbPassword    -> auth-db-password (auth's `auth` role) AND, same value,
+#                         AUTH_DB_PASSWORD in .env (auth's ConnectionStrings__auth).
+# The host-side contract is unchanged from before — only the source is now SM,
+# not user_data — so the value never lands in Terraform state.
 umask 077
-printf '%s' '${kc_db_password}'   > /opt/protofast/kc-db-password
-printf '%s' '${auth_db_password}' > /opt/protofast/auth-db-password
+APP_SECRET=$(aws secretsmanager get-secret-value \
+  --secret-id '${app_secret_id}' --region "${aws_region}" \
+  --query SecretString --output text)
+
+# secret_get Prefix_Key -> value (exact-key lookup out of the ';'-blob)
+secret_get() { printf '%s' "$APP_SECRET" | tr ';' '\n' | grep -m1 "^$1=" | cut -d= -f2-; }
+
+secret_get Infra_KcDbPassword > /opt/protofast/kc-db-password
+secret_get Auth_DbPassword    > /opt/protofast/auth-db-password
 chmod 600 /opt/protofast/kc-db-password /opt/protofast/auth-db-password
 
 # Seed .env. HOST_ROLE scopes deploy.sh to this host's components (§5.1); HOST_A_IP
@@ -41,7 +52,7 @@ HOST_ROLE=services
 HOST_A_IP=${host_a_ip}
 ASSETS_BUCKET=${assets_bucket}
 KEYCLOAK_DOMAIN=${keycloak_domain}
-AUTH_DB_PASSWORD=${auth_db_password}
+AUTH_DB_PASSWORD=$(secret_get Auth_DbPassword)
 ENV
 chmod 600 /opt/protofast/.env
 
