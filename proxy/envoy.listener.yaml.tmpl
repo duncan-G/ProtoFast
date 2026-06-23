@@ -26,6 +26,25 @@
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                local_reply_config:
+                  mappers:
+                    # Backend cluster unreachable (no healthy upstream, connection
+                    # failure/termination, no route/cluster, retries exhausted):
+                    # serve our own non-cacheable 500 + styled HTML so cloudflared
+                    # never falls through to Cloudflare's default error page.
+                    - filter:
+                        response_flag_filter:
+                          flags: ["UH", "UF", "UC", "UT", "NC", "NR", "URX"]
+                      status_code: 500
+                      headers_to_add:
+                        - header: { key: "cache-control", value: "no-store, no-cache, must-revalidate, max-age=0" }
+                          append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                        - header: { key: "pragma", value: "no-cache" }
+                          append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                        - header: { key: "content-type", value: "text/html; charset=utf-8" }
+                          append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                      body:
+                        filename: /etc/envoy/errors/upstream_unavailable.html
                 access_log:
                   - name: envoy.access_loggers.file
                     filter:
@@ -141,6 +160,25 @@
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                local_reply_config:
+                  mappers:
+                    # Backend cluster unreachable (no healthy upstream, connection
+                    # failure/termination, no route/cluster, retries exhausted):
+                    # serve our own non-cacheable 500 + styled HTML so cloudflared
+                    # never falls through to Cloudflare's default error page.
+                    - filter:
+                        response_flag_filter:
+                          flags: ["UH", "UF", "UC", "UT", "NC", "NR", "URX"]
+                      status_code: 500
+                      headers_to_add:
+                        - header: { key: "cache-control", value: "no-store, no-cache, must-revalidate, max-age=0" }
+                          append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                        - header: { key: "pragma", value: "no-cache" }
+                          append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                        - header: { key: "content-type", value: "text/html; charset=utf-8" }
+                          append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                      body:
+                        filename: /etc/envoy/errors/upstream_unavailable.html
                 access_log:
                   - name: envoy.access_loggers.file
                     filter:
