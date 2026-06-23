@@ -19,6 +19,13 @@ locals {
   # standard endpoint — CI still pushes to the IPv4 endpoint, which is fine.
   ecr_registry = "${data.aws_caller_identity.current.account_id}.dkr-ecr.${var.aws_region}.on.aws"
 
+  # The IPv4-only endpoint. CI (amazon-ecr-login) pushes here, and the deploy
+  # workflow passes this host (the ECR_REGISTRY repo var) as ${ECR}, so the
+  # compose image refs the box pulls actually resolve to THIS host. The Docker
+  # credential helper is keyed by exact hostname, so BOTH endpoints must be
+  # registered or `docker compose pull` gets "no basic auth credentials".
+  ecr_registry_ipv4 = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
+
   # The AL2023 SSM AMI parameter uses arm64/x86_64.
   ssm_arch = var.instance_arch == "arm64" ? "arm64" : "x86_64"
 
@@ -27,6 +34,7 @@ locals {
 
   user_data = templatefile("${path.module}/templates/user_data.sh.tftpl", {
     ecr_registry              = local.ecr_registry
+    ecr_registry_ipv4         = local.ecr_registry_ipv4
     aws_region                = var.aws_region
     admin_domain              = var.admin_domain
     protofast_domain          = var.protofast_domain
