@@ -28,6 +28,7 @@ jobs:
     uses: ./.github/workflows/_component-deploy.yml
     with:
       component: auth
+      host: services
       build: dotnet
       target: protofast-auth
       kind: service

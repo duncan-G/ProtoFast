@@ -21,6 +21,10 @@ on:
         description: "Component id: auth|payments|api|envoy|otel-collector|clients-host|client-admin|client-protofast"
         required: true
         type: string
+      host:
+        description: "Target host role: edge (Host A) | services (Host B). Routes the SSM target + which compose file ships (two-instance restructure §5.1)."
+        required: true
+        type: string
       build:
         description: "Build type: dotnet | buildx | client-s3"
         required: true
@@ -238,15 +242,33 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # Map the host role to its Role tag + compose file (§5.1). edge = Host A,
+      # services = Host B. Each host runs the same deploy.sh against ITS compose.
+      - name: Resolve host routing
+        id: route
+        run: |
+          set -euo pipefail
+          case "${{ inputs.host }}" in
+            edge)     role=edge;     compose=deploy/docker-compose.host-a.yml ;;
+            services) role=services; compose=deploy/docker-compose.host-b.yml ;;
+            *) echo "unknown host '${{ inputs.host }}' (expected edge|services)" >&2; exit 2 ;;
+          esac
+          echo "role=${role}" >> "$GITHUB_OUTPUT"
+          echo "compose=${compose}" >> "$GITHUB_OUTPUT"
+          echo "object=$(basename "$compose")" >> "$GITHUB_OUTPUT"
+
       - name: Resolve target instance
         id: target
         run: |
           set -euo pipefail
+          # Scope to the sibling carrying BOTH the SSM-permission tag and the
+          # per-host Role tag, so a component lands only on its host.
           id=$(aws ec2 describe-instances \
             --filters "Name=tag:${INSTANCE_TAG_KEY},Values=${INSTANCE_TAG_VALUE}" \
+                      "Name=tag:Role,Values=${{ steps.route.outputs.role }}" \
                       "Name=instance-state-name,Values=running" \
             --query 'Reservations[].Instances[].InstanceId' --output text)
-          [ -n "$id" ] || { echo "no running instance with ${INSTANCE_TAG_KEY}=${INSTANCE_TAG_VALUE}" >&2; exit 1; }
+          [ -n "$id" ] || { echo "no running ${{ steps.route.outputs.role }} instance with ${INSTANCE_TAG_KEY}=${INSTANCE_TAG_VALUE}" >&2; exit 1; }
           echo "instance_id=$id" >> "$GITHUB_OUTPUT"
 
       # Ship the compose file + deploy script to the instance and run
@@ -257,7 +279,7 @@ jobs:
           COMPONENT: ${{ inputs.component }}
         run: |
           set -euo pipefail
-          COMPOSE_B64=$(base64 -w0 deploy/docker-compose.yml)
+          COMPOSE_B64=$(base64 -w0 "${{ steps.route.outputs.compose }}")
           DEPLOY_B64=$(base64 -w0 deploy/deploy.sh)
 
           cmd_id=$(aws ssm send-command \
@@ -305,8 +327,14 @@ jobs:
       - name: Publish deploy artifacts to S3
         run: |
           set -euo pipefail
-          aws s3 cp deploy/docker-compose.yml "s3://${ASSETS_BUCKET}/deploy/docker-compose.yml"
-          aws s3 cp deploy/deploy.sh          "s3://${ASSETS_BUCKET}/deploy/deploy.sh"
+          # Publish under the host-specific name cloud-init pulls (user_data.host_*
+          # → docker-compose.host-a.yml / host-b.yml). deploy.sh is shared by both hosts.
+          aws s3 cp "${{ steps.route.outputs.compose }}" "s3://${ASSETS_BUCKET}/deploy/${{ steps.route.outputs.object }}"
+          aws s3 cp deploy/deploy.sh                     "s3://${ASSETS_BUCKET}/deploy/deploy.sh"
+          # Host B also carries the pg_dump backup script (§6.3) the timer runs.
+          if [ "${{ steps.route.outputs.role }}" = services ]; then
+            aws s3 cp deploy/postgres/backup.sh "s3://${ASSETS_BUCKET}/deploy/backup.sh"
+          fi
 
       # Prune superseded S3 client prefixes beyond KEEP_RELEASES (the box never
       # holds client assets on disk, so this is the client analogue of deploy.sh's

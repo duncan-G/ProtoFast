@@ -27,6 +27,7 @@ jobs:
     uses: ./.github/workflows/_component-deploy.yml
     with:
       component: clients-host
+      host: edge
       build: buildx
       target: protofast-clients-host
       kind: host

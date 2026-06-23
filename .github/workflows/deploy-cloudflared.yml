@@ -22,7 +22,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/deploy-cloudflared.yml"
-      - "deploy/docker-compose.yml"
+      - "deploy/docker-compose.host-a.yml"
       - "deploy/deploy.sh"
   workflow_dispatch:
     inputs:
@@ -46,7 +46,7 @@ env:
   INSTANCE_TAG_VALUE: "app-server"
   # The pinned upstream image tag. Bump here (or override via workflow_dispatch)
   # to roll the tunnel forward/back; keep in sync with the compose default
-  # (CLOUDFLARED_TAG) in deploy/docker-compose.yml.
+  # (CLOUDFLARED_TAG) in deploy/docker-compose.host-a.yml.
   DEFAULT_CLOUDFLARED_TAG: "2026.6.1"
 
 jobs:
@@ -76,11 +76,13 @@ jobs:
         id: target
         run: |
           set -euo pipefail
+          # cloudflared is an edge component (Host A): scope to the Role=edge sibling.
           id=$(aws ec2 describe-instances \
             --filters "Name=tag:${INSTANCE_TAG_KEY},Values=${INSTANCE_TAG_VALUE}" \
+                      "Name=tag:Role,Values=edge" \
                       "Name=instance-state-name,Values=running" \
             --query 'Reservations[].Instances[].InstanceId' --output text)
-          [ -n "$id" ] || { echo "no running instance with ${INSTANCE_TAG_KEY}=${INSTANCE_TAG_VALUE}" >&2; exit 1; }
+          [ -n "$id" ] || { echo "no running edge instance with ${INSTANCE_TAG_KEY}=${INSTANCE_TAG_VALUE}" >&2; exit 1; }
           echo "instance_id=$id" >> "$GITHUB_OUTPUT"
 
       # Ship the compose file + deploy script to the instance and run
@@ -90,7 +92,7 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
-          COMPOSE_B64=$(base64 -w0 deploy/docker-compose.yml)
+          COMPOSE_B64=$(base64 -w0 deploy/docker-compose.host-a.yml)
           DEPLOY_B64=$(base64 -w0 deploy/deploy.sh)
 
           cmd_id=$(aws ssm send-command \

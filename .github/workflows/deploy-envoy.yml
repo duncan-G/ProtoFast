@@ -27,6 +27,7 @@ jobs:
     uses: ./.github/workflows/_component-deploy.yml
     with:
       component: envoy
+      host: edge
       build: buildx
       target: protofast-envoy
       kind: service
