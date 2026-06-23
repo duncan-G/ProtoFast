@@ -24,7 +24,7 @@ systemctl enable --now docker
 # ECR credential helper config: pulls auth via the instance role. Both ECR
 # endpoints are registered because Docker matches credHelpers by EXACT hostname:
 # the dualstack host (IPv6-preferring pulls) AND the IPv4 host (what CI pushes to
-# and what the deploy workflow passes as ${ECR}, so it's the host the compose
+# and what the deploy workflow passes as $${ECR}, so it's the host the compose
 # image refs actually resolve to). Missing the IPv4 key is what produces
 # `docker compose pull ... no basic auth credentials`.
 mkdir -p /root/.docker
