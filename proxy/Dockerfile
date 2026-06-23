@@ -24,7 +24,7 @@ ENV ENVOY_TLS_CERT=/etc/envoy/internal-tls.crt \
     ENVOY_TLS_KEY=/etc/envoy/internal-tls.key
 
 # The base image's default CMD boots Envoy directly against the sample
-# /etc/envoy/envoy.yaml. Override it so our renderer runs first: entrypoint.sh
-# generates /tmp/envoy.yaml + /etc/envoy/discovery/*.yaml, then exec's Envoy.
+# /etc/envoy/envoy.yaml. Run our renderer instead: entrypoint.sh generates
+# /tmp/envoy.yaml + /etc/envoy/discovery/*.yaml, then exec's Envoy. Setting
+# ENTRYPOINT also resets the inherited CMD to empty, so no args reach the script.
 ENTRYPOINT ["/etc/envoy/entrypoint.sh"]
-CMD []
