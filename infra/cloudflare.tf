@@ -18,10 +18,16 @@ locals {
 
   telemetry_enabled = var.telemetry_domain != "" && length(var.telemetry_access_emails) > 0
 
+  # Keycloak's login/OIDC endpoints, reachable through the tunnel on their own
+  # domain. Routed (like the clients) to Envoy's publish listener, where the
+  # optional Keycloak vhost forwards to Host B's published Keycloak port (§3.1).
+  keycloak_enabled = var.keycloak_domain != ""
+
   # All hostnames that need a proxied CNAME to the tunnel.
   tunnel_hostnames = merge(
     local.client_hostnames,
     local.telemetry_enabled ? { telemetry = var.telemetry_domain } : {},
+    local.keycloak_enabled ? { keycloak = var.keycloak_domain } : {},
   )
 }
 
@@ -72,6 +78,17 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "this" {
       local.telemetry_enabled ? [{
         hostname = var.telemetry_domain
         service  = "http://aspire-dashboard:18888"
+      }] : [],
+
+      # Keycloak hostname → Envoy publish listener (its Keycloak vhost forwards to
+      # Host B). noTLSVerify + Host header so Envoy matches the keycloak vhost.
+      local.keycloak_enabled ? [{
+        hostname = var.keycloak_domain
+        service  = "https://envoy:8443"
+        origin_request = {
+          no_tls_verify    = true
+          http_host_header = var.keycloak_domain
+        }
       }] : [],
 
       # Catch-all 404 rule (required by Cloudflare).

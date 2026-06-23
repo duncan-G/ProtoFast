@@ -1,0 +1,140 @@
+# Host B — SERVICES + STATE compose topology (two-instance restructure §3.2).
+#
+# Runs the three gRPC backends plus the new stateful tier: Keycloak (identity),
+# Postgres (Keycloak's `keycloak` DB + auth's durable `auth` DB, on the
+# persistent EBS volume at /mnt/pgdata), and Redis (in-memory session cache).
+#
+# Cross-host edges get PUBLISHED ports so Host A's Envoy can dial this host's
+# private IP: auth 8080, payments 8081, api 8082, keycloak 8083. Same-host wiring
+# stays name-based over this compose network (auth → redis/postgres/keycloak,
+# keycloak → postgres). Redis/Postgres are NOT published (internal only). The
+# self-referencing SG (infra §4.3) admits only the sibling instance on 8080-8083.
+#
+# Services export telemetry to Host A's otel-collector at ${HOST_A_IP}:4317.
+#
+# Local/CI use: docker compose -f docker-compose.host-b.yml --env-file .env --env-file versions.env config
+
+# Shared .NET service env. Telemetry crosses to Host A's collector (private IP,
+# SG-admitted). Kept generic so auth can merge its own connection strings on top
+# without leaking them to payments/api.
+x-dotnet-env: &dotnet-env
+  ASPNETCORE_ENVIRONMENT: Production
+  ASPNETCORE_HTTP_PORTS: "8080"
+  ASPNETCORE_KESTREL__ENDPOINTDEFAULTS__PROTOCOLS: Http2
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://${HOST_A_IP}:4317"
+
+x-grpc-health: &grpc-health
+  test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=localhost:8080"]
+  interval: 10s
+  timeout: 3s
+  retries: 5
+  start_period: 20s
+
+services:
+  auth:
+    image: ${ECR}/protofast-auth:${AUTH_TAG}
+    restart: unless-stopped
+    # Cross-host gRPC ingress for Envoy on Host A (private IP : 8080).
+    ports:
+      - "8080:8080"
+    # auth-only connection strings (prod equivalent of the Aspire references in
+    # §2.2). The env-var NAMES are identical to what Aspire injects in dev so the
+    # service code is environment-agnostic (§2.2 ↔ §3.2). Same-host wiring stays
+    # name-based over this compose network. AUTH_DB_PASSWORD comes from .env
+    # (seeded by cloud-init, kept in sync with the auth-db-password secret the
+    # Postgres init script reads — §3.2).
+    environment:
+      <<: *dotnet-env
+      ConnectionStrings__redis: "redis:6379"
+      ConnectionStrings__auth: "Host=postgres;Port=5432;Database=auth;Username=auth;Password=${AUTH_DB_PASSWORD}"
+      ConnectionStrings__keycloak: "http://keycloak:8080/realms/protofast"
+    volumes:
+      - /usr/local/bin/grpc_health_probe:/usr/local/bin/grpc_health_probe:ro
+    healthcheck: *grpc-health
+    depends_on:
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+
+  payments:
+    image: ${ECR}/protofast-payments:${PAYMENTS_TAG}
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    environment: *dotnet-env
+    volumes:
+      - /usr/local/bin/grpc_health_probe:/usr/local/bin/grpc_health_probe:ro
+    healthcheck: *grpc-health
+
+  api:
+    image: ${ECR}/protofast-api:${API_TAG}
+    restart: unless-stopped
+    ports:
+      - "8082:8080"
+    environment: *dotnet-env
+    volumes:
+      - /usr/local/bin/grpc_health_probe:/usr/local/bin/grpc_health_probe:ro
+    healthcheck: *grpc-health
+
+  postgres:
+    # Pinned upstream image via POSTGRES_TAG (versions.env). Major-version bumps
+    # are migrations, not deploys — see deploy.sh stateful path (§5.3).
+    image: postgres:${POSTGRES_TAG:-17}
+    restart: unless-stopped
+    stop_grace_period: 60s              # the image STOPSIGNAL is SIGINT (fast shutdown)
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD_FILE: /run/secrets/kc-db-password
+    volumes:
+      - /mnt/pgdata:/var/lib/postgresql/data            # persistent EBS (infra §4.2)
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro  # creates `auth` DB + auth role (first init only)
+    secrets:
+      - kc-db-password
+      - auth-db-password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:${KEYCLOAK_TAG:-26.0}
+    restart: unless-stopped
+    command: start --optimized --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD_FILE: /run/secrets/kc-db-password
+      KC_HOSTNAME: ${KEYCLOAK_DOMAIN:-auth.example.com}
+      KC_PROXY_HEADERS: xforwarded          # behind Envoy on Host A
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"             # /health/ready for the deploy gate
+    volumes:
+      - ./keycloak/realms:/opt/keycloak/data/import:ro
+    # Cross-host HTTP ingress for Envoy's Keycloak edge vhost (private IP : 8083).
+    ports:
+      - "8083:8080"
+    secrets:
+      - kc-db-password
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  redis:
+    image: redis:${REDIS_TAG:-7}
+    restart: unless-stopped
+    # In-memory only (D3): no AOF, no volume. Bounded memory + TTL eviction so a
+    # restart just causes cache misses that repopulate from the auth DB.
+    command: redis-server --maxmemory 256mb --maxmemory-policy volatile-ttl
+
+secrets:
+  kc-db-password:
+    file: /opt/protofast/kc-db-password       # root-only, seeded by cloud-init
+  auth-db-password:
+    file: /opt/protofast/auth-db-password  # root-only, seeded by cloud-init

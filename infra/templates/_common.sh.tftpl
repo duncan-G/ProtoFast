@@ -1,0 +1,38 @@
+# --- Shared install fragment (two-instance restructure §6.1) -----------------
+# Embedded VERBATIM into each per-host user_data via $${common_setup}; templatefile
+# does not re-parse the inserted value, so the $${...} shell escapes below render
+# to plain $ in the embedded copy. Installs only what AL2023 lacks: the Docker
+# engine + ECR credential helper (dnf), plus the github-only Compose v2 plugin and
+# grpc_health_probe. AL2023 already ships the AWS CLI v2 and the SSM agent.
+
+# --- Docker engine + ECR credential helper (from the AL2023 repos) -----------
+dnf install -y docker amazon-ecr-credential-helper
+systemctl enable --now docker
+
+# ECR credential helper config. Both endpoints are registered (Docker matches
+# credHelpers by EXACT hostname): the dualstack host (IPv6-preferring pulls) AND
+# the IPv4 host (what CI pushes to and the deploy workflow passes as $${ECR}).
+mkdir -p /root/.docker
+cat > /root/.docker/config.json <<'JSON'
+{ "credHelpers": { "${ecr_registry}": "ecr-login", "${ecr_registry_ipv4}": "ecr-login" } }
+JSON
+
+# --- Docker Compose v2 plugin (github) ---------------------------------------
+compose_plugin=/usr/libexec/docker/cli-plugins/docker-compose
+if ! docker compose version >/dev/null 2>&1; then
+  mkdir -p "$(dirname "$${compose_plugin}")"
+  curl -fsSL -o "$${compose_plugin}" \
+    "https://github.com/docker/compose/releases/download/v${compose_plugin_version}/docker-compose-linux-${compose_arch}"
+  chmod +x "$${compose_plugin}"
+fi
+
+# --- grpc_health_probe (static; bind-mounted into the service containers) -----
+if [ ! -x /usr/local/bin/grpc_health_probe ]; then
+  curl -fsSL -o /usr/local/bin/grpc_health_probe \
+    "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v${grpc_health_probe_version}/grpc_health_probe-linux-${grpc_health_probe_arch}"
+  chmod +x /usr/local/bin/grpc_health_probe
+fi
+
+# --- Deploy root -------------------------------------------------------------
+mkdir -p /opt/protofast
+chmod 750 /opt/protofast

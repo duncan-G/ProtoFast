@@ -28,6 +28,7 @@ jobs:
     uses: ./.github/workflows/_component-deploy.yml
     with:
       component: api
+      host: services
       build: dotnet
       target: protofast-api
       kind: service

@@ -70,13 +70,13 @@ data "aws_iam_policy_document" "instance_assets" {
     condition {
       test     = "StringLike"
       variable = "s3:prefix"
-      values   = ["clients/*", "deploy/*"]
+      values   = ["clients/*", "deploy/*", "backups/*"]
     }
   }
   statement {
-    sid       = "AssetsGet"
-    effect    = "Allow"
-    actions   = ["s3:GetObject"]
+    sid     = "AssetsGet"
+    effect  = "Allow"
+    actions = ["s3:GetObject"]
     # clients/* for the clients-host entrypoint; deploy/* for cloud-init's
     # first-boot bootstrap (docker-compose.yml, deploy.sh, versions.env).
     resources = [
@@ -86,12 +86,20 @@ data "aws_iam_policy_document" "instance_assets" {
   }
   # Publish the version manifest after each successful deploy so a replaced
   # instance can self-bootstrap to last-known-good (deploy.sh push_manifest).
-  # Write is scoped to exactly this one key — the box writes nothing else.
   statement {
     sid       = "ManifestPut"
     effect    = "Allow"
     actions   = ["s3:PutObject"]
     resources = ["${aws_s3_bucket.assets.arn}/deploy/versions.env"]
+  }
+  # Host B's scheduled pg_dump of the keycloak + auth DBs
+  # Write-scoped to the backups/ prefix; Host B never writes
+  # client or deploy artifacts.
+  statement {
+    sid       = "BackupsPut"
+    effect    = "Allow"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.assets.arn}/backups/*"]
   }
 }
 
@@ -99,6 +107,21 @@ resource "aws_iam_role_policy" "instance_assets" {
   name   = "${var.project}-instance-assets"
   role   = aws_iam_role.instance.id
   policy = data.aws_iam_policy_document.instance_assets.json
+}
+
+data "aws_iam_policy_document" "instance_secrets" {
+  statement {
+    sid       = "ReadAppSecret"
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [aws_secretsmanager_secret.app.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "instance_secrets" {
+  name   = "${var.project}-instance-secrets"
+  role   = aws_iam_role.instance.id
+  policy = data.aws_iam_policy_document.instance_secrets.json
 }
 
 resource "aws_iam_instance_profile" "instance" {

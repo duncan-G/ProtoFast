@@ -1,38 +1,30 @@
-# Deploy cloudflared (the outbound Cloudflare tunnel — the only thing reaching
-# the public edge).
-#
-# Like deploy-aspire.yml, cloudflared is NOT an artifact we build: it's the
-# upstream public image cloudflare/cloudflared pinned by version tag. So this
-# workflow does NOT use _component-deploy.yml (test -> build/reuse -> deploy);
-# there is nothing to test or build. It only ships the current compose +
-# deploy.sh to the box and runs `deploy.sh apply cloudflared=<tag>`, which writes
-# CLOUDFLARED_TAG into versions.env, pulls + recreates only that container
-# (--no-deps), health-checks the tunnel's /ready endpoint, and rolls the tag back
-# on failure.
-#
-# cloudflared also comes up at instance boot via `deploy.sh bootstrap`; this
-# workflow is the on-demand lever to (re)deploy or bump it on a running box.
+# Deploy Redis (auth's in-memory session cache, Host B). Like cloudflared/aspire
+# it's an upstream pinned image (redis:<tag>), not an artifact we build — so this
+# does NOT use _component-deploy.yml. It ships the Host B compose + deploy.sh and
+# runs `deploy.sh apply redis=<tag>`, which takes the stateful path (§5.3): plain
+# `up -d --no-deps`, health-gated on a redis-cli PING. Redis is a disposable cache
+# (D3), so a recreate just causes cache misses that repopulate from the auth DB.
 #
 # Repo VARIABLES (set by infra/bootstrap): AWS_REGION, AWS_DEPLOY_ROLE_ARN,
-#   ECR_REGISTRY.
-name: deploy-cloudflared
+#   ECR_REGISTRY, ASSETS_BUCKET.
+name: deploy-redis
 
 on:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/deploy-cloudflared.yml"
-      - "deploy/docker-compose.host-a.yml"
+      - ".github/workflows/deploy-redis.yml"
+      - "deploy/docker-compose.host-b.yml"
       - "deploy/deploy.sh"
   workflow_dispatch:
     inputs:
       tag:
-        description: "cloudflared image tag to deploy or roll back to. Blank = default."
+        description: "redis image tag to deploy or roll back to. Blank = default."
         required: false
         type: string
 
 concurrency:
-  group: deploy-cloudflared
+  group: deploy-redis
   cancel-in-progress: false
 
 permissions:
@@ -42,18 +34,15 @@ permissions:
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
   ECR: ${{ vars.ECR_REGISTRY }}
+  ASSETS_BUCKET: ${{ vars.ASSETS_BUCKET }}
   INSTANCE_TAG_KEY: "protofast:role"
   INSTANCE_TAG_VALUE: "app-server"
-  # The pinned upstream image tag. Bump here (or override via workflow_dispatch)
-  # to roll the tunnel forward/back; keep in sync with the compose default
-  # (CLOUDFLARED_TAG) in deploy/docker-compose.host-a.yml.
-  DEFAULT_CLOUDFLARED_TAG: "2026.6.1"
+  # Keep in sync with the REDIS_TAG default in deploy/docker-compose.host-b.yml.
+  DEFAULT_REDIS_TAG: "7"
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # No `environment:` — see _component-deploy.yml: an environment changes the
-    # OIDC `sub` and would break the deploy role's ref-scoped trust.
     steps:
       - uses: actions/checkout@v5
 
@@ -62,9 +51,9 @@ jobs:
         run: |
           set -euo pipefail
           tag="${{ inputs.tag }}"
-          [ -n "$tag" ] || tag="${DEFAULT_CLOUDFLARED_TAG}"
+          [ -n "$tag" ] || tag="${DEFAULT_REDIS_TAG}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "deploying cloudflared tag=${tag}"
+          echo "deploying redis tag=${tag}"
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
@@ -76,42 +65,39 @@ jobs:
         id: target
         run: |
           set -euo pipefail
-          # cloudflared is an edge component (Host A): scope to the Role=edge sibling.
+          # redis is a services component (Host B): scope to the Role=services sibling.
           id=$(aws ec2 describe-instances \
             --filters "Name=tag:${INSTANCE_TAG_KEY},Values=${INSTANCE_TAG_VALUE}" \
-                      "Name=tag:Role,Values=edge" \
+                      "Name=tag:Role,Values=services" \
                       "Name=instance-state-name,Values=running" \
             --query 'Reservations[].Instances[].InstanceId' --output text)
-          [ -n "$id" ] || { echo "no running edge instance with ${INSTANCE_TAG_KEY}=${INSTANCE_TAG_VALUE}" >&2; exit 1; }
+          [ -n "$id" ] || { echo "no running services instance with ${INSTANCE_TAG_KEY}=${INSTANCE_TAG_VALUE}" >&2; exit 1; }
           echo "instance_id=$id" >> "$GITHUB_OUTPUT"
 
-      # Ship the compose file + deploy script to the instance and run
-      # `deploy.sh apply cloudflared=<tag>`. SSM Run Command — no SSH, no ports.
       - name: Deploy via SSM
         env:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
-          COMPOSE_B64=$(base64 -w0 deploy/docker-compose.host-a.yml)
+          COMPOSE_B64=$(base64 -w0 deploy/docker-compose.host-b.yml)
           DEPLOY_B64=$(base64 -w0 deploy/deploy.sh)
 
           cmd_id=$(aws ssm send-command \
             --instance-ids "${{ steps.target.outputs.instance_id }}" \
             --document-name AWS-RunShellScript \
-            --comment "deploy cloudflared=${TAG}" \
+            --comment "deploy redis=${TAG}" \
             --parameters commands="[
               \"set -eu\",
               \"mkdir -p /opt/protofast\",
               \"echo $COMPOSE_B64 | base64 -d > /opt/protofast/docker-compose.yml\",
               \"echo $DEPLOY_B64 | base64 -d > /opt/protofast/deploy.sh\",
               \"chmod +x /opt/protofast/deploy.sh\",
-              \"ECR=${ECR} /opt/protofast/deploy.sh apply cloudflared=${TAG}\"
+              \"ECR=${ECR} /opt/protofast/deploy.sh apply redis=${TAG}\"
             ]" \
             --query 'Command.CommandId' --output text)
 
           echo "SSM command: $cmd_id"
 
-          # Poll until terminal; surface the on-instance output and fail loudly.
           while :; do
             status=$(aws ssm get-command-invocation \
               --command-id "$cmd_id" \
@@ -131,3 +117,11 @@ jobs:
             --output text
 
           [ "$status" = "Success" ]
+
+      # Publish the Host B compose + deploy.sh so a replaced Host B self-bootstraps.
+      - name: Publish deploy artifacts to S3
+        run: |
+          set -euo pipefail
+          aws s3 cp deploy/docker-compose.host-b.yml "s3://${ASSETS_BUCKET}/deploy/docker-compose.host-b.yml"
+          aws s3 cp deploy/deploy.sh                 "s3://${ASSETS_BUCKET}/deploy/deploy.sh"
+          aws s3 cp deploy/postgres/backup.sh        "s3://${ASSETS_BUCKET}/deploy/backup.sh"

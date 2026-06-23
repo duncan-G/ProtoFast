@@ -44,12 +44,51 @@ variable "telemetry_access_emails" {
   default     = []
 }
 
-# --- Compute ------------------------------------------------------------------
+variable "keycloak_domain" {
+  description = "Hostname for Keycloak's login/OIDC endpoints, reachable through the tunnel (e.g. auth.example.com). Empty disables the Keycloak tunnel route."
+  type        = string
+  default     = ""
+}
 
-variable "instance_type" {
-  description = "EC2 instance type (ARM, cheap; images are multi-arch-able)."
+# --- Compute ------------------------------------------------------------------
+# Two instances now (two-instance restructure, docs/two-instance-restructure-plan.md):
+# Host A = edge (cloudflared/Envoy/SSR/otel), Host B = services + stateful tier
+# (3× .NET + Keycloak JVM + Postgres + Redis). Their sizing drivers differ, so the
+# type is per-host (Q4 / §4.1).
+
+variable "host_a_instance_type" {
+  description = "Host A (edge) instance type. Sheds the .NET services to B, so a small fits (t4g.small = 2 GB)."
+  type        = string
+  default     = "t4g.small"
+}
+
+variable "host_b_instance_type" {
+  description = "Host B (services + state) instance type. Runs 3× .NET + Keycloak JVM + Postgres + Redis (t4g.medium = 4 GB; Q4)."
   type        = string
   default     = "t4g.medium"
+}
+
+# Static private IPs break the peer-IP cycle (§6.1): each host's user_data needs
+# the other's IP, so referencing aws_instance.*.private_ip would be a Terraform
+# cycle. Derive both from the default subnet CIDR via cidrhost(offset) — in-range
+# by construction, deterministic, no cycle. AWS reserves the first 4 host
+# addresses, so keep offsets >= 4.
+variable "host_a_ip_offset" {
+  description = "Host A private-IP offset within the default subnet CIDR (cidrhost). Must be >= 4 (AWS reserves the first four)."
+  type        = number
+  default     = 10
+}
+
+variable "host_b_ip_offset" {
+  description = "Host B private-IP offset within the default subnet CIDR (cidrhost). Must be >= 4 and != host_a_ip_offset."
+  type        = number
+  default     = 11
+}
+
+variable "pgdata_volume_gb" {
+  description = "Size of the persistent EBS volume holding Postgres data (Keycloak + auth DBs). Outlives instance replacement (D2)."
+  type        = number
+  default     = 20
 }
 
 variable "instance_arch" {

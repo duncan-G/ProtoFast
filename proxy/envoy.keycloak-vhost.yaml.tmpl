@@ -1,0 +1,12 @@
+    # Keycloak edge vhost (prod publish only). Login/OIDC endpoints reachable
+    # through the tunnel on a dedicated domain. Unlike the client vhosts this
+    # routes every path straight to Keycloak (no /auth /payments /api gRPC split,
+    # no x-client header). Keycloak runs with KC_PROXY_HEADERS=xforwarded and
+    # KC_HOSTNAME=__KEYCLOAK_DOMAIN__, so the forwarded Host/proto are trusted.
+    - name: keycloak
+      domains: ["__KEYCLOAK_DOMAIN__"]
+      routes:
+        - match: { prefix: "/" }
+          route:
+            cluster: keycloak
+            timeout: 0s

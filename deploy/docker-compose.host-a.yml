@@ -1,0 +1,117 @@
+# Host A — EDGE compose topology (two-instance restructure, docs/two-instance-restructure-plan.md §3.1).
+#
+# Runs the public-facing edge: cloudflared (the only egress to Cloudflare), Envoy,
+# the unified SSR clients host, the otel-collector, and the Aspire Dashboard. The
+# three gRPC backends + Keycloak + Postgres + Redis live on Host B
+# (docker-compose.host-b.yml); Envoy now dials Host B's PRIVATE IP (${HOST_B_IP})
+# on its published ports instead of Docker service names.
+#
+# Still NO public inbound: cloudflared dials out; the only cross-host ingress is
+# the otel-collector receivers (4317/4318), admitted from the sibling instance by
+# the self-referencing security group (infra §4.3). Same per-component deploy +
+# *_TAG manifest conventions as the original single-box compose.
+#
+# Local/CI use: docker compose -f docker-compose.host-a.yml --env-file .env --env-file versions.env config
+
+x-otel-grpc: &otel-grpc "http://otel-collector:4317"
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:${CLOUDFLARED_TAG:-2026.6.1}
+    restart: unless-stopped
+    # Root: the tunnel-token secret is a root-owned host file (cloud-init, 0600).
+    user: "0:0"
+    command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 run --token-file /run/secrets/tunnel-token
+    secrets:
+      - tunnel-token
+    depends_on:
+      envoy:
+        condition: service_started
+
+  envoy:
+    image: ${ECR}/protofast-envoy:${ENVOY_TAG}
+    restart: unless-stopped
+    environment:
+      ENVOY_MODE: publish
+      CLIENTS: ${CLIENTS:-admin,protofast}
+      DEFAULT_CLIENT: ${DEFAULT_CLIENT:-protofast}
+      PORT: "8443"
+      ENVOY_ADMIN_PORT: "9901"
+      CLIENT_ADMIN_DOMAIN: ${CLIENT_ADMIN_DOMAIN:-admin.example.com}
+      CLIENT_PROTOFAST_DOMAIN: ${CLIENT_PROTOFAST_DOMAIN:-protofast.example.com}
+      # Catch-all upstream: the unified SSR host (same host, Docker DNS).
+      CLIENTS_HOST_HOST: clients
+      CLIENTS_HOST_PORT: "4000"
+      # gRPC service upstreams now live on Host B: dial its private IP + the
+      # ports Host B publishes (auth 8080, payments 8081, api 8082) — §3.1.
+      AUTH_HOST: ${HOST_B_IP}
+      AUTH_PORT: "8080"
+      PAYMENTS_HOST: ${HOST_B_IP}
+      PAYMENTS_PORT: "8081"
+      API_HOST: ${HOST_B_IP}
+      API_PORT: "8082"
+      # Keycloak edge vhost: login/OIDC reachable through the tunnel on its own
+      # domain. Routed to Host B's published Keycloak port (8083). Setting
+      # KEYCLOAK_HOST is what switches the optional vhost on (proxy/entrypoint.sh).
+      KEYCLOAK_HOST: ${HOST_B_IP}
+      KEYCLOAK_PORT: "8083"
+      KEYCLOAK_DOMAIN: ${KEYCLOAK_DOMAIN:-auth.example.com}
+      # Telemetry plumbing (otel-collector receivers, same host).
+      OTEL_INSTANCE_ID: envoy
+      OTEL_GRPC_HOST: otel-collector
+      OTEL_GRPC_PORT: "4317"
+      OTEL_HTTP_HOST: otel-collector
+      OTEL_HTTP_PORT: "4318"
+    depends_on:
+      clients:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+
+  clients:
+    image: ${ECR}/protofast-clients-host:${CLIENTS_HOST_TAG}
+    restart: unless-stopped
+    env_file:
+      - .env
+      - versions.env
+    environment:
+      PORT: "4000"
+      ASSETS_DIR: /assets
+      DEFAULT_CLIENT: ${DEFAULT_CLIENT:-protofast}
+      NG_ALLOWED_HOSTS: "${CLIENT_ADMIN_DOMAIN:-admin.example.com},${CLIENT_PROTOFAST_DOMAIN:-protofast.example.com}"
+      NG_TRUST_PROXY_HEADERS: "x-forwarded-for,x-forwarded-proto"
+      SERVER_OTEL_ENDPOINT: "http://otel-collector:4318"
+      BROWSER_OTEL_ENDPOINT: "/otlp"
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
+
+  otel-collector:
+    image: ${ECR}/protofast-otel-collector:${OTEL_TAG}
+    restart: unless-stopped
+    # Publish the OTLP receivers so Host B's services can export telemetry across
+    # the private network (admitted by the self-referencing SG, infra §4.3). This
+    # is the only cross-host ingress on Host A.
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    environment:
+      OTLP_GRPC_PORT: "4317"
+      OTLP_HTTP_PORT: "4318"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://aspire-dashboard:18889"
+      ASPIRE_API_KEY: ""
+      ASPIRE_INSECURE: "true"
+    depends_on:
+      aspire-dashboard:
+        condition: service_started
+
+  aspire-dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:${ASPIRE_TAG:-13}
+    restart: unless-stopped
+    environment:
+      DASHBOARD__FRONTEND__AUTHMODE: Unsecured
+      DASHBOARD__OTLP__AUTHMODE: Unsecured
+
+secrets:
+  tunnel-token:
+    # Written root-only by cloud-init user_data (Host A only).
+    file: /opt/protofast/tunnel-token

@@ -169,6 +169,20 @@ EOF
 EOF
       render_vhost "$CLIENT" "$DOMAINS" "$PORT" clients_host "$CORS_FILE" "$VHOSTS_FILE"
     done
+
+    # Optional Keycloak edge vhost. Only the two-instance prod topology routes
+    # Keycloak through Envoy (KEYCLOAK_HOST = Host B's private IP); dev reaches
+    # Keycloak directly via Aspire, so leaving KEYCLOAK_HOST unset skips this.
+    if [ -n "${KEYCLOAK_HOST:-}" ]; then
+      require_env KEYCLOAK_PORT
+      require_env KEYCLOAK_DOMAIN
+      # HTTP/1.1 upstream (Keycloak is not h2c) — the generic cluster template.
+      render_cluster keycloak "$KEYCLOAK_HOST" "$KEYCLOAK_PORT" /dev/null
+      sed -e "s|__KEYCLOAK_DOMAIN__|${KEYCLOAK_DOMAIN}|g" \
+        "$TMPL/envoy.keycloak-vhost.yaml.tmpl" >> "$VHOSTS_FILE"
+      echo "" >> "$VHOSTS_FILE"
+    fi
+
     render_rds service_routes "$VHOSTS_FILE" /etc/envoy/discovery/envoy.rds.yaml
     render_listener http_listener "$PORT" envoy.rds.yaml service_routes
     ;;

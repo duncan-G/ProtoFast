@@ -27,6 +27,7 @@ jobs:
     uses: ./.github/workflows/_component-deploy.yml
     with:
       component: otel-collector
+      host: edge
       build: buildx
       target: protofast-otel-collector
       kind: service

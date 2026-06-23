@@ -22,6 +22,7 @@ data "aws_iam_policy_document" "boundary" {
       "cloudwatch:*",
       "logs:*",
       "kms:*",
+      "secretsmanager:*",
       "sts:AssumeRole",
       "sts:GetCallerIdentity",
       "iam:Get*",

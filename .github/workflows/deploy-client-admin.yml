@@ -28,6 +28,7 @@ jobs:
     uses: ./.github/workflows/_component-deploy.yml
     with:
       component: client-admin
+      host: edge
       build: client-s3
       target: admin
       kind: client
