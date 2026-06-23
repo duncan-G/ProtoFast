@@ -6,11 +6,11 @@
 #
 # Implemented as a shell init script (not a static .sql) so the role password can
 # be read from the mounted secret rather than baked into a committed file. The
-# value MUST match SESSIONS_DB_PASSWORD in auth's connection string (.env) — both
+# value MUST match AUTH_DB_PASSWORD in auth's connection string (.env) — both
 # are seeded from the same cloud-init secret (§3.2 "keep the two in sync").
 set -eu
 
-SESSIONS_PASSWORD="$(cat /run/secrets/sessions-db-password)"
+AUTH_PASSWORD="$(cat /run/secrets/auth-db-password)"
 
 # Connect as the bootstrap superuser ($POSTGRES_USER) to the default DB. Quote the
 # password as a literal; CREATE DATABASE cannot run inside a transaction block, so
@@ -19,7 +19,7 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<SQ
 DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'auth') THEN
-    CREATE ROLE auth LOGIN PASSWORD '${SESSIONS_PASSWORD}';
+    CREATE ROLE auth LOGIN PASSWORD '${AUTH_PASSWORD}';
   END IF;
 END
 \$\$;

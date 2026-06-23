@@ -1,4 +1,4 @@
-# Deploy Postgres (Keycloak's `keycloak` DB + auth's `sessions` DB, on the durable
+# Deploy Postgres (Keycloak's `keycloak` DB + auth's `auth` DB, on the durable
 # pgdata EBS volume, Host B). Upstream pinned image (postgres:<tag>), not an
 # artifact we build — so this does NOT use _component-deploy.yml. It ships the
 # Host B compose + deploy.sh and runs `deploy.sh apply postgres=<tag>`, which takes
@@ -9,7 +9,7 @@
 # MINOR/patch bumps within a major version deploy normally. A MAJOR-version bump is
 # a MIGRATION, not a deploy: deploy.sh refuses it unless ALLOW_PG_MAJOR=1, which
 # this workflow sets only when the `allow_major` dispatch input is true. Take a
-# pg_dump backup first (§6.3).
+# pg_dump backup first.
 #
 # Repo VARIABLES (set by infra/bootstrap): AWS_REGION, AWS_DEPLOY_ROLE_ARN,
 #   ECR_REGISTRY, ASSETS_BUCKET.
@@ -49,7 +49,6 @@ env:
   ASSETS_BUCKET: ${{ vars.ASSETS_BUCKET }}
   INSTANCE_TAG_KEY: "protofast:role"
   INSTANCE_TAG_VALUE: "app-server"
-  # Keep in sync with the POSTGRES_TAG default in deploy/docker-compose.host-b.yml.
   DEFAULT_POSTGRES_TAG: "17"
 
 jobs:

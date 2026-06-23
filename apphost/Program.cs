@@ -8,7 +8,7 @@ var otel = builder.AddOpenTelemetryCollector("otel-collector");
 
 var postgres = builder.AddPostgres("postgres").WithPgAdmin().WithDataVolume();
 postgres.AddDatabase("keycloak-db", databaseName: "keycloak");
-postgres.AddDatabase("sessions-db", databaseName: "sessions");
+postgres.AddDatabase("auth-db", databaseName: "auth");
 
 builder.AddRedis("redis");
 
