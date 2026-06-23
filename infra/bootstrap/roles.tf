@@ -77,6 +77,17 @@ data "aws_iam_policy_document" "infra" {
     resources = [local.state_bucket_arn, "${local.state_bucket_arn}/*"]
   }
 
+  # Full lifecycle of the assets bucket (infra/assets.tf): create/destroy plus its
+  # public-access-block, encryption, and lifecycle sub-resources. Terraform reads
+  # many bucket attributes on every refresh and force_destroy empties objects, so
+  # s3:* is scoped to this one bucket rather than enumerating a brittle action list.
+  statement {
+    sid       = "AssetsBucket"
+    effect    = "Allow"
+    actions   = ["s3:*"]
+    resources = [local.assets_bucket_arn, "${local.assets_bucket_arn}/*"]
+  }
+
   # IAM for app roles (e.g. the EC2 instance profile). CreateRole is constrained
   # by the boundary (RequireBoundaryOnCreatedRoles) to prevent escalation.
   statement {
@@ -164,6 +175,7 @@ data "aws_iam_policy_document" "deploy" {
     actions = [
       "ecr:BatchCheckLayerAvailability",
       "ecr:BatchGetImage",
+      "ecr:DescribeImages",
       "ecr:GetDownloadUrlForLayer",
       "ecr:InitiateLayerUpload",
       "ecr:UploadLayerPart",
