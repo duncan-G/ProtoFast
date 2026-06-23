@@ -72,7 +72,7 @@ locals {
     keycloak_domain = var.keycloak_domain
     assets_bucket   = aws_s3_bucket.assets.bucket
     host_a_ip       = local.host_a_private_ip
-    app_secret_id = aws_secretsmanager_secret.app.name
+    app_secret_id   = aws_secretsmanager_secret.app.name
   })
 }
 
