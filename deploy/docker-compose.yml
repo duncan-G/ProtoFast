@@ -32,6 +32,14 @@ services:
     # manifest so the edge ref never collapses to "cloudflare/cloudflared:".
     image: cloudflare/cloudflared:${CLOUDFLARED_TAG:-2026.6.1}
     restart: unless-stopped
+    # Run as root: the tunnel-token secret is bind-mounted from the host file
+    # /opt/protofast/tunnel-token (cloud-init creates it root-owned, mode 0600).
+    # The upstream image runs as a non-root user, and non-swarm compose keeps the
+    # host file's ownership/mode for file-based secrets (uid/gid/mode long-syntax
+    # are not honored here), so a non-root process gets "permission denied"
+    # reading /run/secrets/tunnel-token. Root reads it and keeps the host token
+    # root-only (no need to loosen its 0600).
+    user: "0:0"
     # Outbound-only QUIC tunnel. The tunnel's public-hostname config (managed in
     # Terraform/Cloudflare) routes every client domain to https://envoy:8443 with
     # originRequest.noTLSVerify=true, so Envoy's baked self-signed cert is fine.
