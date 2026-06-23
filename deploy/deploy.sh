@@ -82,7 +82,7 @@ upper() { printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_'; }
 
 # Resolve a component id to its manifest key, compose service, and kind. Sets the
 # globals KEY, SVC, KIND (and CLIENT_NAME for client kinds). Unknown → exit 2.
-#   KIND ∈ service | envoy | otel | host | client | aspire
+#   KIND ∈ service | envoy | otel | host | client | aspire | edge
 resolve() {
   local component="$1"
   CLIENT_NAME=""
@@ -95,6 +95,8 @@ resolve() {
       KEY="OTEL_TAG"; SVC="otel-collector"; KIND="otel" ;;
     aspire-dashboard)
       KEY="ASPIRE_TAG"; SVC="aspire-dashboard"; KIND="aspire" ;;
+    cloudflared)
+      KEY="CLOUDFLARED_TAG"; SVC="cloudflared"; KIND="edge" ;;
     clients-host)
       KEY="CLIENTS_HOST_TAG"; SVC="clients"; KIND="host" ;;
     client-*)
@@ -167,6 +169,15 @@ aspire_ok() {
     -fsS -o /dev/null --max-time 5 "http://aspire-dashboard:18888/"
 }
 
+# cloudflared tunnel readiness via its --metrics server (config in compose:
+# --metrics 0.0.0.0:2000). GET /ready returns 200 once at least one edge
+# connection is registered, 503 otherwise — so this gates on the public edge
+# actually being connected, not just the container being up.
+cloudflared_ok() {
+  docker run --rm --network "$NETWORK" curlimages/curl:latest \
+    -fsS -o /dev/null --max-time 5 "http://cloudflared:2000/ready"
+}
+
 # Run the component-scoped health check (plan §6) once. 0 = healthy.
 health_once() {
   local rc=0 name
@@ -196,6 +207,8 @@ health_once() {
       otel_ok || { rc=1; log "otel-collector not ready"; } ;;
     aspire)
       aspire_ok || { rc=1; log "aspire-dashboard not ready"; } ;;
+    edge)
+      cloudflared_ok || { rc=1; log "cloudflared tunnel not ready"; } ;;
   esac
   return "$rc"
 }
@@ -223,7 +236,7 @@ health_check() {
 # even when the host image tag itself is unchanged.
 apply_kind() {
   case "$KIND" in
-    service|envoy|otel|aspire)
+    service|envoy|otel|aspire|edge)
       log "pulling ${SVC}"
       compose pull "$SVC"
       log "recreating ${SVC}"
@@ -280,11 +293,13 @@ push_manifest() {
 # --- bootstrap: bring the whole stack up from the persisted manifest --------
 # Run by cloud-init on a fresh/replaced instance, which has the engine + .env but
 # nothing running. Unlike `apply` (one --no-deps container), this starts the
-# ENTIRE topology — including the tagless edge (cloudflared) and dashboard — and
-# lets compose's depends_on/health gating order the bring-up. A complete manifest
+# ENTIRE topology — including the edge (cloudflared) and dashboard — and lets
+# compose's depends_on/health gating order the bring-up. A complete manifest
 # is the normal steady state; with a partial one (not every component deployed
 # yet) we start only the services whose image tag resolves, so a blank *_TAG
-# never collapses an image ref to "<ecr>/protofast-<name>:".
+# never collapses an image ref to "<ecr>/protofast-<name>:". cloudflared and
+# aspire-dashboard carry compose defaults (their refs never collapse), so they
+# stay in the always-up list below to guarantee the edge even on a partial box.
 SERVICE_TAGS="envoy:ENVOY_TAG clients:CLIENTS_HOST_TAG auth:AUTH_TAG payments:PAYMENTS_TAG api:API_TAG otel-collector:OTEL_TAG"
 bootstrap() {
   if [ ! -f "$VERSIONS_FILE" ]; then

@@ -25,12 +25,19 @@ x-otel-grpc: &otel-grpc "http://otel-collector:4317"
 
 services:
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    # Pinned upstream image, deployed as a component like aspire-dashboard:
+    # `deploy.sh apply cloudflared=<tag>` (workflow deploy-cloudflared.yml) writes
+    # CLOUDFLARED_TAG into versions.env. Keep this default in sync with
+    # DEFAULT_CLOUDFLARED_TAG in that workflow; the default also covers a partial
+    # manifest so the edge ref never collapses to "cloudflare/cloudflared:".
+    image: cloudflare/cloudflared:${CLOUDFLARED_TAG:-2026.6.1}
     restart: unless-stopped
     # Outbound-only QUIC tunnel. The tunnel's public-hostname config (managed in
     # Terraform/Cloudflare) routes every client domain to https://envoy:8443 with
     # originRequest.noTLSVerify=true, so Envoy's baked self-signed cert is fine.
-    command: tunnel --no-autoupdate run --token-file /run/secrets/tunnel-token
+    # --metrics exposes the readiness endpoint (GET /ready -> 200 once >=1 edge
+    # connection is registered) that the deploy health check curls on the network.
+    command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 run --token-file /run/secrets/tunnel-token
     secrets:
       - tunnel-token
     depends_on:
