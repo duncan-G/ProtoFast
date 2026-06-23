@@ -164,8 +164,11 @@ services:
 
   aspire-dashboard:
     # Ephemeral, in-memory telemetry UI. Not published; reached via a CF
-    # Access-gated tunnel hostname or SSM port-forward.
-    image: mcr.microsoft.com/dotnet/aspire-dashboard:latest
+    # Access-gated tunnel hostname or SSM port-forward. Pinned like every other
+    # component: ${ASPIRE_TAG} lives in versions.env (written by deploy.sh apply
+    # aspire-dashboard=<tag>); the :-13 default keeps the ref valid for bootstrap
+    # and local `compose up` before the manifest carries an ASPIRE_TAG line.
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:${ASPIRE_TAG:-13}
     restart: unless-stopped
     environment:
       # Internal-only: auth is enforced at the Cloudflare edge / SSM, not here.

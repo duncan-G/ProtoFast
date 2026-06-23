@@ -8,6 +8,7 @@
 # Usage:  deploy.sh apply <component>=<tag> [<component>=<tag> ...]
 #
 #   component ∈ auth | payments | api | envoy | otel-collector | clients-host
+#               | aspire-dashboard
 #               | client-<name>            (e.g. client-admin, client-protofast)
 #
 # Contract (docs/independent-deployment-plan.md §5):
@@ -81,7 +82,7 @@ upper() { printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_'; }
 
 # Resolve a component id to its manifest key, compose service, and kind. Sets the
 # globals KEY, SVC, KIND (and CLIENT_NAME for client kinds). Unknown → exit 2.
-#   KIND ∈ service | envoy | otel | host | client
+#   KIND ∈ service | envoy | otel | host | client | aspire
 resolve() {
   local component="$1"
   CLIENT_NAME=""
@@ -92,6 +93,8 @@ resolve() {
       KEY="ENVOY_TAG"; SVC="envoy"; KIND="envoy" ;;
     otel-collector)
       KEY="OTEL_TAG"; SVC="otel-collector"; KIND="otel" ;;
+    aspire-dashboard)
+      KEY="ASPIRE_TAG"; SVC="aspire-dashboard"; KIND="aspire" ;;
     clients-host)
       KEY="CLIENTS_HOST_TAG"; SVC="clients"; KIND="host" ;;
     client-*)
@@ -157,6 +160,13 @@ otel_ok() {
     -fsS -o /dev/null --max-time 5 "http://otel-collector:13133/"
 }
 
+# Aspire Dashboard frontend is serving (the UI cloudflared proxies on :18888).
+# Internal only; auth is enforced at the Cloudflare edge, so a plain GET suffices.
+aspire_ok() {
+  docker run --rm --network "$NETWORK" curlimages/curl:latest \
+    -fsS -o /dev/null --max-time 5 "http://aspire-dashboard:18888/"
+}
+
 # Run the component-scoped health check (plan §6) once. 0 = healthy.
 health_once() {
   local rc=0 name
@@ -184,6 +194,8 @@ health_once() {
       vhost_ok "$(domain_for "$CLIENT_NAME")" || { rc=1; log "vhost not ready: $(domain_for "$CLIENT_NAME")"; } ;;
     otel)
       otel_ok || { rc=1; log "otel-collector not ready"; } ;;
+    aspire)
+      aspire_ok || { rc=1; log "aspire-dashboard not ready"; } ;;
   esac
   return "$rc"
 }
@@ -211,7 +223,7 @@ health_check() {
 # even when the host image tag itself is unchanged.
 apply_kind() {
   case "$KIND" in
-    service|envoy|otel)
+    service|envoy|otel|aspire)
       log "pulling ${SVC}"
       compose pull "$SVC"
       log "recreating ${SVC}"
