@@ -22,3 +22,9 @@ RUN openssl req -x509 -newkey rsa:2048 -days 3650 -nodes \
 
 ENV ENVOY_TLS_CERT=/etc/envoy/internal-tls.crt \
     ENVOY_TLS_KEY=/etc/envoy/internal-tls.key
+
+# The base image's default CMD boots Envoy directly against the sample
+# /etc/envoy/envoy.yaml. Override it so our renderer runs first: entrypoint.sh
+# generates /tmp/envoy.yaml + /etc/envoy/discovery/*.yaml, then exec's Envoy.
+ENTRYPOINT ["/etc/envoy/entrypoint.sh"]
+CMD []
