@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
 namespace ProtoFast.ServiceDefaults;
@@ -15,6 +16,9 @@ public static class Extensions
 {
     private const string HealthEndpointPath = "/health";
     private const string AlivenessEndpointPath = "/alive";
+    // gRPC Health service path hit every 10s by grpc_health_probe (the production
+    // healthcheck). StartsWithSegments matches both /Check and /Watch under it.
+    private const string GrpcHealthEndpointPath = "/grpc.health.v1.Health";
     private const string ActivitySourceName = "ProtoFast.*";
 
     public static IHostApplicationBuilder AddServiceDefaults(this IHostApplicationBuilder builder)
@@ -42,6 +46,12 @@ public static class Extensions
         });
 
         builder.Services.AddOpenTelemetry()
+            // Set service.name on the resource so telemetry is attributed to this service
+            // in every environment. In dev the Aspire AppHost injects OTEL_SERVICE_NAME per
+            // project, but in production (plain docker-compose, no AppHost) nothing sets it,
+            // so without this the SDK falls back to "unknown_service:dotnet". An explicit
+            // OTEL_SERVICE_NAME env var still overrides this value.
+            .ConfigureResource(resource => resource.AddService(builder.Environment.ApplicationName))
             .WithMetrics(metrics =>
             {
                 metrics.AddAspNetCoreInstrumentation()
@@ -56,7 +66,8 @@ public static class Extensions
                         // Don't trace requests to the health endpoint to avoid filling the dashboard with noise
                         tracing.Filter = httpContext =>
                             !(httpContext.Request.Path.StartsWithSegments(HealthEndpointPath)
-                              || httpContext.Request.Path.StartsWithSegments(AlivenessEndpointPath))
+                              || httpContext.Request.Path.StartsWithSegments(AlivenessEndpointPath)
+                              || httpContext.Request.Path.StartsWithSegments(GrpcHealthEndpointPath))
                     )
                     .AddHttpClientInstrumentation(options =>
                         options.FilterHttpRequestMessage = req =>
