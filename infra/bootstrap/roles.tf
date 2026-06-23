@@ -228,8 +228,9 @@ data "aws_iam_policy_document" "deploy" {
 
   # Publish client SSR builds to the assets bucket under clients/<name>/<tag>/,
   # and prune superseded tags beyond KEEP_RELEASES. Also publish the deploy
-  # artifacts (docker-compose.yml, deploy.sh) under deploy/ so a replaced
-  # instance can self-bootstrap from cloud-init. Scoped to those two prefixes.
+  # artifacts (docker-compose.host-a.yml, docker-compose.host-b.yml, deploy.sh)
+  # under deploy/ so a replaced instance can self-bootstrap from cloud-init.
+  # Scoped to those two prefixes.
   statement {
     sid       = "AssetsList"
     effect    = "Allow"

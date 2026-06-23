@@ -6,6 +6,14 @@ var builder = DistributedApplication.CreateBuilder(args);
 
 var otel = builder.AddOpenTelemetryCollector("otel-collector");
 
+var postgres = builder.AddPostgres("postgres").WithPgAdmin().WithDataVolume();
+postgres.AddDatabase("keycloak-db", databaseName: "keycloak");
+postgres.AddDatabase("sessions-db", databaseName: "sessions");
+
+builder.AddRedis("redis");
+
+builder.AddKeycloak("keycloak", 8080);
+
 var auth     = builder.AddProject<Projects.ProtoFast_Auth_Api>("auth").WithOtlpCollectorReference(otel);
 var payments = builder.AddProject<Projects.ProtoFast_Payments_Api>("payments").WithOtlpCollectorReference(otel);
 var api      = builder.AddProject<Projects.ProtoFast_Api>("api").WithOtlpCollectorReference(otel);

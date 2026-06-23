@@ -48,8 +48,26 @@ resource "aws_security_group" "instance" {
   description = "ProtoFast app server - egress only, zero ingress."
   vpc_id      = aws_default_vpc.default.id
 
-  # No ingress rules at all: admin access is via SSM Session Manager, public
-  # traffic arrives through the outbound Cloudflare tunnel only.
+  # No INTERNET-facing ingress: admin access is via SSM Session Manager, public
+  # traffic arrives through the outbound Cloudflare tunnel only. The two cross-host
+  # rules below use self = true, which admits ONLY sibling instances in this same
+  # security group over private IPs — no NAT, no overlay, still zero public ingress
+  # (two-instance restructure §4.3).
+  ingress {
+    description = "Host A Envoy to Host B services and Keycloak (private, self only)"
+    from_port   = 8080
+    to_port     = 8083
+    protocol    = "tcp"
+    self        = true
+  }
+
+  ingress {
+    description = "Host B services to Host A otel-collector (private, self only)"
+    from_port   = 4317
+    to_port     = 4318
+    protocol    = "tcp"
+    self        = true
+  }
 
   egress {
     description = "All outbound IPv4 (Cloudflare tunnel, ECR/SSM/CloudWatch, github, etc.)."

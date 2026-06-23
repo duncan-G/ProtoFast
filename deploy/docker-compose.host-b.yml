@@ -1,7 +1,7 @@
 # Host B — SERVICES + STATE compose topology (two-instance restructure §3.2).
 #
 # Runs the three gRPC backends plus the new stateful tier: Keycloak (identity),
-# Postgres (Keycloak's `keycloak` DB + auth's durable `sessions` DB, on the
+# Postgres (Keycloak's `keycloak` DB + auth's durable `auth` DB, on the
 # persistent EBS volume at /mnt/pgdata), and Redis (in-memory session cache).
 #
 # Cross-host edges get PUBLISHED ports so Host A's Envoy can dial this host's
@@ -40,13 +40,13 @@ services:
     # auth-only connection strings (prod equivalent of the Aspire references in
     # §2.2). The env-var NAMES are identical to what Aspire injects in dev so the
     # service code is environment-agnostic (§2.2 ↔ §3.2). Same-host wiring stays
-    # name-based over this compose network. SESSIONS_DB_PASSWORD comes from .env
-    # (seeded by cloud-init, kept in sync with the sessions-db-password secret the
+    # name-based over this compose network. AUTH_DB_PASSWORD comes from .env
+    # (seeded by cloud-init, kept in sync with the auth-db-password secret the
     # Postgres init script reads — §3.2).
     environment:
       <<: *dotnet-env
       ConnectionStrings__redis: "redis:6379"
-      ConnectionStrings__sessions: "Host=postgres;Port=5432;Database=sessions;Username=auth;Password=${SESSIONS_DB_PASSWORD}"
+      ConnectionStrings__auth: "Host=postgres;Port=5432;Database=auth;Username=auth;Password=${AUTH_DB_PASSWORD}"
       ConnectionStrings__keycloak: "http://keycloak:8080/realms/protofast"
     volumes:
       - /usr/local/bin/grpc_health_probe:/usr/local/bin/grpc_health_probe:ro
@@ -91,10 +91,10 @@ services:
       POSTGRES_PASSWORD_FILE: /run/secrets/kc-db-password
     volumes:
       - /mnt/pgdata:/var/lib/postgresql/data            # persistent EBS (infra §4.2)
-      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro  # creates `sessions` DB + auth role (first init only)
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro  # creates `auth` DB + auth role (first init only)
     secrets:
       - kc-db-password
-      - sessions-db-password
+      - auth-db-password
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U keycloak"]
       interval: 10s
@@ -130,11 +130,11 @@ services:
     image: redis:${REDIS_TAG:-7}
     restart: unless-stopped
     # In-memory only (D3): no AOF, no volume. Bounded memory + TTL eviction so a
-    # restart just causes cache misses that repopulate from the sessions DB.
+    # restart just causes cache misses that repopulate from the auth DB.
     command: redis-server --maxmemory 256mb --maxmemory-policy volatile-ttl
 
 secrets:
   kc-db-password:
     file: /opt/protofast/kc-db-password       # root-only, seeded by cloud-init
-  sessions-db-password:
-    file: /opt/protofast/sessions-db-password  # root-only, seeded by cloud-init
+  auth-db-password:
+    file: /opt/protofast/auth-db-password  # root-only, seeded by cloud-init

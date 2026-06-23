@@ -1,0 +1,127 @@
+# Deploy Redis (auth's in-memory session cache, Host B). Like cloudflared/aspire
+# it's an upstream pinned image (redis:<tag>), not an artifact we build — so this
+# does NOT use _component-deploy.yml. It ships the Host B compose + deploy.sh and
+# runs `deploy.sh apply redis=<tag>`, which takes the stateful path (§5.3): plain
+# `up -d --no-deps`, health-gated on a redis-cli PING. Redis is a disposable cache
+# (D3), so a recreate just causes cache misses that repopulate from the sessions DB.
+#
+# Repo VARIABLES (set by infra/bootstrap): AWS_REGION, AWS_DEPLOY_ROLE_ARN,
+#   ECR_REGISTRY, ASSETS_BUCKET.
+name: deploy-redis
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/deploy-redis.yml"
+      - "deploy/docker-compose.host-b.yml"
+      - "deploy/deploy.sh"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "redis image tag to deploy or roll back to. Blank = default."
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-redis
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # GitHub OIDC -> AWS
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR: ${{ vars.ECR_REGISTRY }}
+  ASSETS_BUCKET: ${{ vars.ASSETS_BUCKET }}
+  INSTANCE_TAG_KEY: "protofast:role"
+  INSTANCE_TAG_VALUE: "app-server"
+  # Keep in sync with the REDIS_TAG default in deploy/docker-compose.host-b.yml.
+  DEFAULT_REDIS_TAG: "7"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.tag }}"
+          [ -n "$tag" ] || tag="${DEFAULT_REDIS_TAG}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "deploying redis tag=${tag}"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve target instance
+        id: target
+        run: |
+          set -euo pipefail
+          # redis is a services component (Host B): scope to the Role=services sibling.
+          id=$(aws ec2 describe-instances \
+            --filters "Name=tag:${INSTANCE_TAG_KEY},Values=${INSTANCE_TAG_VALUE}" \
+                      "Name=tag:Role,Values=services" \
+                      "Name=instance-state-name,Values=running" \
+            --query 'Reservations[].Instances[].InstanceId' --output text)
+          [ -n "$id" ] || { echo "no running services instance with ${INSTANCE_TAG_KEY}=${INSTANCE_TAG_VALUE}" >&2; exit 1; }
+          echo "instance_id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy via SSM
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          COMPOSE_B64=$(base64 -w0 deploy/docker-compose.host-b.yml)
+          DEPLOY_B64=$(base64 -w0 deploy/deploy.sh)
+
+          cmd_id=$(aws ssm send-command \
+            --instance-ids "${{ steps.target.outputs.instance_id }}" \
+            --document-name AWS-RunShellScript \
+            --comment "deploy redis=${TAG}" \
+            --parameters commands="[
+              \"set -eu\",
+              \"mkdir -p /opt/protofast\",
+              \"echo $COMPOSE_B64 | base64 -d > /opt/protofast/docker-compose.yml\",
+              \"echo $DEPLOY_B64 | base64 -d > /opt/protofast/deploy.sh\",
+              \"chmod +x /opt/protofast/deploy.sh\",
+              \"ECR=${ECR} /opt/protofast/deploy.sh apply redis=${TAG}\"
+            ]" \
+            --query 'Command.CommandId' --output text)
+
+          echo "SSM command: $cmd_id"
+
+          while :; do
+            status=$(aws ssm get-command-invocation \
+              --command-id "$cmd_id" \
+              --instance-id "${{ steps.target.outputs.instance_id }}" \
+              --query 'Status' --output text 2>/dev/null || echo Pending)
+            case "$status" in
+              Success) break ;;
+              Failed|Cancelled|TimedOut) echo "deploy $status"; break ;;
+              *) sleep 8 ;;
+            esac
+          done
+
+          aws ssm get-command-invocation \
+            --command-id "$cmd_id" \
+            --instance-id "${{ steps.target.outputs.instance_id }}" \
+            --query '{Status:Status,Out:StandardOutputContent,Err:StandardErrorContent}' \
+            --output text
+
+          [ "$status" = "Success" ]
+
+      # Publish the Host B compose + deploy.sh so a replaced Host B self-bootstraps.
+      - name: Publish deploy artifacts to S3
+        run: |
+          set -euo pipefail
+          aws s3 cp deploy/docker-compose.host-b.yml "s3://${ASSETS_BUCKET}/deploy/docker-compose.host-b.yml"
+          aws s3 cp deploy/deploy.sh                 "s3://${ASSETS_BUCKET}/deploy/deploy.sh"
+          aws s3 cp deploy/postgres/backup.sh        "s3://${ASSETS_BUCKET}/deploy/backup.sh"

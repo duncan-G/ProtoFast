@@ -82,7 +82,10 @@ upper() { printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_'; }
 
 # Resolve a component id to its manifest key, compose service, and kind. Sets the
 # globals KEY, SVC, KIND (and CLIENT_NAME for client kinds). Unknown → exit 2.
-#   KIND ∈ service | envoy | otel | host | client | aspire | edge
+#   KIND ∈ service | envoy | otel | host | client | aspire | edge | stateful
+# stateful (keycloak/postgres/redis — two-instance restructure §5.3) gets its OWN
+# apply path, kept separate from the recreate+health+rollback service flow:
+# Postgres never auto-rolls-back its tag; Redis is a disposable cache.
 resolve() {
   local component="$1"
   CLIENT_NAME=""
@@ -102,6 +105,12 @@ resolve() {
     client-*)
       CLIENT_NAME="${component#client-}"
       KEY="CLIENT_$(upper "$CLIENT_NAME")_TAG"; SVC="clients"; KIND="client" ;;
+    keycloak)
+      KEY="KEYCLOAK_TAG"; SVC="keycloak"; KIND="stateful" ;;
+    postgres)
+      KEY="POSTGRES_TAG"; SVC="postgres"; KIND="stateful" ;;
+    redis)
+      KEY="REDIS_TAG"; SVC="redis"; KIND="stateful" ;;
     *)
       echo "unknown component: ${component}" >&2; exit 2 ;;
   esac
@@ -178,6 +187,16 @@ cloudflared_ok() {
     -fsS -o /dev/null --max-time 5 "http://cloudflared:2000/ready"
 }
 
+# Stateful-tier checks (Host B, §5.4). Postgres/Redis are reached via `compose
+# exec` (same host); Keycloak's readiness probe is on its management port (9000 in
+# Keycloak 26 with KC_HEALTH_ENABLED), hit over the compose network.
+keycloak_ok() {
+  docker run --rm --network "$NETWORK" curlimages/curl:latest \
+    -fsS -o /dev/null --max-time 5 "http://keycloak:9000/health/ready"
+}
+postgres_ok() { compose exec -T postgres pg_isready -U keycloak >/dev/null 2>&1; }
+redis_ok()    { compose exec -T redis redis-cli ping 2>/dev/null | grep -q PONG; }
+
 # Run the component-scoped health check (plan §6) once. 0 = healthy.
 health_once() {
   local rc=0 name
@@ -209,6 +228,12 @@ health_once() {
       aspire_ok || { rc=1; log "aspire-dashboard not ready"; } ;;
     edge)
       cloudflared_ok || { rc=1; log "cloudflared tunnel not ready"; } ;;
+    stateful)
+      case "$SVC" in
+        keycloak) keycloak_ok || { rc=1; log "keycloak not ready"; } ;;
+        postgres) postgres_ok || { rc=1; log "postgres not accepting connections"; } ;;
+        redis)    redis_ok    || { rc=1; log "redis not responding to PING"; } ;;
+      esac ;;
   esac
   return "$rc"
 }
@@ -251,6 +276,25 @@ apply_kind() {
       # its entrypoint re-syncs the pinned client assets from S3.
       log "recreating clients host for client '${CLIENT_NAME}' (re-pulls from S3)"
       compose up -d --no-deps --force-recreate "$SVC" ;;
+    stateful)
+      # Separate path (§5.3): plain `up -d --no-deps`, never a blind
+      # --force-recreate. Postgres major-version bumps are MIGRATIONS, not deploys
+      # — a downgrade after a catalog upgrade corrupts data — so gate them behind
+      # ALLOW_PG_MAJOR=1 and never auto-roll-back a Postgres tag (handled in the
+      # apply loop). Redis is a disposable cache; Keycloak is health-gated.
+      if [ "$SVC" = postgres ]; then
+        local cur_major new_major
+        cur_major="${CUR_TAG%%.*}"; new_major="${NEW_TAG%%.*}"
+        if [ -n "$cur_major" ] && [ "$cur_major" != "$new_major" ] && [ "${ALLOW_PG_MAJOR:-0}" != "1" ]; then
+          log "REFUSING postgres major bump ${CUR_TAG} -> ${NEW_TAG}: a major upgrade is a migration."
+          log "Re-run with ALLOW_PG_MAJOR=1 once you have a pg_dump backup and a migration plan (§5.3/§6.3)."
+          return 3
+        fi
+      fi
+      log "pulling ${SVC}"
+      compose pull "$SVC"
+      log "recreating ${SVC} (stateful: no force-recreate)"
+      compose up -d --no-deps "$SVC" ;;
   esac
 }
 
@@ -300,13 +344,30 @@ push_manifest() {
 # never collapses an image ref to "<ecr>/protofast-<name>:". cloudflared and
 # aspire-dashboard carry compose defaults (their refs never collapse), so they
 # stay in the always-up list below to guarantee the edge even on a partial box.
-SERVICE_TAGS="envoy:ENVOY_TAG clients:CLIENTS_HOST_TAG auth:AUTH_TAG payments:PAYMENTS_TAG api:API_TAG otel-collector:OTEL_TAG"
+# Per-host bring-up sets (two-instance restructure §6.1): each host's deploy.sh
+# acts only on the components in ITS compose file. SERVICE_TAGS are services whose
+# image ref has NO compose default (a blank *_TAG would collapse the ref), so they
+# start only once their tag is present. ALWAYS_UP services carry compose defaults
+# (cloudflared/aspire on edge; the pinned upstream postgres/redis/keycloak on B),
+# so their refs never collapse and they start even on a partial manifest.
+host_bringup_sets() {
+  case "$(get_env "$ENV_FILE" HOST_ROLE)" in
+    services)
+      SERVICE_TAGS="auth:AUTH_TAG payments:PAYMENTS_TAG api:API_TAG"
+      ALWAYS_UP="postgres redis keycloak" ;;
+    *) # edge (also the default for a pre-split .env that predates HOST_ROLE)
+      SERVICE_TAGS="envoy:ENVOY_TAG clients:CLIENTS_HOST_TAG otel-collector:OTEL_TAG"
+      ALWAYS_UP="cloudflared aspire-dashboard" ;;
+  esac
+}
 bootstrap() {
   if [ ! -f "$VERSIONS_FILE" ]; then
     log "no versions.env; nothing to bootstrap (first deploy will converge)"
     return 0
   fi
-  local missing="" ready="cloudflared aspire-dashboard" svc tagvar pair
+  local missing="" svc tagvar pair
+  host_bringup_sets
+  local ready="$ALWAYS_UP"
   for pair in $SERVICE_TAGS; do
     svc="${pair%%:*}"; tagvar="${pair#*:}"
     if [ -n "$(get_env "$VERSIONS_FILE" "$tagvar")" ]; then
@@ -325,18 +386,39 @@ bootstrap() {
   fi
 }
 
+# --- drain: graceful Host B teardown (§6.2) --------------------------------
+# Stop the WRITERS first (so nothing is still sending data), then Postgres, then
+# unmount — the order that avoids force-detaching a dirty filesystem and stopping
+# writes mid-transaction. Invoked by the systemd ExecStop on every Host B shutdown
+# (incl. Terraform terminate) and by an explicit pre-apply SSM drain. Best-effort:
+# Postgres is crash-safe (WAL), so a partial drain never corrupts data.
+drain() {
+  log "draining Host B: writers -> postgres -> unmount"
+  compose stop auth payments api keycloak || true   # no new sessions/realm writes
+  compose stop postgres || true                      # fast shutdown (image STOPSIGNAL=SIGINT)
+  sync
+  umount /mnt/pgdata 2>/dev/null || log "WARN: /mnt/pgdata busy or not mounted; ext4 journal covers it"
+}
+
 # --- argument parsing ------------------------------------------------------
-usage() { echo "usage: $0 apply <component>=<tag> [...]   |   $0 bootstrap" >&2; exit 2; }
+usage() { echo "usage: $0 apply <component>=<tag> [...]   |   $0 bootstrap   |   $0 drain" >&2; exit 2; }
 MODE="${1:-}"
 case "$MODE" in
   apply)     shift; [ "$#" -ge 1 ] || usage ;;
   bootstrap) shift; [ "$#" -eq 0 ] || usage ;;
+  drain)     shift; [ "$#" -eq 0 ] || usage ;;
   *)         usage ;;
 esac
 
 # Serialise manifest writes across concurrent deploys (plan §8 invariant).
 exec 9>"$LOCK_FILE"
 flock 9
+
+# drain only stops containers + unmounts — no manifest write, no ECR needed.
+if [ "$MODE" = drain ]; then
+  drain
+  exit 0
+fi
 
 # The registry host is the same for every deploy. cloud-init seeds it into .env
 # at boot, but the deploy job also passes ECR so the deploy is self-sufficient if
@@ -390,11 +472,25 @@ for pair in "$@"; do
     continue
   fi
 
-  apply_kind
+  # apply_kind may refuse a Postgres major bump (rc=3) — capture rather than let
+  # set -e abort, so we can undo the manifest tag and move on.
+  set +e; apply_kind; apply_rc=$?; set -e
+  if [ "$apply_rc" -eq 3 ]; then
+    log "restoring manifest: ${COMPONENT} stays at ${CUR_TAG:-<unset>} (apply refused)"
+    [ -f "$VERSIONS_PREV" ] && cp "$VERSIONS_PREV" "$VERSIONS_FILE"
+    RC=1
+    continue
+  fi
 
   if health_check; then
     log "${COMPONENT}=${NEW_TAG} healthy"
     prune_old_images
+  elif [ "$SVC" = postgres ]; then
+    # NEVER auto-rollback a Postgres tag (§5.3/§7): a downgrade after a catalog
+    # upgrade corrupts data. Leave it running, flag the run, demand manual action.
+    log "postgres ${NEW_TAG} did not pass health checks — NOT auto-rolling-back a Postgres tag (§5.3)."
+    log "Investigate manually; restore from a pg_dump backup if needed (§6.3)."
+    RC=1
   else
     # Restore the manifest and re-apply the previous tag for THIS component.
     log "ROLLING BACK ${COMPONENT} to ${CUR_TAG:-<unset>}"

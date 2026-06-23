@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# cloud-init for ProtoFast HOST B — services + state (auth/payments/api, Keycloak,
+# Postgres, Redis). Unlike Host A this host is NOT pure cattle: its data lives on
+# the persistent pgdata EBS volume, mounted (never reformatted) below. A systemd
+# lifecycle unit drains it cleanly on every shutdown (§6.2). Idempotent enough to re-run.
+set -euxo pipefail
+
+# --- AWS SSM agent (preinstalled) --------------------------------------------
+systemctl enable --now amazon-ssm-agent || true
+
+# --- Shared install fragment (engine + ECR helper + compose + grpc_health_probe) ---
+${common_setup}
+
+# --- Persistent Postgres volume (infra/ebs.tf, attached as /dev/sdf) ----------
+# AL2023's NVMe udev rules expose the attachment at /dev/sdf; wait for it, then
+# mount WITHOUT reformatting an existing filesystem — an existing volume already
+# carries the Keycloak + auth data (§4.2). nofail so a mount hiccup can't wedge boot.
+for _ in $(seq 1 30); do [ -b /dev/sdf ] && break; sleep 2; done
+blkid /dev/sdf >/dev/null 2>&1 || mkfs -t ext4 /dev/sdf
+mkdir -p /mnt/pgdata
+mount /dev/sdf /mnt/pgdata
+grep -q /mnt/pgdata /etc/fstab || echo '/dev/sdf /mnt/pgdata ext4 defaults,nofail 0 2' >> /etc/fstab
+
+# --- DB secrets (root-only; §4.4) --------------------------------------------
+# kc-db-password: Postgres superuser + Keycloak. auth-db-password: auth's
+# `auth` role (read by the Postgres init script). The SAME auth value is
+# also injected into auth's connection string via AUTH_DB_PASSWORD below —
+# keep the two in sync (§3.2).
+umask 077
+printf '%s' '${kc_db_password}'   > /opt/protofast/kc-db-password
+printf '%s' '${auth_db_password}' > /opt/protofast/auth-db-password
+chmod 600 /opt/protofast/kc-db-password /opt/protofast/auth-db-password
+
+# Seed .env. HOST_ROLE scopes deploy.sh to this host's components (§5.1); HOST_A_IP
+# is the collector this host exports telemetry to (§3.2); AUTH_DB_PASSWORD is
+# interpolated into auth's ConnectionStrings__auth in the compose file.
+cat > /opt/protofast/.env <<ENV
+ECR=${ecr_registry}
+AWS_REGION=${aws_region}
+HOST_ROLE=services
+HOST_A_IP=${host_a_ip}
+ASSETS_BUCKET=${assets_bucket}
+KEYCLOAK_DOMAIN=${keycloak_domain}
+AUTH_DB_PASSWORD=${auth_db_password}
+ENV
+chmod 600 /opt/protofast/.env
+
+# --- Host B lifecycle unit (graceful drain on every shutdown, §6.2) ----------
+# ExecStart brings the stack up from the manifest; ExecStop drains writers ->
+# postgres -> unmount BEFORE systemd tears the mount down. RequiresMountsFor
+# guarantees the ordering against /mnt/pgdata.
+cat > /etc/systemd/system/protofast-hostb.service <<'UNIT'
+[Unit]
+Description=ProtoFast Host B stack lifecycle
+RequiresMountsFor=/mnt/pgdata
+After=docker.service
+Requires=docker.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/protofast/deploy.sh bootstrap
+ExecStop=/opt/protofast/deploy.sh drain
+TimeoutStopSec=120
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable protofast-hostb.service
+
+# --- Scheduled pg_dump backup (§6.3) -----------------------------------------
+# Daily logical backup of the keycloak + auth DBs to S3 (backups/ prefix).
+# The script is pulled from S3 in the bootstrap block below; the timer fires it.
+cat > /etc/systemd/system/protofast-pgbackup.service <<'UNIT'
+[Unit]
+Description=ProtoFast Postgres logical backup (keycloak + auth) to S3
+After=protofast-hostb.service
+Requires=docker.service
+[Service]
+Type=oneshot
+ExecStart=/opt/protofast/backup.sh
+UNIT
+cat > /etc/systemd/system/protofast-pgbackup.timer <<'UNIT'
+[Unit]
+Description=Daily ProtoFast Postgres backup
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=900
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable protofast-pgbackup.timer
+
+# --- First-boot bootstrap (self-heal) ----------------------------------------
+# Pull the host-B compose topology, deploy.sh, and the manifest from S3, then let
+# the lifecycle unit bring the stack up (and register the drain for shutdown).
+# Bootstrap order respects depends_on (postgres -> keycloak; services independent).
+if aws s3 cp "s3://${assets_bucket}/deploy/versions.env" /opt/protofast/versions.env --region "${aws_region}"; then
+  aws s3 cp "s3://${assets_bucket}/deploy/docker-compose.host-b.yml" /opt/protofast/docker-compose.yml --region "${aws_region}"
+  aws s3 cp "s3://${assets_bucket}/deploy/deploy.sh"                  /opt/protofast/deploy.sh          --region "${aws_region}"
+  chmod +x /opt/protofast/deploy.sh
+  # Backup script (best-effort: absent on a very first deploy until published).
+  aws s3 cp "s3://${assets_bucket}/deploy/backup.sh" /opt/protofast/backup.sh --region "${aws_region}" \
+    && chmod +x /opt/protofast/backup.sh || echo "backup.sh not published yet; timer will no-op until it is"
+  systemctl start protofast-hostb.service || echo "bootstrap failed; next deploy will converge"
+else
+  echo "no published manifest at s3://${assets_bucket}/deploy/versions.env; skipping bootstrap"
+fi
+
+echo "protofast host-b cloud-init complete"

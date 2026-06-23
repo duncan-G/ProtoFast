@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# cloud-init for ProtoFast HOST A — the edge (cloudflared, Envoy, SSR clients,
+# otel-collector, Aspire Dashboard). One-time setup only; the box is cattle and
+# deploys do the rest. Idempotent enough to re-run.
+set -euxo pipefail
+
+# --- AWS SSM agent (preinstalled) --------------------------------------------
+# Enabled FIRST so the box stays manageable (no SSH, no inbound) if a later step fails.
+systemctl enable --now amazon-ssm-agent || true
+
+# --- Shared install fragment (engine + ECR helper + compose + grpc_health_probe) ---
+${common_setup}
+
+# Cloudflare tunnel token — root-only; consumed by the cloudflared compose service.
+# Host A only: Host B never runs the tunnel.
+umask 077
+cat > /opt/protofast/tunnel-token <<'TOKEN'
+${tunnel_token}
+TOKEN
+chmod 600 /opt/protofast/tunnel-token
+
+# Seed .env: the STABLE values compose reads alongside versions.env. HOST_ROLE
+# tells deploy.sh which components it owns (§5.1/§6.1); HOST_B_IP is the private
+# address Envoy dials for the backends + Keycloak (§3.1).
+cat > /opt/protofast/.env <<ENV
+ECR=${ecr_registry}
+AWS_REGION=${aws_region}
+HOST_ROLE=edge
+HOST_B_IP=${host_b_ip}
+CLIENTS=${clients}
+ASSETS_BUCKET=${assets_bucket}
+CLIENT_ADMIN_DOMAIN=${admin_domain}
+CLIENT_PROTOFAST_DOMAIN=${protofast_domain}
+KEYCLOAK_DOMAIN=${keycloak_domain}
+DEFAULT_CLIENT=${default_client}
+ENV
+chmod 600 /opt/protofast/.env
+
+# --- First-boot bootstrap (cattle self-heal) ---------------------------------
+# Pull the last published desired state from S3 — the host-A compose topology,
+# deploy.sh, and the version manifest — and bring the edge up. On the very first
+# boot the manifest is absent, so skip and let the first deploy converge.
+if aws s3 cp "s3://${assets_bucket}/deploy/versions.env" /opt/protofast/versions.env --region "${aws_region}"; then
+  aws s3 cp "s3://${assets_bucket}/deploy/docker-compose.host-a.yml" /opt/protofast/docker-compose.yml --region "${aws_region}"
+  aws s3 cp "s3://${assets_bucket}/deploy/deploy.sh"                  /opt/protofast/deploy.sh          --region "${aws_region}"
+  chmod +x /opt/protofast/deploy.sh
+  /opt/protofast/deploy.sh bootstrap || echo "bootstrap failed; next deploy will converge"
+else
+  echo "no published manifest at s3://${assets_bucket}/deploy/versions.env; skipping bootstrap"
+fi
+
+echo "protofast host-a cloud-init complete"
