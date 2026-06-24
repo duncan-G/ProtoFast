@@ -12,7 +12,17 @@ import { join } from 'node:path';
 const browserDistFolder = join(import.meta.dirname, '../browser');
 
 const app = express();
-const angularApp = new AngularNodeAppEngine();
+// Requests reach this process through Envoy, the trusted edge that sets
+// `x-forwarded-*` (and `x-client`). Trust those proxy headers so SSR builds
+// the request URL from the original host rather than the internal one.
+const angularApp = new AngularNodeAppEngine({
+  trustProxyHeaders: [
+    'x-forwarded-host',
+    'x-forwarded-proto',
+    'x-forwarded-port',
+    'x-forwarded-prefix',
+  ],
+});
 
 /**
  * Example Express Rest API endpoints can be defined here.
