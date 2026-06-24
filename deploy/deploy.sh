@@ -321,13 +321,20 @@ health_check() {
 # refs (whose tags are irrelevant to this apply). A client/host apply force-
 # recreates the host so its entrypoint re-pulls the pinned client set from S3
 # even when the host image tag itself is unchanged.
+#
+# When the requested tag is already pinned but the running container failed its
+# scoped health check (same tag, unhealthy box), the apply loop sets RECREATE to
+# --force-recreate: a plain `up -d` with an unchanged image/config is a no-op and
+# would leave the sick container in place, so we must force compose to replace it.
+# host/client always force-recreate regardless (they re-pull clients from S3).
 apply_kind() {
   case "$KIND" in
     service|envoy|otel|aspire|edge)
       log "pulling ${SVC}"
       compose pull "$SVC"
-      log "recreating ${SVC}"
-      compose up -d --no-deps "$SVC" ;;
+      log "recreating ${SVC}${RECREATE:+ (forced)}"
+      # shellcheck disable=SC2086  # RECREATE is intentionally word-split (flag or empty)
+      compose up -d --no-deps $RECREATE "$SVC" ;;
     host)
       log "pulling ${SVC} (clients-host)"
       compose pull "$SVC"
@@ -355,8 +362,13 @@ apply_kind() {
       fi
       log "pulling ${SVC}"
       compose pull "$SVC"
-      log "recreating ${SVC} (stateful: no force-recreate)"
-      compose up -d --no-deps "$SVC" ;;
+      # Normally no force-recreate (§5.3). The one exception is an unhealthy
+      # same-tag box (RECREATE set): the container is already up but failing its
+      # check, so it must be replaced to recover — safe here as the data lives on
+      # the EBS volume, not the container, and a same-tag apply can't be a major bump.
+      log "recreating ${SVC} (stateful${RECREATE:+: forced, unhealthy})"
+      # shellcheck disable=SC2086  # RECREATE is intentionally word-split (flag or empty)
+      compose up -d --no-deps $RECREATE "$SVC" ;;
   esac
 }
 
@@ -570,17 +582,31 @@ for pair in "$@"; do
   resolve "$COMPONENT"
   CUR_TAG="$(get_env "$VERSIONS_FILE" "$KEY")"
 
-  # Only skip when the tag matches AND the container is actually running.
-  # Matching the manifest alone is not enough: if the recorded tag is what we
-  # were asked for but nothing is up (box replaced, crash, never started), the
-  # right move is to bring it up — fall through to the normal apply path, which
-  # is idempotent (`up -d` no-ops a healthy container, starts a down one).
+  # RECREATE is the force-recreate flag honoured by apply_kind. It is set ONLY on
+  # the unhealthy-same-tag branch below, where compose would otherwise no-op an
+  # unchanged image and leave the sick container running. Reset every iteration.
+  RECREATE=""
+
+  # Only skip when the tag matches AND the container is running AND it passes its
+  # scoped health check. Matching the manifest alone is not enough on two counts:
+  #   - nothing is up (box replaced, crash, never started) — bring it up;
+  #   - it is up but UNHEALTHY (crash-looping, gRPC not serving, SSR not
+  #     rendering) — a stale "already at <tag>" must not mask a sick container,
+  #     so force-recreate it to recover.
+  # A healthy, running, same-tag container is the only true no-op. The fall-
+  # through apply path is idempotent: `up -d` no-ops a healthy container, starts
+  # a down one, and (with RECREATE) replaces an unhealthy one.
   if [ "$CUR_TAG" = "$NEW_TAG" ]; then
     if svc_running; then
-      log "${COMPONENT} already at ${NEW_TAG} and running; nothing to do"
-      continue
+      if health_once; then
+        log "${COMPONENT} already at ${NEW_TAG} and healthy; nothing to do"
+        continue
+      fi
+      log "${COMPONENT} at ${NEW_TAG} but UNHEALTHY; forcing recreate"
+      RECREATE="--force-recreate"
+    else
+      log "${COMPONENT} pinned at ${NEW_TAG} but not running; bringing it up"
     fi
-    log "${COMPONENT} pinned at ${NEW_TAG} but not running; bringing it up"
   fi
 
   # Snapshot the manifest for per-component rollback, then write the new tag.
