@@ -17,9 +17,10 @@
 #     deploy.sh                          this script, synced by the deploy job
 #     .env                               STABLE seed: ECR, client domains,
 #                                        CLIENTS, DEFAULT_CLIENT, ASSETS_BUCKET,
-#                                        AWS_REGION. Seeded by cloud-init / first
-#                                        deploy; this script never rewrites it
-#                                        (except to persist ECR, see below).
+#                                        AWS_REGION, HOST_ROLE, peer host IP.
+#                                        Seeded by cloud-init / first deploy; this
+#                                        script never rewrites it (except to persist
+#                                        ECR + the cross-host peer IP, see below).
 #     versions.env                       VERSION MANIFEST: one *_TAG per
 #                                        component — the source of truth for what
 #                                        is running. This script rewrites only
@@ -432,11 +433,42 @@ if [ -z "$(get_env "$ENV_FILE" ECR)" ]; then
   exit 1
 fi
 
+# Cross-host peer IP, same self-sufficiency rationale as ECR above. cloud-init
+# seeds it into .env at first boot (HOST_A_IP on Host B / HOST_B_IP on Host A), but
+# Host B is pinned against re-provisioning (user_data_replace_on_change=false, to
+# protect the pgdata EBS volume — infra/compute.tf), so a box that first booted
+# before the two-instance split has no peer-IP line and Terraform never adds one.
+# compose then interpolates a blank host — Host B's OTLP endpoint collapses to
+# "http://:4317" (unparseable URI → the .NET tier crash-loops), Host A's Envoy
+# upstreams lose their host. The deploy job now passes the sibling's private IP so
+# every apply re-seeds it. Persist whichever was passed (only one is, per host).
+if [ -n "${HOST_A_IP:-}" ]; then set_env "$ENV_FILE" HOST_A_IP "$HOST_A_IP"; fi
+if [ -n "${HOST_B_IP:-}" ]; then set_env "$ENV_FILE" HOST_B_IP "$HOST_B_IP"; fi
+
 # bootstrap mode brings the whole stack up from the persisted manifest, then exits.
+# (No peer-IP gate here: a stale box must still be able to bring up its stateful
+# tier, which doesn't reference the peer IP.)
 if [ "$MODE" = bootstrap ]; then
   bootstrap
   exit 0
 fi
+
+# Fail an apply loudly if this host's peer IP is still missing, rather than after a
+# recreate + failed health check + rollback. Scoped by HOST_ROLE so each host gates
+# only on the var ITS compose interpolates (Host B → HOST_A_IP, Host A → HOST_B_IP);
+# a pre-split .env with no HOST_ROLE skips the gate (single box, no peer concept).
+case "$(get_env "$ENV_FILE" HOST_ROLE)" in
+  services)
+    if [ -z "$(get_env "$ENV_FILE" HOST_A_IP)" ]; then
+      echo "HOST_A_IP is not set in ${ENV_FILE} and none was passed to deploy.sh" >&2
+      exit 1
+    fi ;;
+  edge)
+    if [ -z "$(get_env "$ENV_FILE" HOST_B_IP)" ]; then
+      echo "HOST_B_IP is not set in ${ENV_FILE} and none was passed to deploy.sh" >&2
+      exit 1
+    fi ;;
+esac
 
 # --- apply each component=tag pair -----------------------------------------
 RC=0
