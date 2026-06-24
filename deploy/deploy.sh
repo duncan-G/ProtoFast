@@ -100,8 +100,29 @@ ensure_secret_files() {
     echo "ensure_secret_files: cannot read app secret '${APP_SECRET_ID}' (region '${region:-unset}')" >&2
     exit 1
   fi
-  # exact-key lookup out of the ';'-separated Service_Key=value blob (§4.4)
-  _secret_get() { printf '%s' "$secret" | tr ';' '\n' | grep -m1 "^$1=" | cut -d= -f2-; }
+  # Look up a key in the secret. The canonical layout is a JSON key/value map (the
+  # native Secrets Manager format the console produces); fall back to the legacy
+  # ';'-separated Service_Key=value blob so either layout works during migration
+  # (§4.4). The blob is passed via env, never argv, so it can't leak through ps.
+  _secret_get() {
+    SECRET_BLOB="$secret" python3 - "$1" <<'PY'
+import json, os, sys
+key = sys.argv[1]
+raw = os.environ.get("SECRET_BLOB", "")
+try:
+    obj = json.loads(raw)
+    if isinstance(obj, dict) and key in obj:
+        v = obj[key]
+        sys.stdout.write(v if isinstance(v, str) else str(v))
+        sys.exit(0)
+except ValueError:
+    pass
+for pair in raw.split(";"):
+    if pair.startswith(key + "="):
+        sys.stdout.write(pair[len(key) + 1:])
+        break
+PY
+  }
   kc="$(_secret_get Infra_KcDbPassword || true)"
   auth="$(_secret_get Auth_DbPassword || true)"
   if [ -z "$kc" ] || [ -z "$auth" ]; then

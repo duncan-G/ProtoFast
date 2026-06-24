@@ -35,11 +35,33 @@ APP_SECRET=$(aws secretsmanager get-secret-value \
   --secret-id '${app_secret_id}' --region "${aws_region}" \
   --query SecretString --output text)
 
-# secret_get Prefix_Key -> value (exact-key lookup out of the ';'-blob)
-secret_get() { printf '%s' "$APP_SECRET" | tr ';' '\n' | grep -m1 "^$1=" | cut -d= -f2-; }
+# secret_get Prefix_Key -> value. Canonical layout is a JSON key/value map (the
+# native Secrets Manager format the console produces); fall back to the legacy
+# ';'-separated Service_Key=value blob so either layout works. The blob is passed
+# via env, never argv, so it can't leak through ps. (Kept byte-identical to
+# deploy.sh's _secret_get — both must agree.)
+secret_get() {
+  SECRET_BLOB="$APP_SECRET" python3 - "$1" <<'PY'
+import json, os, sys
+key = sys.argv[1]
+raw = os.environ.get("SECRET_BLOB", "")
+try:
+    obj = json.loads(raw)
+    if isinstance(obj, dict) and key in obj:
+        v = obj[key]
+        sys.stdout.write(v if isinstance(v, str) else str(v))
+        sys.exit(0)
+except ValueError:
+    pass
+for pair in raw.split(";"):
+    if pair.startswith(key + "="):
+        sys.stdout.write(pair[len(key) + 1:])
+        break
+PY
+}
 
-secret_get Infra_KcDbPassword > /opt/protofast/kc-db-password
-secret_get Auth_DbPassword    > /opt/protofast/auth-db-password
+printf '%s\n' "$(secret_get Infra_KcDbPassword)" > /opt/protofast/kc-db-password
+printf '%s\n' "$(secret_get Auth_DbPassword)"    > /opt/protofast/auth-db-password
 chmod 600 /opt/protofast/kc-db-password /opt/protofast/auth-db-password
 
 # Seed .env. HOST_ROLE scopes deploy.sh to this host's components (§5.1); HOST_A_IP
