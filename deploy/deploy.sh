@@ -77,6 +77,46 @@ set_env() {
 # Read a KEY from $file (empty string if absent).
 get_env() { [ -f "$1" ] && grep -E "^${2}=" "$1" | head -n1 | cut -d= -f2- || true; }
 
+# The single Secrets Manager secret (§4.4); overridable for tests/alt projects.
+APP_SECRET_ID="${APP_SECRET_ID:-${PROJECT}/app}"
+
+# Re-seed the root-only secret files that back the compose `secrets:` bind mounts
+# (Infra_KcDbPassword -> kc-db-password for the Postgres superuser + Keycloak,
+# Auth_DbPassword -> auth-db-password for auth's role). cloud-init seeds these at
+# first boot, but that is a one-shot: if the SM secret had no value yet at boot —
+# Terraform creates the shell EMPTY and scripts/populate-secrets.sh writes the value
+# out-of-band afterward — get-secret-value fails, cloud-init aborts (set -e), the
+# files are never created, and cloud-init never re-runs. compose then can't bind the
+# mounts and the apply dies before the container starts. So, exactly like ECR and
+# the peer IP below, every apply re-asserts them here from Secrets Manager, making
+# the deploy self-sufficient regardless of seed ordering. Scoped by the caller to
+# the services host (Host B); the edge host's compose references no secret files.
+ensure_secret_files() {
+  local region secret kc auth
+  region="$(get_env "$ENV_FILE" AWS_REGION)"; region="${region:-${AWS_REGION:-}}"
+  secret="$(aws secretsmanager get-secret-value --secret-id "$APP_SECRET_ID" \
+    ${region:+--region "$region"} --query SecretString --output text 2>/dev/null || true)"
+  if [ -z "$secret" ] || [ "$secret" = PLACEHOLDER ]; then
+    echo "ensure_secret_files: cannot read app secret '${APP_SECRET_ID}' (region '${region:-unset}')" >&2
+    exit 1
+  fi
+  # exact-key lookup out of the ';'-separated Service_Key=value blob (§4.4)
+  _secret_get() { printf '%s' "$secret" | tr ';' '\n' | grep -m1 "^$1=" | cut -d= -f2-; }
+  kc="$(_secret_get Infra_KcDbPassword || true)"
+  auth="$(_secret_get Auth_DbPassword || true)"
+  if [ -z "$kc" ] || [ -z "$auth" ]; then
+    echo "ensure_secret_files: app secret '${APP_SECRET_ID}' is missing Infra_KcDbPassword and/or Auth_DbPassword" >&2
+    exit 1
+  fi
+  ( umask 077
+    printf '%s\n' "$kc"   > "${APP_DIR}/kc-db-password"
+    printf '%s\n' "$auth" > "${APP_DIR}/auth-db-password" )
+  chmod 600 "${APP_DIR}/kc-db-password" "${APP_DIR}/auth-db-password"
+  # The same first-boot abort can leave AUTH_DB_PASSWORD out of .env (interpolated
+  # into auth's ConnectionStrings__auth); re-assert it from the same value.
+  set_env "$ENV_FILE" AUTH_DB_PASSWORD "$auth"
+}
+
 # Uppercase a component/client name into its manifest-key form: 'client-admin'
 # stays a name; the caller composes CLIENT_<UPPER>_TAG. '-' -> '_'.
 upper() { printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_'; }
@@ -444,6 +484,13 @@ fi
 # every apply re-seeds it. Persist whichever was passed (only one is, per host).
 if [ -n "${HOST_A_IP:-}" ]; then set_env "$ENV_FILE" HOST_A_IP "$HOST_A_IP"; fi
 if [ -n "${HOST_B_IP:-}" ]; then set_env "$ENV_FILE" HOST_B_IP "$HOST_B_IP"; fi
+
+# Re-seed Host B's root-only secret files (see ensure_secret_files) before any
+# compose action — covers both bootstrap and apply. The edge host's compose has no
+# secret mounts, so skip it there; a pre-split .env with no HOST_ROLE also skips.
+if [ "$(get_env "$ENV_FILE" HOST_ROLE)" = services ]; then
+  ensure_secret_files
+fi
 
 # bootstrap mode brings the whole stack up from the persisted manifest, then exits.
 # (No peer-IP gate here: a stale box must still be able to bring up its stateful

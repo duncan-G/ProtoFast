@@ -1,0 +1,5 @@
+# Allow all crawlers to index the site.
+User-agent: *
+Disallow:
+
+Sitemap: https://protofast.dev/sitemap.xml
