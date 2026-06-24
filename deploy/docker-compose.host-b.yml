@@ -89,6 +89,9 @@ services:
       POSTGRES_DB: keycloak
       POSTGRES_USER: keycloak
       POSTGRES_PASSWORD_FILE: /run/secrets/kc-db-password
+      # EBS mount point root holds a lost+found dir, so initdb can't use it
+      # directly. Put the cluster in a subdir the entrypoint creates/chowns.
+      PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - /mnt/pgdata:/var/lib/postgresql/data            # persistent EBS (infra §4.2)
       - ./postgres/initdb:/docker-entrypoint-initdb.d:ro  # creates `auth` DB + auth role (first init only)
