@@ -29,6 +29,6 @@
 
 resource "aws_secretsmanager_secret" "app" {
   name                    = "${var.project}/app"
-  description             = "ProtoFast platform secrets (';'-separated Service_Key=value pairs). Populated out-of-band; see scripts/populate-secrets.sh."
+  description             = "ProtoFast platform secrets"
   recovery_window_in_days = 7
 }
