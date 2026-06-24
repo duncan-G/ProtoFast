@@ -63,6 +63,12 @@ PY
 printf '%s\n' "$(secret_get Infra_KcDbPassword)" > /opt/protofast/kc-db-password
 printf '%s\n' "$(secret_get Auth_DbPassword)"    > /opt/protofast/auth-db-password
 chmod 600 /opt/protofast/kc-db-password /opt/protofast/auth-db-password
+# The Keycloak container runs as uid 1000 and reads kc-db-password directly (its
+# image has no `_FILE` support, unlike Postgres which reads it as root). A file
+# secret's host ownership/perms pass through the bind mount unchanged (Compose
+# ignores uid/gid/mode for file secrets in non-Swarm), so the file must be owned
+# by 1000 for Keycloak to read it. root (Postgres) can still read it regardless.
+chown 1000:1000 /opt/protofast/kc-db-password
 
 # Seed .env. HOST_ROLE scopes deploy.sh to this host's components (§5.1); HOST_A_IP
 # is the collector this host exports telemetry to (§3.2); AUTH_DB_PASSWORD is
