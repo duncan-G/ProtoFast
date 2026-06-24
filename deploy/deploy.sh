@@ -339,6 +339,21 @@ apply_kind() {
   esac
 }
 
+# Is the resolved compose service backed by a RUNNING container? Used to decide
+# whether an "already at <tag>" manifest line is truly a no-op. The manifest is
+# the record of what SHOULD run, not proof that it is: a replaced box, a crashed
+# service, or a stateful tier that never came up all leave *_TAG pinned at the
+# requested value while nothing is actually up. Gating the skip on this is what
+# turns a silent "postgres already at 17; nothing to do" into a real bring-up.
+# `compose ps -aq` lists the service's container (incl. exited); inspect confirms
+# it is running. No container, or a stopped one → not running → there IS work.
+svc_running() {
+  local cid
+  cid="$(compose ps -aq "$SVC" 2>/dev/null | head -n1)"
+  [ -n "$cid" ] || return 1
+  [ "$(docker inspect -f '{{.State.Running}}' "$cid" 2>/dev/null)" = true ]
+}
+
 # Keep only the most recent KEEP_RELEASES image tags per repo so rollback stays
 # local while disk stays bounded (plan §4.3 / §5.2). Old S3 client prefixes are
 # pruned by the deploy workflow, not here.
@@ -485,10 +500,14 @@ fi
 if [ -n "${HOST_A_IP:-}" ]; then set_env "$ENV_FILE" HOST_A_IP "$HOST_A_IP"; fi
 if [ -n "${HOST_B_IP:-}" ]; then set_env "$ENV_FILE" HOST_B_IP "$HOST_B_IP"; fi
 
-# Re-seed Host B's root-only secret files (see ensure_secret_files) before any
-# compose action — covers both bootstrap and apply. The edge host's compose has no
-# secret mounts, so skip it there; a pre-split .env with no HOST_ROLE also skips.
-if [ "$(get_env "$ENV_FILE" HOST_ROLE)" = services ]; then
+# Re-seed the root-only secret files (see ensure_secret_files) before any compose
+# action — covers both bootstrap and apply. Gate on whether THIS host's compose
+# actually declares the secret bind mounts rather than on HOST_ROLE: HOST_ROLE is
+# itself seeded only by cloud-init, so the same first-boot abort that drops the
+# secret files can drop HOST_ROLE too — gating on it would skip exactly the host
+# that needs seeding. The edge host's compose references no secret files, so it is
+# skipped here (and so spared an SM read its instance role may not be granted).
+if grep -q 'kc-db-password' "$COMPOSE_FILE" 2>/dev/null; then
   ensure_secret_files
 fi
 
@@ -530,9 +549,17 @@ for pair in "$@"; do
   resolve "$COMPONENT"
   CUR_TAG="$(get_env "$VERSIONS_FILE" "$KEY")"
 
+  # Only skip when the tag matches AND the container is actually running.
+  # Matching the manifest alone is not enough: if the recorded tag is what we
+  # were asked for but nothing is up (box replaced, crash, never started), the
+  # right move is to bring it up — fall through to the normal apply path, which
+  # is idempotent (`up -d` no-ops a healthy container, starts a down one).
   if [ "$CUR_TAG" = "$NEW_TAG" ]; then
-    log "${COMPONENT} already at ${NEW_TAG}; nothing to do"
-    continue
+    if svc_running; then
+      log "${COMPONENT} already at ${NEW_TAG} and running; nothing to do"
+      continue
+    fi
+    log "${COMPONENT} pinned at ${NEW_TAG} but not running; bringing it up"
   fi
 
   # Snapshot the manifest for per-component rollback, then write the new tag.
