@@ -317,7 +317,7 @@ jobs:
               \"echo $COMPOSE_B64 | base64 -d > /opt/protofast/docker-compose.yml\",
               \"echo $DEPLOY_B64 | base64 -d > /opt/protofast/deploy.sh\",
               \"chmod +x /opt/protofast/deploy.sh\",
-              \"ECR=${ECR} /opt/protofast/deploy.sh apply ${COMPONENT}=${TAG}\"
+              \"ECR=${ECR} ${{ steps.route.outputs.peer_var }}=${{ steps.peer.outputs.ip }} /opt/protofast/deploy.sh apply ${COMPONENT}=${TAG}\"
             ]" \
             --query 'Command.CommandId' --output text)
 
