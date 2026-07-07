@@ -38,6 +38,17 @@
 # component from racing.
 set -euo pipefail
 
+# Make an unexpected abort self-describing. Under `set -e` a failing command (a bad
+# `compose pull`, an aws call, a missing binary) otherwise exits with only its own
+# stderr and no locator — which the SSM/GitHub layer then surfaces as the opaque
+# "failed to run commands: exit status 1". This ERR trap prints the failing line,
+# exit code and command as the LAST stderr line, so the root cause is unmissable
+# even in the capped inline view. Deliberately NO `errtrace`: without it the trap
+# stays silent for failures inside the `set +e` apply_kind rc-capture and for
+# anything guarded by `if`/`||` (health checks, get_env), firing only on a genuine
+# abort. COMPONENT is empty until the apply loop sets it (safe under `set -u`).
+trap 'rc=$?; echo "[deploy] ABORT (exit ${rc}) at line ${LINENO}: ${BASH_COMMAND}${COMPONENT:+ [component=${COMPONENT}]}" >&2' ERR
+
 APP_DIR="${APP_DIR:-/opt/protofast}"
 ENV_FILE="${APP_DIR}/.env"
 VERSIONS_FILE="${APP_DIR}/versions.env"
