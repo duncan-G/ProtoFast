@@ -124,6 +124,39 @@ resource "aws_iam_role_policy" "instance_secrets" {
   policy = data.aws_iam_policy_document.instance_secrets.json
 }
 
+# Let the SSM agent stream Run Command stdout/stderr to CloudWatch Logs, which the
+# deploy workflow enables via --cloud-watch-output-config (.github/workflows/
+# _component-deploy.yml). AmazonSSMManagedInstanceCore grants NO logs permissions,
+# so without this the agent silently can't publish and the workflow's on-failure
+# log dump comes back empty. Scoped to the single group the workflow writes to
+# (/protofast/deploy) — keep the LOG_GROUP there and this ARN in sync.
+# DescribeLogGroups has no resource-level scoping, so it stays on "*".
+data "aws_iam_policy_document" "instance_ssm_logs" {
+  statement {
+    sid       = "SsmCwlDescribeGroups"
+    effect    = "Allow"
+    actions   = ["logs:DescribeLogGroups"]
+    resources = ["*"]
+  }
+  statement {
+    sid    = "SsmCwlWrite"
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:DescribeLogStreams",
+      "logs:PutLogEvents",
+    ]
+    resources = ["arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/protofast/deploy:*"]
+  }
+}
+
+resource "aws_iam_role_policy" "instance_ssm_logs" {
+  name   = "${var.project}-instance-ssm-logs"
+  role   = aws_iam_role.instance.id
+  policy = data.aws_iam_policy_document.instance_ssm_logs.json
+}
+
 resource "aws_iam_instance_profile" "instance" {
   name = "${var.project}-instance"
   role = aws_iam_role.instance.name
