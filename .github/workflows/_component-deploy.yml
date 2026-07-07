@@ -304,12 +304,13 @@ jobs:
           COMPONENT: ${{ inputs.component }}
           INSTANCE: ${{ steps.target.outputs.instance_id }}
           # Stream the command's full stdout/stderr to CloudWatch Logs. This is the
-          # UNCAPPED record: get-command-invocation's StandardOutputContent /
-          # StandardErrorContent are truncated to 2500 chars each, which drops the
-          # real failing line for a verbose apply (compose pull, health check +
-          # rollback, ensure_secret_files). The instance role's
-          # AmazonSSMManagedInstanceCore already grants the logs:Put* SSM needs, and
-          # the deploy role's ReadLogs statement (infra/bootstrap/roles.tf) reads it back.
+          # UNCAPPED record: get-command-invocation returns only the first ~24,000
+          # chars of stdout and ~8,000 of stderr, which can still drop the real
+          # failing line of a verbose apply (compose pull, health check + rollback,
+          # ensure_secret_files). The instance role's dedicated
+          # protofast-instance-ssm-logs policy (infra/iam.tf) grants the
+          # logs:Create*/Put* the agent needs — AmazonSSMManagedInstanceCore does NOT —
+          # and the deploy role's ReadLogs statement (infra/bootstrap/roles.tf) reads it back.
           LOG_GROUP: /protofast/deploy
         run: |
           set -euo pipefail
@@ -334,7 +335,7 @@ jobs:
           echo "SSM command: $cmd_id"
           echo "SSM console: https://${AWS_REGION}.console.aws.amazon.com/systems-manager/run-command/${cmd_id}?region=${AWS_REGION}"
 
-          # Poll until terminal; surface the on-instance output and fail loudly.
+          # Poll until the invocation reaches a terminal state.
           while :; do
             status=$(aws ssm get-command-invocation \
               --command-id "$cmd_id" \
@@ -347,31 +348,48 @@ jobs:
             esac
           done
 
-          # Truncated (2500-char) inline view — fine at a glance, esp. on success.
-          aws ssm get-command-invocation \
+          # Inline view. get-command-invocation returns up to ~24,000 chars of stdout
+          # and ~8,000 of stderr — enough for most applies — but the old
+          # `--query '{Out,Err}' --output text` TAB-joined both streams into a single
+          # unlabelled blob, so the only thing that stood out was SSM's own wrapper
+          # line ("failed to run commands: exit status 1"). Print each stream on its
+          # own, labelled, so deploy.sh's log lines are visible without CloudWatch.
+          inv=$(aws ssm get-command-invocation \
             --command-id "$cmd_id" \
             --instance-id "$INSTANCE" \
-            --query '{Status:Status,Out:StandardOutputContent,Err:StandardErrorContent}' \
-            --output text
+            --output json 2>/dev/null || echo '{}')
+          echo "deploy status: $(jq -r '.Status // "unknown"' <<<"$inv") (exit $(jq -r '.ResponseCode // "?"' <<<"$inv"); $(jq -r '.StatusDetails // ""' <<<"$inv"))"
+          echo "::group::deploy stdout (inline, capped ~24k)"
+          jq -r '.StandardOutputContent // ""' <<<"$inv"
+          echo "::endgroup::"
+          echo "::group::deploy stderr (inline, capped ~8k)"
+          jq -r '.StandardErrorContent // ""' <<<"$inv"
+          echo "::endgroup::"
 
-          # On any non-success, dump the FULL stdout+stderr from CloudWatch (uncapped)
-          # so the real failing line is always in the Actions log rather than the
-          # generic "failed to run commands: exit status 1" wrapper. Retry briefly:
-          # SSM flushes to CloudWatch around the time the invocation goes terminal.
+          # On non-success, dump the FULL, uncapped output from CloudWatch. The SSM
+          # agent uploads a stream only every ~30s (or at 200KB) — so a FAST failure
+          # is usually NOT in CloudWatch yet when the invocation goes terminal; the
+          # old 25s wait routinely gave up first, leaving just the generic
+          # "failed to run commands: exit status 1" wrapper. Poll ~90s to clear the
+          # flush interval, and SURFACE retrieval errors instead of swallowing them,
+          # so an empty dump is diagnosable (permissions vs. not-yet-flushed).
           if [ "$status" != Success ]; then
             echo "::group::Full deploy output (CloudWatch ${LOG_GROUP})"
-            for attempt in 1 2 3 4 5; do
-              events=$(aws logs filter-log-events \
-                --log-group-name "$LOG_GROUP" \
-                --log-stream-name-prefix "${cmd_id}/${INSTANCE}" \
-                --output json 2>/dev/null | jq -r '.events[].message' 2>/dev/null || true)
-              if [ -n "$events" ]; then
-                printf '%s\n' "$events"
-                break
+            found=""
+            for attempt in $(seq 1 18); do
+              if resp=$(aws logs filter-log-events \
+                    --log-group-name "$LOG_GROUP" \
+                    --log-stream-name-prefix "${cmd_id}/${INSTANCE}" \
+                    --output json 2>&1); then
+                events=$(jq -r '.events[].message' <<<"$resp" 2>/dev/null || true)
+                if [ -n "$events" ]; then printf '%s\n' "$events"; found=1; break; fi
+              else
+                echo "(filter-log-events: $resp)"
               fi
-              echo "(waiting for CloudWatch to flush… attempt ${attempt}/5)"
+              echo "(waiting for CloudWatch to flush… attempt ${attempt}/18)"
               sleep 5
             done
+            [ -n "$found" ] || echo "No CloudWatch events under ${cmd_id}/${INSTANCE} in ${LOG_GROUP} after ~90s."
             echo "::endgroup::"
           fi
 
