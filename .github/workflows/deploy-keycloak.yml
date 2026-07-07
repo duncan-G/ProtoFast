@@ -79,6 +79,13 @@ jobs:
       - name: Deploy via SSM
         env:
           TAG: ${{ steps.tag.outputs.tag }}
+          # Stream the command's full stdout/stderr to CloudWatch Logs. This is the
+          # UNCAPPED record: get-command-invocation's StandardOutputContent /
+          # StandardErrorContent are truncated to 2500 chars each, which drops the
+          # real failing line for a verbose apply. The instance role's
+          # AmazonSSMManagedInstanceCore already grants the logs:Put* SSM needs, and
+          # the deploy role's ReadLogs statement (infra/bootstrap/roles.tf) reads it back.
+          LOG_GROUP: /protofast/deploy
         run: |
           set -euo pipefail
           COMPOSE_B64=$(base64 -w0 deploy/docker-compose.host-b.yml)
@@ -88,6 +95,7 @@ jobs:
             --instance-ids "${{ steps.target.outputs.instance_id }}" \
             --document-name AWS-RunShellScript \
             --comment "deploy keycloak=${TAG}" \
+            --cloud-watch-output-config "CloudWatchLogGroupName=${LOG_GROUP},CloudWatchOutputEnabled=true" \
             --parameters commands="[
               \"set -eu\",
               \"mkdir -p /opt/protofast\",
@@ -117,6 +125,27 @@ jobs:
             --instance-id "${{ steps.target.outputs.instance_id }}" \
             --query '{Status:Status,Out:StandardOutputContent,Err:StandardErrorContent}' \
             --output text
+
+          # On any non-success, dump the FULL stdout+stderr from CloudWatch (uncapped)
+          # so the real failing line is always in the Actions log rather than the
+          # truncated inline view. Retry briefly: SSM flushes to CloudWatch around
+          # the time the invocation goes terminal.
+          if [ "$status" != Success ]; then
+            echo "::group::Full deploy output (CloudWatch ${LOG_GROUP})"
+            for attempt in 1 2 3 4 5; do
+              events=$(aws logs filter-log-events \
+                --log-group-name "$LOG_GROUP" \
+                --log-stream-name-prefix "${cmd_id}/${{ steps.target.outputs.instance_id }}" \
+                --output json 2>/dev/null | jq -r '.events[].message' 2>/dev/null || true)
+              if [ -n "$events" ]; then
+                printf '%s\n' "$events"
+                break
+              fi
+              echo "(waiting for CloudWatch to flush… attempt ${attempt}/5)"
+              sleep 5
+            done
+            echo "::endgroup::"
+          fi
 
           [ "$status" = "Success" ]
       # Publish the Host B compose + deploy.sh so a replaced Host B self-bootstraps.
