@@ -20,6 +20,10 @@ __CORS_ALLOW_ORIGIN_MATCHES__
             cluster: otel_collector_http_cluster
             prefix_rewrite: "/v1/"
             timeout: 0s
+          typed_per_filter_config:
+            envoy.filters.http.ext_authz:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+              disabled: true
           tracing:
             client_sampling:
               numerator: 0
@@ -30,13 +34,59 @@ __CORS_ALLOW_ORIGIN_MATCHES__
             overall_sampling:
               numerator: 0
               denominator: HUNDRED
-        - match: { prefix: "/auth/" }
-          route:
-            cluster: auth
-            prefix_rewrite: "/"
-            timeout: 0s
-            max_stream_duration:
-              grpc_timeout_header_max: 0s
+        # OIDC browser flow → auth-svc as plain HTTP (302 + Set-Cookie). ext_authz OFF: these
+        # endpoints ARE the auth flow. The old /auth/ gRPC-web route is gone — nothing calls auth
+        # over gRPC-web; ext_authz dials the `auth` cluster directly via the listener filter.
+        - match:
+            safe_regex:
+              # safe_regex matches the :path WITH its query string (unlike prefix/path), so allow
+              # an optional ?… — the guard sends /signin?returnUrl=… and the OIDC callback always
+              # arrives as /signin-oidc?code=&state=. Without this they fall through to the SPA → 404.
+              regex: "^/(signin|signup|signin-oidc|signout|reset)(\\?.*)?$"
+          route: { cluster: auth }
+          typed_per_filter_config:
+            envoy.filters.http.ext_authz:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+              disabled: true
+        # CDN-cacheable static bundles/assets carry no identity → ext_authz OFF.
+        # Tracing OFF too: the browser loads these via <script>/<link> tags, which
+        # can't carry a traceparent (FetchInstrumentation only patches fetch()), so
+        # Envoy would otherwise mint a fresh root trace per asset — orphan spans that
+        # can never join the document-load trace. Suppress sampling like /otlp does.
+        - match: { prefix: "/assets/" }
+          route: { cluster: __WEB_CLUSTER__ }
+          typed_per_filter_config:
+            envoy.filters.http.ext_authz:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+              disabled: true
+          tracing:
+            client_sampling:
+              numerator: 0
+              denominator: HUNDRED
+            random_sampling:
+              numerator: 0
+              denominator: HUNDRED
+            overall_sampling:
+              numerator: 0
+              denominator: HUNDRED
+        - match:
+            safe_regex:
+              regex: "^/[^?]*\\.(?:js|css|map|woff2?|ttf|otf|eot|png|jpe?g|gif|svg|ico|webp|avif)$"
+          route: { cluster: __WEB_CLUSTER__ }
+          typed_per_filter_config:
+            envoy.filters.http.ext_authz:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+              disabled: true
+          tracing:
+            client_sampling:
+              numerator: 0
+              denominator: HUNDRED
+            random_sampling:
+              numerator: 0
+              denominator: HUNDRED
+            overall_sampling:
+              numerator: 0
+              denominator: HUNDRED
         - match: { prefix: "/payments/" }
           route:
             cluster: payments

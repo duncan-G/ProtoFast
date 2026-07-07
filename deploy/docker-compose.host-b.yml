@@ -48,8 +48,25 @@ services:
       ConnectionStrings__redis: "redis:6379"
       ConnectionStrings__auth: "Host=postgres;Port=5432;Database=auth;Username=auth;Password=${AUTH_DB_PASSWORD}"
       ConnectionStrings__keycloak: "http://keycloak:8080/realms/protofast"
+      # Back-channel (in-cluster) vs browser-facing (public) Keycloak authorities — see auth §3.5.
+      Auth_Keycloak__Authority: "http://keycloak:8080"
+      Auth_Keycloak__PublicAuthority: "https://${KEYCLOAK_DOMAIN}"
+      # Confidential-client secrets (same values the realm import receives). From the SM secret,
+      # seeded into .env by deploy.sh ensure_secret_files.
+      Auth_Keycloak__ClientSecretProtofastWeb: "${PROTOFAST_WEB_CLIENT_SECRET}"
+      Auth_Keycloak__ClientSecretAdmin: "${ADMIN_CLIENT_SECRET}"
+      # EC P-256 private key mounted as a root-only file (newlines don't fit env vars).
+      Auth_InternalJwt__PrivateKeyPemFile: /run/secrets/auth-internal-jwt-key
+      Auth_InternalJwt__KeyId: "${INTERNAL_JWT_KEY_ID:-prod-1}"
+      # Host → realm/client map (config now, DB row later — auth §3.3).
+      Tenants__ByHost__protofast.dev__Realm: protofast
+      Tenants__ByHost__protofast.dev__ClientId: protofast-web
+      Tenants__ByHost__admin.protofast.dev__Realm: protofast
+      Tenants__ByHost__admin.protofast.dev__ClientId: admin
     volumes:
       - /usr/local/bin/grpc_health_probe:/usr/local/bin/grpc_health_probe:ro
+    secrets:
+      - auth-internal-jwt-key
     healthcheck: *grpc-health
     depends_on:
       redis:
@@ -59,14 +76,33 @@ services:
       keycloak:
         condition: service_started
 
+  # One-shot schema-migrations job (auth §3.5.3). profiles:["jobs"] keeps it out of `compose up`;
+  # deploy.sh runs it via `compose run --rm auth-migrations` BEFORE recreating auth, and aborts the
+  # auth apply on failure (fail-closed). restart:"no" so it exits.
+  auth-migrations:
+    image: ${ECR}/protofast-auth-migrations:${AUTH_MIGRATIONS_TAG}
+    profiles: ["jobs"]
+    restart: "no"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production          # hard-blocks --rebuild-schema
+      ConnectionStrings__auth: "Host=postgres;Port=5432;Database=auth;Username=auth;Password=${AUTH_DB_PASSWORD}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   payments:
     image: ${ECR}/protofast-payments:${PAYMENTS_TAG}
     restart: unless-stopped
     ports:
       - "8081:8080"
-    environment: *dotnet-env
+    environment:
+      <<: *dotnet-env
+      # Verify the internal JWT with the public key only (auth §6).
+      Shared_InternalJwt__PublicKeyPemFile: /run/secrets/internal-jwt-pub
     volumes:
       - /usr/local/bin/grpc_health_probe:/usr/local/bin/grpc_health_probe:ro
+    secrets:
+      - internal-jwt-pub
     healthcheck: *grpc-health
 
   api:
@@ -74,9 +110,14 @@ services:
     restart: unless-stopped
     ports:
       - "8082:8080"
-    environment: *dotnet-env
+    environment:
+      <<: *dotnet-env
+      # Verify the internal JWT with the public key only (auth §6).
+      Shared_InternalJwt__PublicKeyPemFile: /run/secrets/internal-jwt-pub
     volumes:
       - /usr/local/bin/grpc_health_probe:/usr/local/bin/grpc_health_probe:ro
+    secrets:
+      - internal-jwt-pub
     healthcheck: *grpc-health
 
   postgres:
@@ -106,7 +147,7 @@ services:
       start_period: 20s
 
   keycloak:
-    image: quay.io/keycloak/keycloak:${KEYCLOAK_TAG:-26.0}
+    image: quay.io/keycloak/keycloak:${KEYCLOAK_TAG:-26.6}
     restart: unless-stopped
     # Keycloak does NOT support the `_FILE` secret convention (unlike the Postgres
     # image), so read the Docker secret into KC_DB_PASSWORD here before exec'ing
@@ -122,8 +163,48 @@ services:
       KC_PROXY_HEADERS: xforwarded          # behind Envoy on Host A
       KC_HTTP_ENABLED: "true"
       KC_HEALTH_ENABLED: "true"             # /health/ready for the deploy gate
+      # Export Keycloak's logs to Host A's otel-collector (same receiver the .NET
+      # services use). opentelemetry-logs is a Preview feature (Keycloak >= 26.5),
+      # so it must be listed in KC_FEATURES before the telemetry-logs options apply.
+      KC_FEATURES: opentelemetry-logs
+      KC_TELEMETRY_LOGS_ENABLED: "true"
+      KC_TELEMETRY_LOGS_PROTOCOL: grpc
+      KC_TELEMETRY_LOGS_ENDPOINT: "http://${HOST_A_IP}:4317"
+      # Export Keycloak server spans to the same otel-collector as its logs. Tracing is a
+      # supported (non-preview) feature in Keycloak 26, so it needs no KC_FEATURES entry.
+      # parentbased_always_on keeps the auth service's back-channel token/JWKS calls (which
+      # arrive carrying a traceparent) on the same trace as the sign-in flow.
+      KC_TRACING_ENABLED: "true"
+      KC_TRACING_PROTOCOL: grpc
+      KC_TRACING_SAMPLER_TYPE: parentbased_always_on
+      KC_TRACING_ENDPOINT: "http://${HOST_A_IP}:4317"
+      # Suppress embedded-Infinispan cache spans (named after the cache, e.g.
+      # OFFLINE_USER_SESSION / OFFLINE_CLIENT_SESSION). These come from background
+      # session-persistence tasks that aren't tied to an incoming request, so they're
+      # just noise here. Keeps the request-scoped auth/sign-in spans intact.
+      KC_TRACING_INFINISPAN_ENABLED: "false"
+      # Realm-import placeholder substitution (realm JSON uses ${env.*}). Non-KC_ names so Keycloak
+      # doesn't reject them as unknown config options. Secrets seeded into .env by deploy.sh.
+      # The substitution only runs when replace-placeholders is enabled; without it Keycloak
+      # imports the literal ${env.*:default} fallbacks (e.g. SMTP localhost:1025).
+      JAVA_OPTS_APPEND: "-Dkeycloak.migration.replace-placeholders=true"
+      PROTOFAST_WEB_CLIENT_SECRET: "${PROTOFAST_WEB_CLIENT_SECRET}"
+      ADMIN_CLIENT_SECRET: "${ADMIN_CLIENT_SECRET}"
+      # Client "Home URL" (client.baseUrl) — where the login-page brand link returns the
+      # user. Overrides the realm import's dev-localhost default with the public app domains.
+      PROTOFAST_WEB_BASE_URL: "${PROTOFAST_WEB_BASE_URL:-https://protofast.dev}"
+      ADMIN_BASE_URL: "${ADMIN_BASE_URL:-https://admin.protofast.dev}"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_FROM: "${SMTP_FROM:-no-reply@protofast.dev}"
+      SMTP_AUTH: "${SMTP_AUTH:-true}"
+      SMTP_STARTTLS: "${SMTP_STARTTLS:-true}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
     volumes:
       - ./keycloak/realms:/opt/keycloak/data/import:ro
+      # Custom "protofast" login theme (realm import sets loginTheme: protofast).
+      - ./keycloak/themes:/opt/keycloak/themes:ro
     # Cross-host HTTP ingress for Envoy's Keycloak edge vhost (private IP : 8083).
     ports:
       - "8083:8080"
@@ -145,3 +226,7 @@ secrets:
     file: /opt/protofast/kc-db-password       # root-only, seeded by cloud-init
   auth-db-password:
     file: /opt/protofast/auth-db-password  # root-only, seeded by cloud-init
+  auth-internal-jwt-key:
+    file: /opt/protofast/auth-internal-jwt-key   # EC P-256 PRIVATE key (auth-svc only); seeded by deploy.sh
+  internal-jwt-pub:
+    file: /opt/protofast/internal-jwt-pub        # EC P-256 PUBLIC key (api/payments); seeded by deploy.sh

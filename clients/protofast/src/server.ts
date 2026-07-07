@@ -37,6 +37,22 @@ const angularApp = new AngularNodeAppEngine({
  */
 
 /**
+ * Protected-area gate (guide §7). The edge only annotates identity, so the SSR host itself
+ * enforces /app: anonymous requests (no `x-user-id` from ext_authz) are bounced to the BFF
+ * sign-in server-side — no flash of protected chrome — and personalized responses are never cached.
+ */
+app.use((req, res, next) => {
+  if (req.path === '/app' || req.path.startsWith('/app/')) {
+    res.setHeader('Cache-Control', 'private, no-store');
+    if (!req.headers['x-user-id']) {
+      res.redirect(302, `/signin?returnUrl=${encodeURIComponent(req.originalUrl)}`);
+      return;
+    }
+  }
+  next();
+});
+
+/**
  * Serve static files from /browser
  */
 app.use(

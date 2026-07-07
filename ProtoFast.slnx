@@ -1,13 +1,17 @@
 <Solution>
-  <Folder Name="/apphost/">
-    <Project Path="apphost/ProtoFast.AppHost.csproj" />
-  </Folder>
   <Folder Name="/services/" />
   <Folder Name="/services/api/">
     <Project Path="services/api/src/ProtoFast.Api/ProtoFast.Api.csproj" />
   </Folder>
-  <Folder Name="/services/auth/">
+  <Folder Name="/services/auth/" />
+  <Folder Name="/services/auth/src/">
     <Project Path="services/auth/src/ProtoFast.Auth.Api/ProtoFast.Auth.Api.csproj" />
+    <Project Path="services/auth/src/ProtoFast.Auth.Data/ProtoFast.Auth.Data.csproj" />
+    <Project Path="services/auth/src/ProtoFast.Auth.SchemaMigrations/ProtoFast.Auth.SchemaMigrations.csproj" />
+  </Folder>
+  <Folder Name="/services/auth/tests/">
+    <Project Path="services/auth/tests/ProtoFast.Auth.IntegrationTests/ProtoFast.Auth.IntegrationTests.csproj" />
+    <Project Path="services/auth/tests/ProtoFast.Auth.UnitTests/ProtoFast.Auth.UnitTests.csproj" />
   </Folder>
   <Folder Name="/services/payments/">
     <Project Path="services/payments/src/ProtoFast.Payments.Api/ProtoFast.Payments.Api.csproj" />
@@ -18,4 +22,5 @@
     <Project Path="services/shared/Exceptions/Exceptions.csproj" />
     <Project Path="services/shared/ServiceDefaults/ServiceDefaults.csproj" />
   </Folder>
+  <Project Path="apphost/ProtoFast.AppHost.csproj" />
 </Solution>

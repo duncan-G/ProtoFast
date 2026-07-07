@@ -33,18 +33,37 @@
       </div>
 
       <div class="flex items-center gap-3">
-        <a
-          href="#"
-          class="hidden rounded-lg px-4 py-2 text-sm font-medium text-slate-300 transition hover:text-white sm:block"
-        >
-          Sign in
-        </a>
-        <a
-          href="#"
-          class="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300"
-        >
-          Start building
-        </a>
+        <!-- /signin, /signup, /signout are BFF endpoints, not Angular routes — full-page navigation. -->
+        @if (auth.authenticated) {
+          <a
+            routerLink="/app"
+            class="hidden rounded-lg px-4 py-2 text-sm font-medium text-slate-300 transition hover:text-white sm:block"
+          >
+            Go to app
+          </a>
+          <a
+            href="/signout"
+            rel="external"
+            class="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300"
+          >
+            Sign out
+          </a>
+        } @else {
+          <a
+            href="/signin"
+            rel="external"
+            class="hidden rounded-lg px-4 py-2 text-sm font-medium text-slate-300 transition hover:text-white sm:block"
+          >
+            Sign in
+          </a>
+          <a
+            href="/signup"
+            rel="external"
+            class="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300"
+          >
+            Start building
+          </a>
+        }
       </div>
     </nav>
   </header>

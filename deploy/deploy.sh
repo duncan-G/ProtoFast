@@ -136,6 +136,27 @@ PY
   # The same first-boot abort can leave AUTH_DB_PASSWORD out of .env (interpolated
   # into auth's ConnectionStrings__auth); re-assert it from the same value.
   set_env "$ENV_FILE" AUTH_DB_PASSWORD "$auth"
+
+  # Auth-svc + Keycloak realm secrets (single SM secret, Auth_/Shared_ prefixes — auth §8.2).
+  # The internal-JWT PEM keys go to root-only files (newlines don't fit .env); the files are
+  # ALWAYS created (empty if the secret is absent) so the compose `secrets:` bind mounts are valid
+  # and a missing key fails only the service that needs it — auth crashes without its private key;
+  # api/payments stay up but fail-closed without the public key — never an unrelated component.
+  local jwt_priv jwt_pub v
+  jwt_priv="$(_secret_get Auth_InternalJwt__PrivateKeyPem || true)"
+  jwt_pub="$(_secret_get Shared_InternalJwt__PublicKeyPem || true)"
+  ( umask 077; printf '%s' "$jwt_priv" > "${APP_DIR}/auth-internal-jwt-key" )
+  chmod 600 "${APP_DIR}/auth-internal-jwt-key"
+  printf '%s' "$jwt_pub" > "${APP_DIR}/internal-jwt-pub"
+  chmod 644 "${APP_DIR}/internal-jwt-pub"
+
+  # Single-line values → .env for compose interpolation (only when present).
+  v="$(_secret_get Auth_Keycloak__ClientSecretProtofastWeb || true)"; [ -n "$v" ] && set_env "$ENV_FILE" PROTOFAST_WEB_CLIENT_SECRET "$v"
+  v="$(_secret_get Auth_Keycloak__ClientSecretAdmin || true)";        [ -n "$v" ] && set_env "$ENV_FILE" ADMIN_CLIENT_SECRET "$v"
+  v="$(_secret_get Auth_InternalJwt__KeyId || true)";                 [ -n "$v" ] && set_env "$ENV_FILE" INTERNAL_JWT_KEY_ID "$v"
+  v="$(_secret_get Auth_Smtp__Password || true)";                     [ -n "$v" ] && set_env "$ENV_FILE" SMTP_PASSWORD "$v"
+  v="$(_secret_get Auth_Smtp__Host || true)";                         [ -n "$v" ] && set_env "$ENV_FILE" SMTP_HOST "$v"
+  v="$(_secret_get Auth_Smtp__User || true)";                         [ -n "$v" ] && set_env "$ENV_FILE" SMTP_USER "$v"
 }
 
 # Uppercase a component/client name into its manifest-key form: 'client-admin'
@@ -154,6 +175,10 @@ resolve() {
   case "$component" in
     auth|payments|api)
       KEY="$(upper "$component")_TAG"; SVC="$component"; KIND="service" ;;
+    auth-migrations)
+      # Not a long-running container — applying it only publishes the image + pins the tag; the
+      # migration RUN happens as a pre-step of the auth apply (run_auth_migrations).
+      KEY="AUTH_MIGRATIONS_TAG"; SVC="auth-migrations"; KIND="migrations" ;;
     envoy)
       KEY="ENVOY_TAG"; SVC="envoy"; KIND="envoy" ;;
     otel-collector)
@@ -265,6 +290,8 @@ health_once() {
   case "$KIND" in
     service)
       grpc_ok "$SVC" || { rc=1; log "grpc health not serving: ${SVC}"; } ;;
+    migrations)
+      : ;; # one-shot job: no long-running container to probe; the auth apply runs and gates it
     envoy)
       # Envoy-scoped: the listener is up and every client vhost is loaded in the
       # route config. Deliberately does NOT traverse to the SSR upstream — an
@@ -327,14 +354,42 @@ health_check() {
 # --force-recreate: a plain `up -d` with an unchanged image/config is a no-op and
 # would leave the sick container in place, so we must force compose to replace it.
 # host/client always force-recreate regardless (they re-pull clients from S3).
+
+# Auth schema migrations: a one-shot compose job (profiles: jobs) run BEFORE the auth container is
+# recreated. Fail-closed (§3.5.3) — on failure the auth container is NOT recreated, so the old auth
+# keeps serving the old (expand/contract-compatible) schema. Pulls the pinned AUTH_MIGRATIONS_TAG.
+run_auth_migrations() {
+  local tag; tag="$(get_env "$VERSIONS_FILE" AUTH_MIGRATIONS_TAG)"
+  if [ -z "$tag" ]; then
+    log "AUTH_MIGRATIONS_TAG unset — deploy the auth-migrations component first (§3.5.4); aborting auth apply"
+    return 1
+  fi
+  log "running auth schema migrations (auth-migrations=${tag})"
+  compose pull auth-migrations || true
+  if ! compose run --rm auth-migrations; then
+    log "migrations FAILED — aborting auth apply (auth not recreated)"
+    return 1
+  fi
+  log "auth schema migrations applied"
+}
+
 apply_kind() {
   case "$KIND" in
     service|envoy|otel|aspire|edge)
       log "pulling ${SVC}"
       compose pull "$SVC"
+      # Gate the auth apply on a successful schema migration (rc 4 → manifest restored upstream).
+      if [ "$SVC" = auth ]; then
+        run_auth_migrations || return 4
+      fi
       log "recreating ${SVC}${RECREATE:+ (forced)}"
       # shellcheck disable=SC2086  # RECREATE is intentionally word-split (flag or empty)
       compose up -d --no-deps $RECREATE "$SVC" ;;
+    migrations)
+      # Publish the image + pin AUTH_MIGRATIONS_TAG only (the manifest line is written by the apply
+      # loop). The migration RUN is the auth apply's fail-closed pre-step — not here.
+      log "pulling ${SVC} (image only; migrations run during the auth apply)"
+      compose pull "$SVC" ;;
     host)
       log "pulling ${SVC} (clients-host)"
       compose pull "$SVC"
@@ -630,6 +685,12 @@ for pair in "$@"; do
   set +e; apply_kind; apply_rc=$?; set -e
   if [ "$apply_rc" -eq 3 ]; then
     log "restoring manifest: ${COMPONENT} stays at ${CUR_TAG:-<unset>} (apply refused)"
+    [ -f "$VERSIONS_PREV" ] && cp "$VERSIONS_PREV" "$VERSIONS_FILE"
+    RC=1
+    continue
+  fi
+  if [ "$apply_rc" -eq 4 ]; then
+    log "restoring manifest: ${COMPONENT} stays at ${CUR_TAG:-<unset>} (auth migrations failed; auth not recreated)"
     [ -f "$VERSIONS_PREV" ] && cp "$VERSIONS_PREV" "$VERSIONS_FILE"
     RC=1
     continue

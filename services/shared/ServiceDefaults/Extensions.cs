@@ -9,6 +9,7 @@ using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using ProtoFast.ServiceDefaults.Telemetry;
 
 namespace ProtoFast.ServiceDefaults;
 
@@ -19,6 +20,11 @@ public static class Extensions
     // gRPC Health service path hit every 10s by grpc_health_probe (the production
     // healthcheck). StartsWithSegments matches both /Check and /Watch under it.
     private const string GrpcHealthEndpointPath = "/grpc.health.v1.Health";
+    // OIDC callback (auth service only). Keycloak's redirect starts a fresh request here, which the
+    // framework would trace as a new root — a second, disconnected trace for the sign-in flow. The
+    // auth service instead opens its own span parented to the /signin trace (AuthFlow.CallbackAsync),
+    // so the auto span for this path is suppressed to keep the whole flow in one trace.
+    private const string OidcCallbackPath = "/signin-oidc";
     private const string ActivitySourceName = "ProtoFast.*";
 
     public static IHostApplicationBuilder AddServiceDefaults(this IHostApplicationBuilder builder)
@@ -61,13 +67,19 @@ public static class Extensions
             .WithTracing(tracing =>
             {
                 tracing
+                    // Drop the Npgsql "SELECT 1" / Redis "PING" health-probe + keep-alive
+                    // spans the Aspire integrations emit. Registered before the OTLP
+                    // exporter (added last in AddOpenTelemetryExporters) so its batch
+                    // processor sees these activities already marked un-recorded.
+                    .AddProcessor(new HealthPingTraceFilter())
                     .AddSource(ActivitySourceName)
                     .AddAspNetCoreInstrumentation(tracing =>
                         // Don't trace requests to the health endpoint to avoid filling the dashboard with noise
                         tracing.Filter = httpContext =>
                             !(httpContext.Request.Path.StartsWithSegments(HealthEndpointPath)
                               || httpContext.Request.Path.StartsWithSegments(AlivenessEndpointPath)
-                              || httpContext.Request.Path.StartsWithSegments(GrpcHealthEndpointPath))
+                              || httpContext.Request.Path.StartsWithSegments(GrpcHealthEndpointPath)
+                              || httpContext.Request.Path.StartsWithSegments(OidcCallbackPath))
                     )
                     .AddHttpClientInstrumentation(options =>
                         options.FilterHttpRequestMessage = req =>

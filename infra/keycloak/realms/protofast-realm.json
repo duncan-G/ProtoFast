@@ -1,0 +1,270 @@
+{
+  "realm": "protofast",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "rememberMe": true,
+  "verifyEmail": true,
+  "loginTheme": "protofast",
+
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 30,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+
+  "passwordPolicy": "length(12) and notUsername and notEmail",
+
+  "ssoSessionIdleTimeout": 28800,
+  "ssoSessionMaxLifespan": 604800,
+  "accessTokenLifespan": 300,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+
+  "webAuthnPolicyPasswordlessRpEntityName": "ProtoFast",
+  "webAuthnPolicyPasswordlessRpId": "protofast.dev",
+  "webAuthnPolicyPasswordlessSignatureAlgorithms": ["ES256", "RS256"],
+  "webAuthnPolicyPasswordlessAttestationConveyancePreference": "none",
+  "webAuthnPolicyPasswordlessAuthenticatorAttachment": "not specified",
+  "webAuthnPolicyPasswordlessRequireResidentKey": "Yes",
+  "webAuthnPolicyPasswordlessUserVerificationRequirement": "required",
+  "webAuthnPolicyPasswordlessCreateTimeout": 0,
+  "webAuthnPolicyPasswordlessAvoidSameAuthenticatorRegister": false,
+  "webAuthnPolicyPasswordlessAcceptableAaguids": [],
+
+  "smtpServer": {
+    "host": "${SMTP_HOST:localhost}",
+    "port": "${SMTP_PORT:1025}",
+    "from": "${SMTP_FROM:no-reply@protofast.dev}",
+    "fromDisplayName": "ProtoFast",
+    "ssl": "${SMTP_SSL:false}",
+    "starttls": "${SMTP_STARTTLS:false}",
+    "auth": "${SMTP_AUTH:false}",
+    "user": "${SMTP_USER:}",
+    "password": "${SMTP_PASSWORD:}"
+  },
+
+  "requiredActions": [
+    {
+      "alias": "VERIFY_EMAIL",
+      "name": "Verify Email",
+      "providerId": "VERIFY_EMAIL",
+      "enabled": true,
+      "defaultAction": true,
+      "priority": 50,
+      "config": {}
+    },
+    {
+      "alias": "UPDATE_PASSWORD",
+      "name": "Update Password",
+      "providerId": "UPDATE_PASSWORD",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 30,
+      "config": {}
+    },
+    {
+      "alias": "UPDATE_PROFILE",
+      "name": "Update Profile",
+      "providerId": "UPDATE_PROFILE",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 40,
+      "config": {}
+    },
+    {
+      "alias": "webauthn-register",
+      "name": "Webauthn Register",
+      "providerId": "webauthn-register",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 70,
+      "config": {}
+    },
+    {
+      "alias": "webauthn-register-passwordless",
+      "name": "Webauthn Register Passwordless",
+      "providerId": "webauthn-register-passwordless",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 80,
+      "config": {}
+    }
+  ],
+
+  "authenticationFlows": [
+    {
+      "alias": "passkey-or-password browser",
+      "description": "Email-first browser flow offering passkey or password",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "identity-provider-redirector",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "requirement": "ALTERNATIVE",
+          "priority": 30,
+          "flowAlias": "passkey-or-password forms",
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "passkey-or-password forms",
+      "description": "Username, then passkey or password",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-username-form",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "flowAlias": "passkey-or-password credentials",
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "passkey-or-password credentials",
+      "description": "Passkey (WebAuthn passwordless) or password",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "webauthn-authenticator-passwordless",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "auth-password-form",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "userSetupAllowed": false
+        }
+      ]
+    }
+  ],
+
+  "browserFlow": "passkey-or-password browser",
+  "registrationFlow": "registration",
+  "directGrantFlow": "direct grant",
+  "resetCredentialsFlow": "reset credentials",
+  "clientAuthenticationFlow": "clients",
+  "dockerAuthenticationFlow": "docker auth",
+
+  "clients": [
+    {
+      "clientId": "protofast-web",
+      "name": "ProtoFast Web",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "baseUrl": "${PROTOFAST_WEB_BASE_URL:https://localhost:20001}",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${PROTOFAST_WEB_CLIENT_SECRET:dev-protofast-web-secret}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "https://protofast.dev/signin-oidc",
+        "https://localhost:20000/signin-oidc",
+        "https://localhost:20001/signin-oidc"
+      ],
+      "webOrigins": [
+        "https://protofast.dev",
+        "+"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://protofast.dev/*##https://localhost:20000/*##https://localhost:20001/*"
+      }
+    },
+    {
+      "clientId": "admin",
+      "name": "ProtoFast Admin Console",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "baseUrl": "${ADMIN_BASE_URL:https://localhost:20000}",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${ADMIN_CLIENT_SECRET:dev-admin-secret}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "https://admin.protofast.dev/signin-oidc",
+        "https://localhost:20000/signin-oidc",
+        "https://localhost:20001/signin-oidc"
+      ],
+      "webOrigins": [
+        "https://admin.protofast.dev",
+        "+"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://admin.protofast.dev/*##https://localhost:20000/*##https://localhost:20001/*"
+      }
+    }
+  ],
+
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\":[{\"name\":\"username\",\"validations\":{\"length\":{\"min\":3,\"max\":255},\"username-prohibited-characters\":{},\"up-username-not-idn-homograph\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"email\",\"validations\":{\"email\":{},\"length\":{\"max\":255}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false}],\"groups\":[]}"
+          ]
+        }
+      }
+    ]
+  }
+}
