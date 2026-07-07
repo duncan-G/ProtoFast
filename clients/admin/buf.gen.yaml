@@ -1,6 +1,8 @@
 version: v2
 inputs:
-  - directory: ../../services/auth/src/ProtoFast.Auth.Api/Protos
+  # auth exposes no client-facing gRPC (its only proto is the server-internal Envoy ext_authz
+  # contract, which imports google.rpc and is built by Grpc.Tools, not buf). Browser clients talk
+  # to auth over plain HTTP (/signin…), so it is intentionally not a buf input.
   - directory: ../../services/payments/src/ProtoFast.Payments.Api/Protos
   - directory: ../../services/api/src/ProtoFast.Api/Protos
 plugins:

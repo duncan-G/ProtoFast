@@ -1,5 +1,7 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { ImagePlaceholder } from './image-placeholder';
+import { AuthIdentityService } from '../../auth/auth-identity';
 
 interface Step {
   index: string;
@@ -32,10 +34,12 @@ interface PricingTier {
 @Component({
   selector: 'app-landing',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ImagePlaceholder],
+  imports: [ImagePlaceholder, RouterLink],
   templateUrl: './landing.html',
 })
 export class Landing {
+  protected readonly auth = inject(AuthIdentityService);
+
   protected readonly steps: Step[] = [
     {
       index: '01',

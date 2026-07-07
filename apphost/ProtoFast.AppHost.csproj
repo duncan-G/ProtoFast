@@ -1,4 +1,4 @@
-<Project Sdk="Aspire.AppHost.Sdk/13.4.3">
+<Project Sdk="Aspire.AppHost.Sdk/13.4.6">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -10,15 +10,16 @@
 
   <ItemGroup>
     <ProjectReference Include="../services/auth/src/ProtoFast.Auth.Api/ProtoFast.Auth.Api.csproj" />
+    <ProjectReference Include="../services/auth/src/ProtoFast.Auth.SchemaMigrations/ProtoFast.Auth.SchemaMigrations.csproj" />
     <ProjectReference Include="../services/payments/src/ProtoFast.Payments.Api/ProtoFast.Payments.Api.csproj" />
     <ProjectReference Include="../services/api/src/ProtoFast.Api/ProtoFast.Api.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.Hosting.JavaScript" Version="13.4.3" />
-    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.4.3" />
-    <PackageReference Include="Aspire.Hosting.Redis" Version="13.4.3" />
-    <PackageReference Include="Aspire.Hosting.Keycloak" Version="13.4.3-preview.1.26305.13" />
+    <PackageReference Include="Aspire.Hosting.JavaScript" Version="13.4.6" />
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.4.6" />
+    <PackageReference Include="Aspire.Hosting.Redis" Version="13.4.6" />
+    <PackageReference Include="Aspire.Hosting.Keycloak" Version="13.4.6-preview.1.26319.6" />
   </ItemGroup>
 
 </Project>

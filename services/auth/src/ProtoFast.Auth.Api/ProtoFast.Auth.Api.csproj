@@ -7,18 +7,27 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ContainerRepository>protofast-auth</ContainerRepository>
     <ContainerFamily>noble-chiseled</ContainerFamily>
+    <!-- Pulls google/rpc/status.proto + google/protobuf well-knowns onto the import
+         path for the Envoy ext_authz proto (Protos/internal/authz.proto). -->
+    <IncludeGoogleApiCommonProtos>true</IncludeGoogleApiCommonProtos>
   </PropertyGroup>
 
   <ItemGroup>
-    <Protobuf Include="Protos\greet.proto" GrpcServices="Server" />
+    <Protobuf Include="Protos\**\*.proto" GrpcServices="Server" ProtoRoot="Protos" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Grpc.AspNetCore" Version="2.64.0" />
+    <PackageReference Include="Aspire.Npgsql" Version="13.4.6" />
+    <PackageReference Include="Aspire.StackExchange.Redis" Version="13.4.6" />
+    <PackageReference Include="Google.Api.CommonProtos" Version="2.17.0" />
+    <PackageReference Include="Grpc.AspNetCore" Version="2.71.0" />
+    <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.19.1" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.19.1" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\shared\ServiceDefaults\ServiceDefaults.csproj" />
+    <ProjectReference Include="..\ProtoFast.Auth.Data\ProtoFast.Auth.Data.csproj" />
   </ItemGroup>
 
 </Project>

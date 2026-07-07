@@ -1,11 +1,18 @@
 using ProtoFast.Api.Services;
 using ProtoFast.ServiceDefaults;
+using ProtoFast.ServiceDefaults.InternalAuth;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
-builder.Services.AddGrpc();
+// The internal-JWT public key (and any shared config) arrives Shared_-prefixed.
+builder.Configuration.AddEnvironmentVariables("Shared_");
+builder.Services.AddInternalJwtAuth(builder.Configuration);
+
+// Enforce the internal JWT on every gRPC call except health probes — the edge only annotates,
+// so the backend is the real authorization gate.
+builder.Services.AddGrpc(options => options.Interceptors.Add<InternalJwtAuthInterceptor>());
 
 var app = builder.Build();
 

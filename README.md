@@ -35,6 +35,8 @@ graph TD
     Aspire -.-|orchestrates| Services
 ```
 
+
+
 All ports are dynamically assigned by Aspire at startup — nothing is hardcoded.
 The browser loads the Angular clients directly. gRPC-Web requests from
 the clients flow through Envoy, which routes to the backend services
@@ -43,12 +45,10 @@ by path prefix.
 ## Requirements
 
 - Tooling:
-  - Python 3
-  - Node.js LTS (includes `npm` / `npx`)
+  - Node.js 24+ `(npm` / `npx`)
   - Angular CLI
-  - `uv` / `uvx`
   - Docker Engine
-  - Aspire CLI (user-local under `~/.aspire/bin`)
+  - Aspire CLI
 - Skills
   - Angular agent skills `npx skills add https://github.com/angular/skills`
 
@@ -89,3 +89,4 @@ Stop everything with `Ctrl+C`, or from another shell:
 ```bash
 aspire stop
 ```
+

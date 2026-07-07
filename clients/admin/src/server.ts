@@ -37,7 +37,8 @@ const angularApp = new AngularNodeAppEngine({
  */
 
 /**
- * Serve static files from /browser
+ * Serve static files from /browser. The client bundle is identical for everyone and carries no
+ * identity, so it is served publicly (and cacheably) ahead of the auth gate below.
  */
 app.use(
   express.static(browserDistFolder, {
@@ -46,6 +47,21 @@ app.use(
     redirect: false,
   }),
 );
+
+/**
+ * Protected-app gate (guide §7). The admin app is entirely internal — every rendered page requires
+ * an authenticated identity. The edge only annotates identity, so the SSR host itself enforces it:
+ * anonymous requests (no `x-user-id` from ext_authz) are bounced to the BFF sign-in server-side —
+ * no flash of protected chrome — and personalized responses are never cached.
+ */
+app.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  if (!req.headers['x-user-id']) {
+    res.redirect(302, `/signin?returnUrl=${encodeURIComponent(req.originalUrl)}`);
+    return;
+  }
+  next();
+});
 
 /**
  * Handle all other requests by rendering the Angular application.

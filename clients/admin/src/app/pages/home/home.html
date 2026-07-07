@@ -1,0 +1,53 @@
+<header class="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
+  <a routerLink="/" class="font-semibold text-gray-900">ProtoFast Admin</a>
+  <nav class="flex gap-4 text-sm">
+    @if (auth.authenticated) {
+      <a routerLink="/app" class="text-indigo-600 hover:underline">Console</a>
+      <!-- BFF endpoints, not Angular routes — full-page navigation, no credential forms here. -->
+      <a href="/signout" rel="external" class="text-gray-600 hover:underline">Sign out</a>
+    } @else {
+      <a href="/signin" rel="external" class="text-indigo-600 hover:underline">Sign in</a>
+      <a href="/signup" rel="external" class="text-gray-600 hover:underline">Create account</a>
+    }
+  </nav>
+</header>
+
+<main class="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+  <div class="w-full max-w-md bg-white rounded-2xl shadow-lg p-8 space-y-6">
+    <h1 class="text-2xl font-bold text-gray-900 text-center">ProtoFast Admin</h1>
+
+    <form (submit)="greet($event)" class="space-y-4">
+      <div>
+        <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+        <input
+          id="name"
+          type="text"
+          [value]="name()"
+          (input)="name.set($any($event.target).value)"
+          placeholder="Enter a name"
+          class="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900
+                 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none
+                 transition" />
+      </div>
+      <button
+        type="submit"
+        [disabled]="loading()"
+        class="w-full rounded-lg bg-indigo-600 px-4 py-2 text-white font-medium
+               hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed
+               transition">
+        {{ loading() ? 'Sending…' : 'Greet' }}
+      </button>
+    </form>
+
+    @if (reply()) {
+      <p class="rounded-lg bg-green-50 border border-green-200 p-4 text-green-800">
+        {{ reply() }}
+      </p>
+    }
+    @if (error()) {
+      <p class="rounded-lg bg-red-50 border border-red-200 p-4 text-red-800">
+        {{ error() }}
+      </p>
+    }
+  </div>
+</main>

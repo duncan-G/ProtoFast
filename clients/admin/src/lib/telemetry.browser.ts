@@ -2,6 +2,8 @@ import {
   BatchSpanProcessor,
   StackContextManager,
   WebTracerProvider,
+  type Span,
+  type SpanProcessor,
 } from '@opentelemetry/sdk-trace-web';
 import {
   LoggerProvider,
@@ -15,6 +17,58 @@ import { DocumentLoadInstrumentation } from '@opentelemetry/instrumentation-docu
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { W3CTraceContextPropagator } from '@opentelemetry/core';
+import { ROOT_CONTEXT, trace, type Context } from '@opentelemetry/api';
+
+/**
+ * Context manager that adopts the document-load trace as the ambient context
+ * once the page has finished loading.
+ *
+ * DocumentLoadInstrumentation emits a `documentLoad` root span for the initial
+ * page load. After that span's synchronous work unwinds, the context stack is
+ * empty again — so every fetch()/gRPC call made afterwards would otherwise
+ * start its own root span (a brand-new trace). By treating the captured
+ * page-load context as the active context whenever the stack has no span, those
+ * follow-up asset requests nest under the document-load trace instead.
+ */
+class PageLoadContextManager extends StackContextManager {
+  private pageLoadContext: Context | undefined;
+
+  setPageLoadContext(ctx: Context): void {
+    this.pageLoadContext = ctx;
+  }
+
+  override active(): Context {
+    const current = super.active();
+    if (this.pageLoadContext && trace.getSpan(current) === undefined) {
+      return this.pageLoadContext;
+    }
+    return current;
+  }
+}
+
+/**
+ * Captures the `documentLoad` root span the moment it starts so the context
+ * manager can reuse its trace as the parent for post-load requests.
+ */
+class DocumentLoadContextCapture implements SpanProcessor {
+  constructor(private readonly onCaptured: (ctx: Context) => void) {}
+
+  onStart(span: Span): void {
+    if (span.name === 'documentLoad') {
+      this.onCaptured(trace.setSpan(ROOT_CONTEXT, span));
+    }
+  }
+
+  onEnd(): void {}
+
+  forceFlush(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  shutdown(): Promise<void> {
+    return Promise.resolve();
+  }
+}
 
 /**
  * Initialize OpenTelemetry for the browser.
@@ -44,13 +98,20 @@ export function initBrowserTelemetry(): void {
     url: `${otelBase}/traces`,
   });
 
+  const contextManager = new PageLoadContextManager();
+
   const traceProvider = new WebTracerProvider({
     resource,
-    spanProcessors: [new BatchSpanProcessor(traceExporter, batchConfig)],
+    spanProcessors: [
+      new DocumentLoadContextCapture((ctx) =>
+        contextManager.setPageLoadContext(ctx),
+      ),
+      new BatchSpanProcessor(traceExporter, batchConfig),
+    ],
   });
 
   traceProvider.register({
-    contextManager: new StackContextManager(),
+    contextManager,
     propagator: new W3CTraceContextPropagator(),
   });
 

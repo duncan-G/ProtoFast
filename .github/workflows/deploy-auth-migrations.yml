@@ -1,0 +1,42 @@
+name: deploy-auth-migrations
+
+# Builds/pushes the one-shot schema-migrations image and pins AUTH_MIGRATIONS_TAG in the manifest.
+# The migration RUN itself happens during the auth apply (deploy.sh run_auth_migrations, fail-closed
+# pre-step). Shares services/auth/** paths with deploy-auth, so both fire on the same change; this
+# one is ordered first so the auth apply always pulls a current AUTH_MIGRATIONS_TAG.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/auth/**"
+      - "services/shared/**"
+      - ".github/workflows/deploy-auth-migrations.yml"
+      - ".github/workflows/_component-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing artifact tag to (re)deploy or roll back to. Blank = build current source."
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-auth-migrations
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_component-deploy.yml
+    with:
+      component: auth-migrations
+      host: services
+      build: dotnet
+      target: protofast-auth-migrations
+      kind: service
+      hash_paths: "services/auth services/shared"
+      project: services/auth/src/ProtoFast.Auth.SchemaMigrations
+      tag: ${{ inputs.tag }}
+    secrets: inherit

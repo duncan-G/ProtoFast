@@ -23,6 +23,19 @@
                   - name: envoy.filters.http.grpc_web
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_web.v3.GrpcWeb
+                  # Annotate-only identity gate. It never denies; it injects identity headers for
+                  # valid sessions and is turned OFF per-route where annotation is pointless (static
+                  # assets, the auth flow itself). failure_mode_allow keeps public pages up if
+                  # auth-svc is down — the API stays fail-closed via the backend's internal-JWT check.
+                  - name: envoy.filters.http.ext_authz
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+                      transport_api_version: V3
+                      failure_mode_allow: true
+                      grpc_service:
+                        envoy_grpc: { cluster_name: auth }
+                        timeout: 0.5s
+                      include_peer_certificate: false
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -157,6 +170,19 @@
                   - name: envoy.filters.http.grpc_web
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_web.v3.GrpcWeb
+                  # Annotate-only identity gate. It never denies; it injects identity headers for
+                  # valid sessions and is turned OFF per-route where annotation is pointless (static
+                  # assets, the auth flow itself). failure_mode_allow keeps public pages up if
+                  # auth-svc is down — the API stays fail-closed via the backend's internal-JWT check.
+                  - name: envoy.filters.http.ext_authz
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+                      transport_api_version: V3
+                      failure_mode_allow: true
+                      grpc_service:
+                        envoy_grpc: { cluster_name: auth }
+                        timeout: 0.5s
+                      include_peer_certificate: false
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
