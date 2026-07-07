@@ -151,4 +151,15 @@ resource "aws_instance" "host_b" {
     (var.instance_tag_key) = var.instance_tag_value
     Role                   = "services"
   }
+
+  # Pin the AMI: `ami` is ForceNew and data.aws_ssm_parameter.al2023 floats with the
+  # latest AL2023 release, so without this every AMI refresh would silently REPLACE
+  # this stateful box (detach/reattach the pgdata volume + Keycloak/Postgres downtime)
+  # on an unrelated apply. host_a (stateless edge) keeps floating; host_b updates its
+  # AMI only DELIBERATELY: to rebuild on the current AL2023, run
+  # `terraform apply -replace=aws_instance.host_b` (drain first, §6.2) — the pinned
+  # volume rides through. Host B stays otherwise mutable (user_data updates in place).
+  lifecycle {
+    ignore_changes = [ami]
+  }
 }
