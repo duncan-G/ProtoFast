@@ -82,8 +82,14 @@ jobs:
         run: |
           set -euo pipefail
           dotnet build "${{ inputs.project }}" -c Release
-          if find "services/${{ inputs.component }}/tests" -name '*.csproj' 2>/dev/null | grep -q .; then
-            dotnet test "services/${{ inputs.component }}" -c Release
+          # services/<component> has no project/solution file at its root (only
+          # src/ + tests/), so `dotnet test <dir>` fails with MSB1003. Run each
+          # discovered test project explicitly instead.
+          mapfile -t test_projects < <(find "services/${{ inputs.component }}/tests" -name '*.csproj' 2>/dev/null | sort)
+          if [ "${#test_projects[@]}" -gt 0 ]; then
+            for proj in "${test_projects[@]}"; do
+              dotnet test "$proj" -c Release
+            done
           else
             echo "no test projects under services/${{ inputs.component }}/tests; skipping dotnet test"
           fi
