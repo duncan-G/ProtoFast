@@ -136,6 +136,7 @@ variable "ecr_repositories" {
     "protofast-envoy",
     "protofast-clients-host",
     "protofast-auth",
+    "protofast-auth-migrations",
     "protofast-payments",
     "protofast-api",
     "protofast-otel-collector",
