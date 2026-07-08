@@ -161,13 +161,16 @@ PY
   printf '%s' "$jwt_pub" > "${APP_DIR}/internal-jwt-pub"
   chmod 644 "${APP_DIR}/internal-jwt-pub"
 
-  # Single-line values → .env for compose interpolation (only when present).
-  v="$(_secret_get Auth_Keycloak__ClientSecretProtofastWeb || true)"; [ -n "$v" ] && set_env "$ENV_FILE" PROTOFAST_WEB_CLIENT_SECRET "$v"
-  v="$(_secret_get Auth_Keycloak__ClientSecretAdmin || true)";        [ -n "$v" ] && set_env "$ENV_FILE" ADMIN_CLIENT_SECRET "$v"
-  v="$(_secret_get Auth_InternalJwt__KeyId || true)";                 [ -n "$v" ] && set_env "$ENV_FILE" INTERNAL_JWT_KEY_ID "$v"
-  v="$(_secret_get Auth_Smtp__Password || true)";                     [ -n "$v" ] && set_env "$ENV_FILE" SMTP_PASSWORD "$v"
-  v="$(_secret_get Auth_Smtp__Host || true)";                         [ -n "$v" ] && set_env "$ENV_FILE" SMTP_HOST "$v"
-  v="$(_secret_get Auth_Smtp__User || true)";                         [ -n "$v" ] && set_env "$ENV_FILE" SMTP_USER "$v"
+  # Single-line values → .env for compose interpolation (only when present). These
+  # are all optional, so an absent value must be a no-op — NOT `[ -n "$v" ] && ...`,
+  # whose bare test returns 1 when $v is empty and, as the function's final command,
+  # would make ensure_secret_files return non-zero and abort the whole deploy (set -e).
+  v="$(_secret_get Auth_Keycloak__ClientSecretProtofastWeb || true)"; if [ -n "$v" ]; then set_env "$ENV_FILE" PROTOFAST_WEB_CLIENT_SECRET "$v"; fi
+  v="$(_secret_get Auth_Keycloak__ClientSecretAdmin || true)";        if [ -n "$v" ]; then set_env "$ENV_FILE" ADMIN_CLIENT_SECRET "$v"; fi
+  v="$(_secret_get Auth_InternalJwt__KeyId || true)";                 if [ -n "$v" ]; then set_env "$ENV_FILE" INTERNAL_JWT_KEY_ID "$v"; fi
+  v="$(_secret_get Auth_Smtp__Password || true)";                     if [ -n "$v" ]; then set_env "$ENV_FILE" SMTP_PASSWORD "$v"; fi
+  v="$(_secret_get Auth_Smtp__Host || true)";                         if [ -n "$v" ]; then set_env "$ENV_FILE" SMTP_HOST "$v"; fi
+  v="$(_secret_get Auth_Smtp__User || true)";                         if [ -n "$v" ]; then set_env "$ENV_FILE" SMTP_USER "$v"; fi
 }
 
 # Uppercase a component/client name into its manifest-key form: 'client-admin'
