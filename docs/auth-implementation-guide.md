@@ -844,7 +844,8 @@ silent SSO (Flow A) for free because it shares the realm.
 2. **Secrets** (single SM secret, `Auth_` prefix — see memory):
    - `Auth_Keycloak__ClientSecretProtofastWeb`, `Auth_Keycloak__ClientSecretAdmin`
    - `Auth_InternalJwt__PrivateKeyPem` — EC P-256 **private** key, auth-svc only.
-   - `Auth_Smtp__Password`
+   - `Auth_Smtp__Host`, `Auth_Smtp__User`, `Auth_Smtp__Password`, `Auth_Smtp__From`
+     (Amazon SES — see [§8.1](#81-email--amazon-ses-keycloak-smtp)).
    The matching **public** key goes to `api`/`payments` as `Shared_InternalJwt__PublicKeyPem`
    (non-secret, but ship it alongside). Populated out-of-band; never in TF state;
    never in the realm JSON.
@@ -865,6 +866,47 @@ silent SSO (Flow A) for free because it shares the realm.
 7. **IMDS / S3 pull** — unrelated to auth, but the split-deploy IMDS hop-limit-2
    fix applies to the host that pulls images; verify on first deploy (see memory
    `split-deploy-imds-risk`).
+
+### 8.1 Email — Amazon SES (Keycloak SMTP)
+
+Keycloak only speaks SMTP, so we send transactional mail (verify-email, password
+reset) through Amazon SES's SMTP interface. Terraform ([`infra/ses.tf`](../infra/ses.tf))
+stands up the sending identity; the credential is produced out-of-band so no
+secret value lands in TF state.
+
+- **Terraform creates**: the SES domain identity for `var.cloudflare_zone` with
+  Easy DKIM, a custom MAIL FROM subdomain (`var.ses_mail_from_subdomain`, default
+  `bounce.<zone>`) for SPF/DMARC alignment, and a least-privilege IAM user
+  (`<project>-ses-smtp`) allowed to send only as `no-reply@<zone>`.
+- **DNS (Cloudflare, [`infra/cloudflare.tf`](../infra/cloudflare.tf))**: three DKIM
+  CNAMEs, the MAIL FROM `MX` + SPF `TXT`, and an optional DMARC `TXT` (set
+  `var.dmarc_rua`). All are **DNS-only** (never proxied).
+- **Compose is already SES-shaped**: the Keycloak service defaults to port `587`,
+  `SMTP_AUTH=true`, `SMTP_STARTTLS=true`
+  ([`deploy/docker-compose.host-b.yml`](../deploy/docker-compose.host-b.yml)) — no
+  realm JSON changes needed.
+
+Out-of-band credential flow (after `terraform apply`):
+
+1. Create an access key for the IAM user (`terraform -chdir=infra output -raw ses_smtp_iam_user`).
+2. Derive the SES SMTP password from the secret access key:
+   `scripts/ses-smtp-password.sh <secret-access-key> <region>`.
+3. Store everything in the app secret:
+
+   ```bash
+   scripts/populate-secrets.sh \
+     Auth_Smtp__Host="$(terraform -chdir=infra output -raw ses_smtp_endpoint)" \
+     Auth_Smtp__From="$(terraform -chdir=infra output -raw ses_from_address)" \
+     Auth_Smtp__User="<access-key-id>" \
+     Auth_Smtp__Password="$(scripts/ses-smtp-password.sh <secret-access-key>)"
+   ```
+
+4. Redeploy keycloak — `deploy.sh` seeds `SMTP_*` into `.env` on every apply.
+
+**Sandbox**: a new SES account is in the sandbox (can only send to verified
+addresses, ~200/day). Request production access in the SES console for
+`var.aws_region`; until then, verify test recipient addresses. Also confirm the
+domain + DKIM + custom MAIL FROM all show verified before relying on delivery.
 
 ---
 
