@@ -134,12 +134,16 @@ locals {
 }
 
 # Easy DKIM: three CNAMEs that both prove domain ownership and sign outbound mail.
+# Easy DKIM always yields exactly 3 tokens, so we drive this with a static count
+# rather than for_each over the tokens: the token VALUES are only known after
+# apply, which for_each can't accept (its keys must be known at plan time), but a
+# literal count can.
 resource "cloudflare_dns_record" "ses_dkim" {
-  for_each = toset(local.ses_dkim_tokens)
+  count = var.enable_ses ? 3 : 0
 
   zone_id = data.cloudflare_zone.this.id
-  name    = "${each.value}._domainkey.${var.cloudflare_zone}"
-  content = "${each.value}.dkim.amazonses.com"
+  name    = "${local.ses_dkim_tokens[count.index]}._domainkey.${var.cloudflare_zone}"
+  content = "${local.ses_dkim_tokens[count.index]}.dkim.amazonses.com"
   type    = "CNAME"
   proxied = false
   ttl     = 1 # automatic
