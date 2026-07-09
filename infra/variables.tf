@@ -50,6 +50,34 @@ variable "keycloak_domain" {
   default     = ""
 }
 
+# --- Email / SES --------------------------------------------------------------
+# Amazon SES is Keycloak's SMTP provider (infra/ses.tf). The verified identity is
+# the apex zone; Keycloak sends from <ses_from_local_part>@<cloudflare_zone>.
+
+variable "enable_ses" {
+  description = "Create the SES domain identity, custom MAIL FROM, sender IAM user, and email DNS records. Set false to skip email entirely."
+  type        = bool
+  default     = true
+}
+
+variable "ses_from_local_part" {
+  description = "Local part of Keycloak's From address; domain is var.cloudflare_zone (e.g. 'no-reply' -> no-reply@example.com)."
+  type        = string
+  default     = "no-reply"
+}
+
+variable "ses_mail_from_subdomain" {
+  description = "Subdomain for the SES custom MAIL FROM / envelope sender, used for SPF + DMARC alignment (e.g. 'bounce' -> bounce.example.com)."
+  type        = string
+  default     = "bounce"
+}
+
+variable "dmarc_rua" {
+  description = "Email address for DMARC aggregate (rua) reports. Empty omits the DMARC record."
+  type        = string
+  default     = ""
+}
+
 # --- Compute ------------------------------------------------------------------
 # Two instances now (two-instance restructure, docs/two-instance-restructure-plan.md):
 # Host A = edge (cloudflared/Envoy/SSR/otel), Host B = services + stateful tier

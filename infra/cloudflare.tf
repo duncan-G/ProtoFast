@@ -124,3 +124,61 @@ resource "cloudflare_zone_setting" "ssl" {
   setting_id = "ssl"
   value      = "full"
 }
+
+# --- Email DNS (Amazon SES, infra/ses.tf) -----------------------------------
+# All DNS-only (grey cloud): these carry mail/auth data, not HTTP traffic through
+# the tunnel, so they must NOT be proxied. Gated on var.enable_ses.
+locals {
+  ses_dkim_tokens = var.enable_ses ? aws_sesv2_email_identity.domain[0].dkim_signing_attributes[0].tokens : []
+  dmarc_enabled   = var.enable_ses && var.dmarc_rua != ""
+}
+
+# Easy DKIM: three CNAMEs that both prove domain ownership and sign outbound mail.
+resource "cloudflare_dns_record" "ses_dkim" {
+  for_each = toset(local.ses_dkim_tokens)
+
+  zone_id = data.cloudflare_zone.this.id
+  name    = "${each.value}._domainkey.${var.cloudflare_zone}"
+  content = "${each.value}.dkim.amazonses.com"
+  type    = "CNAME"
+  proxied = false
+  ttl     = 1 # automatic
+}
+
+# Custom MAIL FROM: SES delivers bounces/complaints to this subdomain. MX points
+# at the SES feedback endpoint; the SPF TXT authorises SES to send for it.
+resource "cloudflare_dns_record" "ses_mail_from_mx" {
+  count = var.enable_ses ? 1 : 0
+
+  zone_id  = data.cloudflare_zone.this.id
+  name     = local.ses_mail_from
+  content  = "feedback-smtp.${var.aws_region}.amazonses.com"
+  type     = "MX"
+  priority = 10
+  proxied  = false
+  ttl      = 1 # automatic
+}
+
+resource "cloudflare_dns_record" "ses_mail_from_spf" {
+  count = var.enable_ses ? 1 : 0
+
+  zone_id = data.cloudflare_zone.this.id
+  name    = local.ses_mail_from
+  content = "\"v=spf1 include:amazonses.com ~all\""
+  type    = "TXT"
+  proxied = false
+  ttl     = 1 # automatic
+}
+
+# DMARC (optional): start at p=none (monitor only) with aggregate reports to
+# var.dmarc_rua. Tighten to quarantine/reject once alignment is confirmed.
+resource "cloudflare_dns_record" "ses_dmarc" {
+  count = local.dmarc_enabled ? 1 : 0
+
+  zone_id = data.cloudflare_zone.this.id
+  name    = "_dmarc.${var.cloudflare_zone}"
+  content = "\"v=DMARC1; p=none; rua=mailto:${var.dmarc_rua}\""
+  type    = "TXT"
+  proxied = false
+  ttl     = 1 # automatic
+}

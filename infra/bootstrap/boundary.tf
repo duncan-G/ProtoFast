@@ -23,6 +23,7 @@ data "aws_iam_policy_document" "boundary" {
       "logs:*",
       "kms:*",
       "secretsmanager:*",
+      "ses:*",
       "sts:AssumeRole",
       "sts:GetCallerIdentity",
       "iam:Get*",

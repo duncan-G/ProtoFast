@@ -171,6 +171,9 @@ PY
   v="$(_secret_get Auth_Smtp__Password || true)";                     if [ -n "$v" ]; then set_env "$ENV_FILE" SMTP_PASSWORD "$v"; fi
   v="$(_secret_get Auth_Smtp__Host || true)";                         if [ -n "$v" ]; then set_env "$ENV_FILE" SMTP_HOST "$v"; fi
   v="$(_secret_get Auth_Smtp__User || true)";                         if [ -n "$v" ]; then set_env "$ENV_FILE" SMTP_USER "$v"; fi
+  # From address is non-secret but lives with the SMTP creds so the verified SES
+  # domain (var.cloudflare_zone) can override the compose default (no-reply@protofast.dev).
+  v="$(_secret_get Auth_Smtp__From || true)";                         if [ -n "$v" ]; then set_env "$ENV_FILE" SMTP_FROM "$v"; fi
 }
 
 # Uppercase a component/client name into its manifest-key form: 'client-admin'
