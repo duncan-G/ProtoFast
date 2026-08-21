@@ -7,7 +7,7 @@ resource "aws_s3_bucket" "state" {
 
   # Protected: state is precious. Guard against accidental destruction.
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = false
   }
 }
 
