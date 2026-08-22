@@ -8,24 +8,23 @@
 # The SES SMTP credential is a long-lived IAM access key, which needs an IAM user
 # — exactly what the permissions boundary bans (infra/bootstrap/boundary.tf,
 # "DenyIamUsersAndKeys": no IAM users, no static keys, OIDC/SSO only). That deny
-# caps both this CI/infra plane and the PlatformAdmin people, so the SES sender
-# user, its least-privilege send policy, and its access key are ALL created OUT OF
-# BAND by an OrgAdmin (AdministratorAccess, not boundary-capped). See the runbook
-# below. This keeps the no-secrets-in-state rule (infra/secrets.tf) intact: no
-# access key ever passes through CI or lands in Terraform state.
+# caps both this CI/infra plane and the PlatformAdmin people, so the SENDER is not
+# here: the user and its least-privilege send policy are Terraform resources of
+# infra/identity-center (ses-sender.tf), the one root applied by OrgAdmin, who is
+# not boundary-capped. That root's ses_sender_zone / ses_from_local_part must match
+# var.cloudflare_zone and var.ses_from_local_part below, or the policy's
+# ses:FromAddress condition stops matching and Keycloak mail fails to send.
 #
-# Out-of-band runbook (OrgAdmin, once per environment):
-#   1. Create user  protofast-ses-smtp  WITH the protofast-boundary permissions
-#      boundary attached (so it can never escalate beyond the send policy).
-#   2. Attach an inline policy allowing ses:SendEmail / ses:SendRawEmail on the
-#      domain identity ARN, conditioned on ses:FromAddress = the From address
-#      (terraform output ses_from_address) — so a leaked key can't spoof other
-#      addresses in the domain.
-#   3. Create an access key for it, run scripts/ses-smtp-password.sh to derive the
-#      SMTP password, then store the values in the app secret via
-#      scripts/populate-secrets.sh as Auth_Smtp__Host / Auth_Smtp__User /
-#      Auth_Smtp__Password / Auth_Smtp__From (see that script's header).
-#   deploy.sh then seeds them into .env, and the Keycloak realm import reads them.
+# The ACCESS KEY alone is created out of band (OrgAdmin, once per environment),
+# which keeps the no-secrets-in-state rule (infra/secrets.tf) intact: no key ever
+# passes through CI or lands in any state file. Runbook, with commands, in
+# infra/README.md section 4.2 — mint the key, run scripts/ses-smtp-password.sh to
+# derive the SMTP password, then store Auth_Smtp__Host / Auth_Smtp__User /
+# Auth_Smtp__Password / Auth_Smtp__From via scripts/populate-secrets.sh. deploy.sh
+# seeds those into .env, and the Keycloak realm import reads them.
+#
+# Do not drive that runbook off terraform outputs from this root: CI owns the S3
+# state, so a local checkout has none.
 #
 # The DNS records that prove ownership + enable DKIM/SPF/DMARC live in
 # infra/cloudflare.tf (the zone is authoritative in Cloudflare).
@@ -74,7 +73,7 @@ resource "aws_sesv2_configuration_set" "this" {
   }
 }
 
-# NOTE: the SES sender IAM user, its least-privilege send policy, and its access
-# key are intentionally NOT managed here — the permissions boundary bars minting
-# IAM users/keys. They are created out of band by an OrgAdmin (see the runbook in
-# the file header). terraform output ses_smtp_iam_user prints the expected name.
+# NOTE: the SES sender IAM user and its send policy are intentionally NOT managed
+# here — the permissions boundary bars this plane from minting IAM users. They are
+# infra/identity-center/ses-sender.tf; its access key is minted out of band. See
+# the file header.

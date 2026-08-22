@@ -1,6 +1,6 @@
 # infra/identity-center
 
-AWS Identity Center (SSO) access model. Has its own Terraform state, separate from the workload `infra/`. It is **never** applied by the CI OIDC roles — those are capped by `protofast-boundary`, which denies `organizations:`*/`account:`*, so they can't manage identities. The first apply is run by the same **account root** (genesis) identity that applied
+AWS Identity Center (SSO) access model. Has its own Terraform state, separate from the workload `infra/`. It is **never** applied by the CI OIDC roles — those are capped by `protofast-boundary`, which denies `organizations:`*/*`account:`, so they can't manage identities. The first apply is run by the same **account root** (genesis) identity that applied
 `[../bootstrap/README.md](../bootstrap/README.md)`; every apply after that is run by a human holding **OrgAdmin**.
 
 This config creates the **groups**, the **permission sets**, and the **account assignments** that wire them together. People are not in Terraform: add them in the Identity Center console.
@@ -16,14 +16,27 @@ Three groups, three jobs — one permission set each:
 
 
 
-| Variable                    | Default              | Notes                                                               |
-| --------------------------- | -------------------- | ------------------------------------------------------------------- |
-| `project`                   | `protofast`          | Prefixes group descriptions.                                        |
-| `aws_region`                | `us-west-2`          | Region of the IC instance.                                          |
-| `permissions_boundary_name` | `protofast-boundary` | Boundary attached to `PlatformAdmin`; created by `infra/bootstrap`. |
+| Variable                    | Default              | Notes                                                                   |
+| --------------------------- | -------------------- | ----------------------------------------------------------------------- |
+| `project`                   | `protofast`          | Prefixes group descriptions.                                            |
+| `aws_region`                | `us-west-2`          | Region of the IC instance.                                              |
+| `permissions_boundary_name` | `protofast-boundary` | Boundary attached to `PlatformAdmin`; created by `infra/bootstrap`.     |
+| `ses_sender_zone`           | `""`                 | Domain the SES sender may send from. Empty omits the sender. See below. |
+| `ses_from_local_part`       | `no-reply`           | Local part of the sender's only allowed From address.                   |
+| `ses_region`                | `""`                 | Region of the SES identity; falls back to `aws_region`.                 |
 
 
-Outputs: `instance_arn`, `permission_set_arns`, `group_ids`.
+Outputs: `instance_arn`, `permission_set_arns`, `group_ids`, `ses_smtp_user`, `ses_from_address`.
+
+## SES sender
+
+`[ses-sender.tf](ses-sender.tf)` creates one service account — `protofast-ses-smtp`, the IAM user behind Keycloak's SMTP credential — plus an inline policy letting it send *only* as `<ses_from_local_part>@<ses_sender_zone>`. It carries `protofast-boundary`, so the key can never reach past that ceiling.
+
+It sits in this root purely because of who applies it. `protofast-boundary` denies `iam:CreateUser` to both the CI infra role and `PlatformAdmin`, so OrgAdmin is the only identity in the account that can create it. Nothing about it is an SSO concern.
+
+Set `ses_sender_zone` to the same apex domain as `infra/`'s `cloudflare_zone` (and keep `ses_from_local_part` / `ses_region` in step with that root's `ses_from_local_part` / `aws_region` — they are duplicated across two states, and a mismatch surfaces only as SES refusing to send). There is no ordering constraint: IAM does not check that the SES identity in the policy exists, so this can be applied before `infra/` ever creates it.
+
+The **access key** is deliberately not managed here — `aws_iam_access_key` would write the secret into this root's state. Mint it out of band per [../README.md](../README.md) section 4.2.
 
 ## State bucket
 
@@ -100,15 +113,6 @@ Only the credentials differ from step 1 — SSO instead of static keys. SSO can'
 ```sh
 export AWS_PROFILE=protofast-orgadmin AWS_DEFAULT_REGION=us-west-2
 aws sso login
-
-cd "$(git rev-parse --show-toplevel)/infra/identity-center"
-SHA=$(command -v sha256sum || echo "shasum -a 256")
-REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
-BUCKET="protofast-tfstate-$(printf '%s' "$REPO" | $SHA | cut -c1-9)"
-
-terraform init \
-  -backend-config="bucket=$BUCKET" \
-  -backend-config="region=$AWS_DEFAULT_REGION"
 terraform apply
 ```
 

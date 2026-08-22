@@ -32,3 +32,28 @@ variable "permissions_boundary_name" {
   default     = "protofast-boundary"
 }
 
+# --- SES sender (service account, ses-sender.tf) ------------------------------
+# These three MUST agree with infra/'s cloudflare_zone, ses_from_local_part, and
+# aws_region. They are duplicated rather than shared because this root has its own
+# state and no dependency on infra/. If they drift, the send policy's
+# ses:FromAddress condition stops matching and Keycloak mail fails with an SES
+# authorization error that does not obviously point back here.
+
+variable "ses_sender_zone" {
+  description = "Domain the SES sender may send from; must equal infra/'s cloudflare_zone (e.g. example.com). Empty omits the sender user entirely."
+  type        = string
+  default     = ""
+}
+
+variable "ses_from_local_part" {
+  description = "Local part of the only From address the sender is allowed to use; must equal infra/'s ses_from_local_part."
+  type        = string
+  default     = "no-reply"
+}
+
+variable "ses_region" {
+  description = "Region the SES domain identity lives in (infra/'s aws_region). Empty falls back to var.aws_region, which is the Identity Center instance's region and only coincidentally the same."
+  type        = string
+  default     = ""
+}
+

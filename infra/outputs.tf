@@ -58,7 +58,7 @@ output "ses_from_address" {
   value       = var.enable_ses ? local.ses_from_address : null
 }
 
-output "ses_smtp_iam_user" {
-  description = "Expected name of the SES sender IAM user. Created OUT OF BAND by an OrgAdmin (the boundary bars CI from minting users/keys), not by Terraform. Runbook: create this user with the protofast-boundary + a ses:SendEmail/SendRawEmail inline policy scoped to ses_from_address, create an access key, run scripts/ses-smtp-password.sh, then store Auth_Smtp__User (access key id) + Auth_Smtp__Password (derived) via scripts/populate-secrets.sh."
-  value       = var.enable_ses ? "${var.project}-ses-smtp" : null
-}
+# NOTE: the sender IAM user is NOT an output here — it is a resource of
+# infra/identity-center (ses-sender.tf), the only root whose applier can mint IAM
+# users. Read its name from that root's ses_smtp_user output, so there is one
+# source of truth rather than a convention duplicated across two states.

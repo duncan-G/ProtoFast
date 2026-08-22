@@ -875,9 +875,12 @@ stands up the sending identity; the credential is produced out-of-band so no
 secret value lands in TF state.
 
 - **Terraform creates**: the SES domain identity for `var.cloudflare_zone` with
-  Easy DKIM, a custom MAIL FROM subdomain (`var.ses_mail_from_subdomain`, default
-  `bounce.<zone>`) for SPF/DMARC alignment, and a least-privilege IAM user
-  (`<project>-ses-smtp`) allowed to send only as `no-reply@<zone>`.
+  Easy DKIM and a custom MAIL FROM subdomain (`var.ses_mail_from_subdomain`,
+  default `bounce.<zone>`) for SPF/DMARC alignment. The least-privilege sender IAM
+  user (`<project>-ses-smtp`, allowed to send only as `no-reply@<zone>`) is also
+  Terraform, but in [`infra/identity-center/ses-sender.tf`](../infra/identity-center/ses-sender.tf) —
+  the permissions boundary bars the CI plane from minting IAM users, so only
+  OrgAdmin can apply it. Set `ses_sender_zone` there.
 - **DNS (Cloudflare, [`infra/cloudflare.tf`](../infra/cloudflare.tf))**: three DKIM
   CNAMEs, the MAIL FROM `MX` + SPF `TXT`, and an optional DMARC `TXT` (set
   `var.dmarc_rua`). All are **DNS-only** (never proxied).
@@ -886,19 +889,23 @@ secret value lands in TF state.
   ([`deploy/docker-compose.host-b.yml`](../deploy/docker-compose.host-b.yml)) — no
   realm JSON changes needed.
 
-Out-of-band credential flow (after `terraform apply`):
+Out-of-band credential flow (as OrgAdmin, after the CI `infra.yml` apply). Only
+the access key is manual, so no secret value lands in Terraform state. The
+copy-paste block lives in [`infra/README.md`](../infra/README.md) section 4.2;
+do not read these from `terraform output` in `infra/`, since CI owns that state:
 
-1. Create an access key for the IAM user (`terraform -chdir=infra output -raw ses_smtp_iam_user`).
+1. Create an access key for the IAM user `protofast-ses-smtp`.
 2. Derive the SES SMTP password from the secret access key:
    `scripts/ses-smtp-password.sh <secret-access-key> <region>`.
-3. Store everything in the app secret:
+3. Store everything in the app secret, taking `Auth_Smtp__From` off the sender's
+   `ses-send` policy so it matches what the user is permitted to send as:
 
    ```bash
    scripts/populate-secrets.sh \
-     Auth_Smtp__Host="$(terraform -chdir=infra output -raw ses_smtp_endpoint)" \
-     Auth_Smtp__From="$(terraform -chdir=infra output -raw ses_from_address)" \
+     Auth_Smtp__Host="email-smtp.<region>.amazonaws.com" \
+     Auth_Smtp__From="<ses:FromAddress from the ses-send policy>" \
      Auth_Smtp__User="<access-key-id>" \
-     Auth_Smtp__Password="$(scripts/ses-smtp-password.sh <secret-access-key>)"
+     Auth_Smtp__Password="$(scripts/ses-smtp-password.sh <secret-access-key> <region>)"
    ```
 
 4. Redeploy keycloak — `deploy.sh` seeds `SMTP_*` into `.env` on every apply.

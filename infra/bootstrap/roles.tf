@@ -62,9 +62,10 @@ data "aws_iam_policy_document" "infra" {
       "logs:*",
       "kms:*",
       # SES sending identity, custom MAIL FROM, and configuration set (infra/ses.tf).
-      # DNS lives in Cloudflare; the SES SMTP IAM user + access key are created out
-      # of band by an OrgAdmin (the boundary bars this CI plane from minting users
-      # and keys), so no iam:*User* actions are needed here.
+      # DNS lives in Cloudflare; the SES SMTP sender user is applied by OrgAdmin in
+      # infra/identity-center and its access key is minted out of band (the boundary
+      # bars this CI plane from minting users and keys), so no iam:*User* actions
+      # are needed here.
       "ses:*",
     ]
     resources = ["*"]
