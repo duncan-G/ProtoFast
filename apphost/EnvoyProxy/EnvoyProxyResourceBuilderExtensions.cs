@@ -99,8 +99,11 @@ public static class EnvoyProxyResourceBuilderExtensions
         }
 
         var endpointName = $"{clientName}-web";
+        // Pin the host port too — Keycloak's redirect URIs are exact
+        // (https://localhost:20000|20001/signin-oidc). targetPort-only maps a random
+        // host port and the authorize request fails with invalid_redirect_uri.
         envoy
-            .WithHttpsEndpoint(targetPort: listenerPort, name: endpointName, isProxied: false)
+            .WithHttpsEndpoint(port: listenerPort, targetPort: listenerPort, name: endpointName, isProxied: false)
             .WithEnvironment($"CLIENT_{envName}_LISTENER_PORT", listenerPort.ToString())
             .WithUrlForEndpoint(endpointName, u => u.DisplayText = $"{clientName} (web)");
 

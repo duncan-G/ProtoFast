@@ -6,6 +6,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <NoWarn>$(NoWarn);ASPIRECERTIFICATES001</NoWarn>
+    <!-- Persist generated resource passwords (Postgres, Redis, …) across aspire run. -->
+    <UserSecretsId>protofast-apphost-dev</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

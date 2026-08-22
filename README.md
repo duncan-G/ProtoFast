@@ -52,6 +52,8 @@ by path prefix.
 - Skills
   - Angular agent skills `npx skills add https://github.com/angular/skills`
 
+
+
 ## Install
 
 An idempotent setup script is provided to install any missing tooling. It is currently only tested on Ubuntu 24; on other distros/OSes you'll need to install the tools above manually.
@@ -59,6 +61,8 @@ An idempotent setup script is provided to install any missing tooling. It is cur
 ```bash
 bash scripts/setup-dev-dependencies.sh
 ```
+
+
 
 ## Running the app
 
@@ -78,8 +82,6 @@ This launches:
   - `payments` at `/payments/*`
   - `api`      at `/api/*`
 - The Aspire dashboard (URL printed in the terminal on startup)
-
-> Note: application backend will not work correctly without secrets. Services use AWS secret manager to load it's secrets. You will need to deploy [infra](infra/README.md) to have application fully work.
 
 Stop everything with `Ctrl+C`, or from another shell:
 

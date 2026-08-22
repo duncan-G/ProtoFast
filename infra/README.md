@@ -1,63 +1,63 @@
 # Infra
 
-Production AWS + Cloudflare for ProtoFast. Three Terraform roots, applied in order, then GitHub Actions owns the rest.
+Production AWS + Cloudflare infrastructure for ProtoFast. There are three Terraform roots: the first two are applied once by a human, then GitHub Actions owns this directory.
 
-
-| Root                                   | When                 | Who                                          | State                    |
-| -------------------------------------- | -------------------- | -------------------------------------------- | ------------------------ |
-| `[bootstrap/](bootstrap/)`             | Once, first          | Genesis (root / temporary IAM admin)         | Local disk (gitignored)  |
-| `[identity-center/](identity-center/)` | Once, then as needed | Genesis first apply; **OrgAdmin** after that | S3 bucket from bootstrap |
-| This directory (`infra/`)              | Ongoing              | GitHub Actions (`infra.yml`) via OIDC        | Same S3 bucket           |
-
+| Root                                 | When                 | Applied by                                       | State                          |
+| ------------------------------------ | -------------------- | ------------------------------------------------ | ------------------------------ |
+| [bootstrap/](bootstrap/)             | Once, first          | Genesis identity (root or a temporary IAM admin) | Local disk (gitignored)        |
+| [identity-center/](identity-center/) | Once, then as needed | Genesis for the first apply, **OrgAdmin** after  | S3 bucket created by bootstrap |
+| `infra/` (this directory)            | Ongoing              | GitHub Actions (`infra.yml`) via OIDC            | Same S3 bucket                 |
 
 ## 1. Bootstrap
 
-One-time local apply that creates the S3 state bucket, GitHub OIDC provider, `protofast-infra` / `protofast-deploy` roles, and the permissions boundary. It also writes the GitHub Actions variables and secrets CI needs (OIDC role ARNs, ECR, Cloudflare inputs).
+A one-time local apply that creates everything CI depends on: the S3 state bucket, the GitHub OIDC provider, the `protofast-infra` and `protofast-deploy` roles, and the permissions boundary. It also writes the GitHub Actions variables and secrets CI needs (OIDC role ARNs, ECR, Cloudflare inputs).
 
-Follow **[bootstrap/README.md](bootstrap/README.md)** (genesis identity tfvars, Cloudflare token scopes, apply). Keep that shell open — identity-center's first apply uses the same keys.
+Follow [bootstrap/README.md](bootstrap/README.md) for the genesis-identity tfvars, Cloudflare token scopes, and the apply. Keep that shell open — Identity Center's first apply uses the same credentials.
 
 ## 2. Identity Center
 
-Creates SSO groups (`Org-Admins`, `Platform-Admins`, `Developers`), permission sets, and account assignments. People are added in the console, not in Terraform. It also owns the one IAM user in the account — the SES SMTP sender (section 4.2) — since the boundary bars every other applier from creating users.
+Creates the SSO groups (`Org-Admins`, `Platform-Admins`, `Developers`), their permission sets, and account assignments. People are added to groups in the console, not in Terraform. This root also owns the only IAM user in the account — the SES SMTP sender (section 4.2) — because the permissions boundary blocks every other applier from creating users.
 
-Follow **[identity-center/README.md](identity-center/README.md)**: first apply as genesis, create yourself as OrgAdmin, sign in, then delete the genesis identity.
+Follow [identity-center/README.md](identity-center/README.md): apply first as genesis, create yourself as OrgAdmin, sign in, then delete the genesis identity.
 
 ## 3. Deploy on GitHub Actions
 
-Create a GitHub Environment named `infra` with required reviewers. `infra.yml` declares `environment: infra`; without it the OIDC assume fails.
+Create a GitHub Environment named `infra` with required reviewers. `infra.yml` declares `environment: infra`, and the OIDC role assumption fails without it.
 
-1. **Actions → infra → Run workflow**, action `apply`. That stands up hosts, tunnel, DNS, and the empty secret shell. Fill the secret (section 4) before deploying anything.
-2. Push to `main` (path-filtered) or **Run workflow** on the `deploy-`* workflows. They assume `AWS_DEPLOY_ROLE_ARN` and SSM the matching host.
+1. Run **Actions → infra → Run workflow** with action `apply`. This stands up the hosts, Cloudflare tunnel, DNS, and an empty Secrets Manager secret. Fill the secret (section 4) before deploying anything.
+2. Deploy services by pushing to `main` (workflows are path-filtered) or with **Run workflow** on any `deploy-*` workflow. They assume `AWS_DEPLOY_ROLE_ARN` and reach the matching host over SSM.
 
-Typical first-pass order once the app secret has a version: stateful tier (postgres, redis, keycloak), then services, then edge (cloudflared, envoy clients, otel, aspire). `plan` is the infra default; `destroy` tears the workload down (bootstrap and identity-center are untouched).
+Once the secret is filled, a sensible first-pass order is: the stateful tier (postgres, redis, keycloak), then services, then the edge (cloudflared, envoy clients, otel, aspire).
+
+For `infra.yml`, `plan` is the default action. `destroy` tears down only the workload — bootstrap and identity-center are untouched.
 
 ## 4. Secrets
 
-All runtime values live in one Secrets Manager secret (`protofast/app`). Terraform creates an empty shell — CI can neither read nor write the value. Fill it as **OrgAdmin** after the first `infra.yml` apply (section 3) with [scripts/populate-secrets.sh](../scripts/populate-secrets.sh) or manually in AWS dashboard.
+All runtime values live in a single Secrets Manager secret, `protofast/app`. Terraform creates an empty shell; CI can neither read nor write the value. After the first `infra.yml` apply, fill it as **OrgAdmin** with [scripts/populate-secrets.sh](../scripts/populate-secrets.sh) (or manually in the console).
 
-- **OrgAdmin only.** PlatformAdmin has no `secretsmanager:` grant, and the boundary blocks minting the IAM access key SES needs.
-- **Additive and idempotent.** Keys you don't pass are preserved; a bare run generates only the two DB passwords if missing. Re-run to add or rotate.
-- **Never `terraform init`/`apply` this directory as OrgAdmin** — CI owns that state.
-- `deploy.sh` reads these keys on every Host B apply and seeds files / `.env`. Missing DB passwords abort the deploy; missing auth/JWT/SMTP keys leave those services broken or silent.
-- If the secret is ever replaced, its values are gone — re-run 4.1 and 4.2.
+Ground rules:
 
+- **OrgAdmin only.** PlatformAdmin has no `secretsmanager:` permissions, and the boundary blocks creating the IAM access key SES needs.
+- **The script is additive and idempotent.** Keys you don't pass are preserved; a bare run only generates the two DB passwords if they're missing. Re-run it any time to add or rotate keys.
+- **Never `terraform init`/`apply` this directory as OrgAdmin.** CI owns this state.
+- `deploy.sh` reads these keys on every Host B apply and seeds config files and `.env`. Missing DB passwords abort the deploy; missing auth, JWT, or SMTP keys leave those services broken or silent.
+- If the secret is ever deleted and recreated, its values are gone — re-run 4.1 and 4.2.
 
-| Key                                       | How                    | Used by                                            |
-| ----------------------------------------- | ---------------------- | -------------------------------------------------- |
-| `Infra_KcDbPassword`                      | auto                   | Postgres superuser + Keycloak                      |
-| `Auth_DbPassword`                         | auto                   | `auth` DB role                                     |
-| `Auth_Keycloak__ClientSecretProtofastWeb` | pass                   | Keycloak realm import + auth BFF (`protofast-web`) |
-| `Auth_Keycloak__ClientSecretAdmin`        | pass                   | Keycloak realm import + auth BFF (`admin`)         |
-| `Auth_InternalJwt__PrivateKeyPem`         | pass (PEM)             | auth-svc (EC P-256 private)                        |
-| `Shared_InternalJwt__PublicKeyPem`        | pass (PEM)             | api + payments (matching public)                   |
-| `Auth_InternalJwt__KeyId`                 | pass; default `prod-1` | auth-svc `kid`                                     |
-| `Auth_Smtp__Host`                         | 4.2                    | Keycloak SMTP                                      |
-| `Auth_Smtp__User`                         | 4.2                    | IAM access key id                                  |
-| `Auth_Smtp__Password`                     | 4.2                    | derived SMTP password, not the raw IAM secret      |
-| `Auth_Smtp__From`                         | 4.2                    | verified From address                              |
+| Key                                       | Set in                  | Used by                                            |
+| ----------------------------------------- | ----------------------- | -------------------------------------------------- |
+| `Infra_KcDbPassword`                      | auto-generated          | Postgres superuser + Keycloak                      |
+| `Auth_DbPassword`                         | auto-generated          | `auth` DB role                                     |
+| `Auth_Keycloak__ClientSecretProtofastWeb` | 4.1                     | Keycloak realm import + auth BFF (`protofast-web`) |
+| `Auth_Keycloak__ClientSecretAdmin`        | 4.1                     | Keycloak realm import + auth BFF (`admin`)         |
+| `Auth_InternalJwt__PrivateKeyPem`         | 4.1 (PEM)               | auth-svc (EC P-256 private key)                    |
+| `Shared_InternalJwt__PublicKeyPem`        | 4.1 (PEM)               | api + payments (matching public key)               |
+| `Auth_InternalJwt__KeyId`                 | 4.1 (default `prod-1`)  | auth-svc `kid` header                              |
+| `Auth_Smtp__Host`                         | 4.2                     | Keycloak SMTP host                                 |
+| `Auth_Smtp__User`                         | 4.2                     | IAM access key id                                  |
+| `Auth_Smtp__Password`                     | 4.2                     | Derived SMTP password (not the raw IAM secret)     |
+| `Auth_Smtp__From`                         | 4.2                     | Verified From address                              |
 
-
-Run 4.1 and 4.2 from one shell:
+Both 4.1 and 4.2 assume an OrgAdmin shell:
 
 ```sh
 export AWS_PROFILE=protofast-orgadmin AWS_REGION=us-west-2
@@ -67,7 +67,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 ### 4.1 DB passwords + auth material
 
-One run covers the two client secrets, a P-256 keypair in the form Aspire uses locally (PKCS#8 private, SPKI public), and the two auto-generated DB passwords. Quote the PEM substitutions so newlines survive.
+A single run sets the two Keycloak client secrets and the internal-JWT keypair (P-256, PKCS#8 private / SPKI public — the same form Aspire uses locally), and auto-generates the two DB passwords. Quote the PEM substitutions so the newlines survive.
 
 ```sh
 openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out jwt-private.pem
@@ -83,16 +83,16 @@ scripts/populate-secrets.sh \
 shred -u jwt-private.pem jwt-public.pem
 ```
 
-Keycloak's `--import-realm` and auth-svc must see the same client secret values (`PROTOFAST_WEB_CLIENT_SECRET` / `ADMIN_CLIENT_SECRET` in `.env`), so rotate both keys together.
+Keycloak's `--import-realm` and auth-svc must agree on the client secret values (`PROTOFAST_WEB_CLIENT_SECRET` / `ADMIN_CLIENT_SECRET` in `.env`), so always rotate both keys together.
 
 ### 4.2 SES SMTP (Keycloak email)
 
-Two prerequisites, either order:
+Two prerequisites, in either order:
 
-1. `infra.yml` apply (section 3) creates the SES *identity* — DKIM, MAIL FROM, DNS ([ses.tf](ses.tf)).
-2. Set `ses_sender_zone` in [identity-center/](identity-center/) tfvars and apply that root as OrgAdmin. It owns the sender **IAM user** and its send policy ([identity-center/ses-sender.tf](identity-center/ses-sender.tf)) because the boundary denies both CI and PlatformAdmin `iam:CreateUser`.
+1. An `infra.yml` apply (section 3), which creates the SES *identity* — DKIM, MAIL FROM, and DNS records ([ses.tf](ses.tf)).
+2. Set `ses_sender_zone` in the [identity-center/](identity-center/) tfvars and apply that root as OrgAdmin. It creates the sender **IAM user** and its send policy ([identity-center/ses-sender.tf](identity-center/ses-sender.tf)); the user lives there because the boundary denies `iam:CreateUser` to both CI and PlatformAdmin.
 
-Only the access key is minted by hand, so no secret value reaches Terraform state. `FROM` is read back off the send policy, so what you store always matches what the user is allowed to send as:
+Only the access key is created by hand, so no secret value ever reaches Terraform state. The From address is read back from the send policy, so the stored value always matches what the user is allowed to send as:
 
 ```sh
 USER=protofast-ses-smtp
@@ -113,6 +113,10 @@ else
 fi
 ```
 
-To rotate: re-run the block (IAM allows two keys per user), then `aws iam delete-access-key --user-name "$USER" --access-key-id <old-id>`.
+To rotate, re-run the block (IAM allows two keys per user), then delete the old key:
 
-New SES accounts start in the sandbox (verified recipients only). Request production access in the SES console for this region, wait until the domain, DKIM, and MAIL FROM all show verified, then redeploy keycloak so `deploy.sh` seeds `SMTP_*` into `.env`.
+```sh
+aws iam delete-access-key --user-name protofast-ses-smtp --access-key-id <old-id>
+```
+
+New SES accounts start in the sandbox and can only send to verified recipients. Request production access in the SES console for this region, wait until the domain, DKIM, and MAIL FROM all show verified, then redeploy keycloak so `deploy.sh` seeds `SMTP_*` into `.env`.
