@@ -20,7 +20,8 @@
 #                                        AWS_REGION, HOST_ROLE, peer host IP.
 #                                        Seeded by cloud-init / first deploy; this
 #                                        script never rewrites it (except to persist
-#                                        ECR + the cross-host peer IP, see below).
+#                                        ECR, AWS_REGION + the cross-host peer IP,
+#                                        see below).
 #     versions.env                       VERSION MANIFEST: one *_TAG per
 #                                        component — the source of truth for what
 #                                        is running. This script rewrites only
@@ -665,6 +666,16 @@ fi
 if [ -z "$(get_env "$ENV_FILE" ECR)" ]; then
   echo "ECR is not set in ${ENV_FILE} and no ECR was passed to deploy.sh" >&2
   exit 1
+fi
+
+# Region, same self-sufficiency rationale as ECR. cloud-init seeds it, but auth's
+# container now interpolates AWS_REGION from .env for its in-process Secrets Manager
+# read (docker-compose.host-b.yml), and the AWS SDK resolves no region on its own —
+# a blank one makes auth crash on boot with "No RegionEndpoint or ServiceURL
+# configured". Host B is pinned against re-provisioning, so a box whose .env predates
+# that line would never get one; the deploy job passes it on every apply.
+if [ -n "${AWS_REGION:-}" ]; then
+  set_env "$ENV_FILE" AWS_REGION "$AWS_REGION"
 fi
 
 # Cross-host peer IP, same self-sufficiency rationale as ECR above. cloud-init

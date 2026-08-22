@@ -45,6 +45,14 @@ services:
     # Postgres init script reads — §3.2).
     environment:
       <<: *dotnet-env
+      # auth reads the app secret (Auth_/Shared_ keys) from Secrets Manager itself at
+      # startup. The SDK takes credentials from the instance role over IMDS — which a
+      # container only reaches with metadata hop limit 2 (infra/compute.tf) — but it
+      # resolves NO region on its own, so pass one explicitly or the client ctor throws
+      # "No RegionEndpoint or ServiceURL configured". AWS_REGION comes from .env
+      # (cloud-init seeds it; every apply re-asserts it — deploy.sh).
+      AWS_REGION: ${AWS_REGION}
+      AWS_DEFAULT_REGION: ${AWS_REGION}
       ConnectionStrings__redis: "redis:6379"
       # Chiseled images have no libgssapi_krb5; Npgsql Prefer otherwise logs a
       # load failure before falling through to password auth. We don't use Kerberos.

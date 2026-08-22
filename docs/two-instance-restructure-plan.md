@@ -307,9 +307,9 @@ instances (or `for_each` over a `{ a = {...}, b = {...} }` map):
   retention needs the headroom.
 - `aws_instance.host_b` — services role; `instance_type = t4g.medium` (Q4 — and
   the one host that genuinely needs it: 3× .NET + Keycloak JVM + Postgres +
-  Redis); ECR pull + the EBS attachment. IMDS hop limit stays 2 only if a
-  container on B needs instance creds (Keycloak/Postgres don't; keep 2 only if a
-  future service does).
+  Redis); ECR pull + the EBS attachment. IMDS hop limit **2**: Keycloak/Postgres
+  don't need instance creds, but auth-svc reads the app secret from Secrets
+  Manager in-process, and the docker bridge costs one hop.
 - **Size the hosts independently.** Split `var.instance_type` into
   `var.host_a_instance_type` (default `t4g.small`) and
   `var.host_b_instance_type` (default `t4g.medium`) — their sizing drivers now

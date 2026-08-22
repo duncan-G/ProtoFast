@@ -114,7 +114,7 @@ jobs:
               \"echo $COMPOSE_B64 | base64 -d > /opt/protofast/docker-compose.yml\",
               \"echo $DEPLOY_B64 | base64 -d > /opt/protofast/deploy.sh\",
               \"chmod +x /opt/protofast/deploy.sh\",
-              \"ECR=${ECR} ALLOW_PG_MAJOR=${ALLOW_PG_MAJOR} /opt/protofast/deploy.sh apply postgres=${TAG}\"
+              \"ECR=${ECR} AWS_REGION=${AWS_REGION} ALLOW_PG_MAJOR=${ALLOW_PG_MAJOR} /opt/protofast/deploy.sh apply postgres=${TAG}\"
             ]" \
             --query 'Command.CommandId' --output text)
 
