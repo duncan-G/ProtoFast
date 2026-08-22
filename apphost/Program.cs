@@ -36,7 +36,7 @@ var authDb = postgres
 var redis = builder.AddRedis("redis");
 
 var keycloak = builder.AddKeycloak("keycloak", 8080)
-    .WithImageTag("26.6")
+    .WithImageTag("26.7")
     .WithRealmImport("../infra/keycloak/realms")
     // Enable ${env.VAR:default} placeholder substitution in the realm import files.
     // Without this, Keycloak imports the literal defaults (e.g. SMTP host localhost:1025)

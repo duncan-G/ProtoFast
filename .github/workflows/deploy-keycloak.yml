@@ -40,7 +40,7 @@ env:
   INSTANCE_TAG_KEY: "protofast:role"
   INSTANCE_TAG_VALUE: "app-server"
   # Keep in sync with the KEYCLOAK_TAG default in deploy/docker-compose.host-b.yml.
-  DEFAULT_KEYCLOAK_TAG: "26.0"
+  DEFAULT_KEYCLOAK_TAG: "26.7"
 
 jobs:
   deploy:

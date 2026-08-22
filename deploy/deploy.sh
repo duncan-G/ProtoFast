@@ -91,7 +91,7 @@ get_env() { [ -f "$1" ] && grep -E "^${2}=" "$1" | head -n1 | cut -d= -f2- || tr
 # The single Secrets Manager secret (§4.4); overridable for tests/alt projects.
 APP_SECRET_ID="${APP_SECRET_ID:-${PROJECT}/app}"
 
-# Re-seed the root-only secret files that back the compose `secrets:` bind mounts
+# Re-seed the secret files that back the compose `secrets:` bind mounts
 # (Infra_KcDbPassword -> kc-db-password for the Postgres superuser + Keycloak,
 # Auth_DbPassword -> auth-db-password for auth's role). cloud-init seeds these at
 # first boot, but that is a one-shot: if the SM secret had no value yet at boot —
@@ -144,6 +144,10 @@ PY
     printf '%s\n' "$kc"   > "${APP_DIR}/kc-db-password"
     printf '%s\n' "$auth" > "${APP_DIR}/auth-db-password" )
   chmod 600 "${APP_DIR}/kc-db-password" "${APP_DIR}/auth-db-password"
+  # Same chown as user_data.host_b.sh.tftpl: Keycloak runs as uid 1000 and cats
+  # this bind mount (no `_FILE` support). Rewriting as root:root 0600 here would
+  # undo cloud-init and fail with Permission denied. Postgres still reads as root.
+  chown 1000:1000 "${APP_DIR}/kc-db-password"
   # The same first-boot abort can leave AUTH_DB_PASSWORD out of .env (interpolated
   # into auth's ConnectionStrings__auth); re-assert it from the same value.
   set_env "$ENV_FILE" AUTH_DB_PASSWORD "$auth"
