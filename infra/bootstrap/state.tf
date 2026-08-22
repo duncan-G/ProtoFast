@@ -3,7 +3,7 @@
 # so no DynamoDB table is needed (Terraform >= 1.10).
 
 resource "aws_s3_bucket" "state" {
-  bucket = var.state_bucket_name
+  bucket = local.state_bucket_name
 
   # Protected: state is precious. Guard against accidental destruction.
   lifecycle {

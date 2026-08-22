@@ -5,8 +5,8 @@
 # `up -d --no-deps`, health-gated on a redis-cli PING. Redis is a disposable cache
 # (D3), so a recreate just causes cache misses that repopulate from the auth DB.
 #
-# Repo VARIABLES (set by infra/bootstrap): AWS_REGION, AWS_DEPLOY_ROLE_ARN,
-#   ECR_REGISTRY, ASSETS_BUCKET.
+# Repo VARIABLES (set by infra/bootstrap): AWS_REGION, ASSETS_BUCKET.
+# Repo SECRETS (set by infra/bootstrap): AWS_DEPLOY_ROLE_ARN, ECR_REGISTRY.
 name: deploy-redis
 
 on:
@@ -33,7 +33,7 @@ permissions:
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
-  ECR: ${{ vars.ECR_REGISTRY }}
+  ECR: ${{ secrets.ECR_REGISTRY }}
   ASSETS_BUCKET: ${{ vars.ASSETS_BUCKET }}
   INSTANCE_TAG_KEY: "protofast:role"
   INSTANCE_TAG_VALUE: "app-server"
@@ -58,7 +58,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Resolve target instance

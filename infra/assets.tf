@@ -4,12 +4,9 @@
 # instance profile. No public access — assets are server-side only (the unified
 # SSR host serves them to browsers; the bucket is never a website origin).
 #
-# Name is deterministic (project + account id) so bootstrap can grant the deploy
-# role write access and publish the ASSETS_BUCKET repo variable without depending
-# on this stack's outputs — mirroring how the ECR registry host is derived.
 
 resource "aws_s3_bucket" "assets" {
-  bucket        = "${var.project}-assets-${data.aws_caller_identity.current.account_id}"
+  bucket        = var.assets_bucket
   force_destroy = true # cattle: client tags are re-uploadable from CI
 }
 

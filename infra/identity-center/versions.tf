@@ -13,7 +13,6 @@ terraform {
     key          = "identity-center/terraform.tfstate"
     encrypt      = true
     use_lockfile = true
-    # bucket/region passed at init: terraform init -backend-config="bucket=..." -backend-config="region=..."
   }
 
   required_providers {

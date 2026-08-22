@@ -1,157 +1,118 @@
 # infra/identity-center
 
-AWS Identity Center (SSO) access model. Has its own Terraform state, separate from
-the workload `infra/`. It is **never** applied by the CI OIDC roles — those are
-capped by `protofast-boundary`, which denies `organizations:*`/`account:*`, so they
-can't manage identities. The first apply is run by the **account root** (genesis);
-every apply after that is run by a human holding **OrgAdmin**.
+AWS Identity Center (SSO) access model. Has its own Terraform state, separate from the workload `infra/`. It is **never** applied by the CI OIDC roles — those are capped by `protofast-boundary`, which denies `organizations:`*/*`account:`, so they can't manage identities. The first apply is run by the same **account root** (genesis) identity that applied
+`[../bootstrap/README.md](../bootstrap/README.md)`; every apply after that is run by a human holding **OrgAdmin**.
 
-This config creates the **groups**, the **permission sets**, and the **account
-assignments** that wire them together.
+This config creates the **groups**, the **permission sets**, and the **account assignments** that wire them together. People are not in Terraform: add them in the Identity Center console.
 
 Three groups, three jobs — one permission set each:
 
-## What this creates
 
-### Groups (3)
-
-
-| Key               | Display name      | Job                          |
-| ----------------- | ----------------- | ---------------------------- |
-| `org_admins`      | `Org-Admins`      | Identity management + finops |
-| `platform_admins` | `Platform-Admins` | Infra + deployments          |
-| `developers`      | `Developers`      | Read-only prod debugging     |
+| Group             | Permission set  | Session | Policy                                                                        | Job                                                                                                                      |
+| ----------------- | --------------- | ------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `Org-Admins`      | `OrgAdmin`      | 4h      | managed `AdministratorAccess`                                                 | Identity management + finops. Standing admin once root is locked.                                                        |
+| `Platform-Admins` | `PlatformAdmin` | 4h      | inline `[platform-admin.json](policies/platform-admin.json)`                  | Infra + deployments (`ecr`/`ssm` cover push and deploy). Boundary-capped, denies `organizations`/`account`/`aws-portal`. |
+| `Developers`      | `Developer`     | 8h      | managed `ViewOnlyAccess` + inline `[developer.json](policies/developer.json)` | Debug prod: read logs, SSM `StartSession`, pull images. No writes.                                                       |
 
 
-### Permission sets (3)
+
+| Variable                    | Default              | Notes                                                                   |
+| --------------------------- | -------------------- | ----------------------------------------------------------------------- |
+| `project`                   | `protofast`          | Prefixes group descriptions.                                            |
+| `aws_region`                | `us-west-2`          | Region of the IC instance.                                              |
+| `permissions_boundary_name` | `protofast-boundary` | Boundary attached to `PlatformAdmin`; created by `infra/bootstrap`.     |
+| `ses_sender_zone`           | `""`                 | Domain the SES sender may send from. Empty omits the sender. See below. |
+| `ses_from_local_part`       | `no-reply`           | Local part of the sender's only allowed From address.                   |
+| `ses_region`                | `""`                 | Region of the SES identity; falls back to `aws_region`.                 |
 
 
-| Permission set    | Session | Policy                                                                        | Grants                                                                                                                                                                                                                             |
-| ----------------- | ------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **OrgAdmin**      | 4h      | managed `AdministratorAccess`                                                 | Identity management (Identity Center, users, this config) + finops (billing). The standing identity admin once root is locked away.                                                                                               |
-| **PlatformAdmin** | 4h      | inline `[platform-admin.json](policies/platform-admin.json)`                  | Infra + deployments: `ec2/ecr/s3/ssm/cloudwatch/logs/kms/iam:*` (its `ecr:*`/`ssm:*` cover image push and deploy-via-SSM). **Denies** `organizations/account/aws-portal`. Capped by the `protofast-boundary` permissions boundary. |
-| **Developer**     | 8h      | managed `ViewOnlyAccess` + inline `[developer.json](policies/developer.json)` | Debug prod: read logs, SSM `StartSession` shell, pull images. **Denies** `ssm:SendCommand` and all writes.                                                                                                                       |
+Outputs: `instance_arn`, `permission_set_arns`, `group_ids`, `ses_smtp_user`, `ses_from_address`.
 
+## SES sender
 
-### Account assignments
+`[ses-sender.tf](ses-sender.tf)` creates one service account — `protofast-ses-smtp`, the IAM user behind Keycloak's SMTP credential — plus an inline policy letting it send *only* as `<ses_from_local_part>@<ses_sender_zone>`. It carries `protofast-boundary`, so the key can never reach past that ceiling.
 
-Each group gets its one permission set in the single AWS account (`account_id`):
+It sits in this root purely because of who applies it. `protofast-boundary` denies `iam:CreateUser` to both the CI infra role and `PlatformAdmin`, so OrgAdmin is the only identity in the account that can create it. Nothing about it is an SSO concern.
 
+Set `ses_sender_zone` to the same apex domain as `infra/`'s `cloudflare_zone` (and keep `ses_from_local_part` / `ses_region` in step with that root's `ses_from_local_part` / `aws_region` — they are duplicated across two states, and a mismatch surfaces only as SES refusing to send). There is no ordering constraint: IAM does not check that the SES identity in the policy exists, so this can be applied before `infra/` ever creates it.
 
-| Group             | Permission set |
-| ----------------- | -------------- |
-| `Org-Admins`      | OrgAdmin       |
-| `Platform-Admins` | PlatformAdmin  |
-| `Developers`      | Developer      |
+The **access key** is deliberately not managed here — `aws_iam_access_key` would write the secret into this root's state. Mint it out of band per [../README.md](../README.md) section 4.2.
 
+## State bucket
 
-## Where the groups come from (`identity_source`)
-
-This only affects the three group objects — permission sets and assignments are
-created the same way regardless.
-
-- `**builtin`** (default) — Terraform creates the groups directly in Identity
-  Center's own directory. Best for a small team with no external identity
-  provider.
-- `**external`** — your company already manages users/groups in an IdP (Okta,
-  Entra, Google) that syncs into Identity Center via SCIM. Create the three
-  groups there first; Terraform then just references them by display name (it
-  can't create or edit IdP-owned groups). Switch to this when you federate.
-
-## Genesis (one-time, run as account root)
-
-The first apply has a bootstrap problem: creating the first SSO permission set
-needs an identity that already holds admin, but no SSO admin exists yet. Rather
-than hand-build a throwaway break-glass SSO user, use the one identity every
-account already has unconditional admin on — the **account root** — then remove
-its keys so root reverts to MFA-protected, console-only break-glass.
-
-1. **Enable Identity Center** in the Organizations / Identity Center console (no
-   Terraform resource does this). `aws sso-admin list-instances` must then return
-   an instance ARN + identity store id.
-2. **`infra/bootstrap` is applied** so the `protofast-boundary` customer-managed
-   policy exists (attached to PlatformAdmin via `permissions_boundary_name`).
-3. **Mint root access keys** for the account root user.
-4. **As root, apply this config** (creates the three groups, permission sets, and
-   assignments — cleanly, with no pre-existing group to collide with):
-   ```sh
-   cd infra/identity-center
-   export AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=…   # root keys
-
-   # Reuses the bucket bootstrap created (distinct state key). Derive the name the
-   # same deterministic way — don't hand-type it. (Linux: sha256sum.)
-   REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
-   BUCKET="protofast-tfstate-$(printf '%s' "$REPO" | shasum -a 256 | cut -c1-6)"
-   ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-
-   terraform init -backend-config="bucket=$BUCKET" -backend-config="region=<region>"
-   terraform apply \
-     -var "account_id=$ACCOUNT_ID" \
-     -var "identity_source=builtin"   # or external
-   ```
-5. **Initialize the first identity:** in the console (or your IdP), create your
-   own SSO user and add it to **`Org-Admins`**. This is the only identity root has
-   to seed — every other user is created later by OrgAdmin.
-6. **Delete the root access keys.** Root now has no standing credentials; nothing
-   below root can mint an OrgAdmin.
-
-> Prefer not to touch root at all? Substitute a *temporary IAM admin user* in
-> steps 3–6 and delete that user afterward — tidier than root keys and it doesn't
-> trip root-key security alarms. Root's only edge is that it already exists.
-
-## Ongoing (run as OrgAdmin)
-
-Once genesis is done and root is locked away, **OrgAdmin is the standing identity
-administrator**. A human in `Org-Admins`, signed in via SSO, owns from here on:
-
-- **Users + membership** — create/disable SSO users and decide who is in
-  `Org-Admins` / `Platform-Admins` / `Developers`. Membership is managed in the
-  console (or, in `external` mode, in the upstream IdP via SCIM); Terraform does
-  **not** manage human membership.
-- **Permission-set changes** — every subsequent `terraform apply` of this config
-  (policy edits, new permission sets, session durations) runs under OrgAdmin, not
-  root.
-
-Log in and apply:
+State lives in the bucket `infra/bootstrap` created, under the
+`identity-center/terraform.tfstate` key. It is not a variable: a Terraform
+`backend` block cannot reference variables or locals, so the name is passed to
+`terraform init` instead. Derive it the same way bootstrap names it —
+`<project>-tfstate-<first 9 hex of sha256(owner/repo)>`:
 
 ```sh
-aws configure sso          # set the SSO start URL + region, pick the account
-export AWS_PROFILE=<profile>
-aws sso login
-
-cd infra/identity-center
+SHA=$(command -v sha256sum || echo "shasum -a 256")
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
-BUCKET="protofast-tfstate-$(printf '%s' "$REPO" | shasum -a 256 | cut -c1-6)"
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-terraform init -backend-config="bucket=$BUCKET" -backend-config="region=<region>"
-terraform apply \
-  -var "account_id=$ACCOUNT_ID" \
-  -var "identity_source=builtin"
+BUCKET="protofast-tfstate-$(printf '%s' "$REPO" | $SHA | cut -c1-9)"
 ```
 
-### Variables
+`gh variable get TFSTATE_BUCKET` returns the same name when bootstrap ran with
+`manage_github_repo = true`.
+
+## Genesis (one-time)
+
+Creating the first permission set needs an identity that already holds admin, and no SSO admin exists yet. Create that identity, enable Identity Center, and apply bootstrap first — see `[../bootstrap/README.md](../bootstrap/README.md)`
+("Genesis identity"). Then continue here with those keys still exported.
+
+### 1. Fill terraform.tfvars and apply
+
+Copy `[terraform.tfvars.example](terraform.tfvars.example)` to `terraform.tfvars` (gitignored) and set `aws_region`. Init needs the state bucket name passed on the command line (see [State bucket](#state-bucket)); apply reads the rest from tfvars.
+
+```sh
+cd "$(git rev-parse --show-toplevel)/infra/identity-center"
+cp -n terraform.tfvars.example terraform.tfvars   # then edit aws_region
+
+SHA=$(command -v sha256sum || echo "shasum -a 256")
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+BUCKET="protofast-tfstate-$(printf '%s' "$REPO" | $SHA | cut -c1-9)"
+
+terraform init \
+  -backend-config="bucket=$BUCKET" \
+  -backend-config="region=$AWS_DEFAULT_REGION"
+terraform apply
+```
 
 
-| Variable                    | Default              | Notes                                                                                    |
-| --------------------------- | -------------------- | ---------------------------------------------------------------------------------------- |
-| `account_id`                | —                    | AWS account hosting IC, billing, and workload. **Required.**                             |
-| `identity_source`           | `builtin`            | `builtin` (Terraform creates groups) or `external` (groups synced from an IdP via SCIM). |
-| `project`                   | `protofast`          | Prefixes group descriptions.                                                             |
-| `aws_region`                | `us-east-1`          | Region of the IC instance.                                                               |
-| `permissions_boundary_name` | `protofast-boundary` | Boundary attached to PlatformAdmin.                                                      |
 
+### 2. Create yourself as OrgAdmin
 
-### Outputs
+Identity Center cannot set a password via API. In the console: **Users** →**Add user** (your email), add them to **Org-Admins**, then **Reset password**.
 
-`instance_arn`, `permission_set_arns` (by name), `group_ids` (by key).
+### 3. Sign in as OrgAdmin, then delete genesis
 
-## Still manual after this
+Swap the genesis keys for SSO and delete the genesis identity — that deletion revokes the shell that created it, so it has to run under the new credentials.
 
-- Enforce MFA org-wide in IC settings; the admin sets already carry shorter
-  sessions (4h) than Developer (8h).
-- Keep root keyless and MFA-protected — it is the account's last-resort break-glass.
-- (Optional) Federate to an upstream IdP with SAML + SCIM and switch
-  `identity_source = "external"`. Release authority stays a **GitHub** concern
-  (branch protection + the `infra`/`production` Environment reviewers).
-</content>
-</invoke>
+```sh
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+aws configure sso --profile protofast-orgadmin   # start URL from the IC console
+export AWS_PROFILE=protofast-orgadmin
+
+for K in $(aws iam list-access-keys --user-name protofast-genesis \
+             --query 'AccessKeyMetadata[].AccessKeyId' --output text); do
+  aws iam delete-access-key --user-name protofast-genesis --access-key-id "$K"
+done
+aws iam detach-user-policy --user-name protofast-genesis \
+  --policy-arn arn:aws:iam::aws:policy/AdministratorAccess
+aws iam delete-user --user-name protofast-genesis
+```
+
+If you used root keys instead, delete them in IAM → Security credentials.
+
+## Ongoing (as OrgAdmin)
+
+OrgAdmin is the standing identity administrator and runs every later apply. Granting or revoking access is a console change to group membership, not a Terraform edit. New users still need **Reset password** to get in.
+
+Only the credentials differ from step 1 — SSO instead of static keys. SSO can't be used for the first run because the profile below depends on the permission set and assignment that the first apply creates.
+
+```sh
+export AWS_PROFILE=protofast-orgadmin AWS_DEFAULT_REGION=us-west-2
+aws sso login
+terraform apply
+```
+

@@ -42,8 +42,8 @@ provider "aws" {
 }
 
 # Authenticated via the GITHUB_TOKEN env var or `gh auth token`. Only used when
-# var.manage_github_repo is true (writes the role ARNs + Cloudflare token to the
-# repo). Set owner from the derived github_repo slug.
+# var.manage_github_repo is true (writes repo variables + secrets). Set owner
+# from the github_repo slug.
 provider "github" {
   owner = split("/", var.github_repo)[0]
 }

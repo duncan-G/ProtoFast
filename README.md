@@ -79,10 +79,7 @@ This launches:
   - `api`      at `/api/*`
 - The Aspire dashboard (URL printed in the terminal on startup)
 
-All resource URLs (including Envoy) are shown in the Aspire dashboard.
-
-`clients/app/` is reserved for an end-user Angular client and is not yet
-scaffolded.
+> Note: application backend will not work correctly without secrets. Services use AWS secret manager to load it's secrets. You will need to deploy [infra](infra/README.md) to have application fully work.
 
 Stop everything with `Ctrl+C`, or from another shell:
 

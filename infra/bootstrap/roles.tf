@@ -1,17 +1,17 @@
 locals {
-  account_id = data.aws_caller_identity.current.account_id
-  oidc_arn   = aws_iam_openid_connect_provider.github_actions.arn
+  account_id  = data.aws_caller_identity.current.account_id
+  oidc_arn    = aws_iam_openid_connect_provider.github_actions.arn
+  name_suffix = substr(sha256(var.github_repo), 0, 9)
 
   ecr_repo_arns = [
     for name in var.ecr_repositories :
     "arn:aws:ecr:${var.aws_region}:${local.account_id}:repository/${name}"
   ]
 
-  state_bucket_arn = aws_s3_bucket.state.arn
-
-  # Deterministic assets-bucket name (matches infra/assets.tf), so the deploy
-  # role can be granted write without depending on the main stack's outputs.
-  assets_bucket_arn = "arn:aws:s3:::${var.project}-assets-${local.account_id}"
+  state_bucket_name  = "${var.project}-tfstate-${local.name_suffix}"
+  state_bucket_arn   = aws_s3_bucket.state.arn
+  assets_bucket_name = "${var.project}-assets-${local.name_suffix}"
+  assets_bucket_arn  = "arn:aws:s3:::${local.assets_bucket_name}"
 }
 
 # ---------------------------------------------------------------------------
@@ -62,9 +62,10 @@ data "aws_iam_policy_document" "infra" {
       "logs:*",
       "kms:*",
       # SES sending identity, custom MAIL FROM, and configuration set (infra/ses.tf).
-      # DNS lives in Cloudflare; the SES SMTP IAM user + access key are created out
-      # of band by an OrgAdmin (the boundary bars this CI plane from minting users
-      # and keys), so no iam:*User* actions are needed here.
+      # DNS lives in Cloudflare; the SES SMTP sender user is applied by OrgAdmin in
+      # infra/identity-center and its access key is minted out of band (the boundary
+      # bars this CI plane from minting users and keys), so no iam:*User* actions
+      # are needed here.
       "ses:*",
     ]
     resources = ["*"]

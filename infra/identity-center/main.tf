@@ -1,4 +1,17 @@
-data "aws_ssoadmin_instances" "this" {}
+// Identity Center has no create API for an organization instance (CreateInstance
+// is rejected in the management account), so it must already be enabled in the
+// console. The postcondition turns that missing prerequisite into a readable
+// error instead of an index-out-of-range on the empty list below.
+data "aws_ssoadmin_instances" "this" {
+  lifecycle {
+    postcondition {
+      condition     = length(self.arns) > 0
+      error_message = "No IAM Identity Center instance found in ${var.aws_region}. Enable it once in the console (management account -> IAM Identity Center -> Enable, organization instance), then re-run. Verify with: aws sso-admin list-instances --region ${var.aws_region}"
+    }
+  }
+}
+
+data "aws_caller_identity" "current" {}
 
 locals {
   instance_arn      = tolist(data.aws_ssoadmin_instances.this.arns)[0]
@@ -131,6 +144,6 @@ resource "aws_ssoadmin_account_assignment" "this" {
   permission_set_arn = each.value.ps_arn
   principal_id       = local.group_ids[each.value.group]
   principal_type     = "GROUP"
-  target_id          = var.account_id
+  target_id          = data.aws_caller_identity.current.account_id
   target_type        = "AWS_ACCOUNT"
 }

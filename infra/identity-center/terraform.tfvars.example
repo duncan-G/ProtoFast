@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars (gitignored) and fill in. The state bucket is NOT set
+# here — Terraform backends take no variables, so it is passed at init:
+#   terraform init -backend-config="bucket=<name>" -backend-config="region=<region>"
+# See README.md for the one-liner that derives <name> from the repo slug.
+
+aws_region                = "us-west-2"
+permissions_boundary_name = "protofast-boundary"
+
+# SES sender for Keycloak mail (ses-sender.tf). Leave empty to skip it; set it to
+# the same apex domain as infra/'s cloudflare_zone to create the sender user.
+ses_sender_zone = ""
+# ses_from_local_part = "no-reply"   # must match infra/'s ses_from_local_part
+# ses_region          = "us-west-2"  # infra/'s aws_region; defaults to aws_region above

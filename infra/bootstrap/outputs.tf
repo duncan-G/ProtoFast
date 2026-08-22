@@ -15,16 +15,16 @@ output "ecr_registry" {
 
 output "assets_bucket" {
   description = "S3 bucket for per-client SSR builds (set as repo variable ASSETS_BUCKET; created by infra/assets.tf)."
-  value       = "${var.project}-assets-${local.account_id}"
+  value       = local.assets_bucket_name
 }
 
 output "infra_role_arn" {
-  description = "ARN the infra workflow assumes (set as repo variable AWS_INFRA_ROLE_ARN)."
+  description = "ARN the infra workflow assumes (set as repo secret AWS_INFRA_ROLE_ARN)."
   value       = aws_iam_role.infra.arn
 }
 
 output "deploy_role_arn" {
-  description = "ARN the deploy workflow assumes (set as repo variable AWS_DEPLOY_ROLE_ARN)."
+  description = "ARN the deploy workflow assumes (set as repo secret AWS_DEPLOY_ROLE_ARN)."
   value       = aws_iam_role.deploy.arn
 }
 

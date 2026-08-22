@@ -10,8 +10,8 @@
 #     `deploy.sh apply <component>=<tag>`, which recreates only that component
 #     and runs its scoped health check (reverting that one component on failure).
 #
-# Repo VARIABLES (set by infra/bootstrap): AWS_REGION, AWS_DEPLOY_ROLE_ARN,
-#   ECR_REGISTRY, ASSETS_BUCKET.
+# Repo VARIABLES (set by infra/bootstrap): AWS_REGION, ASSETS_BUCKET.
+# Repo SECRETS (set by infra/bootstrap): AWS_DEPLOY_ROLE_ARN, ECR_REGISTRY.
 name: _component-deploy
 
 on:
@@ -56,7 +56,7 @@ permissions:
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
-  ECR: ${{ vars.ECR_REGISTRY }}
+  ECR: ${{ secrets.ECR_REGISTRY }}
   ASSETS_BUCKET: ${{ vars.ASSETS_BUCKET }}
   ARCH: arm64 # matches the t4g (ARM) instance
   INSTANCE_TAG_KEY: "protofast:role"
@@ -124,7 +124,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
@@ -245,7 +245,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       # Map the host role to its Role tag + compose file (§5.1). edge = Host A,
