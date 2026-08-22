@@ -113,6 +113,7 @@ gh secret set CLOUDFLARE_ACCOUNT_ID
 gh secret set CLOUDFLARE_ZONE
 gh secret set ADMIN_DOMAIN
 gh secret set PROTOFAST_DOMAIN
+gh secret set KEYCLOAK_DOMAIN
 # optional — both required to enable telemetry
 gh secret set TELEMETRY_DOMAIN
 gh secret set TELEMETRY_ACCESS_EMAILS   # JSON array, e.g. ["you@example.com"]

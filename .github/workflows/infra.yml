@@ -7,9 +7,10 @@
 #
 # Repo VARIABLES (set by infra/bootstrap): AWS_REGION, TFSTATE_BUCKET, ASSETS_BUCKET.
 # Repo SECRETS (set by infra/bootstrap): AWS_INFRA_ROLE_ARN, CLOUDFLARE_API_TOKEN,
-#   CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_ZONE, ADMIN_DOMAIN, PROTOFAST_DOMAIN
-#   (optional TELEMETRY_DOMAIN, TELEMETRY_ACCESS_EMAILS — the latter a JSON array,
-#   e.g. ["you@example.com"]; both must be set for telemetry to enable).
+#   CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_ZONE, ADMIN_DOMAIN, PROTOFAST_DOMAIN,
+#   KEYCLOAK_DOMAIN (optional TELEMETRY_DOMAIN, TELEMETRY_ACCESS_EMAILS — the
+#   latter a JSON array, e.g. ["you@example.com"]; both must be set for telemetry
+#   to enable).
 name: infra
 
 on:
@@ -39,6 +40,7 @@ env:
   TF_VAR_cloudflare_zone: ${{ secrets.CLOUDFLARE_ZONE }}
   TF_VAR_admin_domain: ${{ secrets.ADMIN_DOMAIN }}
   TF_VAR_protofast_domain: ${{ secrets.PROTOFAST_DOMAIN }}
+  TF_VAR_keycloak_domain: ${{ secrets.KEYCLOAK_DOMAIN }}
   TF_VAR_telemetry_domain: ${{ secrets.TELEMETRY_DOMAIN }}
   # List var: the repo secret must hold a JSON array, e.g. ["you@example.com"].
   # Fallback to [] when unset — Terraform can't parse "" as a list(string).
