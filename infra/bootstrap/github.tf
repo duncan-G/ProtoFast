@@ -23,6 +23,7 @@ locals {
     var.cloudflare_zone != "" ? { CLOUDFLARE_ZONE = var.cloudflare_zone } : {},
     var.admin_domain != "" ? { ADMIN_DOMAIN = var.admin_domain } : {},
     var.protofast_domain != "" ? { PROTOFAST_DOMAIN = var.protofast_domain } : {},
+    var.keycloak_domain != "" ? { KEYCLOAK_DOMAIN = var.keycloak_domain } : {},
     var.telemetry_domain != "" ? { TELEMETRY_DOMAIN = var.telemetry_domain } : {},
     length(var.telemetry_access_emails) > 0 ? {
       TELEMETRY_ACCESS_EMAILS = jsonencode(var.telemetry_access_emails)

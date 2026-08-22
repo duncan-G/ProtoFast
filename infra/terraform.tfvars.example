@@ -21,6 +21,7 @@ cloudflare_account_id = "<cloudflare-account-id>"
 cloudflare_zone       = "protofast.dev"        # apex; the zone must already be active
 admin_domain          = "admin.protofast.dev"  # subdomain (covered by Universal SSL)
 protofast_domain      = "protofast.dev"         # apex (proxied CNAME → flattened automatically)
+keycloak_domain       = "auth.protofast.dev"    # Keycloak login/OIDC; empty skips the tunnel route
 
 # --- Telemetry dashboard (optional; Phase 4.1) ---
 # Leave telemetry_access_emails empty to skip the hostname + Access app and use

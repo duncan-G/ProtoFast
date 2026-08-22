@@ -82,6 +82,12 @@ variable "protofast_domain" {
   default     = ""
 }
 
+variable "keycloak_domain" {
+  description = "Keycloak hostname (e.g. auth.example.com); stored as the KEYCLOAK_DOMAIN repo secret for infra.yml."
+  type        = string
+  default     = ""
+}
+
 variable "telemetry_domain" {
   description = "Optional Aspire Dashboard hostname; stored as TELEMETRY_DOMAIN when non-empty."
   type        = string
