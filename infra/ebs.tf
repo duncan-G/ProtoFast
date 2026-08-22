@@ -22,7 +22,7 @@ resource "aws_ebs_volume" "pgdata" {
 
   # Outlives instance teardown. Removing the volume is a deliberate, manual act.
   lifecycle {
-    prevent_destroy = false
+    prevent_destroy = true
   }
 }
 
