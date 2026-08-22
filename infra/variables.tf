@@ -10,6 +10,11 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
+variable "assets_bucket" {
+  description = "S3 bucket for client SSR builds. Named by infra/bootstrap and passed from the ASSETS_BUCKET repo variable."
+  type        = string
+}
+
 # --- Cloudflare / DNS ---------------------------------------------------------
 
 variable "cloudflare_account_id" {

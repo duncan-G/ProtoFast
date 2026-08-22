@@ -1,27 +1,33 @@
-# Wire the bootstrap outputs into the GitHub repo so the CI workflows (infra.yml
-# and the per-component deploy-*.yml → _component-deploy.yml) can consume them:
-# role ARNs + region + ECR registry + assets bucket + state bucket as repo
-# VARIABLES, and the Cloudflare API token as the single repo SECRET. This
-# is what lets the workflows assume the OIDC roles without any hand-copied config.
-# Gated by manage_github_repo so the bootstrap still applies without a GitHub
-# token — see the README for the `gh variable set` commands to run by hand then.
+# Publishes the values GitHub Actions needs onto this repo: region, state
+# bucket, and assets bucket as variables; OIDC role ARNs, ECR registry, and
+# Cloudflare inputs as secrets. `manage_github_repo = false` skips all of this.
 
 locals {
   repo_name    = split("/", var.github_repo)[1]
   ecr_registry = "${local.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
-  gh_enabled   = var.manage_github_repo ? 1 : 0
-  cf_token_set = var.manage_github_repo && var.cloudflare_api_token != "" ? 1 : 0
 
   github_variables = {
-    AWS_REGION          = var.aws_region
-    AWS_INFRA_ROLE_ARN  = aws_iam_role.infra.arn
-    AWS_DEPLOY_ROLE_ARN = aws_iam_role.deploy.arn
-    ECR_REGISTRY        = local.ecr_registry
-    TFSTATE_BUCKET      = aws_s3_bucket.state.id
-    # Deterministic assets-bucket name (matches infra/assets.tf); the client
-    # deploy workflows sync builds to s3://<ASSETS_BUCKET>/clients/<name>/<tag>/.
-    ASSETS_BUCKET = "${var.project}-assets-${local.account_id}"
+    AWS_REGION     = var.aws_region
+    TFSTATE_BUCKET = aws_s3_bucket.state.id
+    ASSETS_BUCKET  = local.assets_bucket_name
   }
+
+  github_secrets = merge(
+    {
+      AWS_INFRA_ROLE_ARN  = aws_iam_role.infra.arn
+      AWS_DEPLOY_ROLE_ARN = aws_iam_role.deploy.arn
+      ECR_REGISTRY        = local.ecr_registry
+    },
+    var.cloudflare_api_token != "" ? { CLOUDFLARE_API_TOKEN = var.cloudflare_api_token } : {},
+    var.cloudflare_account_id != "" ? { CLOUDFLARE_ACCOUNT_ID = var.cloudflare_account_id } : {},
+    var.cloudflare_zone != "" ? { CLOUDFLARE_ZONE = var.cloudflare_zone } : {},
+    var.admin_domain != "" ? { ADMIN_DOMAIN = var.admin_domain } : {},
+    var.protofast_domain != "" ? { PROTOFAST_DOMAIN = var.protofast_domain } : {},
+    var.telemetry_domain != "" ? { TELEMETRY_DOMAIN = var.telemetry_domain } : {},
+    length(var.telemetry_access_emails) > 0 ? {
+      TELEMETRY_ACCESS_EMAILS = jsonencode(var.telemetry_access_emails)
+    } : {},
+  )
 }
 
 resource "github_actions_variable" "repo" {
@@ -31,9 +37,9 @@ resource "github_actions_variable" "repo" {
   value         = each.value
 }
 
-resource "github_actions_secret" "cloudflare_api_token" {
-  count       = local.cf_token_set
+resource "github_actions_secret" "repo" {
+  for_each    = var.manage_github_repo ? local.github_secrets : {}
   repository  = local.repo_name
-  secret_name = "CLOUDFLARE_API_TOKEN"
-  value       = var.cloudflare_api_token
+  secret_name = each.key
+  value       = each.value
 }

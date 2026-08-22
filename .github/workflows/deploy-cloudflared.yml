@@ -13,8 +13,8 @@
 # cloudflared also comes up at instance boot via `deploy.sh bootstrap`; this
 # workflow is the on-demand lever to (re)deploy or bump it on a running box.
 #
-# Repo VARIABLES (set by infra/bootstrap): AWS_REGION, AWS_DEPLOY_ROLE_ARN,
-#   ECR_REGISTRY.
+# Repo VARIABLES (set by infra/bootstrap): AWS_REGION.
+# Repo SECRETS (set by infra/bootstrap): AWS_DEPLOY_ROLE_ARN, ECR_REGISTRY.
 name: deploy-cloudflared
 
 on:
@@ -41,7 +41,7 @@ permissions:
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
-  ECR: ${{ vars.ECR_REGISTRY }}
+  ECR: ${{ secrets.ECR_REGISTRY }}
   INSTANCE_TAG_KEY: "protofast:role"
   INSTANCE_TAG_VALUE: "app-server"
   # The pinned upstream image tag. Bump here (or override via workflow_dispatch)
@@ -69,7 +69,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Resolve target instance

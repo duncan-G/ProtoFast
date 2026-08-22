@@ -10,11 +10,6 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
-variable "account_id" {
-  description = "AWS account id that hosts Identity Center, billing, and the workload (single-account setup)."
-  type        = string
-}
-
 variable "identity_source" {
   description = <<-EOT
     Where the three SSO groups come from:
@@ -36,3 +31,4 @@ variable "permissions_boundary_name" {
   type        = string
   default     = "protofast-boundary"
 }
+

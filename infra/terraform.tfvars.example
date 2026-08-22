@@ -11,7 +11,10 @@
 #                              (the S3 state bucket created by infra/bootstrap)
 #
 # Prerequisite: infra/bootstrap must be applied first (creates the state bucket,
-# ECR repos, OIDC role, and the tagged EC2 instance).
+# ECR repos, OIDC role, and the tagged EC2 instance). CI sets TF_VAR_assets_bucket
+# from the ASSETS_BUCKET repo variable; for a local apply copy that name here.
+
+assets_bucket = "protofast-assets-<9-hex>"
 
 # --- Cloudflare (zone already registered + authoritative in Cloudflare) ---
 cloudflare_account_id = "<cloudflare-account-id>"

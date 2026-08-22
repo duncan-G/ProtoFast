@@ -1,0 +1,7 @@
+# Copy to terraform.tfvars (gitignored) and fill in. The state bucket is NOT set
+# here — Terraform backends take no variables, so it is passed at init:
+#   terraform init -backend-config="bucket=<name>" -backend-config="region=<region>"
+# See README.md for the one-liner that derives <name> from the repo slug.
+
+aws_region                = "us-west-2"
+permissions_boundary_name = "protofast-boundary"
