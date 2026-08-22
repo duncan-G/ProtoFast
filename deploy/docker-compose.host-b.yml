@@ -46,7 +46,9 @@ services:
     environment:
       <<: *dotnet-env
       ConnectionStrings__redis: "redis:6379"
-      ConnectionStrings__auth: "Host=postgres;Port=5432;Database=auth;Username=auth;Password=${AUTH_DB_PASSWORD}"
+      # Chiseled images have no libgssapi_krb5; Npgsql Prefer otherwise logs a
+      # load failure before falling through to password auth. We don't use Kerberos.
+      ConnectionStrings__auth: "Host=postgres;Port=5432;Database=auth;Username=auth;Password=${AUTH_DB_PASSWORD};GSS Encryption Mode=Disable"
       ConnectionStrings__keycloak: "http://keycloak:8080/realms/protofast"
       # Back-channel (in-cluster) vs browser-facing (public) Keycloak authorities — see auth §3.5.
       Auth_Keycloak__Authority: "http://keycloak:8080"
@@ -85,7 +87,9 @@ services:
     restart: "no"
     environment:
       ASPNETCORE_ENVIRONMENT: Production          # hard-blocks --rebuild-schema
-      ConnectionStrings__auth: "Host=postgres;Port=5432;Database=auth;Username=auth;Password=${AUTH_DB_PASSWORD}"
+      # Chiseled images have no libgssapi_krb5; Npgsql Prefer otherwise logs a
+      # load failure before falling through to password auth. We don't use Kerberos.
+      ConnectionStrings__auth: "Host=postgres;Port=5432;Database=auth;Username=auth;Password=${AUTH_DB_PASSWORD};GSS Encryption Mode=Disable"
     depends_on:
       postgres:
         condition: service_healthy

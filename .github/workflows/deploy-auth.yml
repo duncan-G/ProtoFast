@@ -35,4 +35,11 @@ jobs:
       hash_paths: "services/auth services/shared"
       project: services/auth/src/ProtoFast.Auth.Api
       tag: ${{ inputs.tag }}
+      # The schema-migrations runner ships WITH auth: same hash_paths → same content
+      # tag, built in the same job, and applied immediately before auth in one
+      # deploy.sh invocation. run_auth_migrations therefore always reads an
+      # AUTH_MIGRATIONS_TAG that matches the auth image being deployed.
+      companion: auth-migrations
+      companion_target: protofast-auth-migrations
+      companion_project: services/auth/src/ProtoFast.Auth.SchemaMigrations
     secrets: inherit
