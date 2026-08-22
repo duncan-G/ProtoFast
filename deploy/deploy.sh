@@ -180,6 +180,58 @@ PY
   v="$(_secret_get Auth_Smtp__From || true)";                         if [ -n "$v" ]; then set_env "$ENV_FILE" SMTP_FROM "$v"; fi
 }
 
+# Compose bind-mounts ./postgres/initdb into the official image's initdb.d. Docker
+# creates that host dir empty if it is missing, so a box that only ever received
+# compose.yml + deploy.sh (SSM / cloud-init never published initdb) inits Postgres
+# with just the keycloak role — then auth-migrations fails 28P01 for user "auth".
+# Always (re)write the script here so every Host B apply is self-sufficient.
+# Keep the body in sync with deploy/postgres/initdb/01-auth.sh.
+write_auth_initdb() {
+  mkdir -p "${APP_DIR}/postgres/initdb"
+  cat > "${APP_DIR}/postgres/initdb/01-auth.sh" << 'SCRIPT'
+#!/bin/sh
+# Creates (or re-asserts) auth's durable `auth` DB + owning `auth` role.
+set -eu
+
+AUTH_PASSWORD="$(tr -d '\n' < /run/secrets/auth-db-password)"
+[ -n "$AUTH_PASSWORD" ] || { echo "01-auth.sh: auth-db-password is empty" >&2; exit 1; }
+
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+  --set=pw="$AUTH_PASSWORD" <<'SQL'
+SELECT format('CREATE ROLE auth LOGIN PASSWORD %L', :'pw')
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'auth')
+UNION ALL
+SELECT format('ALTER ROLE auth WITH PASSWORD %L', :'pw')
+WHERE EXISTS (SELECT FROM pg_roles WHERE rolname = 'auth');
+\gexec
+
+SELECT format('CREATE DATABASE auth OWNER auth')
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'auth');
+\gexec
+SQL
+SCRIPT
+  chmod 755 "${APP_DIR}/postgres/initdb/01-auth.sh"
+}
+
+# Initdb.d scripts run only on an EMPTY PGDATA. The EBS volume persists, so a
+# cluster that already inited (especially one that inited before 01-auth.sh was
+# mounted) never creates the auth role. Exec the same script against the live
+# cluster: CREATE IF missing, ALTER PASSWORD to match the current secret.
+ensure_auth_db() {
+  write_auth_initdb
+  local i
+  for i in $(seq 1 30); do
+    postgres_ok && break
+    sleep 2
+  done
+  if ! postgres_ok; then
+    log "ensure_auth_db: postgres is not accepting connections"
+    return 1
+  fi
+  log "ensuring Postgres role+database 'auth' exist"
+  compose exec -T postgres /docker-entrypoint-initdb.d/01-auth.sh
+}
+
 # Uppercase a component/client name into its manifest-key form: 'client-admin'
 # stays a name; the caller composes CLIENT_<UPPER>_TAG. '-' -> '_'.
 upper() { printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_'; }
@@ -382,9 +434,15 @@ health_check() {
 run_auth_migrations() {
   local tag; tag="$(get_env "$VERSIONS_FILE" AUTH_MIGRATIONS_TAG)"
   if [ -z "$tag" ]; then
-    log "AUTH_MIGRATIONS_TAG unset — deploy the auth-migrations component first (§3.5.4); aborting auth apply"
+    log "AUTH_MIGRATIONS_TAG unset — deploy-auth normally applies auth-migrations first in this same"
+    log "invocation; run 'deploy.sh apply auth-migrations=<tag> auth=<tag>' (§3.5.4). Aborting auth apply."
     return 1
   fi
+  # Role+DB are a Postgres concern, not a schema-migration concern — but an auth
+  # apply is what surfaces 28P01, so converge them here (existing volumes whose
+  # first init never ran 01-auth.sh). Fail-closed: don't start the runner until
+  # the role exists.
+  ensure_auth_db || return 1
   log "running auth schema migrations (auth-migrations=${tag})"
   compose pull auth-migrations || true
   if ! compose run --rm auth-migrations; then
@@ -444,7 +502,13 @@ apply_kind() {
       # the EBS volume, not the container, and a same-tag apply can't be a major bump.
       log "recreating ${SVC} (stateful${RECREATE:+: forced, unhealthy})"
       # shellcheck disable=SC2086  # RECREATE is intentionally word-split (flag or empty)
-      compose up -d --no-deps $RECREATE "$SVC" ;;
+      compose up -d --no-deps $RECREATE "$SVC"
+      # After Postgres is up, re-assert the auth role+DB. First-init of a new
+      # volume already ran 01-auth.sh; this covers existing EBS data dirs and
+      # password rotation (initdb.d does not re-run).
+      if [ "$SVC" = postgres ]; then
+        ensure_auth_db || return 1
+      fi ;;
   esac
 }
 
@@ -549,6 +613,12 @@ bootstrap() {
     # shellcheck disable=SC2086  # word-splitting $ready into service args is intended
     compose up -d --no-deps $ready
   fi
+  # Converge the auth role+DB after Postgres is up. Harmless if postgres isn't
+  # in this host's topology (ensure_auth_db fails closed only when it IS up
+  # but the script errors; skip when the compose file has no postgres service).
+  if compose ps -aq postgres >/dev/null 2>&1 && [ -n "$(compose ps -aq postgres 2>/dev/null)" ]; then
+    ensure_auth_db || log "WARN: ensure_auth_db failed during bootstrap; next auth apply will retry"
+  fi
 }
 
 # --- drain: graceful Host B teardown (§6.2) --------------------------------
@@ -618,6 +688,7 @@ if [ -n "${HOST_B_IP:-}" ]; then set_env "$ENV_FILE" HOST_B_IP "$HOST_B_IP"; fi
 # skipped here (and so spared an SM read its instance role may not be granted).
 if grep -q 'kc-db-password' "$COMPOSE_FILE" 2>/dev/null; then
   ensure_secret_files
+  write_auth_initdb
 fi
 
 # bootstrap mode brings the whole stack up from the persisted manifest, then exits.

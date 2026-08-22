@@ -49,6 +49,18 @@ on:
         description: "Existing artifact tag to (re)deploy or roll back to. Blank = build current source."
         required: false
         type: string
+      companion:
+        description: "Optional second component built from the SAME hash_paths and applied BEFORE the main one in a single deploy.sh invocation (auth → auth-migrations). Shares the content tag."
+        required: false
+        type: string
+      companion_target:
+        description: "ECR repo for the companion image (required when companion is set)."
+        required: false
+        type: string
+      companion_project:
+        description: "dotnet project path for the companion image (required when companion is set)."
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -188,6 +200,30 @@ jobs:
           echo "requested tag '${{ inputs.tag }}' has no artifact for ${{ inputs.component }}" >&2
           exit 1
 
+      # Companion artifact (auth → auth-migrations). Built HERE, from the same
+      # content hash, rather than relying on the sibling workflow: the deploy below
+      # applies both in one ordered invocation, so the companion image must exist by
+      # then regardless of whether that workflow has finished (or run at all).
+      - if: inputs.companion != ''
+        name: Check companion artifact exists
+        id: companion_exists
+        run: |
+          set -euo pipefail
+          if aws ecr describe-images --repository-name "${{ inputs.companion_target }}" \
+               --image-ids imageTag="${{ steps.tag.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A dispatch rollback must land on an EXISTING companion artifact — never
+      # rebuild it from current source under an old tag.
+      - name: Fail if dispatch tag is missing (companion)
+        if: inputs.companion != '' && inputs.tag != '' && steps.companion_exists.outputs.exists == 'false'
+        run: |
+          echo "requested tag '${{ inputs.tag }}' has no artifact for ${{ inputs.companion }}" >&2
+          exit 1
+
       # --- buildx image (envoy, otel-collector, clients-host) ---
       - if: inputs.build == 'buildx' && steps.exists.outputs.exists == 'false'
         name: Build & push image (buildx)
@@ -199,7 +235,9 @@ jobs:
           tags: ${{ env.ECR }}/${{ inputs.target }}:${{ steps.tag.outputs.tag }}
 
       # --- .NET service via the SDK container publish (pushes directly to ECR) ---
-      - if: inputs.build == 'dotnet' && steps.exists.outputs.exists == 'false'
+      # The SDK is needed when EITHER artifact is missing — a reused main image with
+      # a missing companion still has to build.
+      - if: inputs.build == 'dotnet' && (steps.exists.outputs.exists == 'false' || steps.companion_exists.outputs.exists == 'false')
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
@@ -210,6 +248,16 @@ jobs:
           dotnet publish "${{ inputs.project }}" -c Release /t:PublishContainer \
             -p ContainerRegistry="${ECR}" \
             -p ContainerRepository="${{ inputs.target }}" \
+            -p ContainerImageTag="${{ steps.tag.outputs.tag }}" \
+            -p ContainerRuntimeIdentifier="linux-${ARCH}"
+
+      - if: inputs.companion != '' && steps.companion_exists.outputs.exists == 'false'
+        name: Build & push companion (.NET)
+        run: |
+          set -euo pipefail
+          dotnet publish "${{ inputs.companion_project }}" -c Release /t:PublishContainer \
+            -p ContainerRegistry="${ECR}" \
+            -p ContainerRepository="${{ inputs.companion_target }}" \
             -p ContainerImageTag="${{ steps.tag.outputs.tag }}" \
             -p ContainerRuntimeIdentifier="linux-${ARCH}"
 
@@ -308,6 +356,7 @@ jobs:
         env:
           TAG: ${{ needs.build.outputs.tag }}
           COMPONENT: ${{ inputs.component }}
+          COMPANION: ${{ inputs.companion }}
           INSTANCE: ${{ steps.target.outputs.instance_id }}
           # Stream the command's full stdout/stderr to CloudWatch Logs. This is the
           # UNCAPPED record: get-command-invocation returns only the first ~24,000
@@ -323,10 +372,21 @@ jobs:
           COMPOSE_B64=$(base64 -w0 "${{ steps.route.outputs.compose }}")
           DEPLOY_B64=$(base64 -w0 deploy/deploy.sh)
 
+          # deploy.sh's apply loop processes pairs IN ORDER under a single flock, so
+          # putting the companion first is what guarantees AUTH_MIGRATIONS_TAG is
+          # pinned before the auth apply reads it in run_auth_migrations. Doing this
+          # in one invocation (rather than a second workflow) removes the race
+          # entirely — there is no interleaving window left.
+          APPLY_ARGS="${COMPONENT}=${TAG}"
+          if [ -n "${COMPANION}" ]; then
+            APPLY_ARGS="${COMPANION}=${TAG} ${APPLY_ARGS}"
+          fi
+          echo "apply args: ${APPLY_ARGS}"
+
           cmd_id=$(aws ssm send-command \
             --instance-ids "$INSTANCE" \
             --document-name AWS-RunShellScript \
-            --comment "deploy ${COMPONENT}=${TAG}" \
+            --comment "deploy ${APPLY_ARGS}" \
             --cloud-watch-output-config "CloudWatchLogGroupName=${LOG_GROUP},CloudWatchOutputEnabled=true" \
             --parameters commands="[
               \"set -eu\",
@@ -334,7 +394,7 @@ jobs:
               \"echo $COMPOSE_B64 | base64 -d > /opt/protofast/docker-compose.yml\",
               \"echo $DEPLOY_B64 | base64 -d > /opt/protofast/deploy.sh\",
               \"chmod +x /opt/protofast/deploy.sh\",
-              \"ECR=${ECR} ${{ steps.route.outputs.peer_var }}=${{ steps.peer.outputs.ip }} /opt/protofast/deploy.sh apply ${COMPONENT}=${TAG}\"
+              \"ECR=${ECR} ${{ steps.route.outputs.peer_var }}=${{ steps.peer.outputs.ip }} /opt/protofast/deploy.sh apply ${APPLY_ARGS}\"
             ]" \
             --query 'Command.CommandId' --output text)
 

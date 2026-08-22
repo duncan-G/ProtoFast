@@ -1,17 +1,17 @@
 name: deploy-auth-migrations
 
-# Builds/pushes the one-shot schema-migrations image and pins AUTH_MIGRATIONS_TAG in the manifest.
-# The migration RUN itself happens during the auth apply (deploy.sh run_auth_migrations, fail-closed
-# pre-step). Shares services/auth/** paths with deploy-auth, so both fire on the same change; this
-# one is ordered first so the auth apply always pulls a current AUTH_MIGRATIONS_TAG.
+# MANUAL ONLY — pinning/rolling back AUTH_MIGRATIONS_TAG on its own.
+#
+# The normal path is deploy-auth, which builds this image as a companion (same
+# content tag) and applies auth-migrations immediately before auth in ONE deploy.sh
+# invocation. This workflow deliberately has NO push trigger: when it had one, it
+# and deploy-auth both fired on services/auth/** with no ordering between them, so
+# deploy-auth could win and run the PREVIOUS migrations image — recreating auth
+# against an un-migrated schema, silently.
+#
+# Applying this component only pulls the image and pins the tag; the migration RUN
+# is always the auth apply's fail-closed pre-step (deploy.sh run_auth_migrations).
 on:
-  push:
-    branches: [main]
-    paths:
-      - "services/auth/**"
-      - "services/shared/**"
-      - ".github/workflows/deploy-auth-migrations.yml"
-      - ".github/workflows/_component-deploy.yml"
   workflow_dispatch:
     inputs:
       tag:
@@ -19,8 +19,10 @@ on:
         required: false
         type: string
 
+# Shares deploy-auth's group: a manual migrations pin must never run concurrently
+# with an auth deploy that is about to read AUTH_MIGRATIONS_TAG.
 concurrency:
-  group: deploy-auth-migrations
+  group: deploy-auth
   cancel-in-progress: false
 
 permissions:
