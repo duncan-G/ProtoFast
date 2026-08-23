@@ -17,6 +17,7 @@ on:
       - ".github/workflows/deploy-keycloak.yml"
       - "deploy/docker-compose.host-b.yml"
       - "deploy/keycloak/realms/**"
+      - "deploy/keycloak/themes/**"
       - "deploy/deploy.sh"
   workflow_dispatch:
     inputs:
@@ -75,6 +76,14 @@ jobs:
             --query 'Reservations[].Instances[].InstanceId' --output text)
           [ -n "$id" ] || { echo "no running services instance with ${INSTANCE_TAG_KEY}=${INSTANCE_TAG_VALUE}" >&2; exit 1; }
           echo "instance_id=$id" >> "$GITHUB_OUTPUT"
+
+      # Publish the Keycloak realm + themes to S3 BEFORE the SSM deploy so the host
+      # can sync them. These are required for --import-realm to create the protofast
+      # realm; without them Keycloak starts with no realm and sign-in returns 404.
+      - name: Publish Keycloak config to S3
+        run: |
+          set -euo pipefail
+          aws s3 sync deploy/keycloak/ "s3://${ASSETS_BUCKET}/deploy/keycloak/" --delete
 
       - name: Deploy via SSM
         env:

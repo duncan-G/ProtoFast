@@ -142,6 +142,12 @@ if aws s3 cp "s3://${assets_bucket}/deploy/versions.env" /opt/protofast/versions
   # Backup script (best-effort: absent on a very first deploy until published).
   aws s3 cp "s3://${assets_bucket}/deploy/backup.sh" /opt/protofast/backup.sh --region "${aws_region}" \
     && chmod +x /opt/protofast/backup.sh || echo "backup.sh not published yet; timer will no-op until it is"
+  # Keycloak realm + themes: required for --import-realm to create the protofast realm.
+  # deploy.sh also syncs these, but bootstrap may run before the first keycloak deploy,
+  # so pull them here if they exist.
+  mkdir -p /opt/protofast/keycloak
+  aws s3 sync "s3://${assets_bucket}/deploy/keycloak/" /opt/protofast/keycloak/ --region "${aws_region}" \
+    || echo "keycloak config not published yet; deploy-keycloak will sync it"
   systemctl start protofast-hostb.service || echo "bootstrap failed; next deploy will converge"
 else
   echo "no published manifest at s3://${assets_bucket}/deploy/versions.env; skipping bootstrap"

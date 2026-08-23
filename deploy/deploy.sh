@@ -181,6 +181,27 @@ PY
   v="$(_secret_get Auth_Smtp__From || true)";                         if [ -n "$v" ]; then set_env "$ENV_FILE" SMTP_FROM "$v"; fi
 }
 
+# Sync the Keycloak realm JSON and custom themes from S3 before (re)starting
+# Keycloak. Without the realm, `--import-realm` has nothing to import and the
+# protofast realm doesn't exist — sign-in returns 404. The compose bind-mounts
+# these into the container: ./keycloak/realms -> /opt/keycloak/data/import,
+# ./keycloak/themes -> /opt/keycloak/themes. Relative to APP_DIR (/opt/protofast).
+sync_keycloak_config() {
+  local bucket region
+  bucket="$(get_env "$ENV_FILE" ASSETS_BUCKET)"
+  region="$(get_env "$ENV_FILE" AWS_REGION)"; region="${region:-${AWS_REGION:-}}"
+  if [ -z "$bucket" ]; then
+    log "ASSETS_BUCKET unset; cannot sync keycloak config"
+    return 1
+  fi
+  log "syncing keycloak config from s3://${bucket}/deploy/keycloak/"
+  mkdir -p "${APP_DIR}/keycloak/realms" "${APP_DIR}/keycloak/themes"
+  if ! aws s3 sync "s3://${bucket}/deploy/keycloak/" "${APP_DIR}/keycloak/" \
+       ${region:+--region "$region"} 2>&1; then
+    log "WARNING: failed to sync keycloak config; realm import may fail"
+  fi
+}
+
 # Compose bind-mounts ./postgres/initdb into the official image's initdb.d. Docker
 # creates that host dir empty if it is missing, so a box that only ever received
 # compose.yml + deploy.sh (SSM / cloud-init never published initdb) inits Postgres
@@ -697,9 +718,11 @@ if [ -n "${HOST_B_IP:-}" ]; then set_env "$ENV_FILE" HOST_B_IP "$HOST_B_IP"; fi
 # secret files can drop HOST_ROLE too — gating on it would skip exactly the host
 # that needs seeding. The edge host's compose references no secret files, so it is
 # skipped here (and so spared an SM read its instance role may not be granted).
+# Also sync the Keycloak realm/themes from S3 so --import-realm has config to import.
 if grep -q 'kc-db-password' "$COMPOSE_FILE" 2>/dev/null; then
   ensure_secret_files
   write_auth_initdb
+  sync_keycloak_config
 fi
 
 # bootstrap mode brings the whole stack up from the persisted manifest, then exits.
