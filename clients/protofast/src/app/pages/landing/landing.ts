@@ -1,7 +1,23 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import {
+  afterNextRender,
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  inject,
+  signal,
+} from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { ImagePlaceholder } from './image-placeholder';
+import { ProtofastLogo } from '../../shared/protofast-logo';
 import { AuthIdentityService } from '../../auth/auth-identity';
+
+/** A line in the hero's live build console — one agent, one job, one state. */
+interface AgentEvent {
+  agent: string;
+  detail: string;
+  /** `done` is finished and dimmed, `live` pulses, `next` is queued and greyed. */
+  state: 'done' | 'live' | 'next';
+}
 
 interface Step {
   index: string;
@@ -9,136 +25,167 @@ interface Step {
   description: string;
 }
 
+/** One of the six "real product, not a mockup" cards. */
 interface Feature {
-  iconPath: string;
+  kicker: string;
   title: string;
-  description: string;
+  body: string;
 }
 
-interface TimelineEntry {
+/** A mark on the half-hour timeline. */
+interface Milestone {
   time: string;
   title: string;
-  description: string;
+  detail: string;
+}
+
+interface Stat {
+  value: string;
+  label: string;
 }
 
 interface PricingTier {
   name: string;
+  tagline: string;
   price: string;
   period: string;
-  blurb: string;
   features: string[];
   cta: string;
-  highlighted: boolean;
+  popular: boolean;
 }
 
 @Component({
   selector: 'app-landing',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ImagePlaceholder, RouterLink],
+  imports: [ImagePlaceholder, ProtofastLogo, RouterLink],
   templateUrl: './landing.html',
 })
 export class Landing {
   protected readonly auth = inject(AuthIdentityService);
+  private readonly destroyRef = inject(DestroyRef);
+
+  /** Example prompts the hero field types through. */
+  private readonly prompts = [
+    'a booking app for my dog grooming business, with deposits',
+    'a members-only recipe club that bills monthly',
+    'an invoicing tool for freelance photographers',
+    'a waitlist app for my supper club, with table assignments',
+  ];
+
+  /**
+   * The hero prompt text. Seeded with the first prompt in full so SSR renders a
+   * complete sentence — crawlers see real copy and there is no layout shift when
+   * the browser takes over. The animation only ever runs client-side.
+   */
+  protected readonly typed = signal(this.prompts[0]);
+
+  /**
+   * The build the hero console is showing. Fixed sample data, not a live feed —
+   * it is a picture of the product, and the `live` rows are what the glow
+   * animation attaches to.
+   */
+  protected readonly agentFeed: AgentEvent[] = [
+    { agent: 'Architect', detail: 'Schema — 9 tables, relations locked', state: 'done' },
+    { agent: 'UI', detail: 'Booking calendar component', state: 'done' },
+    { agent: 'Payments', detail: 'Deploying webhooks…', state: 'live' },
+    { agent: 'Auth', detail: 'Sessions + password reset', state: 'live' },
+    { agent: 'Deploy', detail: 'Queued — TLS + shareable URL', state: 'next' },
+  ];
+
+  protected readonly stats: Stat[] = [
+    { value: '< 30 min', label: 'Idea to production URL' },
+    { value: 'Built in', label: 'Auth, payments, hosting' },
+    { value: 'Web + mobile', label: 'From one description' },
+  ];
 
   protected readonly steps: Step[] = [
     {
       index: '01',
       title: 'Describe it',
       description:
-        'Type what you want to build the way you would explain it to a developer friend. No specs, no wireframes, no tickets — plain English is the whole interface.',
+        'Explain it like you would to a developer friend. No specs, no wireframes, no tickets — the sentence is the interface.',
     },
     {
       index: '02',
-      title: 'Agents prototype it',
+      title: 'Agents build it',
       description:
-        'A coordinated set of agents splits the work — data model, API, UI, auth, payments — and builds in parallel while you watch every decision land in real time.',
+        'Data model, API, UI, auth and payments get split across specialised agents working in parallel — and you watch every decision land.',
     },
     {
       index: '03',
-      title: 'It is live',
+      title: "It's live",
       description:
-        'Your prototype deploys to production hosting with a shareable URL, sign-in that works, and payments that can charge real cards. Under 30 minutes, start to finish.',
+        'Production hosting, a shareable URL, sign-in that works and payments that can charge a real card. Same half hour.',
     },
   ];
 
   protected readonly features: Feature[] = [
     {
-      iconPath: 'm3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z',
-      title: 'An agent swarm, not a queue',
-      description:
-        'Specialized agents for architecture, UI, API, and infrastructure build concurrently — the reason a working app takes minutes instead of months.',
+      kicker: 'Parallel',
+      title: 'A swarm, not a queue',
+      body: "Architecture, UI, API and infra agents build concurrently. That's why minutes, not months.",
     },
     {
-      iconPath:
-        'M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z',
+      kicker: 'Accounts',
       title: 'Auth out of the box',
-      description:
-        'Sign-up, sign-in, sessions, and password reset are wired into every prototype from the first build. Your testers log in like it is a real product — because it is.',
+      body: "Sign-up, sessions, password reset — wired from the first build. Testers log in like it's a real product.",
     },
     {
-      iconPath:
-        'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z',
+      kicker: 'Revenue',
       title: 'Payments built in',
-      description:
-        'Subscriptions, one-time checkout, and customer billing come pre-integrated. Flip the switch from test mode and your prototype starts taking real money.',
+      body: 'Subscriptions, checkout and billing pre-integrated. Flip off test mode and it takes real money.',
     },
     {
-      iconPath:
-        'M10.5 1.5H8.25A2.25 2.25 0 0 0 6 3.75v16.5a2.25 2.25 0 0 0 2.25 2.25h7.5A2.25 2.25 0 0 0 18 20.25V3.75a2.25 2.25 0 0 0-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3',
-      title: 'Web and mobile from one prompt',
-      description:
-        'Every build ships a responsive web app and a mobile-ready experience together. One description, every screen size your users actually have.',
+      kicker: 'Reach',
+      title: 'Web and mobile, one prompt',
+      body: 'Every build ships a responsive web app and a mobile-ready experience together.',
     },
     {
-      iconPath:
-        'M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 0 1 3 12c0-1.605.42-3.113 1.157-4.418',
+      kicker: 'Hosting',
       title: 'Production from minute one',
-      description:
-        'No localhost, no staging purgatory. Builds deploy to managed hosting with TLS and a shareable URL the moment the agents finish.',
+      body: 'No localhost, no staging purgatory. Managed hosting with TLS the moment the agents finish.',
     },
     {
-      iconPath:
-        'M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 0 1-.825-.242m9.345-8.334a2.126 2.126 0 0 0-.476-.095 48.64 48.64 0 0 0-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0 0 11.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155',
-      title: 'Iterate by chatting',
-      description:
-        '"Make the dashboard dark." "Add a referral program." Changes ship to the live prototype in minutes — feedback loops measured in coffee sips, not sprints.',
+      kicker: 'Iteration',
+      title: 'Change it by chatting',
+      body: '"Make the dashboard dark." "Add referrals." Live in minutes — feedback loops measured in coffee sips.',
     },
   ];
 
-  protected readonly timeline: TimelineEntry[] = [
+  protected readonly milestones: Milestone[] = [
     {
       time: '0:00',
-      title: 'You hit "Prototype it"',
-      description: 'Your description lands and the planning agent drafts the architecture.',
+      title: 'You hit Prototype it',
+      detail: 'The planning agent drafts the architecture.',
     },
     {
       time: '0:02',
       title: 'The swarm fans out',
-      description: 'UI, API, data, auth, and payments agents start building in parallel.',
+      detail: 'UI, API, data, auth, payments in parallel.',
     },
     {
       time: '0:12',
       title: 'First working preview',
-      description: 'Click through real screens while the agents keep wiring up the backend.',
+      detail: 'Click real screens while the backend wires up.',
     },
     {
       time: '0:22',
-      title: 'Auth and payments go green',
-      description: 'Test accounts sign in, test cards charge, webhooks fire.',
+      title: 'Auth and payments green',
+      detail: 'Accounts sign in, test cards charge, hooks fire.',
     },
     {
       time: '0:28',
       title: 'Deployed to production',
-      description: 'A shareable URL with TLS, ready for your first real users.',
+      detail: 'A shareable URL with TLS, ready for users.',
     },
   ];
 
   protected readonly pricingTiers: PricingTier[] = [
     {
       name: 'Starter',
+      tagline: 'For trying the trick yourself.',
       price: '$0',
       period: 'forever',
-      blurb: 'For trying the magic trick yourself.',
       features: [
         '3 prototypes per month',
         'Web + mobile output',
@@ -147,28 +194,28 @@ export class Landing {
         'protofast.app subdomain',
       ],
       cta: 'Start free',
-      highlighted: false,
+      popular: false,
     },
     {
       name: 'Pro',
+      tagline: 'For founders shipping for real.',
       price: '$49',
       period: 'per month',
-      blurb: 'For founders shipping for real.',
       features: [
         'Unlimited prototypes',
-        'Live payments — keep 100% of revenue',
+        'Live payments — keep 100%',
         'Custom domains',
-        'Iterate-by-chat on deployed apps',
-        'Export the full source code',
+        'Iterate by chat on live apps',
+        'Export the full source',
       ],
       cta: 'Go Pro',
-      highlighted: true,
+      popular: true,
     },
     {
       name: 'Team',
+      tagline: 'For agencies and product teams.',
       price: '$199',
       period: 'per month',
-      blurb: 'For agencies and product teams.',
       features: [
         'Everything in Pro',
         '5 seats, shared workspaces',
@@ -177,7 +224,63 @@ export class Landing {
         'SSO and audit logs',
       ],
       cta: 'Start a team',
-      highlighted: false,
+      popular: false,
     },
   ];
+
+  constructor() {
+    afterNextRender(() => this.startTypewriter());
+  }
+
+  /**
+   * Cycles the hero field through `prompts`: hold the finished sentence, delete it,
+   * type the next one. Browser-only (see `typed`), and a no-op for anyone who has
+   * asked for reduced motion — they keep the seeded sentence, which is already
+   * complete and readable.
+   */
+  private startTypewriter(): void {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
+
+    const HOLD_MS = 2400;
+    const TYPE_MS = 38;
+    const DELETE_MS = 16;
+
+    let promptIndex = 0;
+    let chars = this.prompts[0].length;
+    let phase: 'holding' | 'deleting' | 'typing' = 'holding';
+
+    // Advances one frame of the animation and reports how long to wait for the next.
+    const advance = (): number => {
+      switch (phase) {
+        case 'holding':
+          phase = 'deleting';
+          return DELETE_MS;
+        case 'deleting':
+          chars -= 1;
+          if (chars <= 0) {
+            promptIndex = (promptIndex + 1) % this.prompts.length;
+            phase = 'typing';
+          }
+          return DELETE_MS;
+        case 'typing':
+          chars += 1;
+          if (chars >= this.prompts[promptIndex].length) {
+            phase = 'holding';
+            return HOLD_MS;
+          }
+          return TYPE_MS;
+      }
+    };
+
+    const run = () => {
+      const delay = advance();
+      this.typed.set(this.prompts[promptIndex].slice(0, chars));
+      timer = setTimeout(run, delay);
+    };
+
+    let timer = setTimeout(run, HOLD_MS);
+    this.destroyRef.onDestroy(() => clearTimeout(timer));
+  }
 }

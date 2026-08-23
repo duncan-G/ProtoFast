@@ -30,6 +30,7 @@
               }
             ],
             "styles": [
+              "src/styles/nocturne.css",
               "src/styles.scss"
             ],
             "server": "src/main.server.ts",
