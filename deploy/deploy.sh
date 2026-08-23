@@ -154,17 +154,23 @@ PY
   set_env "$ENV_FILE" AUTH_DB_PASSWORD "$auth"
 
   # Auth-svc + Keycloak realm secrets (single SM secret, Auth_/Shared_ prefixes — auth §8.2).
-  # The internal-JWT PEM keys go to root-only files (newlines don't fit .env); the files are
-  # ALWAYS created (empty if the secret is absent) so the compose `secrets:` bind mounts are valid
-  # and a missing key fails only the service that needs it — auth crashes without its private key;
-  # api/payments stay up but fail-closed without the public key — never an unrelated component.
-  local jwt_priv jwt_pub v
-  jwt_priv="$(_secret_get Auth_InternalJwt__PrivateKeyPem || true)"
+  #
+  # ONLY the PUBLIC internal-JWT key is written to disk. api/payments read `Shared_` env
+  # vars and have no Secrets Manager provider, and a PEM's newlines don't fit .env, so a
+  # file is the one way in. auth needs no such file: it runs the SM provider itself
+  # (Program.cs, Production only) and picks the private key up as InternalJwt:PrivateKeyPem
+  # directly from Auth_InternalJwt__PrivateKeyPem — so the private key never lands on the
+  # host. The public file is ALWAYS created (empty if the secret is absent) so the compose
+  # `secrets:` bind mount is valid, and a missing key then fails only the services that
+  # need it — fail-closed — never an unrelated component.
+  local jwt_pub v
   jwt_pub="$(_secret_get Shared_InternalJwt__PublicKeyPem || true)"
-  ( umask 077; printf '%s' "$jwt_priv" > "${APP_DIR}/auth-internal-jwt-key" )
-  chmod 600 "${APP_DIR}/auth-internal-jwt-key"
   printf '%s' "$jwt_pub" > "${APP_DIR}/internal-jwt-pub"
-  chmod 644 "${APP_DIR}/internal-jwt-pub"
+  chmod 644 "${APP_DIR}/internal-jwt-pub"   # public key; the .NET images run as uid 1654, not root
+  # Drop the private-key file earlier revisions seeded here. compose no longer mounts it
+  # (it is synced from the repo in lockstep with this script), and leaving a stale copy of
+  # the signing key on the host is pure exposure.
+  rm -f "${APP_DIR}/auth-internal-jwt-key"
 
   # Single-line values → .env for compose interpolation (only when present). These
   # are all optional, so an absent value must be a no-op — NOT `[ -n "$v" ] && ...`,
