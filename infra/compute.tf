@@ -134,9 +134,10 @@ resource "aws_instance" "host_b" {
   metadata_options {
     http_tokens   = "required" # IMDSv2 only
     http_endpoint = "enabled"
-    # No container on Host B pulls from S3, so the host-only default (hop limit 1)
-    # is enough; raise to 2 only if a future B container needs instance creds (§4.1).
-    http_put_response_hop_limit = 1
+    # services read the app secret from Secrets Manager in-process, so its container
+    # needs the instance role over IMDS. The docker bridge is one network hop, so a
+    # limit of 1 drops those packets (same reason Host A uses 2).
+    http_put_response_hop_limit = 2
     http_protocol_ipv6          = "enabled"
   }
 

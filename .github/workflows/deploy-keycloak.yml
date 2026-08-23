@@ -103,7 +103,7 @@ jobs:
               \"echo $COMPOSE_B64 | base64 -d > /opt/protofast/docker-compose.yml\",
               \"echo $DEPLOY_B64 | base64 -d > /opt/protofast/deploy.sh\",
               \"chmod +x /opt/protofast/deploy.sh\",
-              \"ECR=${ECR} /opt/protofast/deploy.sh apply keycloak=${TAG}\"
+              \"ECR=${ECR} AWS_REGION=${AWS_REGION} /opt/protofast/deploy.sh apply keycloak=${TAG}\"
             ]" \
             --query 'Command.CommandId' --output text)
 
