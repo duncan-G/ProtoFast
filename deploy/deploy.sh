@@ -190,8 +190,14 @@ PY
 # but don't abort — an existing host with no realm config can still start Keycloak
 # (it just won't reimport the realm). The deploy job now passes ASSETS_BUCKET via
 # env, so new runs will have it.
+# KEYCLOAK_CONFIG_CHANGED is set to 1 when the sync below actually moved a file.
+# Keycloak caches themes in production mode (`kc.sh start`), so new theme files on
+# disk stay invisible to a running container — the config-only deploy path uses
+# this to decide whether a restart is owed. 0 means "nothing moved, nothing to do".
+KEYCLOAK_CONFIG_CHANGED=0
+
 sync_keycloak_config() {
-  local bucket region
+  local bucket region out
   bucket="$(get_env "$ENV_FILE" ASSETS_BUCKET)"; bucket="${bucket:-${ASSETS_BUCKET:-}}"
   region="$(get_env "$ENV_FILE" AWS_REGION)"; region="${region:-${AWS_REGION:-}}"
   if [ -z "$bucket" ]; then
@@ -200,10 +206,221 @@ sync_keycloak_config() {
   fi
   log "syncing keycloak config from s3://${bucket}/deploy/keycloak/"
   mkdir -p "${APP_DIR}/keycloak/realms" "${APP_DIR}/keycloak/themes"
-  if ! aws s3 sync "s3://${bucket}/deploy/keycloak/" "${APP_DIR}/keycloak/" \
-       ${region:+--region "$region"} 2>&1; then
+  # Capture rather than stream: `aws s3 sync` prints one line per transferred
+  # object and nothing at all when everything is already current, which is the
+  # signal KEYCLOAK_CONFIG_CHANGED needs. Still echoed so the SSM log is unchanged.
+  # shellcheck disable=SC2086  # ${region:+...} is intentionally word-split
+  if out="$(aws s3 sync "s3://${bucket}/deploy/keycloak/" "${APP_DIR}/keycloak/" \
+            ${region:+--region "$region"} 2>&1)"; then
+    if [ -n "$out" ]; then
+      printf '%s\n' "$out"
+      KEYCLOAK_CONFIG_CHANGED=1
+    fi
+  else
+    printf '%s\n' "$out"
     log "WARNING: failed to sync keycloak config; realm import may fail"
   fi
+}
+
+# --- keycloak realm reconcile (drift on an ALREADY-EXISTING realm) ---------
+# `kc.sh start --import-realm` only ever CREATES realms: one that already exists
+# is skipped wholesale. So every edit to protofast-realm.json after the realm's
+# first creation — the required-action priorities that decide whether sign-up
+# verifies the email BEFORE asking for a password, the realm login/registration
+# flags, the password policy — silently never reaches a running deployment.
+# sync_keycloak_config puts the new JSON on the box; this pushes the parts that
+# matter through the Admin API once Keycloak is healthy, so the file in git stays
+# the source of truth instead of drifting away from the live realm.
+#
+# Deliberately NARROW: allowlisted realm-level flags and required actions only.
+# It does NOT touch users, clients, authentication flows or the user-profile
+# component — clients carry secrets that live in .env, and a bound flow cannot be
+# rewritten in place. The import still owns all of those at realm creation;
+# changing them on a live realm stays a deliberate, manual act.
+#
+# It also ASSERTS rather than mirrors: an alias the JSON declares is pushed, but a
+# required action registered in the realm and absent from the JSON (delete_account,
+# CONFIGURE_TOTP, the rest of Keycloak's defaults) is left exactly as it is. To
+# disable one, declare it with "enabled": false — dropping it from the file is not
+# a way to turn it off.
+#
+# Auth: nothing in this stack sets KC_BOOTSTRAP_ADMIN_*, so the deployment has no
+# admin account and there is no standing credential to reuse (or leak). We mint a
+# throwaway admin service account with `kc.sh bootstrap-admin service`, drive
+# kcadm over the container's own loopback, and delete the client before returning.
+# Secrets travel by env, never argv, so they cannot surface in `ps` on the host.
+#
+# Best-effort, like sync_keycloak_config: config drift must never fail a deploy or
+# roll back an otherwise-healthy Keycloak. Set KEYCLOAK_RECONCILE=0 to skip.
+KC_RECONCILE_CLIENT_ID="protofast-deploy-reconcile"
+KC_KCADM_CONFIG="/tmp/kcadm-deploy.config"
+
+# Realm-level keys the reconcile pushes — scoped to the sign-in/sign-up surface.
+# Widen by adding to this list. smtpServer is deliberately ABSENT: the JSON holds
+# ${SMTP_*} placeholders that only the realm import substitutes, so pushing it
+# would write the literal "${SMTP_HOST:localhost}" strings into the live realm.
+KC_REALM_KEYS="registrationAllowed registrationEmailAsUsername loginWithEmailAllowed
+duplicateEmailsAllowed resetPasswordAllowed editUsernameAllowed rememberMe
+verifyEmail loginTheme passwordPolicy bruteForceProtected"
+
+# Same idea one level down, for keys that live in the realm's "attributes" map
+# (kcadm addresses a dotted attribute name by quoting it). Action tokens default
+# to a 5-minute life, which is nothing for sign-up mail: every link the sign-up
+# flow sends is one somebody opens after walking away from the browser.
+KC_REALM_ATTRS="actionTokenGeneratedByUserLifespan.verify-email
+actionTokenGeneratedByUserLifespan.reset-credentials"
+
+# kcadm lives in the Keycloak image; the box has no curl (health checks shell out
+# to a curl container) and no admin CLI of its own. --config pins the session file
+# to a known path so the login in one exec is visible to the next.
+kcadm_kc() {
+  compose exec -T keycloak /opt/keycloak/bin/kcadm.sh "$@" --config "$KC_KCADM_CONFIG"
+}
+
+reconcile_keycloak_realm() {
+  if [ "${KEYCLOAK_RECONCILE:-1}" != 1 ]; then
+    log "KEYCLOAK_RECONCILE=${KEYCLOAK_RECONCILE}; skipping keycloak realm reconcile"
+    return 0
+  fi
+
+  local realm_file realm secret cid rc=0
+  realm_file="$(ls -1 "${APP_DIR}"/keycloak/realms/*.json 2>/dev/null | head -n1 || true)"
+  if [ -z "$realm_file" ]; then
+    log "WARNING: no realm JSON under ${APP_DIR}/keycloak/realms; skipping realm reconcile"
+    return 0
+  fi
+  realm="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("realm",""))' \
+           "$realm_file" 2>/dev/null || true)"
+  if [ -z "$realm" ]; then
+    log "WARNING: $(basename "$realm_file") declares no realm name; skipping realm reconcile"
+    return 0
+  fi
+
+  log "reconciling realm '${realm}' from $(basename "$realm_file") via the Admin API"
+
+  # tr -d strips the base64 padding/alphabet chars that would need quoting downstream.
+  secret="$(head -c 24 /dev/urandom | base64 | tr -d '\n=+/')"
+  if ! compose exec -T \
+        -e KC_RECONCILE_CID="$KC_RECONCILE_CLIENT_ID" \
+        -e KC_RECONCILE_SEC="$secret" \
+        keycloak bash -c '
+          export KC_DB_PASSWORD="$(cat /run/secrets/kc-db-password 2>/dev/null || true)"
+          exec /opt/keycloak/bin/kc.sh bootstrap-admin service \
+            --client-id:env KC_RECONCILE_CID \
+            --client-secret:env KC_RECONCILE_SEC --no-prompt' >/dev/null 2>&1; then
+    log "WARNING: could not create the temporary admin service account; realm config NOT reconciled."
+    log "If a previous run left '${KC_RECONCILE_CLIENT_ID}' behind, delete it from the master realm and re-run."
+    return 0
+  fi
+
+  # Past this point the client EXISTS, so every path has to reach the cleanup below.
+  if ! compose exec -T -e KC_RECONCILE_SEC="$secret" keycloak bash -c '
+        /opt/keycloak/bin/kcadm.sh config credentials \
+          --server http://localhost:8080 --realm master \
+          --client "'"$KC_RECONCILE_CLIENT_ID"'" --secret "$KC_RECONCILE_SEC" \
+          --config "'"$KC_KCADM_CONFIG"'"' >/dev/null 2>&1; then
+    log "WARNING: temporary admin could not authenticate; realm config NOT reconciled"
+    rc=1
+  fi
+
+  if [ "$rc" -eq 0 ]; then
+    # Realm-level flags, as alternating "-s" / "key=value" lines so a value with
+    # spaces (passwordPolicy) survives without quoting games.
+    local args=()
+    # shellcheck disable=SC2086  # both key lists are intentionally word-split
+    mapfile -t args < <(python3 - "$realm_file" $KC_REALM_KEYS -- $KC_REALM_ATTRS <<'PY'
+import json, sys
+realm = json.load(open(sys.argv[1]))
+argv = sys.argv[2:]
+split = argv.index("--")
+
+
+def emit(name, value):
+    if "${" in value:        # unsubstituted import placeholder — never push it
+        return
+    print("-s")
+    print(f"{name}={value}")
+
+
+for key in argv[:split]:
+    if key not in realm:
+        continue
+    v = realm[key]
+    emit(key, ("true" if v else "false") if isinstance(v, bool) else str(v))
+
+attributes = realm.get("attributes", {})
+for key in argv[split + 1:]:
+    if key in attributes:
+        emit(f'attributes."{key}"', str(attributes[key]))
+PY
+    )
+    if [ "${#args[@]}" -gt 0 ]; then
+      if kcadm_kc update "realms/${realm}" "${args[@]}" >/dev/null 2>&1; then
+        log "realm '${realm}': reconciled $(( ${#args[@]} / 2 )) realm-level setting(s)"
+      else
+        log "WARNING: could not reconcile realm-level settings for '${realm}'"
+        rc=1
+      fi
+    fi
+
+    # Required actions. This is the drift that matters most: the priorities decide
+    # the ORDER required actions run in, and VERIFY_EMAIL must sort before
+    # UPDATE_PASSWORD or sign-up asks for a password before the address is proven.
+    local alias enabled default priority n=0
+    while IFS=$'\t' read -r alias enabled default priority; do
+      [ -n "$alias" ] || continue
+      if kcadm_kc update "authentication/required-actions/${alias}" -r "$realm" \
+           -s "enabled=${enabled}" -s "defaultAction=${default}" -s "priority=${priority}" \
+           >/dev/null 2>&1; then
+        n=$(( n + 1 ))
+      else
+        log "WARNING: could not reconcile required action '${alias}' (not registered in the realm?)"
+        rc=1
+      fi
+    done < <(python3 - "$realm_file" <<'PY'
+import json, sys
+for a in json.load(open(sys.argv[1])).get("requiredActions", []):
+    alias = a.get("alias")
+    if not alias:
+        continue
+    print("\t".join([
+        alias,
+        "true" if a.get("enabled", True) else "false",
+        "true" if a.get("defaultAction", False) else "false",
+        str(a.get("priority", 0)),
+    ]))
+PY
+    )
+    [ "$n" -gt 0 ] && log "realm '${realm}': reconciled ${n} required action(s)"
+  fi
+
+  # Drop the throwaway admin LAST — the token above stays valid for the calls that
+  # already ran, and leaving an admin service account behind is the one genuinely
+  # bad outcome here, so it is attempted even when the reconcile itself failed.
+  cid="$(kcadm_kc get clients -r master -q "clientId=${KC_RECONCILE_CLIENT_ID}" \
+         --fields id --format csv --noquotes 2>/dev/null | tr -d '\r"' | head -n1 || true)"
+  if [ -n "$cid" ]; then
+    if ! kcadm_kc delete "clients/${cid}" -r master >/dev/null 2>&1; then
+      log "WARNING: could not delete temporary admin client '${KC_RECONCILE_CLIENT_ID}' (master realm) — REMOVE IT BY HAND"
+    fi
+  else
+    log "WARNING: could not locate temporary admin client '${KC_RECONCILE_CLIENT_ID}' to delete — check the master realm"
+  fi
+  compose exec -T keycloak bash -c "rm -f '${KC_KCADM_CONFIG}'" >/dev/null 2>&1 || true
+
+  if [ "$rc" -ne 0 ]; then
+    log "WARNING: realm reconcile finished with errors; the live realm may still differ from $(basename "$realm_file")"
+  fi
+  return 0
+}
+
+# Themes are read through Keycloak's theme cache in production mode, so files that
+# sync_keycloak_config just wrote are invisible until the container restarts. Only
+# needed on the config-only path — an apply that recreates the container reloads
+# them anyway. Restart (not recreate): same container, same pinned tag.
+restart_keycloak_for_config() {
+  log "keycloak config changed on disk; restarting keycloak so the theme cache reloads"
+  compose restart keycloak
 }
 
 # Compose bind-mounts ./postgres/initdb into the official image's initdb.d. Docker
@@ -645,6 +862,23 @@ bootstrap() {
   if compose ps -aq postgres >/dev/null 2>&1 && [ -n "$(compose ps -aq postgres 2>/dev/null)" ]; then
     ensure_auth_db || log "WARN: ensure_auth_db failed during bootstrap; next auth apply will retry"
   fi
+  # A replaced instance re-attaches the durable pgdata volume, so the realm is
+  # already there and --import-realm skips it exactly as it does on a config-only
+  # apply. Reconcile once Keycloak answers its readiness probe, so a rebuilt box
+  # converges on the realm JSON rather than inheriting whatever the volume held.
+  if [ -n "$(compose ps -aq keycloak 2>/dev/null)" ]; then
+    local kc_deadline; kc_deadline=$(( $(date +%s) + HEALTH_DEADLINE_SECS ))
+    while ! keycloak_ok >/dev/null 2>&1; do
+      if [ "$(date +%s)" -ge "$kc_deadline" ]; then
+        log "WARNING: keycloak not ready within ${HEALTH_DEADLINE_SECS}s; skipping realm reconcile"
+        break
+      fi
+      sleep 5
+    done
+    if keycloak_ok >/dev/null 2>&1; then
+      reconcile_keycloak_realm
+    fi
+  fi
 }
 
 # --- drain: graceful Host B teardown (§6.2) --------------------------------
@@ -790,6 +1024,19 @@ for pair in "$@"; do
   if [ "$CUR_TAG" = "$NEW_TAG" ]; then
     if svc_running; then
       if health_once; then
+        # A keycloak apply at an UNCHANGED tag is the normal shape of a config-only
+        # deploy — the deploy-keycloak workflow fires on deploy/keycloak/** with the
+        # image tag pinned. The container is healthy so nothing below would touch it,
+        # but the realm JSON and themes on disk may be new and neither reaches a
+        # running Keycloak on its own (themes are cached; --import-realm skips an
+        # existing realm). Land them here, before the skip.
+        if [ "$SVC" = keycloak ]; then
+          if [ "$KEYCLOAK_CONFIG_CHANGED" = 1 ]; then
+            restart_keycloak_for_config
+            health_check || log "WARNING: keycloak did not pass health checks after the config restart"
+          fi
+          reconcile_keycloak_realm
+        fi
         log "${COMPONENT} already at ${NEW_TAG} and healthy; nothing to do"
         continue
       fi
@@ -834,6 +1081,10 @@ for pair in "$@"; do
 
   if health_check; then
     log "${COMPONENT}=${NEW_TAG} healthy"
+    # The recreate above already reloaded the themes; only the realm needs pushing.
+    if [ "$SVC" = keycloak ]; then
+      reconcile_keycloak_realm
+    fi
     prune_old_images
   elif [ "$SVC" = postgres ]; then
     # NEVER auto-rollback a Postgres tag (§5.3/§7): a downgrade after a catalog

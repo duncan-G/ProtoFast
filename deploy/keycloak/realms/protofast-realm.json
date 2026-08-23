@@ -1,5 +1,7 @@
 {
   "realm": "protofast",
+  "displayName": "Protofast",
+  "displayNameHtml": "<img src=\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNTAgMzIiIHJvbGU9ImltZyIgYXJpYS1sYWJlbD0iUHJvdG9mYXN0Ij48ZyBmaWxsPSJub25lIiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj48cGF0aCBkPSJNNSA2SDEzIiBzdHJva2U9IiM0MjNhNmEiLz48cGF0aCBkPSJNNSAxMUgxNiIgc3Ryb2tlPSIjNWQ1Mjk0Ii8+PHBhdGggZD0iTTUgMTZIMTkiIHN0cm9rZT0iIzc5NmNiZiIvPjxwYXRoIGQ9Ik01IDIxSDE2IiBzdHJva2U9IiM1ZDUyOTQiLz48cGF0aCBkPSJNNSAyNkgxMyIgc3Ryb2tlPSIjNDIzYTZhIi8+PC9nPjxjaXJjbGUgY3g9IjI1IiBjeT0iMTYiIHI9IjQiIGZpbGw9IiM5MTg0ZDkiLz48dGV4dCB4PSIzOCIgeT0iMjMiIGZpbGw9IiNlOWU5ZWQiIGZvbnQtZmFtaWx5PSJJbnRlcixzeXN0ZW0tdWksc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMiIgZm9udC13ZWlnaHQ9IjUwMCIgbGV0dGVyLXNwYWNpbmc9Ii0wLjQ0Ij5Qcm90b2Zhc3Q8L3RleHQ+PC9zdmc+\" alt=\"Protofast\" height=\"28\" style=\"height:28px;width:auto\">",
   "enabled": true,
   "sslRequired": "external",
   "registrationAllowed": true,
@@ -29,6 +31,11 @@
   "accessTokenLifespanForImplicitFlow": 900,
   "revokeRefreshToken": true,
   "refreshTokenMaxReuse": 0,
+
+  "attributes": {
+    "actionTokenGeneratedByUserLifespan.verify-email": "43200",
+    "actionTokenGeneratedByUserLifespan.reset-credentials": "3600"
+  },
 
   "webAuthnPolicyPasswordlessRpEntityName": "ProtoFast",
   "webAuthnPolicyPasswordlessRpId": "protofast.dev",
@@ -60,7 +67,7 @@
       "providerId": "VERIFY_EMAIL",
       "enabled": true,
       "defaultAction": true,
-      "priority": 50,
+      "priority": 10,
       "config": {}
     },
     {
@@ -69,7 +76,7 @@
       "providerId": "UPDATE_PASSWORD",
       "enabled": true,
       "defaultAction": false,
-      "priority": 30,
+      "priority": 40,
       "config": {}
     },
     {
@@ -78,7 +85,7 @@
       "providerId": "UPDATE_PROFILE",
       "enabled": true,
       "defaultAction": false,
-      "priority": 40,
+      "priority": 20,
       "config": {}
     },
     {
@@ -162,17 +169,50 @@
     },
     {
       "alias": "passkey-or-password credentials",
-      "description": "Passkey (WebAuthn passwordless) or password",
+      "description": "Stored credential if the account has one, otherwise the finish-setup branch",
       "providerId": "basic-flow",
       "topLevel": false,
       "builtIn": false,
       "authenticationExecutions": [
         {
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "requirement": "CONDITIONAL",
+          "priority": 10,
+          "flowAlias": "passkey-or-password stored credential",
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "requirement": "CONDITIONAL",
+          "priority": 20,
+          "flowAlias": "finish account setup",
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "passkey-or-password stored credential",
+      "description": "Passkey (WebAuthn passwordless) or password. Skipped when the account has neither.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-user-configured",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
           "authenticator": "webauthn-authenticator-passwordless",
           "authenticatorFlow": false,
           "autheticatorFlow": false,
           "requirement": "ALTERNATIVE",
-          "priority": 10,
+          "priority": 20,
           "userSetupAllowed": false
         },
         {
@@ -180,10 +220,46 @@
           "authenticatorFlow": false,
           "autheticatorFlow": false,
           "requirement": "ALTERNATIVE",
+          "priority": 30,
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "finish account setup",
+      "description": "Half-registered account (no passkey, no password): email a link to set the first one.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-sub-flow-executed",
+          "authenticatorConfig": "credential-branch-skipped",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "reset-credential-email",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "REQUIRED",
           "priority": 20,
           "userSetupAllowed": false
         }
       ]
+    }
+  ],
+
+  "authenticatorConfig": [
+    {
+      "alias": "credential-branch-skipped",
+      "config": {
+        "flow_to_check": "passkey-or-password stored credential",
+        "check_result": "not-executed"
+      }
     }
   ],
 

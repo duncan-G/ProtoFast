@@ -1,0 +1,505 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   Nocturne — vendored from the Claude Design project "Protofast landing
+   redesign" (_ds/nocturne-d804af75-f4b0-4cc2-ada2-5104ee9a50a9/styles.css).
+
+   THREE DEVIATIONS FROM THE SOURCE, so re-syncing stays obvious:
+
+   1. The bare element base rules (body, h1-h6, p, a, img, figure,
+      :focus-visible, ::selection) are scoped under `:where(.nocturne)` rather
+      than applying globally — the dashboard and 404 still run on Tailwind's
+      slate/amber palette. The `:where()` is load-bearing: a plain `.nocturne a`
+      would sit at (0,1,1) and outrank `.btn-primary` at (0,1,0), painting
+      primary buttons in text colour. `:where()` contributes nothing to
+      specificity, so every rule keeps the weight it has upstream.
+   2. The whole sheet sits in `@layer nocturne`, loaded ahead of Tailwind in
+      angular.json so Tailwind's utility layer still outranks it. Without the
+      layer, unlayered element selectors would beat every Tailwind utility.
+   3. The Google Fonts @import moved to index.html as a preconnected <link>
+      (a chained CSS @import blocks rendering).
+
+   The `:root` token block and every component class are verbatim.
+
+   To retune the look, edit the tokens at the top — everything reads from
+   them. See the project's readme.md for the system's rules.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Establishes the cascade order for the whole app. This sheet loads first
+   (angular.json `styles`), so this is the first @layer statement the browser
+   sees and it is the one that fixes the order — Tailwind's own
+   `@layer theme, base, components, utilities` later on cannot reposition names
+   already registered here. Nocturne has to sit AFTER `base`, or Tailwind's
+   preflight reset (which zeroes h1 font-weight and repaints border-color)
+   would outrank the design system's own component rules. */
+@layer theme, base, nocturne, components, utilities;
+
+@layer nocturne {
+  :root {
+    --color-bg: #161826;
+    --color-surface: #232532;
+    --color-text: #e9e9ed;
+    --color-accent: #9184d9; /* the product's own Pro-accent blurple — OKLCH hue
+       289.2 at L 0.660, chroma 0.125, so it reads as an accent against the
+       desaturated ramps rather than as another neutral. */
+    --color-accent-2: #a7a1db; /* machine-derived stand-in: same hue, L 0.734 */
+    --color-divider: color-mix(in srgb, #e9e9ed 16%, transparent);
+
+    /* Tonal ramps — generated in OKLCH on one shared lightness scale, so the
+       same step of any role matches the others in visual value. */
+    --color-neutral-100: #f3f5fe;
+    --color-neutral-200: #e4e7f5;
+    --color-neutral-300: #cfd3e5;
+    --color-neutral-400: #b2b6ca;
+    --color-neutral-500: #9397ab;
+    --color-neutral-600: #75798c;
+    --color-neutral-700: #595d6c;
+    --color-neutral-800: #3f424d;
+    --color-neutral-900: #292b31;
+
+    --color-accent-100: #f5f4ff;
+    --color-accent-200: #e7e5fe;
+    --color-accent-300: #d2cefd;
+    --color-accent-400: #b5abfc;
+    --color-accent-500: #968ae0;
+    --color-accent-600: #796cbf;
+    --color-accent-700: #5d5294;
+    --color-accent-800: #423a6a;
+    --color-accent-900: #2b2741;
+
+    --color-accent-2-100: #f5f4ff;
+    --color-accent-2-200: #e7e5fe;
+    --color-accent-2-300: #d2cefd;
+    --color-accent-2-400: #b5afe8;
+    --color-accent-2-500: #9690c9;
+    --color-accent-2-600: #7972a9;
+    --color-accent-2-700: #5c5783;
+    --color-accent-2-800: #423e5d;
+    --color-accent-2-900: #2b293a;
+
+    /* Section-divider ground — saturation as presence. Deck-scale fills only,
+       plus the landing page's one full-bleed stat band. Not interface colors. */
+    --color-section: #262a60;
+    --color-section-glow: #353b80;
+    --color-section-ghost: #4c5397;
+
+    --font-heading: 'Inter', system-ui, sans-serif;
+    --font-heading-weight: 500;
+    --font-body: 'Inter', system-ui, sans-serif;
+    --font-mono: ui-monospace, Menlo, Monaco, 'Cascadia Code', monospace;
+
+    --space-1: 2.8px;
+    --space-2: 5.6px;
+    --space-3: 8.4px;
+    --space-4: 11.2px;
+    --space-6: 16.8px;
+    --space-8: 22.4px;
+
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 14px;
+
+    /* Elevation — on a dark ground, a hairline edge plus ambient darkness. */
+    --shadow-sm: 0 0 0 1px #3f424d;
+    --shadow-md: 0 0 0 1px #595d6c, 0 6px 18px rgba(0, 0, 0, 0.55);
+    --shadow-lg: 0 0 0 1px #9397ab, 0 16px 40px rgba(0, 0, 0, 0.65);
+  }
+
+  /* — base (scoped; see the deviation note above) — */
+  .nocturne {
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.55;
+    font-weight: 400;
+  }
+  :where(.nocturne) h1,
+  :where(.nocturne) h2,
+  :where(.nocturne) h3,
+  :where(.nocturne) h4,
+  :where(.nocturne) h5,
+  :where(.nocturne) h6 {
+    font-family: var(--font-heading);
+    font-weight: var(--font-heading-weight);
+    line-height: 1.12;
+    letter-spacing: -0.015em;
+    margin: 0 0 var(--space-2);
+  }
+  :where(.nocturne) h1 {
+    font-size: 42px;
+  }
+  :where(.nocturne) h2 {
+    font-size: 32px;
+  }
+  :where(.nocturne) h3 {
+    font-size: 25px;
+  }
+  :where(.nocturne) h4 {
+    font-size: 20px;
+  }
+  :where(.nocturne) h5 {
+    font-size: 16px;
+  }
+  :where(.nocturne) h6 {
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  :where(.nocturne) p {
+    margin: 0 0 var(--space-3);
+  }
+  :where(.nocturne) a {
+    color: var(--color-accent);
+    text-underline-offset: 3px;
+  }
+  :where(.nocturne) img {
+    display: block;
+    max-width: 100%;
+  }
+  :where(.nocturne) figure {
+    margin: 0;
+  }
+  :where(.nocturne) figcaption {
+    font-size: 11px;
+    margin-top: var(--space-1);
+    color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  }
+  :where(.nocturne) .text-muted {
+    color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  }
+  :where(.nocturne) :focus {
+    outline: none;
+  }
+  :where(.nocturne) :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  :where(.nocturne) ::selection {
+    background: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  }
+
+  .lighten {
+    mix-blend-mode: lighten;
+    background-color: transparent;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     Components — built with the tokens above. Plain CSS on plain HTML.
+     ══════════════════════════════════════════════════════════════════════ */
+
+  /* — rules — */
+  /* Rules fade to transparent at both ends instead of stopping cleanly — a
+     Nocturne signature. The ramp is 48px an end. Freestanding rules fade; box
+     outlines, in-control separators, and short accent marks stay solid. */
+  .hr {
+    height: 1px;
+    border: 0;
+    margin: var(--space-4) 0;
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--color-divider) 48px,
+      var(--color-divider) calc(100% - 48px),
+      transparent
+    );
+  }
+
+  /* — buttons — */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    font-family: var(--font-heading);
+    font-weight: var(--font-heading-weight);
+    font-size: 14px;
+    line-height: 1.2;
+    color: var(--color-text);
+    background: transparent;
+    border: 1px solid transparent;
+    padding: var(--space-2) calc(var(--space-3) * 1.2);
+    border-radius: var(--radius-md);
+  }
+  .btn svg {
+    display: block;
+  }
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    color: var(--color-accent);
+    border-color: var(--color-accent);
+  }
+  .btn-primary:hover {
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  }
+  .btn-primary:active {
+    background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  }
+  .btn-secondary {
+    border-color: var(--color-divider);
+  }
+  .btn-secondary:hover {
+    background: color-mix(in srgb, var(--color-text) 7%, transparent);
+  }
+  .btn-secondary:active {
+    background: color-mix(in srgb, var(--color-text) 14%, transparent);
+  }
+  .btn-ghost {
+    color: var(--color-accent);
+    padding-inline: var(--space-1);
+  }
+  .btn-ghost:hover {
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  }
+  .btn-ghost:active {
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  }
+  .btn-icon {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+  }
+  .btn-block {
+    width: 100%;
+    margin-top: var(--space-2);
+  }
+
+  /* — forms — */
+  .field > label {
+    display: block;
+    font-size: 12px;
+    margin-bottom: 5px;
+    color: color-mix(in srgb, var(--color-text) 70%, transparent);
+  }
+  .input {
+    width: 100%;
+    min-height: 36px;
+    padding: 6px 10px;
+    font: inherit;
+    font-size: 14px;
+    color: var(--color-text);
+    caret-color: var(--color-accent);
+    background: var(--color-surface);
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md);
+  }
+  .input:hover {
+    border-color: color-mix(in srgb, var(--color-text) 45%, transparent);
+  }
+  .input:focus-visible {
+    border-color: var(--color-accent);
+    outline-offset: 0;
+  }
+  textarea.input {
+    min-height: 90px;
+    resize: vertical;
+  }
+
+  /* — cards — */
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+  }
+  .card-kicker {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+  }
+  .card-title {
+    font-family: var(--font-heading);
+    font-weight: var(--font-heading-weight);
+    font-size: 17px;
+    line-height: 1.2;
+  }
+  .card-body {
+    margin: 0;
+    font-size: 13px;
+    opacity: 0.8;
+    flex: 1;
+  }
+  .card-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: color-mix(in srgb, var(--color-text) 50%, transparent);
+  }
+  .elev-sm {
+    box-shadow: var(--shadow-sm);
+  }
+  .elev-md {
+    box-shadow: var(--shadow-md);
+  }
+  .elev-lg {
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* — tags — */
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    padding: 3px 10px;
+    border-radius: calc(var(--radius-md) * 0.75);
+  }
+  .tag-accent {
+    background: var(--color-accent-800);
+    color: var(--color-accent-100);
+  }
+  .tag-accent-2 {
+    background: var(--color-accent-2-800);
+    color: var(--color-accent-2-100);
+  }
+  .tag-neutral {
+    background: var(--color-neutral-800);
+    color: var(--color-neutral-100);
+  }
+  .tag-outline {
+    border: 1px solid var(--color-accent);
+    color: var(--color-accent);
+  }
+
+  /* — navigation — */
+  .nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: none;
+  }
+  .nav-brand {
+    font-family: var(--font-heading);
+    font-weight: var(--font-heading-weight);
+    font-size: 18px;
+    margin-right: auto;
+  }
+  .nav a {
+    color: inherit;
+    text-decoration: none;
+    font-size: 14px;
+  }
+  .nav a:hover,
+  .nav a[aria-current='page'] {
+    color: var(--color-accent);
+  }
+
+  /* — tables — */
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  .table th {
+    text-align: left;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--color-text) 60%, transparent);
+    padding: var(--space-2);
+    border-bottom: 1px solid transparent;
+  }
+  .table td {
+    padding: var(--space-2);
+    border-bottom: 1px solid transparent;
+  }
+  /* Row rules as row-level strips so the end-fade spans the row, not each cell. */
+  .table thead tr {
+    background: linear-gradient(
+        to right,
+        transparent,
+        var(--color-divider) 48px,
+        var(--color-divider) calc(100% - 48px),
+        transparent
+      )
+      no-repeat bottom / 100% 1px;
+  }
+  .table tbody tr {
+    background: linear-gradient(
+        to right,
+        transparent,
+        color-mix(in srgb, var(--color-text) 8%, transparent) 48px,
+        color-mix(in srgb, var(--color-text) 8%, transparent) calc(100% - 48px),
+        transparent
+      )
+      no-repeat bottom / 100% 1px;
+  }
+  .table tbody tr:hover {
+    background:
+      linear-gradient(
+          color-mix(in srgb, var(--color-text) 4%, transparent),
+          color-mix(in srgb, var(--color-text) 4%, transparent)
+        )
+        no-repeat 0 0 / 100% 100%,
+      linear-gradient(
+          to right,
+          transparent,
+          color-mix(in srgb, var(--color-text) 8%, transparent) 48px,
+          color-mix(in srgb, var(--color-text) 8%, transparent) calc(100% - 48px),
+          transparent
+        )
+        no-repeat bottom / 100% 1px;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     Page motion — the canvas's blinking prompt caret and the accent glow.
+     Both stand down under prefers-reduced-motion.
+     ══════════════════════════════════════════════════════════════════════ */
+  @keyframes nocturne-blink {
+    0%,
+    49% {
+      opacity: 1;
+    }
+    50%,
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes nocturne-glow {
+    0%,
+    100% {
+      opacity: 0.5;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  .caret {
+    display: inline-block;
+    width: 8px;
+    height: 1em;
+    vertical-align: -0.15em;
+    background: var(--color-accent);
+    animation: nocturne-blink 1s step-end infinite;
+  }
+  .glow {
+    animation: nocturne-glow 1.6s ease-in-out infinite;
+  }
+  .glow-delayed {
+    animation: nocturne-glow 1.6s ease-in-out 0.4s infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .caret,
+    .glow,
+    .glow-delayed {
+      animation: none;
+    }
+    .caret {
+      opacity: 1;
+    }
+    .glow,
+    .glow-delayed {
+      opacity: 1;
+    }
+  }
+}

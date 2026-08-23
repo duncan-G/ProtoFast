@@ -1,14 +1,28 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Protofast</title>
-  <base href="/">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Protofast turns a plain-English description into a production web and mobile app — with auth, payments, and hosting — in under 30 minutes.">
-  <link rel="icon" type="image/x-icon" href="favicon.ico">
-</head>
-<body>
-  <app-root></app-root>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <title>Protofast</title>
+    <base href="/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Protofast turns a plain-English description into a production web and mobile app — with auth, payments, and hosting — in under 30 minutes."
+    />
+    <!-- SVG first for browsers that take it (it stays crisp on hi-dpi tabs);
+         the .ico carries the 16/32/48/64 raster cuts for everything else. -->
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico" sizes="16x16 32x32 48x48 64x64" />
+    <!-- Inter carries Nocturne's --font-heading and --font-body. Linked here rather
+       than @import-ed from the stylesheet, which would chain-block rendering. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    />
+  </head>
+  <body>
+    <app-root></app-root>
+  </body>
 </html>

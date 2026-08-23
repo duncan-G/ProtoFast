@@ -1,52 +1,107 @@
-/* ProtoFast Keycloak login theme — mirrors the marketing homepage palette
-   (dark slate canvas, amber→orange gradient accent). Kept in plain CSS so it
-   ships as a Keycloak theme resource without a build step. */
+/* ProtoFast Keycloak login theme — the Nocturne design system, so the auth
+   pages read as the same product as the marketing site.
 
+   Nocturne lives at clients/protofast/src/styles/nocturne.css (itself vendored
+   from the Claude Design project "Protofast landing redesign"). A Keycloak theme
+   cannot import the Angular app's stylesheet, so the token block below is a
+   verbatim copy of Nocturne's `:root`. When the design system is retuned there,
+   re-copy that block here — the component rules underneath all read from it and
+   should need no edits.
+
+   The `pf-*` class names are the contract with theme.properties and the .ftl
+   templates; they are unchanged, so inherited base pages (reset password, update
+   password, OTP, verify email, error/info) pick this up for free.
+
+   Plain CSS, no build step. Nocturne's house rules that matter most here:
+   outlined primary actions (never a filled accent), accent as line and glow
+   rather than flood, headings no heavier than 500, flush-left layout, and rules
+   that fade to transparent at their ends. */
+
+/* ── Nocturne tokens (verbatim from nocturne.css `:root`) ───────────────── */
 :root {
-  --pf-bg: #020617;          /* slate-950 */
-  --pf-card: #0f172a;        /* slate-900 */
-  --pf-card-2: #0b1220;      /* slightly darker inset */
-  --pf-border: #1e293b;      /* slate-800 */
-  --pf-border-strong: #334155; /* slate-700 */
-  --pf-text: #f1f5f9;        /* slate-100 */
-  --pf-text-muted: #94a3b8;  /* slate-400 */
-  --pf-text-dim: #64748b;    /* slate-500 */
-  --pf-amber: #fbbf24;       /* amber-400 */
-  --pf-amber-300: #fcd34d;
-  --pf-orange: #f97316;      /* orange-500 */
-  --pf-danger: #f87171;      /* red-400 */
-  --pf-success: #34d399;     /* emerald-400 */
-  --pf-radius-lg: 0.5rem;
-  --pf-radius-2xl: 1rem;
-  --pf-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+  --color-bg: #161826;
+  --color-surface: #232532;
+  --color-text: #e9e9ed;
+  --color-accent: #9184d9;
+  --color-divider: color-mix(in srgb, #e9e9ed 16%, transparent);
+
+  --color-neutral-100: #f3f5fe;
+  --color-neutral-200: #e4e7f5;
+  --color-neutral-300: #cfd3e5;
+  --color-neutral-400: #b2b6ca;
+  --color-neutral-500: #9397ab;
+  --color-neutral-600: #75798c;
+  --color-neutral-700: #595d6c;
+  --color-neutral-800: #3f424d;
+  --color-neutral-900: #292b31;
+
+  --color-accent-100: #f5f4ff;
+  --color-accent-200: #e7e5fe;
+  --color-accent-300: #d2cefd;
+  --color-accent-400: #b5abfc;
+  --color-accent-500: #968ae0;
+  --color-accent-600: #796cbf;
+  --color-accent-700: #5d5294;
+  --color-accent-800: #423a6a;
+  --color-accent-900: #2b2741;
+
+  --font-heading: "Inter", system-ui, sans-serif;
+  --font-heading-weight: 500;
+  --font-body: "Inter", system-ui, sans-serif;
+
+  --space-1: 2.8px;
+  --space-2: 5.6px;
+  --space-3: 8.4px;
+  --space-4: 11.2px;
+  --space-6: 16.8px;
+  --space-8: 22.4px;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+
+  --shadow-sm: 0 0 0 1px #3f424d;
+  --shadow-md: 0 0 0 1px #595d6c, 0 6px 18px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 0 0 1px #9397ab, 0 16px 40px rgba(0, 0, 0, 0.65);
+
+  /* Local extension: Nocturne is a mono system with no semantic status colours,
+     but Keycloak emits success/error/warning alerts and invalid-field states.
+     These are low-chroma so they sit inside the system's "keep chroma low
+     outside the accent" rule while still reading as status. */
+  --color-danger: #e08a92;
+  --color-success: #86c8a4;
 }
 
-* { box-sizing: border-box; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
 html.pf-html,
 body.pf-body {
   margin: 0;
   min-height: 100%;
-  background: var(--pf-bg);
-  color: var(--pf-text);
-  font-family: var(--pf-font);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  font-weight: 400;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* soft glow behind the card, echoing the hero */
+/* Accent as a bloom, not a flood — the same radial the landing page's closing
+   CTA uses, sized to sit behind the card. */
 .pf-glow {
   position: fixed;
-  top: -12rem;
-  left: 50%;
-  width: 60rem;
-  height: 32rem;
-  max-width: 100vw;
-  transform: translateX(-50%);
-  border-radius: 9999px;
-  background: rgba(249, 115, 22, 0.10); /* orange-500/10 */
-  filter: blur(96px);
+  inset: 0;
+  background: radial-gradient(
+    62rem 36rem at 50% -6rem,
+    color-mix(in srgb, var(--color-accent) 16%, transparent),
+    transparent 70%
+  );
   pointer-events: none;
   z-index: 0;
 }
@@ -57,72 +112,91 @@ body.pf-body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1.5rem;
+  gap: var(--space-8);
   min-height: 100vh;
   padding: 3rem 1.5rem;
 }
 
-/* Brand lockup — Zap mark + wordmark, same as the homepage nav */
+/* ── Brand ─────────────────────────────────────────────────────────────── */
+/* Mark plus wordmark, matching the site header. The mark is sized in `em` so
+   the lockup keeps its proportions if the brand font-size is retuned. */
 .pf-brand {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.5em;
   text-decoration: none;
-  color: var(--pf-text);
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 17px;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
 }
+/* Square, matching the site header's 1.5em swarm mark. */
 .pf-brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 2.25rem;
-  width: 2.25rem;
-  border-radius: 0.5rem;
-  color: var(--pf-bg);
-  background: linear-gradient(135deg, var(--pf-amber-300), var(--pf-orange));
+  display: block;
+  width: 1.5em;
+  height: 1.5em;
+  flex: none;
 }
-.pf-brand-name {
-  font-size: 1.125rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+/* Only the wordmark takes the hover colour — the mark already sits on the
+   accent ramp via the Nocturne tokens. */
+.pf-brand:hover span {
+  color: var(--color-accent);
 }
 
-/* Card */
+/* ── Card ──────────────────────────────────────────────────────────────── */
 .pf-card {
-  width: 100%;
-  max-width: 26rem;
-  padding: 2rem;
-  background: var(--pf-card);
-  border: 1px solid var(--pf-border);
-  border-radius: var(--pf-radius-2xl);
-  box-shadow: 0 25px 50px -12px rgba(249, 115, 22, 0.06);
+  width: min(27.5rem, 100%);
+  padding: var(--space-8) calc(var(--space-8) * 1.2);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
 }
 
-.pf-card-header { margin-bottom: 1.5rem; text-align: center; }
+/* Flush-left, per the system's direction — not centred. */
+.pf-card-header {
+  margin-bottom: var(--space-8);
+  text-align: left;
+}
 
 .pf-title {
   margin: 0;
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--pf-text);
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 1.625rem;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
 }
 .pf-subtitle {
-  margin: 0.5rem 0 0;
-  font-size: 0.875rem;
-  color: var(--pf-text-muted);
+  margin: var(--space-3) 0 0;
+  font-size: 14px;
+  color: var(--color-neutral-400);
 }
 
-/* Forms */
-.pf-form { display: flex; flex-direction: column; gap: 1.1rem; }
-
-.pf-group { display: flex; flex-direction: column; gap: 0.4rem; }
-
-.pf-label {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--pf-text-muted);
+/* ── Forms ─────────────────────────────────────────────────────────────── */
+.pf-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
 }
 
+.pf-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pf-label,
+label {
+  display: block;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+
+/* Nocturne's `.input`, with one deviation: min-height goes from the system's
+   36px to 40px. This is a touch-first surface and 36px is an uncomfortably
+   small target; everything else (padding, radius, colours) is the system's. */
 .pf-input,
 input[type="text"],
 input[type="email"],
@@ -132,31 +206,56 @@ input[type="number"],
 select,
 textarea {
   width: 100%;
-  padding: 0.625rem 0.75rem;
-  font-size: 0.9375rem;
-  color: var(--pf-text);
-  background: var(--pf-card-2);
-  border: 1px solid var(--pf-border-strong);
-  border-radius: var(--pf-radius-lg);
+  min-height: 40px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--color-text);
+  caret-color: var(--color-accent);
+  background: var(--color-bg);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.pf-input::placeholder { color: var(--pf-text-dim); }
-.pf-input:focus,
-input:focus,
-select:focus,
-textarea:focus {
-  border-color: var(--pf-amber);
-  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.15);
+.pf-input::placeholder {
+  color: var(--color-neutral-600);
+}
+.pf-input:hover,
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: color-mix(in srgb, var(--color-text) 45%, transparent);
+}
+.pf-input:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  border-color: var(--color-accent);
+  outline-offset: 0;
 }
 .pf-input[aria-invalid="true"] {
-  border-color: var(--pf-danger);
-  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.12);
+  border-color: var(--color-danger);
 }
 
 .pf-field-error {
-  font-size: 0.8125rem;
-  color: var(--pf-danger);
+  font-size: 12px;
+  color: var(--color-danger);
+}
+.pf-helper {
+  font-size: 12px;
+  color: var(--color-neutral-500);
+}
+
+/* Themed interaction states, never the browser defaults. */
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 30%, transparent);
 }
 
 /* Options row (remember me / forgot password) */
@@ -164,94 +263,161 @@ textarea:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: var(--space-6);
   flex-wrap: wrap;
-  margin-top: -0.25rem;
+  margin-top: calc(var(--space-2) * -1);
 }
 .pf-checkbox-label {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8125rem;
-  color: var(--pf-text-muted);
+  gap: var(--space-3);
+  font-size: 13px;
+  color: var(--color-neutral-400);
   cursor: pointer;
 }
-.pf-checkbox { accent-color: var(--pf-amber); width: 1rem; height: 1rem; }
-
-.pf-link {
-  color: var(--pf-amber);
-  font-size: 0.8125rem;
-  font-weight: 500;
-  text-decoration: none;
+/* Styled rather than left native: an unstyled checkbox paints a white box on
+   this dark ground, which `accent-color` only fixes once it is checked. */
+.pf-checkbox,
+#kc-form-options input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 0;
+  background: transparent;
+  border: 1.5px solid var(--color-divider);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
 }
-.pf-link:hover { color: var(--pf-amber-300); text-decoration: underline; }
+.pf-checkbox:hover,
+#kc-form-options input[type="checkbox"]:hover {
+  border-color: var(--color-accent);
+}
+.pf-checkbox:checked,
+#kc-form-options input[type="checkbox"]:checked {
+  background-color: var(--color-accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23161826' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 12 5 5L20 6'/%3E%3C/svg%3E");
+  background-size: 12px;
+  background-position: center;
+  background-repeat: no-repeat;
+  border-color: var(--color-accent);
+}
 
-/* Buttons */
+.pf-link,
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+.pf-link {
+  font-size: 13px;
+}
+.pf-link:hover,
+a:hover {
+  text-decoration: underline;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+/* Nocturne outlines its primary action — an accent border on transparent, never
+   a filled accent. Do not "fix" this into a solid button. */
 .pf-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  padding: 0.65rem 1rem;
-  font-family: inherit;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  border-radius: var(--pf-radius-lg);
-  border: 1px solid transparent;
+  gap: 6px;
   cursor: pointer;
   text-decoration: none;
-  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 14px;
+  line-height: 1.2;
+  color: var(--color-text);
+  background: transparent;
+  border: 1px solid transparent;
+  padding: var(--space-2) calc(var(--space-3) * 1.2);
+  border-radius: var(--radius-md);
 }
-.pf-btn--block { width: 100%; }
-.pf-btn--large { padding: 0.75rem 1rem; font-size: 1rem; }
+.pf-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.pf-btn--block {
+  width: 100%;
+}
+/* Matches the landing page's closing CTA metrics. */
+.pf-btn--large {
+  padding: 12px 22px;
+  font-size: 15px;
+}
 
 .pf-btn--primary {
-  color: var(--pf-bg);
-  background: linear-gradient(90deg, var(--pf-amber), var(--pf-orange));
+  color: var(--color-accent);
+  border-color: var(--color-accent);
 }
 .pf-btn--primary:hover {
-  background: linear-gradient(90deg, var(--pf-amber-300), #fb923c);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
-.pf-btn--primary:disabled { opacity: 0.6; cursor: default; }
+.pf-btn--primary:active {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
 
 .pf-btn--default {
-  color: var(--pf-text);
-  background: #1e293b;
-  border-color: var(--pf-border-strong);
+  color: var(--color-text);
+  border-color: var(--color-divider);
 }
-.pf-btn--default:hover { background: #24324a; }
+.pf-btn--default:hover {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+.pf-btn--default:active {
+  background: color-mix(in srgb, var(--color-text) 14%, transparent);
+}
 
-/* Info / footer area under the form */
+/* ── Info / footer area under the form ─────────────────────────────────── */
+/* Nocturne rules fade to transparent at both ends rather than stopping
+   cleanly — painted as a background strip so the fade spans the whole width. */
 .pf-info,
 .pf-content #kc-info,
 #kc-info-wrapper {
-  margin-top: 1.5rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--pf-border);
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
   text-align: center;
-  font-size: 0.875rem;
-  color: var(--pf-text-muted);
+  font-size: 14px;
+  color: var(--color-neutral-400);
+  background: linear-gradient(
+      to right,
+      transparent,
+      var(--color-divider) 48px,
+      var(--color-divider) calc(100% - 48px),
+      transparent
+    )
+    no-repeat top / 100% 1px;
 }
 .pf-info .pf-link,
-#kc-info-wrapper a { font-size: inherit; }
+#kc-info-wrapper a {
+  font-size: inherit;
+}
 
-/* Social providers */
-.pf-social-wrap { margin-top: 1.25rem; }
+/* ── Social providers ──────────────────────────────────────────────────── */
+.pf-social-wrap {
+  margin-top: var(--space-8);
+}
 .pf-social {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-3);
 }
 .pf-divider {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  margin: 0 0 1rem;
-  color: var(--pf-text-dim);
-  font-size: 0.75rem;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+  color: var(--color-neutral-600);
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -260,19 +426,24 @@ textarea:focus {
   content: "";
   flex: 1;
   height: 1px;
-  background: var(--pf-border);
+}
+.pf-divider::before {
+  background: linear-gradient(to right, transparent, var(--color-divider));
+}
+.pf-divider::after {
+  background: linear-gradient(to left, transparent, var(--color-divider));
 }
 
-/* Alerts */
+/* ── Alerts ────────────────────────────────────────────────────────────── */
 .pf-alert {
   display: flex;
   align-items: flex-start;
-  gap: 0.625rem;
-  margin-bottom: 1.25rem;
-  padding: 0.75rem 0.875rem;
-  border-radius: var(--pf-radius-lg);
-  border: 1px solid var(--pf-border);
-  font-size: 0.875rem;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-divider);
+  font-size: 14px;
   line-height: 1.4;
 }
 .pf-alert-icon {
@@ -282,39 +453,189 @@ textarea:focus {
   height: 1.25rem;
   width: 1.25rem;
   border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: var(--font-heading-weight);
   flex-shrink: 0;
 }
 .pf-alert--error {
-  border-color: rgba(248, 113, 113, 0.35);
-  background: rgba(248, 113, 113, 0.08);
-  color: #fecaca;
+  border-color: color-mix(in srgb, var(--color-danger) 35%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 8%, transparent);
+  color: var(--color-danger);
 }
-.pf-alert--error .pf-alert-icon { background: var(--pf-danger); color: var(--pf-bg); }
+.pf-alert--error .pf-alert-icon {
+  background: var(--color-danger);
+  color: var(--color-bg);
+}
 .pf-alert--success {
-  border-color: rgba(52, 211, 153, 0.35);
-  background: rgba(52, 211, 153, 0.08);
-  color: #bbf7d0;
+  border-color: color-mix(in srgb, var(--color-success) 35%, transparent);
+  background: color-mix(in srgb, var(--color-success) 8%, transparent);
+  color: var(--color-success);
 }
-.pf-alert--success .pf-alert-icon { background: var(--pf-success); color: var(--pf-bg); }
+.pf-alert--success .pf-alert-icon {
+  background: var(--color-success);
+  color: var(--color-bg);
+}
 .pf-alert--warning,
 .pf-alert--info {
-  border-color: rgba(251, 191, 36, 0.35);
-  background: rgba(251, 191, 36, 0.08);
-  color: #fde68a;
+  border-color: var(--color-accent-700);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  color: var(--color-accent-300);
 }
 .pf-alert--warning .pf-alert-icon,
-.pf-alert--info .pf-alert-icon { background: var(--pf-amber); color: var(--pf-bg); }
+.pf-alert--info .pf-alert-icon {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
 
 .pf-footnote {
   margin: 0;
-  font-size: 0.75rem;
-  color: var(--pf-text-dim);
+  font-size: 12.5px;
+  color: var(--color-neutral-600);
 }
 
-/* Fallbacks for inherited base pages that emit their own structural ids */
-#kc-content-wrapper > *:not(:first-child) { margin-top: 1.1rem; }
-#kc-form-options { margin-top: 0.25rem; }
-label { color: var(--pf-text-muted); }
-a { color: var(--pf-amber); }
+/* ══════════════════════════════════════════════════════════════════════════
+   Inherited base pages
+   ─────────────────────────────────────────────────────────────────────────
+   This realm's browser flow is `passkey-or-password`, so the pages a user
+   actually signs in through are Keycloak's own login-username.ftl and
+   login-password.ftl — not this theme's login.ftl. Same for reset password,
+   update password, OTP and verify email. They inherit our template.ftl and the
+   theme.properties class map, but they emit base's structural markup, so the
+   rules below cover what the mapped classes miss. Styling these rather than
+   overriding the templates keeps us off Keycloak's upgrade treadmill.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Base pages put bare text in the header block instead of an <h1 class="pf-title">,
+   so the header itself carries the title typography. Our own templates nest a
+   .pf-title inside and simply restate it. */
+.pf-card-header {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 1.625rem;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+}
+
+/* Base's <form> carries no class, so .pf-form's rhythm never reaches it. */
+#kc-form-login,
+#kc-register-form,
+#kc-reset-password-form,
+#kc-passwd-update-form,
+#kc-otp-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+#kc-content-wrapper > *:not(:first-child) {
+  margin-top: var(--space-6);
+}
+#kc-form-options {
+  font-size: 13px;
+}
+#kc-form-options a {
+  font-size: 13px;
+}
+/* Base wraps "remember me" in <div class="checkbox"><label><input> … */
+#kc-form-options .checkbox label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 13px;
+  color: var(--color-neutral-400);
+  cursor: pointer;
+}
+.pf-options-wrap {
+  display: flex;
+  justify-content: flex-end;
+}
+.no-bottom-margin {
+  margin-bottom: 0;
+}
+
+/* Base separates sections with a bare <hr>; give it the fading rule. */
+hr {
+  height: 1px;
+  border: 0;
+  margin: var(--space-6) 0;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--color-divider) 48px,
+    var(--color-divider) calc(100% - 48px),
+    transparent
+  );
+}
+
+/* Password field + visibility toggle (base login-password.ftl). */
+.pf-input-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.pf-input-group .pf-input {
+  padding-right: 2.5rem;
+}
+.pf-reveal {
+  position: absolute;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-neutral-500);
+  cursor: pointer;
+}
+.pf-reveal:hover {
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+/* The icons are CSS masks painted in currentColor, so no icon font ships with
+   the theme. passwordVisibility.js swaps the class; the mask follows. */
+.pf-eye,
+.pf-eye-off {
+  display: block;
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+.pf-eye {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.04 12.32a1 1 0 0 1 0-.64C3.42 7.51 7.36 4.5 12 4.5s8.57 3.01 9.96 7.18a1 1 0 0 1 0 .64C20.58 16.49 16.64 19.5 12 19.5s-8.57-3.01-9.96-7.18Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.04 12.32a1 1 0 0 1 0-.64C3.42 7.51 7.36 4.5 12 4.5s8.57 3.01 9.96 7.18a1 1 0 0 1 0 .64C20.58 16.49 16.64 19.5 12 19.5s-8.57-3.01-9.96-7.18Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");
+}
+.pf-eye-off {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.98 8.22A10.48 10.48 0 0 0 1.93 12c1.3 4.34 5.31 7.5 10.07 7.5 1 0 1.95-.14 2.86-.4'/%3E%3Cpath d='M6.23 6.23A10.45 10.45 0 0 1 12 4.5c4.76 0 8.77 3.16 10.07 7.5a10.52 10.52 0 0 1-4.3 5.77'/%3E%3Cpath d='m3 3 18 18'/%3E%3Cpath d='M9.88 9.88a3 3 0 0 0 4.24 4.24'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.98 8.22A10.48 10.48 0 0 0 1.93 12c1.3 4.34 5.31 7.5 10.07 7.5 1 0 1.95-.14 2.86-.4'/%3E%3Cpath d='M6.23 6.23A10.45 10.45 0 0 1 12 4.5c4.76 0 8.77 3.16 10.07 7.5a10.52 10.52 0 0 1-4.3 5.77'/%3E%3Cpath d='m3 3 18 18'/%3E%3Cpath d='M9.88 9.88a3 3 0 0 0 4.24 4.24'/%3E%3C/svg%3E");
+}
+
+/* Social providers on base pages (#kc-social-providers instead of .pf-social-wrap) */
+#kc-social-providers h4 {
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+#kc-social-providers ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+#kc-registration,
+#kc-registration-container {
+  color: var(--color-neutral-400);
+}

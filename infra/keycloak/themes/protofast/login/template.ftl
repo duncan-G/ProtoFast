@@ -1,3 +1,25 @@
+<#--
+  The Protofast lockup: the swarm mark (five parallel strokes resolving into
+  one solid dot) plus the wordmark — the same lockup the app renders in
+  clients/protofast/src/app/shared/protofast-logo.ts. Path data is copied from
+  there verbatim; if one changes, change both.
+
+  Inline SVG rather than an <img> so the wordmark can sit on the same baseline
+  and take the hover colour. Strokes and the dot read from the Nocturne tokens
+  so the mark stays on-palette with the rest of the page.
+-->
+<#macro pfBrandLockup>
+  <svg class="pf-brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <g stroke-width="2.8" stroke-linecap="round">
+      <path d="M5 6 H13" stroke="var(--color-accent-800)"/>
+      <path d="M5 11 H16" stroke="var(--color-accent-700)"/>
+      <path d="M5 16 H19" stroke="var(--color-accent-600)"/>
+      <path d="M5 21 H16" stroke="var(--color-accent-700)"/>
+      <path d="M5 26 H13" stroke="var(--color-accent-800)"/>
+    </g>
+    <circle cx="25" cy="16" r="4" fill="var(--color-accent)"/>
+  </svg><span>Protofast</span></#macro>
+
 <#macro registrationLayout displayInfo=false displayMessage=true displayRequiredFields=false showAnotherWayIfPresent=true>
 <!DOCTYPE html>
 <html class="${properties.kcHtmlClass!}"<#if realm.internationalizationEnabled> lang="${locale.currentLanguageTag}"</#if>>
@@ -7,6 +29,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <title>${msg("loginTitle",(realm.displayName!''))}</title>
+  <#-- Inter is Nocturne's --font-heading and --font-body; the app loads it the
+       same way. Self-host under resources/fonts/ if the third-party request on
+       the auth page ever becomes a concern. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <#-- Same mark the app ships at clients/protofast/public/favicon.svg, so the tab
+       icon does not change when the browser hands off to the auth host. -->
+  <link rel="icon" type="image/svg+xml" href="${url.resourcesPath}/img/favicon.svg">
   <#if properties.styles?has_content>
     <#list properties.styles?split(' ') as style>
       <link href="${url.resourcesPath}/${style}" rel="stylesheet">
@@ -22,14 +53,7 @@
          NOT "/" — on the Keycloak host "/" is the admin welcome page. If the base
          URL is unavailable, render a non-linked mark so we never bounce to Keycloak. -->
     <#assign brandUrl = (client.baseUrl)!"">
-    <#if brandUrl?has_content><a href="${brandUrl}" class="pf-brand"><#else><span class="pf-brand"></#if>
-      <span class="pf-brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
-          <path fill-rule="evenodd" d="M14.615 1.595a.75.75 0 0 1 .359.852L12.982 9.75h7.268a.75.75 0 0 1 .548 1.262l-10.5 11.25a.75.75 0 0 1-1.272-.71l1.992-7.302H3.75a.75.75 0 0 1-.548-1.262l10.5-11.25a.75.75 0 0 1 .913-.143Z" clip-rule="evenodd" />
-        </svg>
-      </span>
-      <span class="pf-brand-name">Protofast</span>
-    <#if brandUrl?has_content></a><#else></span></#if>
+    <#if brandUrl?has_content><a href="${brandUrl}" class="pf-brand"><@pfBrandLockup/></a><#else><span class="pf-brand"><@pfBrandLockup/></span></#if>
 
     <section class="${properties.kcFormCardClass!}">
       <header class="pf-card-header">
