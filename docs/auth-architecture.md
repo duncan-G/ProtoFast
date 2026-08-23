@@ -232,7 +232,7 @@ highest-risk item.
    rewrite it.
 2. **Forwarded proto** — TLS terminates at Cloudflare, so Envoy/Keycloak/auth-svc
   must trust `X-Forwarded-Proto: https` to build `https://` redirect URIs.
-   Keycloak: `KC_PROXY_HEADERS=xforwarded`, `KC_HOSTNAME=auth.protofast.dev`.
+   Keycloak: `KC_PROXY_HEADERS=xforwarded`, `KC_HOSTNAME=https://auth.protofast.dev` (full URL — a bare hostname makes Keycloak resolve the issuer per request, so the back-channel refresh_token grant sees a different issuer than the browser login stamped into the token).
 3. **SSR cache poisoning** — see cache table; emit `private, no-store` on
   personalized responses.
 4. **WAF vs OIDC** — exclude `/signin-oidc` and the back-channel from bot/CAPTCHA

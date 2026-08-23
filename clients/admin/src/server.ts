@@ -12,10 +12,20 @@ import { join } from 'node:path';
 const browserDistFolder = join(import.meta.dirname, '../browser');
 
 const app = express();
+// Browser-facing hostnames this app answers for, injected by the deployment
+// (`NG_ALLOWED_HOSTS`) because they are not known at build time. Angular's SSRF guard rejects
+// any request whose `Host`/`X-Forwarded-Host` is not listed — with the empty build-time list in
+// angular.json and nothing supplied here, that is *every* request (HTTP 400).
+const allowedHosts = (process.env['NG_ALLOWED_HOSTS'] ?? '')
+  .split(',')
+  .map((host) => host.trim())
+  .filter((host) => host.length > 0);
+
 // Requests reach this process through Envoy, the trusted edge that sets
 // `x-forwarded-*` (and `x-client`). Trust those proxy headers so SSR builds
 // the request URL from the original host rather than the internal one.
 const angularApp = new AngularNodeAppEngine({
+  allowedHosts,
   trustProxyHeaders: [
     'x-forwarded-host',
     'x-forwarded-proto',

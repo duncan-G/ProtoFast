@@ -1,4 +1,10 @@
-import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import {
+  Component,
+  afterNextRender,
+  inject,
+  signal,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { createClient } from '@connectrpc/connect';
 import { Greeter } from '../../../lib/gen/greet_pb';
@@ -20,6 +26,20 @@ export class Home {
   protected readonly reply = signal('');
   protected readonly error = signal('');
   protected readonly loading = signal(false);
+
+  /**
+   * False until the browser has hydrated this component. SSR paints a form that *looks*
+   * interactive well before the bundle lands, and a submit in that window is a plain browser
+   * form submission: `preventDefault()` below cannot stop it, because event replay dispatches
+   * `greet` only after the browser has already navigated. Gating the submit button keeps that
+   * window inert — a disabled default button also suppresses Enter-key implicit submission —
+   * instead of silently reloading the page.
+   */
+  protected readonly hydrated = signal(false);
+
+  constructor() {
+    afterNextRender(() => this.hydrated.set(true));
+  }
 
   async greet(event: Event) {
     event.preventDefault();

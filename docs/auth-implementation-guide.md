@@ -59,7 +59,7 @@ Know your starting point before writing code:
 - **`services/auth/src/ProtoFast.Auth.Api`** — a gRPC skeleton (only `GreeterService`), .NET 10, `AddServiceDefaults()`, container repo `protofast-auth`. This becomes auth-svc.
 - **AppHost** ([`apphost/Program.cs`](../apphost/Program.cs)) already wires: `postgres` with an **`auth`** database (`auth-db`), **`redis`**, **`keycloak`** on `8080`, and the `auth`/`payments`/`api` projects behind Envoy.
 - **Envoy** ([`proxy/envoy.rds.yaml.tmpl`](../proxy/envoy.rds.yaml.tmpl)) routes `/auth/` → `auth` cluster (HTTP/2/gRPC), and `/` → web cluster. **No ext_authz filter yet.** Filters present: cors, grpc_web, router.
-- **Keycloak prod** ([`deploy/docker-compose.host-b.yml`](../deploy/docker-compose.host-b.yml)) runs `kc.sh start --import-realm`, `KC_PROXY_HEADERS=xforwarded`, `KC_HOSTNAME=${KEYCLOAK_DOMAIN}`, imports from `deploy/keycloak/realms`. Connection string already points services at `http://keycloak:8080/realms/protofast`.
+- **Keycloak prod** ([`deploy/docker-compose.host-b.yml`](../deploy/docker-compose.host-b.yml)) runs `kc.sh start --import-realm`, `KC_PROXY_HEADERS=xforwarded`, `KC_HOSTNAME=https://${KEYCLOAK_DOMAIN}` (full URL, so the realm issuer is identical on the browser and back-channel paths), imports from `deploy/keycloak/realms`. Connection string already points services at `http://keycloak:8080/realms/protofast`.
 - **Postgres** seeds a durable `auth` DB + `auth` role ([`deploy/postgres/initdb/01-auth.sh`](../deploy/postgres/initdb/01-auth.sh)).
 - **`infra/keycloak/realms/`** — empty. The canonical realm export goes here (dev import), copied to `deploy/keycloak/realms/` for prod (see that dir's [README](../deploy/keycloak/realms/README.md)).
 - **Shared libs** — `services/shared/Database*` (EF Core repository/UoW), `ServiceDefaults`, `Exceptions`.
@@ -163,7 +163,7 @@ passkeys is GA, rather than shipping a preview flag — see §11 note.)
 ### 2.6 Proxy / hostname settings
 
 Already set in the prod compose, just confirm:
-`KC_PROXY_HEADERS=xforwarded`, `KC_HOSTNAME=auth.protofast.dev`,
+`KC_PROXY_HEADERS=xforwarded`, `KC_HOSTNAME=https://auth.protofast.dev`,
 `KC_HTTP_ENABLED=true`. These let Keycloak build `https://` redirect URIs behind
 Cloudflare+Envoy. For **dev**, the Aspire `AddKeycloak` resource needs the realm
 import wired (see §5).
