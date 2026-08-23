@@ -196,14 +196,8 @@ PY
 # but don't abort — an existing host with no realm config can still start Keycloak
 # (it just won't reimport the realm). The deploy job now passes ASSETS_BUCKET via
 # env, so new runs will have it.
-# KEYCLOAK_CONFIG_CHANGED is set to 1 when the sync below actually moved a file.
-# Keycloak caches themes in production mode (`kc.sh start`), so new theme files on
-# disk stay invisible to a running container — the config-only deploy path uses
-# this to decide whether a restart is owed. 0 means "nothing moved, nothing to do".
-KEYCLOAK_CONFIG_CHANGED=0
-
 sync_keycloak_config() {
-  local bucket region out
+  local bucket region
   bucket="$(get_env "$ENV_FILE" ASSETS_BUCKET)"; bucket="${bucket:-${ASSETS_BUCKET:-}}"
   region="$(get_env "$ENV_FILE" AWS_REGION)"; region="${region:-${AWS_REGION:-}}"
   if [ -z "$bucket" ]; then
@@ -212,20 +206,122 @@ sync_keycloak_config() {
   fi
   log "syncing keycloak config from s3://${bucket}/deploy/keycloak/"
   mkdir -p "${APP_DIR}/keycloak/realms" "${APP_DIR}/keycloak/themes"
-  # Capture rather than stream: `aws s3 sync` prints one line per transferred
-  # object and nothing at all when everything is already current, which is the
-  # signal KEYCLOAK_CONFIG_CHANGED needs. Still echoed so the SSM log is unchanged.
   # shellcheck disable=SC2086  # ${region:+...} is intentionally word-split
-  if out="$(aws s3 sync "s3://${bucket}/deploy/keycloak/" "${APP_DIR}/keycloak/" \
-            ${region:+--region "$region"} 2>&1)"; then
-    if [ -n "$out" ]; then
-      printf '%s\n' "$out"
-      KEYCLOAK_CONFIG_CHANGED=1
-    fi
-  else
-    printf '%s\n' "$out"
+  aws s3 sync "s3://${bucket}/deploy/keycloak/" "${APP_DIR}/keycloak/" \
+    ${region:+--region "$region"} 2>&1 ||
     log "WARNING: failed to sync keycloak config; realm import may fail"
+}
+
+# --- "is the running Keycloak actually serving what's on disk?" -------------
+# Keycloak caches themes in production mode (`kc.sh start`) and `--import-realm`
+# only runs at container start, so files sync_keycloak_config writes are invisible
+# to a running container until it is restarted. The config-only deploy path needs
+# to know whether a restart is owed.
+#
+# It used to infer that from `aws s3 sync` printing transfer lines — which is
+# WRONG, because sync_keycloak_config runs on EVERY Host B apply, not just the
+# keycloak one. A push to main fans out to deploy-redis/-postgres/-keycloak
+# concurrently; whichever lands first downloads the new realm+themes and consumes
+# the signal, so the keycloak job's own sync is a no-op and it restarts nothing.
+# That is exactly how the protofast realm ended up never imported: the realm JSON
+# reached /opt/protofast/keycloak/realms and Keycloak was never restarted to read it.
+#
+# So compare CONTENT against what the running container was last started with,
+# recorded in a state file this host owns. The signal then belongs to the keycloak
+# apply and no sibling deploy can steal it. A host with no state file (first apply
+# after this change) reads as changed and takes one restart — which is the point.
+KC_CONFIG_STATE="${APP_DIR}/.keycloak-config-applied"
+
+kc_config_fingerprint() {
+  find "${APP_DIR}/keycloak" -type f -print0 2>/dev/null | sort -z |
+    xargs -0 -r md5sum 2>/dev/null | md5sum | cut -d' ' -f1
+}
+
+keycloak_config_changed() {
+  [ "$(kc_config_fingerprint)" != "$(cat "$KC_CONFIG_STATE" 2>/dev/null)" ]
+}
+
+# Called only after the container has been (re)started AND passed its health check,
+# so the recorded fingerprint always describes a Keycloak that really did read it.
+record_keycloak_config_applied() {
+  kc_config_fingerprint > "$KC_CONFIG_STATE"
+}
+
+# --- keycloak realm import (the realm does not exist AT ALL) ---------------
+# reconcile_keycloak_realm below patches a realm that already exists; nothing in
+# the deploy path used to CREATE one. `--import-realm` runs only at container
+# start, so a Keycloak that came up before the realm JSON reached the box stays
+# realm-less forever: /realms/protofast/... answers {"error":"Realm does not
+# exist"} and every sign-in is a 404. Recreating the container is all it takes —
+# the import is idempotent (an existing realm is skipped wholesale).
+#
+# Force-recreate rather than `compose restart`: a restart reuses the container's
+# ORIGINAL mounts, so a container created before the ./keycloak/realms bind mount
+# existed would restart without an import directory at all and the realm would
+# still be missing. `up -d --force-recreate` guarantees the container matches the
+# current compose file. Keycloak's state is in Postgres, so this costs a restart.
+
+# Realm name declared by the realm JSON on disk (empty if there is none).
+kc_realm_name() {
+  local realm_file
+  realm_file="$(ls -1 "${APP_DIR}"/keycloak/realms/*.json 2>/dev/null | head -n1 || true)"
+  [ -n "$realm_file" ] || return 0
+  python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("realm",""))' \
+    "$realm_file" 2>/dev/null || true
+}
+
+# HTTP status of a realm's OIDC discovery document, from inside the compose
+# network. 404 = the realm is absent. Anything else (200, or a 403 from a strict
+# sslRequired) means it exists. Empty when the probe itself could not run, which
+# must NOT be read as "missing" — recreating on a transport blip would restart
+# Keycloak on every apply.
+keycloak_realm_status() {
+  docker run --rm --network "$NETWORK" curlimages/curl:latest \
+    -s -o /dev/null -w '%{http_code}' --max-time 5 \
+    "http://keycloak:8080/realms/$1/.well-known/openid-configuration" 2>/dev/null || true
+}
+
+ensure_realm_imported() {
+  local realm status deadline
+  realm="$(kc_realm_name)"
+  if [ -z "$realm" ]; then
+    log "WARNING: no realm JSON under ${APP_DIR}/keycloak/realms; skipping realm import check"
+    return 0
   fi
+  status="$(keycloak_realm_status "$realm")"
+  case "$status" in
+    404) : ;;                       # missing — import it below
+    "" | 000)
+      log "WARNING: could not probe realm '${realm}' (keycloak unreachable); skipping realm import check"
+      return 0 ;;
+    *) return 0 ;;                  # already there
+  esac
+
+  log "realm '${realm}' does not exist in keycloak; recreating keycloak so --import-realm runs"
+  if ! compose up -d --no-deps --force-recreate keycloak; then
+    log "ERROR: could not recreate keycloak; realm '${realm}' NOT imported"
+    return 1
+  fi
+
+  deadline=$(( $(date +%s) + HEALTH_DEADLINE_SECS ))
+  while ! keycloak_ok >/dev/null 2>&1; do
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      log "WARNING: keycloak not ready within ${HEALTH_DEADLINE_SECS}s after the import restart"
+      return 1
+    fi
+    sleep 5
+  done
+
+  status="$(keycloak_realm_status "$realm")"
+  if [ "$status" = 404 ]; then
+    # The import ran and refused the file. Keycloak logs the reason and keeps
+    # serving, so nothing else surfaces it — say so loudly and fail the run.
+    log "ERROR: realm '${realm}' STILL missing after the import restart. Sign-in stays broken."
+    log "Check the container log for KC-SERVICES0005 (\`docker logs \$(docker ps -qf name=keycloak)\`)."
+    return 1
+  fi
+  log "realm '${realm}' imported from $(ls -1 "${APP_DIR}"/keycloak/realms/*.json | head -n1 | xargs basename)"
+  record_keycloak_config_applied
 }
 
 # --- keycloak realm reconcile (drift on an ALREADY-EXISTING realm) ---------
@@ -289,7 +385,7 @@ reconcile_keycloak_realm() {
     return 0
   fi
 
-  local realm_file realm secret cid rc=0
+  local realm_file realm secret cid out rc=0
   realm_file="$(ls -1 "${APP_DIR}"/keycloak/realms/*.json 2>/dev/null | head -n1 || true)"
   if [ -z "$realm_file" ]; then
     log "WARNING: no realm JSON under ${APP_DIR}/keycloak/realms; skipping realm reconcile"
@@ -306,25 +402,31 @@ reconcile_keycloak_realm() {
 
   # tr -d strips the base64 padding/alphabet chars that would need quoting downstream.
   secret="$(head -c 24 /dev/urandom | base64 | tr -d '\n=+/')"
-  if ! compose exec -T \
+  # Capture rather than discard: this step failing is the ONLY thing standing
+  # between a realm-JSON edit and the live realm, and a bare WARNING with no
+  # output leaves nothing to debug from. The command prints no secrets — the
+  # client secret travels by env, never argv.
+  if ! out="$(compose exec -T \
         -e KC_RECONCILE_CID="$KC_RECONCILE_CLIENT_ID" \
         -e KC_RECONCILE_SEC="$secret" \
         keycloak bash -c '
           export KC_DB_PASSWORD="$(cat /run/secrets/kc-db-password 2>/dev/null || true)"
           exec /opt/keycloak/bin/kc.sh bootstrap-admin service \
             --client-id:env KC_RECONCILE_CID \
-            --client-secret:env KC_RECONCILE_SEC --no-prompt' >/dev/null 2>&1; then
+            --client-secret:env KC_RECONCILE_SEC --no-prompt' 2>&1)"; then
+    printf '%s\n' "$out" | tail -n 20
     log "WARNING: could not create the temporary admin service account; realm config NOT reconciled."
     log "If a previous run left '${KC_RECONCILE_CLIENT_ID}' behind, delete it from the master realm and re-run."
     return 0
   fi
 
   # Past this point the client EXISTS, so every path has to reach the cleanup below.
-  if ! compose exec -T -e KC_RECONCILE_SEC="$secret" keycloak bash -c '
+  if ! out="$(compose exec -T -e KC_RECONCILE_SEC="$secret" keycloak bash -c '
         /opt/keycloak/bin/kcadm.sh config credentials \
           --server http://localhost:8080 --realm master \
           --client "'"$KC_RECONCILE_CLIENT_ID"'" --secret "$KC_RECONCILE_SEC" \
-          --config "'"$KC_KCADM_CONFIG"'"' >/dev/null 2>&1; then
+          --config "'"$KC_KCADM_CONFIG"'"' 2>&1)"; then
+    printf '%s\n' "$out" | tail -n 20
     log "WARNING: temporary admin could not authenticate; realm config NOT reconciled"
     rc=1
   fi
@@ -882,6 +984,8 @@ bootstrap() {
       sleep 5
     done
     if keycloak_ok >/dev/null 2>&1; then
+      record_keycloak_config_applied
+      ensure_realm_imported || log "WARNING: realm not imported during bootstrap"
       reconcile_keycloak_realm
     fi
   fi
@@ -1037,10 +1141,17 @@ for pair in "$@"; do
         # running Keycloak on its own (themes are cached; --import-realm skips an
         # existing realm). Land them here, before the skip.
         if [ "$SVC" = keycloak ]; then
-          if [ "$KEYCLOAK_CONFIG_CHANGED" = 1 ]; then
+          if keycloak_config_changed; then
             restart_keycloak_for_config
-            health_check || log "WARNING: keycloak did not pass health checks after the config restart"
+            if health_check; then
+              record_keycloak_config_applied
+            else
+              log "WARNING: keycloak did not pass health checks after the config restart"
+            fi
           fi
+          # Independent of the above: a realm can be missing with the config
+          # unchanged (Keycloak came up before the JSON ever reached the box).
+          ensure_realm_imported || RC=1
           reconcile_keycloak_realm
         fi
         log "${COMPONENT} already at ${NEW_TAG} and healthy; nothing to do"
@@ -1087,8 +1198,12 @@ for pair in "$@"; do
 
   if health_check; then
     log "${COMPONENT}=${NEW_TAG} healthy"
-    # The recreate above already reloaded the themes; only the realm needs pushing.
+    # The recreate above already reloaded the themes and re-ran --import-realm, so
+    # record the config it started with; ensure_realm_imported then only acts if the
+    # import did not take. Only the realm's live settings still need pushing.
     if [ "$SVC" = keycloak ]; then
+      record_keycloak_config_applied
+      ensure_realm_imported || RC=1
       reconcile_keycloak_realm
     fi
     prune_old_images
