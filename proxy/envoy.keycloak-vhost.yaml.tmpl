@@ -2,7 +2,7 @@
     # through the tunnel on a dedicated domain. Unlike the client vhosts this
     # routes every path straight to Keycloak (no /auth /payments /api gRPC split,
     # no x-client header). Keycloak runs with KC_PROXY_HEADERS=xforwarded and
-    # KC_HOSTNAME=__KEYCLOAK_DOMAIN__, so the forwarded Host/proto are trusted.
+    # KC_HOSTNAME=https://__KEYCLOAK_DOMAIN__, so the forwarded Host/proto are trusted.
     #
     # x-forwarded-proto is re-asserted here because the listener's
     # scheme_header_transformation (scheme_to_overwrite: http, which keeps the

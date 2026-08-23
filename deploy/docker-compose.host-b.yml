@@ -173,7 +173,19 @@ services:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: keycloak
-      KC_HOSTNAME: ${KEYCLOAK_DOMAIN:-auth.example.com}
+      # Full URL, not a bare hostname: with only a hostname Keycloak resolves the
+      # scheme and port per request, so the realm issuer comes out as
+      # https://auth.example.com for browser requests through Envoy but
+      # http://auth.example.com:8080 for auth-svc's back-channel calls to
+      # keycloak:8080. Tokens are stamped with the issuer captured during the
+      # browser login, so the refresh_token grant (back-channel) then fails with
+      # "Invalid token issuer" and every session dies at the first refresh.
+      # Pinning the URL makes the issuer identical on both paths, and matches
+      # Auth_Keycloak__PublicAuthority above (the auth-svc ValidIssuer).
+      KC_HOSTNAME: "https://${KEYCLOAK_DOMAIN:-auth.example.com}"
+      # Keep back-channel URLs equal to the frontend URL (this is the default;
+      # set explicitly because flipping it to true reintroduces the split issuer).
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "false"
       KC_PROXY_HEADERS: xforwarded          # behind Envoy on Host A
       KC_HTTP_ENABLED: "true"
       KC_HEALTH_ENABLED: "true"             # /health/ready for the deploy gate
