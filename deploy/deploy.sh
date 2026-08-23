@@ -186,13 +186,17 @@ PY
 # protofast realm doesn't exist — sign-in returns 404. The compose bind-mounts
 # these into the container: ./keycloak/realms -> /opt/keycloak/data/import,
 # ./keycloak/themes -> /opt/keycloak/themes. Relative to APP_DIR (/opt/protofast).
+# Best-effort: if ASSETS_BUCKET is unset (pre-split host) or the sync fails, warn
+# but don't abort — an existing host with no realm config can still start Keycloak
+# (it just won't reimport the realm). The deploy job now passes ASSETS_BUCKET via
+# env, so new runs will have it.
 sync_keycloak_config() {
   local bucket region
-  bucket="$(get_env "$ENV_FILE" ASSETS_BUCKET)"
+  bucket="$(get_env "$ENV_FILE" ASSETS_BUCKET)"; bucket="${bucket:-${ASSETS_BUCKET:-}}"
   region="$(get_env "$ENV_FILE" AWS_REGION)"; region="${region:-${AWS_REGION:-}}"
   if [ -z "$bucket" ]; then
-    log "ASSETS_BUCKET unset; cannot sync keycloak config"
-    return 1
+    log "WARNING: ASSETS_BUCKET unset; skipping keycloak config sync (realm may not exist on first boot)"
+    return 0
   fi
   log "syncing keycloak config from s3://${bucket}/deploy/keycloak/"
   mkdir -p "${APP_DIR}/keycloak/realms" "${APP_DIR}/keycloak/themes"
@@ -697,6 +701,12 @@ fi
 # that line would never get one; the deploy job passes it on every apply.
 if [ -n "${AWS_REGION:-}" ]; then
   set_env "$ENV_FILE" AWS_REGION "$AWS_REGION"
+fi
+
+# Assets bucket, same self-sufficiency rationale. sync_keycloak_config needs it to
+# pull the realm JSON from S3. An old Host B may not have it in .env; persist it now.
+if [ -n "${ASSETS_BUCKET:-}" ]; then
+  set_env "$ENV_FILE" ASSETS_BUCKET "$ASSETS_BUCKET"
 fi
 
 # Cross-host peer IP, same self-sufficiency rationale as ECR above. cloud-init
