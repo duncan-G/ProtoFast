@@ -10,7 +10,9 @@ public sealed class InternalJwtOptions
     public string PrivateKeyPem { get; init; } = "";
 
     /// <summary>Path to a file holding the PEM. Takes precedence over <see cref="PrivateKeyPem"/>
-    /// when set — prod mounts the key as a root-only file to avoid newline-in-env-var issues.</summary>
+    /// when set — an escape hatch for hosts that can only hand the key over as a file, since a
+    /// PEM's newlines don't survive an env var. Prod leaves it EMPTY: the Secrets Manager
+    /// provider supplies <see cref="PrivateKeyPem"/>, and setting this would shadow it.</summary>
     public string PrivateKeyPemFile { get; init; } = "";
 
     public string KeyId { get; init; } = "";

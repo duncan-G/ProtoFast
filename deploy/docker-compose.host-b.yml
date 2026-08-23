@@ -65,8 +65,12 @@ services:
       # seeded into .env by deploy.sh ensure_secret_files.
       Auth_Keycloak__ClientSecretProtofastWeb: "${PROTOFAST_WEB_CLIENT_SECRET}"
       Auth_Keycloak__ClientSecretAdmin: "${ADMIN_CLIENT_SECRET}"
-      # EC P-256 private key mounted as a root-only file (newlines don't fit env vars).
-      Auth_InternalJwt__PrivateKeyPemFile: /run/secrets/auth-internal-jwt-key
+      # NOTE: no Auth_InternalJwt__PrivateKeyPem* here. auth is the only service with the
+      # Secrets Manager provider (Program.cs, Production only), so the EC P-256 private key
+      # reaches it as InternalJwt:PrivateKeyPem straight from the Auth_InternalJwt__PrivateKeyPem
+      # entry in the app secret — no file, no bind mount, no host copy of the private key.
+      # Setting PrivateKeyPemFile would SHADOW that: InternalJwtFactory prefers the file
+      # whenever the path is non-empty.
       Auth_InternalJwt__KeyId: "${INTERNAL_JWT_KEY_ID:-prod-1}"
       # Host → realm/client map (config now, DB row later — auth §3.3).
       Tenants__ByHost__protofast.dev__Realm: protofast
@@ -75,8 +79,6 @@ services:
       Tenants__ByHost__admin.protofast.dev__ClientId: admin
     volumes:
       - /usr/local/bin/grpc_health_probe:/usr/local/bin/grpc_health_probe:ro
-    secrets:
-      - auth-internal-jwt-key
     healthcheck: *grpc-health
     depends_on:
       redis:
@@ -238,7 +240,9 @@ secrets:
     file: /opt/protofast/kc-db-password       # uid 1000 (Keycloak); seeded by cloud-init / deploy.sh
   auth-db-password:
     file: /opt/protofast/auth-db-password  # root-only, seeded by cloud-init
-  auth-internal-jwt-key:
-    file: /opt/protofast/auth-internal-jwt-key   # EC P-256 PRIVATE key (auth-svc only); seeded by deploy.sh
+  # PUBLIC key only. api/payments read `Shared_` env vars and have NO Secrets Manager
+  # provider (auth alone does), so this one still has to reach them as a file. 0644 —
+  # it's a public key, and the .NET chiseled images run as uid 1654, not root. The
+  # PRIVATE key is deliberately absent: auth pulls it from Secrets Manager itself.
   internal-jwt-pub:
     file: /opt/protofast/internal-jwt-pub        # EC P-256 PUBLIC key (api/payments); seeded by deploy.sh
