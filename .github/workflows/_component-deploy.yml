@@ -369,8 +369,15 @@ jobs:
           LOG_GROUP: /protofast/deploy
         run: |
           set -euo pipefail
-          COMPOSE_B64=$(base64 -w0 "${{ steps.route.outputs.compose }}")
-          DEPLOY_B64=$(base64 -w0 deploy/deploy.sh)
+          # gzip BEFORE base64. SSM caps the document + all parameters at 97KB TOTAL,
+          # and these two files raw-encoded blew straight past it (MaxDocumentSizeExceeded):
+          # deploy.sh is ~62KB of prose-commented bash, which is ~84KB once base64
+          # inflates it 4/3. Even before it crossed the line the payload was under the cap
+          # by less than 1KB, so any added comment anywhere was going to break every
+          # deploy. Both files are highly compressible text (~7x), which puts the payload
+          # near 35KB and leaves room to grow. Decoded back on the host below.
+          COMPOSE_B64=$(gzip -9 -c "${{ steps.route.outputs.compose }}" | base64 -w0)
+          DEPLOY_B64=$(gzip -9 -c deploy/deploy.sh | base64 -w0)
 
           # deploy.sh's apply loop processes pairs IN ORDER under a single flock, so
           # putting the companion first is what guarantees AUTH_MIGRATIONS_TAG is
@@ -391,8 +398,8 @@ jobs:
             --parameters commands="[
               \"set -eu\",
               \"mkdir -p /opt/protofast\",
-              \"echo $COMPOSE_B64 | base64 -d > /opt/protofast/docker-compose.yml\",
-              \"echo $DEPLOY_B64 | base64 -d > /opt/protofast/deploy.sh\",
+              \"echo $COMPOSE_B64 | base64 -d | gzip -d > /opt/protofast/.docker-compose.yml.tmp && mv /opt/protofast/.docker-compose.yml.tmp /opt/protofast/docker-compose.yml\",
+              \"echo $DEPLOY_B64 | base64 -d | gzip -d > /opt/protofast/.deploy.sh.tmp && mv /opt/protofast/.deploy.sh.tmp /opt/protofast/deploy.sh\",
               \"chmod +x /opt/protofast/deploy.sh\",
               \"ECR=${ECR} AWS_REGION=${AWS_REGION} ${{ steps.route.outputs.peer_var }}=${{ steps.peer.outputs.ip }} /opt/protofast/deploy.sh apply ${APPLY_ARGS}\"
             ]" \

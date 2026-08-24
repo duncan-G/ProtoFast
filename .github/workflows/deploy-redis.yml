@@ -87,8 +87,11 @@ jobs:
           LOG_GROUP: /protofast/deploy
         run: |
           set -euo pipefail
-          COMPOSE_B64=$(base64 -w0 deploy/docker-compose.host-b.yml)
-          DEPLOY_B64=$(base64 -w0 deploy/deploy.sh)
+          # gzip BEFORE base64: SSM caps the document + all parameters at 97KB total and
+          # the raw-encoded pair exceeds it (deploy.sh alone is ~84KB base64). Both files
+          # are compressible text, so this lands near 35KB — see _component-deploy.yml.
+          COMPOSE_B64=$(gzip -9 -c deploy/docker-compose.host-b.yml | base64 -w0)
+          DEPLOY_B64=$(gzip -9 -c deploy/deploy.sh | base64 -w0)
 
           cmd_id=$(aws ssm send-command \
             --instance-ids "${{ steps.target.outputs.instance_id }}" \
@@ -98,8 +101,8 @@ jobs:
             --parameters commands="[
               \"set -eu\",
               \"mkdir -p /opt/protofast\",
-              \"echo $COMPOSE_B64 | base64 -d > /opt/protofast/docker-compose.yml\",
-              \"echo $DEPLOY_B64 | base64 -d > /opt/protofast/deploy.sh\",
+              \"echo $COMPOSE_B64 | base64 -d | gzip -d > /opt/protofast/.docker-compose.yml.tmp && mv /opt/protofast/.docker-compose.yml.tmp /opt/protofast/docker-compose.yml\",
+              \"echo $DEPLOY_B64 | base64 -d | gzip -d > /opt/protofast/.deploy.sh.tmp && mv /opt/protofast/.deploy.sh.tmp /opt/protofast/deploy.sh\",
               \"chmod +x /opt/protofast/deploy.sh\",
               \"ECR=${ECR} AWS_REGION=${AWS_REGION} /opt/protofast/deploy.sh apply redis=${TAG}\"
             ]" \
