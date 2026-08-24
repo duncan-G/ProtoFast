@@ -13,6 +13,16 @@ __CORS_ALLOW_ORIGIN_MATCHES__
         - header:
             key: "alt-svc"
             value: 'h3=":__ALT_SVC_PORT__"; ma=86400'
+      # Which client this vhost belongs to. The unified SSR host dispatches on this header and
+      # falls back to DEFAULT_CLIENT when it is absent, so *every* route that can reach the web
+      # cluster must carry it — the static-asset routes below included, or one client ends up
+      # serving another's hashed bundles (404s). Set at the vhost level so it also covers routes
+      # added later; the API/auth/OTLP clusters simply ignore it.
+      request_headers_to_add:
+        - header:
+            key: "x-client"
+            value: "__VHOST_NAME__"
+          append_action: OVERWRITE_IF_EXISTS_OR_ADD
       routes:
         - match:
             prefix: "/otlp/v1/"
@@ -103,8 +113,3 @@ __CORS_ALLOW_ORIGIN_MATCHES__
               grpc_timeout_header_max: 0s
         - match: { prefix: "/" }
           route: { cluster: __WEB_CLUSTER__ }
-          request_headers_to_add:
-            - header:
-                key: "x-client"
-                value: "__VHOST_NAME__"
-              append_action: OVERWRITE_IF_EXISTS_OR_ADD
