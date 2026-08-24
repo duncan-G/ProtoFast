@@ -878,6 +878,36 @@ svc_running() {
   [ "$(docker inspect -f '{{.State.Running}}' "$cid" 2>/dev/null)" = true ]
 }
 
+# Is the RUNNING container built from a different compose config than the one on
+# disk right now? A same-tag apply is not automatically a no-op: every deploy job
+# overwrites /opt/protofast/docker-compose.yml from the repo, and .env is re-seeded
+# from Secrets Manager, so an edit to a service's environment, ports, volumes or
+# command arrives on the box with its *_TAG unchanged. The pinned upstream tiers
+# (keycloak 26.7, postgres 17, redis 7) hold the same tag across deploys almost by
+# definition, so without this check the "already at <tag> and healthy" skip below
+# swallows every compose edit and the change silently never reaches the container.
+#
+# Compose stamps each container it creates with a hash of the fully-resolved
+# service config in the com.docker.compose.config-hash label, and `up -d` recreates
+# the container when the hash it computes now differs — so comparing the two is
+# exactly compose's own recreate decision, asked ahead of time. Because it reads
+# the RESOLVED config it also catches interpolated .env values (SMTP_FROM,
+# HOST_A_IP, the client secrets), not just literal edits to the compose file.
+#
+# Fail CLOSED to "no drift" whenever either side can't be read (compose too old for
+# --hash, service absent, unlabelled container): an unanswerable probe must keep
+# the old skip behaviour rather than recreate every container on every apply.
+svc_config_drifted() {
+  local want have cid
+  want="$(compose config --hash="$SVC" 2>/dev/null | awk 'NF {print $NF}' | head -n1)"
+  [ -n "$want" ] || return 1
+  cid="$(compose ps -aq "$SVC" 2>/dev/null | head -n1)"
+  [ -n "$cid" ] || return 1
+  have="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.config-hash"}}' "$cid" 2>/dev/null || true)"
+  [ -n "$have" ] || return 1
+  [ "$want" != "$have" ]
+}
+
 # Keep only the most recent KEEP_RELEASES image tags per repo so rollback stays
 # local while disk stays bounded (plan §4.3 / §5.2). Old S3 client prefixes are
 # pruned by the deploy workflow, not here.
@@ -1122,17 +1152,27 @@ for pair in "$@"; do
   # unchanged image and leave the sick container running. Reset every iteration.
   RECREATE=""
 
-  # Only skip when the tag matches AND the container is running AND it passes its
-  # scoped health check. Matching the manifest alone is not enough on two counts:
+  # Only skip when the tag matches AND the container is running AND it was created
+  # from the compose config now on disk AND it passes its scoped health check.
+  # Matching the manifest alone is not enough on three counts:
   #   - nothing is up (box replaced, crash, never started) — bring it up;
+  #   - it is up but running STALE CONFIG (the compose file or an interpolated
+  #     .env value changed under an unchanged image tag) — recreate it so the
+  #     change actually lands (svc_config_drifted);
   #   - it is up but UNHEALTHY (crash-looping, gRPC not serving, SSR not
   #     rendering) — a stale "already at <tag>" must not mask a sick container,
   #     so force-recreate it to recover.
-  # A healthy, running, same-tag container is the only true no-op. The fall-
-  # through apply path is idempotent: `up -d` no-ops a healthy container, starts
-  # a down one, and (with RECREATE) replaces an unhealthy one.
+  # A healthy, running, same-tag, same-config container is the only true no-op.
+  # The fall-through apply path is idempotent: `up -d` no-ops an unchanged healthy
+  # container, recreates one whose config hash moved, starts a down one, and (with
+  # RECREATE) replaces an unhealthy one.
   if [ "$CUR_TAG" = "$NEW_TAG" ]; then
-    if svc_running; then
+    if svc_running && svc_config_drifted; then
+      # No RECREATE flag: compose recreates on its own when the config hash
+      # differs, and letting it make that call keeps this identical to a normal
+      # rollout. Falls through to the apply path below.
+      log "${COMPONENT} already at ${NEW_TAG} but its compose config changed; recreating to apply it"
+    elif svc_running; then
       if health_once; then
         # A keycloak apply at an UNCHANGED tag is the normal shape of a config-only
         # deploy — the deploy-keycloak workflow fires on deploy/keycloak/** with the
