@@ -31,10 +31,26 @@ resource "cloudflare_ruleset" "cache" {
         edge_ttl = {
           mode    = "override_origin"
           default = 31536000
+          # This rule matches on file extension alone, so an origin error for an asset-looking
+          # path lands here too. Without this carve-out a transient 4xx/5xx is pinned at the edge
+          # for the full year (0 = no-cache: keep revalidating with the origin instead).
+          status_code_ttl = [
+            {
+              status_code_range = {
+                from = 400
+                to   = 599
+              }
+              value = 0
+            }
+          ]
         }
+        # respect_origin, not override_origin: the SSR host already serves hashed assets with
+        # `Cache-Control: public, max-age=31536000` (express.static maxAge '1y'), so nothing is
+        # lost — while an error response keeps its own headers instead of being cached in the
+        # browser for a year, where no cache purge can reach it. Browser TTL has no per-status
+        # setting, so deferring to the origin is the only way to scope it.
         browser_ttl = {
-          mode    = "override_origin"
-          default = 31536000
+          mode = "respect_origin"
         }
       }
     },
