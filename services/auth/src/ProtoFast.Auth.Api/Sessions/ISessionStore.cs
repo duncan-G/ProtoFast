@@ -13,6 +13,14 @@ public interface ISessionStore
 
     Task DeleteAsync(string sessionId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Erases every session hanging off a Keycloak SSO session — the back-channel logout path.
+    /// Cookies are host-only, so admin and the web app hold separate sessions that share one
+    /// <c>sid</c>; this is what lets a sign-out (or an admin revoking the session in Keycloak)
+    /// reach both instead of waiting for each to fail its next refresh.
+    /// </summary>
+    Task DeleteByKeycloakSessionAsync(string realm, string kcSessionId, CancellationToken ct = default);
+
     /// <summary>Rewrites a session in place (same id), sliding the idle window — used to cache the
     /// re-minted internal JWT without rotating the cookie.</summary>
     Task UpdateAsync(string sessionId, SessionData data, CancellationToken ct = default);

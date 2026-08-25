@@ -162,6 +162,19 @@ public class SessionResolverTests
             return Task.CompletedTask;
         }
 
+        public Task DeleteByKeycloakSessionAsync(string realm, string kcSessionId, CancellationToken ct = default)
+        {
+            foreach (var (id, data) in _sessions.ToArray())
+            {
+                if (data.Realm == realm && data.KcSessionId == kcSessionId)
+                {
+                    _sessions.Remove(id);
+                }
+            }
+
+            return Task.CompletedTask;
+        }
+
         public Task UpdateAsync(string sessionId, SessionData data, CancellationToken ct = default)
         {
             _sessions[sessionId] = data;

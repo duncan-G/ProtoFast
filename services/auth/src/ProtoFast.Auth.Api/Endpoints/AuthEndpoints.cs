@@ -29,6 +29,12 @@ public static class AuthEndpoints
         app.MapGet("/signout", (HttpContext ctx, AuthFlow flow, CancellationToken ct) =>
             flow.SignOutAsync(ctx, ct));
 
+        // Back-channel logout — Keycloak POSTs a signed logout token when a realm SSO session
+        // ends, which is what carries a sign-out on one host across to the other. Called
+        // server-to-server on the internal network; the Envoy vhost never routes it from the edge.
+        app.MapPost("/backchannel-logout", (HttpContext ctx, BackchannelLogout logout, CancellationToken ct) =>
+            logout.HandleAsync(ctx, ct));
+
         return app;
     }
 }

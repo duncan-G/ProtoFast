@@ -34,6 +34,34 @@ public class KeycloakClaimsTests
     }
 
     [Fact]
+    public void Reads_the_sso_session_id_preferring_the_id_token()
+    {
+        // `sid` is what indexes the session for back-channel logout. The id token always carries
+        // it; older Keycloak leaves it off the access token.
+        var access = BuildToken(new Claim("sub", "user-123"));
+        var id = BuildToken(new Claim("sub", "user-123"), new Claim("sid", "sso-1"));
+
+        Assert.Equal("sso-1", KeycloakClaims.Read(access, id).SessionId);
+    }
+
+    [Fact]
+    public void Falls_back_to_the_access_token_for_the_session_id()
+    {
+        var access = BuildToken(new Claim("sub", "user-123"), new Claim("sid", "sso-2"));
+
+        Assert.Equal("sso-2", KeycloakClaims.Read(access, idToken: null).SessionId);
+    }
+
+    [Fact]
+    public void Missing_session_id_is_null_rather_than_empty()
+    {
+        // Null keeps the session out of the logout index instead of indexing it under "".
+        var access = BuildToken(new Claim("sub", "user-123"));
+
+        Assert.Null(KeycloakClaims.Read(access, idToken: null).SessionId);
+    }
+
+    [Fact]
     public void Missing_realm_access_yields_no_roles()
     {
         var token = BuildToken(new Claim("sub", "user-123"), new Claim("email", "a@b.com"));

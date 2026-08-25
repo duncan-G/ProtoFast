@@ -4,7 +4,13 @@ using System.Text.Json;
 namespace ProtoFast.Auth.Api.Keycloak;
 
 /// <summary>The identity distilled from a Keycloak token set — what we provision and put in the session.</summary>
-public sealed record KeycloakIdentity(string Subject, string Email, IReadOnlyList<string> Roles);
+/// <param name="SessionId">Keycloak's <c>sid</c>, the realm SSO session. Null when the token set
+/// carries none, which leaves the session out of the back-channel logout index.</param>
+public sealed record KeycloakIdentity(
+    string Subject,
+    string Email,
+    IReadOnlyList<string> Roles,
+    string? SessionId);
 
 /// <summary>
 /// Reads identity claims out of freshly issued Keycloak tokens. The access token came straight
@@ -23,23 +29,22 @@ public static class KeycloakClaims
                       ?? token.Claims.FirstOrDefault(c => c.Type == "sub")?.Value
                       ?? "";
 
-        var email = token.Claims.FirstOrDefault(c => c.Type == "email")?.Value
-                    ?? ReadEmailFromIdToken(idToken)
+        var email = Claim(token, "email")
+                    ?? ClaimFromIdToken(idToken, "email")
                     ?? "";
 
-        return new KeycloakIdentity(subject, email, ReadRealmRoles(token));
+        // The id token always carries `sid`; the access token only does on newer Keycloak, so
+        // read it there first and fall back.
+        var sessionId = ClaimFromIdToken(idToken, "sid") ?? Claim(token, "sid");
+
+        return new KeycloakIdentity(subject, email, ReadRealmRoles(token), sessionId);
     }
 
-    private static string? ReadEmailFromIdToken(string? idToken)
-    {
-        if (string.IsNullOrEmpty(idToken))
-        {
-            return null;
-        }
+    private static string? Claim(JwtSecurityToken token, string type) =>
+        token.Claims.FirstOrDefault(c => c.Type == type)?.Value;
 
-        var token = Handler.ReadJwtToken(idToken);
-        return token.Claims.FirstOrDefault(c => c.Type == "email")?.Value;
-    }
+    private static string? ClaimFromIdToken(string? idToken, string type) =>
+        string.IsNullOrEmpty(idToken) ? null : Claim(Handler.ReadJwtToken(idToken), type);
 
     private static IReadOnlyList<string> ReadRealmRoles(JwtSecurityToken token)
     {

@@ -19,6 +19,14 @@ public sealed record SessionData
     /// <summary>The OIDC id token, kept for <c>id_token_hint</c> on RP-initiated logout.</summary>
     public string? IdToken { get; init; }
 
+    /// <summary>
+    /// Keycloak's <c>sid</c> — the realm SSO session this one hangs off, and the handle
+    /// back-channel logout arrives with. Both hosts' sessions for the same browser share it.
+    /// Null for a session minted before the index existed, or from a token that carried no
+    /// <c>sid</c>; those keep the old behaviour of lapsing at the next failed refresh.
+    /// </summary>
+    public string? KcSessionId { get; init; }
+
     public required DateTimeOffset AccessExpiresAt { get; init; }
     public required DateTimeOffset RefreshExpiresAt { get; init; }
 

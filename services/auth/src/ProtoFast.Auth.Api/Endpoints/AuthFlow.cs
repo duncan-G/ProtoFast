@@ -142,6 +142,7 @@ public sealed class AuthFlow(
             AccessExpiresAt = tokens.AccessExpiresAt,
             RefreshExpiresAt = tokens.RefreshExpiresAt,
             CreatedAt = now,
+            KcSessionId = identity.SessionId,
         };
 
         var sessionId = await sessionStore.CreateAsync(session, ct);

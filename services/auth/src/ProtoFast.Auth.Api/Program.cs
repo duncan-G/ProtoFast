@@ -3,6 +3,7 @@ using ProtoFast.Auth.Api.Correlation;
 using ProtoFast.Auth.Api.Endpoints;
 using ProtoFast.Auth.Api.Identity;
 using ProtoFast.Auth.Api.Keycloak;
+using ProtoFast.Auth.Api.Security;
 using ProtoFast.Auth.Api.Services;
 using ProtoFast.Auth.Api.Sessions;
 using ProtoFast.Auth.Api.Tenancy;
@@ -40,7 +41,9 @@ builder.Services.AddSingleton<ISessionStore, RedisSessionStore>();
 builder.Services.AddSingleton<ICorrelationStore, RedisCorrelationStore>();
 builder.Services.AddSingleton<IKeycloakGateway, KeycloakGateway>();
 builder.Services.AddSingleton<IInternalJwtFactory, InternalJwtFactory>();
+builder.Services.AddSingleton<IReplayGuard, RedisReplayGuard>();
 builder.Services.AddSingleton<SessionResolver>();
+builder.Services.AddSingleton<BackchannelLogout>();
 builder.Services.AddScoped<AuthFlow>();
 
 var app = builder.Build();

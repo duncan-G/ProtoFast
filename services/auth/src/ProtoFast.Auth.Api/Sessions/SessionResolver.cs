@@ -111,6 +111,10 @@ public sealed class SessionResolver(
                 AccessExpiresAt = refreshed.AccessExpiresAt,
                 RefreshExpiresAt = refreshed.RefreshExpiresAt,
                 Roles = identity.Roles,
+                // A refresh stays inside the same SSO session, so keep the existing sid when the
+                // new token set doesn't restate it — losing it would drop the session out of the
+                // back-channel logout index.
+                KcSessionId = identity.SessionId ?? session.KcSessionId,
             };
             current = WithFreshJwt(current, now); // roles may have changed — always re-mint
 

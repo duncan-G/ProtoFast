@@ -41,6 +41,16 @@ this file only affects a brand-new realm. For a running deployment:
 
 - Realm-level flags, the allowlisted `attributes`, and required actions are
   pushed on every deploy by `reconcile_keycloak_realm` in `../../deploy.sh`.
+- The allowlisted **client** settings are pushed too: the back-channel logout
+  attributes (`KC_CLIENT_ATTRS`) and `frontchannelLogout` (`KC_CLIENT_FIELDS`,
+  a plain field rather than an entry in the `attributes` map). All three move
+  together — Keycloak either redirects the browser through the client or POSTs
+  it a logout token, so a logout URL reconciled onto a client still marked
+  `frontchannelLogout: true` is configured and never called. That is the only
+  part of a client the reconcile touches: secrets, redirect URIs and flows stay
+  owned by the import. The logout URL is read from the running Keycloak
+  container's `BACKCHANNEL_LOGOUT_URL`, because this file only ever holds the
+  import placeholder.
 - Authentication flows are not — a bound flow half-rewritten by a best-effort
   deploy step locks everyone out. Run
   [`scripts/keycloak-apply-finish-setup-flow.py`](../../../scripts/keycloak-apply-finish-setup-flow.py)

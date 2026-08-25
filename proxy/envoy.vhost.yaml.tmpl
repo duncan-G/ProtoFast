@@ -47,6 +47,11 @@ __CORS_ALLOW_ORIGIN_MATCHES__
         # OIDC browser flow → auth-svc as plain HTTP (302 + Set-Cookie). ext_authz OFF: these
         # endpoints ARE the auth flow. The old /auth/ gRPC-web route is gone — nothing calls auth
         # over gRPC-web; ext_authz dials the `auth` cluster directly via the listener filter.
+        #
+        # This list is an ALLOWLIST, and auth-svc serves one endpoint that must stay off it:
+        # /backchannel-logout. Keycloak posts it a logout token over the internal network, and it
+        # deletes sessions on the strength of that token alone. Widening this to a prefix would
+        # hand the internet a session-deletion endpoint.
         - match:
             safe_regex:
               # safe_regex matches the :path WITH its query string (unlike prefix/path), so allow

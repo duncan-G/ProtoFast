@@ -220,6 +220,11 @@ services:
       # user. Overrides the realm import's dev-localhost default with the public app domains.
       PROTOFAST_WEB_BASE_URL: "${PROTOFAST_WEB_BASE_URL:-https://protofast.dev}"
       ADMIN_BASE_URL: "${ADMIN_BASE_URL:-https://admin.protofast.dev}"
+      # Where Keycloak POSTs the logout token when an SSO session ends (both clients share the
+      # endpoint; the token's `aud` says which one it is for). Same-host compose DNS, never the
+      # public edge — Envoy's vhost routes only the browser OIDC paths to auth, so this URL is
+      # reachable from Keycloak and nowhere else.
+      BACKCHANNEL_LOGOUT_URL: "http://auth:8080/backchannel-logout"
       SMTP_HOST: "${SMTP_HOST:-}"
       SMTP_PORT: "${SMTP_PORT:-587}"
       SMTP_FROM: "${SMTP_FROM:-no-reply@protofast.dev}"

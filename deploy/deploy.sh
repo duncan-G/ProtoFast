@@ -372,6 +372,24 @@ verifyEmail loginTheme passwordPolicy bruteForceProtected"
 KC_REALM_ATTRS="actionTokenGeneratedByUserLifespan.verify-email
 actionTokenGeneratedByUserLifespan.reset-credentials"
 
+# Per-CLIENT attributes the reconcile pushes. The "no clients" rule above holds
+# for everything that carries a secret or can lock people out — this is a narrow
+# carve-out for the two keys that turn on back-channel logout, neither of which
+# is either. They have to be reconciled rather than left to the import: a realm
+# that already exists is skipped wholesale, so a live deployment would keep the
+# pre-logout client config and signing out of one host would go on leaving the
+# other host's session alive until its access token lapsed.
+KC_CLIENT_ATTRS="backchannel.logout.url backchannel.logout.session.required"
+
+# Same carve-out one level up, for per-CLIENT keys that are ordinary fields rather
+# than entries in the "attributes" map. frontchannelLogout belongs here and not in
+# the list above, and it is not optional: Keycloak either redirects the browser
+# through the client (front channel) or POSTs it a logout token in the background,
+# never both. Left at the pre-logout `true` on a realm that already exists, the URL
+# reconciled above is configured and never called, and the feature ships doing
+# nothing at all.
+KC_CLIENT_FIELDS="frontchannelLogout"
+
 # kcadm lives in the Keycloak image; the box has no curl (health checks shell out
 # to a curl container) and no admin CLI of its own. --config pins the session file
 # to a known path so the login in one exec is visible to the next.
@@ -500,6 +518,84 @@ for a in json.load(open(sys.argv[1])).get("requiredActions", []):
 PY
     )
     [ "$n" -gt 0 ] && log "realm '${realm}': reconciled ${n} required action(s)"
+
+    # Client settings (KC_CLIENT_ATTRS + KC_CLIENT_FIELDS). The realm JSON holds
+    # the import's ${BACKCHANNEL_LOGOUT_URL:} placeholder, never the resolved
+    # value, so read what Keycloak was actually started with out of the container
+    # — deriving it again here is how the import and the reconcile end up
+    # disagreeing. Python emits the kcadm key path already built, so a field and
+    # an attribute differ only in what it printed.
+    local kc_bcl_url c_client c_key c_value c_id="" c_seen="" m=0
+    kc_bcl_url="$(compose exec -T keycloak printenv BACKCHANNEL_LOGOUT_URL 2>/dev/null \
+                  | tr -d '\r\n' || true)"
+
+    while IFS=$'\t' read -r c_client c_key c_value; do
+      [ -n "$c_client" ] || continue
+      if [ "$c_client" != "$c_seen" ]; then
+        c_seen="$c_client"
+        c_id="$(kcadm_kc get clients -r "$realm" -q "clientId=${c_client}" \
+                --fields id --format csv --noquotes 2>/dev/null | tr -d '\r"' | head -n1 || true)"
+        if [ -z "$c_id" ]; then
+          log "WARNING: client '${c_client}' not in realm '${realm}'; its settings are NOT reconciled"
+          rc=1
+        fi
+      fi
+      [ -n "$c_id" ] || continue
+
+      # kcadm merges -s onto the client it just fetched, so the secret, redirect
+      # URIs and flows it already has ride through untouched.
+      if kcadm_kc update "clients/${c_id}" -r "$realm" \
+           -s "${c_key}=${c_value}" >/dev/null 2>&1; then
+        m=$(( m + 1 ))
+      else
+        log "WARNING: could not set ${c_key} on client '${c_client}' in realm '${realm}'"
+        rc=1
+      fi
+    # shellcheck disable=SC2086  # both key lists are intentionally word-split
+    done < <(BACKCHANNEL_LOGOUT_URL="$kc_bcl_url" \
+             python3 - "$realm_file" $KC_CLIENT_ATTRS -- $KC_CLIENT_FIELDS <<'PY'
+import json, os, re, sys
+
+realm = json.load(open(sys.argv[1]))
+argv = sys.argv[2:]
+split = argv.index("--")
+wanted_attrs = argv[:split]
+wanted_fields = argv[split + 1:]
+placeholder = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)(?::(.*))?\}$")
+
+
+def resolve(value):
+    """Apply the same ${VAR:default} substitution the realm import would."""
+    match = placeholder.match(value)
+    if not match:
+        return value
+    return os.environ.get(match.group(1)) or (match.group(2) or "")
+
+
+def text(value):
+    """kcadm reads bare true/false as JSON booleans, which is what fields want."""
+    return ("true" if value else "false") if isinstance(value, bool) else str(value)
+
+
+for client in realm.get("clients", []):
+    client_id = client.get("clientId")
+    attributes = client.get("attributes", {})
+    if not client_id:
+        continue
+    for name in wanted_attrs:
+        if name not in attributes:
+            continue
+        value = resolve(text(attributes[name]))
+        # An unset placeholder means the feature is off for this deployment;
+        # pushing "" would clear an attribute somebody set by hand.
+        if value:
+            print("\t".join([client_id, f'attributes."{name}"', value]))
+    for name in wanted_fields:
+        if name in client:
+            print("\t".join([client_id, name, text(client[name])]))
+PY
+    )
+    [ "$m" -gt 0 ] && log "realm '${realm}': reconciled ${m} client setting(s)"
   fi
 
   # Drop the throwaway admin LAST — the token above stays valid for the calls that

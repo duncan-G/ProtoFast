@@ -1,7 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using ProtoFast.Auth.Api.Endpoints;
 using ProtoFast.Auth.Api.Identity;
 using ProtoFast.Auth.Api.Keycloak;
+using ProtoFast.Auth.Api.Security;
 using ProtoFast.Auth.Api.Services;
 using ProtoFast.Auth.Api.Sessions;
 using ProtoFast.Auth.Api.Tenancy;
@@ -22,6 +24,8 @@ public class HostWiringTests(TestAuthWebApplicationFactory factory) : IClassFixt
         Assert.NotNull(sp.GetRequiredService<IKeycloakGateway>());
         Assert.NotNull(sp.GetRequiredService<IInternalJwtFactory>());
         Assert.NotNull(sp.GetRequiredService<SessionResolver>());
+        Assert.NotNull(sp.GetRequiredService<IReplayGuard>());
+        Assert.NotNull(sp.GetRequiredService<BackchannelLogout>());
 
         // The gRPC service is activated per-call (not a DI registration); prove its deps resolve.
         Assert.NotNull(ActivatorUtilities.CreateInstance<AuthorizationService>(sp));
