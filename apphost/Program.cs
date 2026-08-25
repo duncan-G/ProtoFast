@@ -95,6 +95,25 @@ var auth = builder.AddProject<Projects.ProtoFast_Auth_Api>("auth")
     .WithEnvironment("Auth_Keycloak__Authority", keycloak.GetEndpoint("http"))
     .WithEnvironment("Auth_InternalJwt__PrivateKeyPem", internalJwtPrivateKeyPem);
 
+// Where Keycloak POSTs the logout token when an SSO session ends. Keycloak runs in a container
+// and auth is a host process, so this needs the host-gateway alias the same way Envoy's upstream
+// clusters do — endpoint.Property resolves to host.docker.internal from inside the container.
+//
+// This reads auth's endpoint but adds no wait edge (auth already waits on keycloak, and the
+// reverse would deadlock): Aspire allocates every endpoint before it starts anything.
+//
+// Both apps share one cookie jar in dev — the browser ignores ports, so localhost:20000 and
+// :20001 are one host with one pf_session — which means there is only ever one session here and
+// nothing for a back-channel logout to reach across to. It is wired anyway so a broken URL or
+// payload surfaces locally instead of in prod; the coverage lives in the test suite.
+var authHttp = auth.GetEndpoint("http");
+keycloak
+    .WithContainerRuntimeArgs("--add-host=host.docker.internal:host-gateway")
+    .WithEnvironment(
+        "BACKCHANNEL_LOGOUT_URL",
+        ReferenceExpression.Create(
+            $"http://{authHttp.Property(EndpointProperty.Host)}:{authHttp.Property(EndpointProperty.Port)}/backchannel-logout"));
+
 // Payments
 var payments = builder.AddProject<Projects.ProtoFast_Payments_Api>("payments")
     .WithOtlpCollectorReference(otel)
