@@ -18,7 +18,7 @@ public interface IKeycloakGateway
     Task<KeycloakTokens> RefreshAsync(TenantConfig tenant, string refreshToken, CancellationToken ct = default);
 
     /// <summary>RP-initiated logout (end-session) URL for <c>/signout</c>.</summary>
-    string BuildEndSessionUrl(string realm, string? idTokenHint, string postLogoutRedirectUri);
+    string BuildEndSessionUrl(TenantConfig tenant, string? idTokenHint, string postLogoutRedirectUri);
 
     /// <summary>Validation parameters for a realm's access tokens — cached JWKS + issuer
     /// (guide §3.7). Audience is validated separately (Keycloak's <c>azp</c>).</summary>

@@ -23,6 +23,7 @@ public sealed class AuthFlow(
     IKeycloakGateway keycloak,
     ICorrelationStore correlationStore,
     ISessionStore sessionStore,
+    SessionResolver sessionResolver,
     AuthDbContext db,
     IOptions<SessionPolicyOptions> sessionOptions,
     TimeProvider clock,
@@ -39,14 +40,9 @@ public sealed class AuthFlow(
         // These endpoints run with ext_authz OFF, so identity isn't injected — but the session
         // cookie still rides along. If it resolves to a live session the user is already signed in;
         // bounce them to the return target (defaults to /app) rather than looping back to Keycloak.
-        if (skipIfAuthenticated)
+        if (skipIfAuthenticated && await IsSignedInAsync(ctx, ct))
         {
-            var existingSessionId = ctx.Request.Cookies[_session.CookieName];
-            if (!string.IsNullOrEmpty(existingSessionId)
-                && await sessionStore.GetAsync(existingSessionId, ct) is not null)
-            {
-                return Results.Redirect(SafeReturnUrl(ctx.Request.Query["returnUrl"]));
-            }
+            return Results.Redirect(SafeReturnUrl(ctx.Request.Query["returnUrl"]));
         }
 
         if (!tenantResolver.TryResolve(ctx.Request.Host.Value, out var tenant))
@@ -160,28 +156,66 @@ public sealed class AuthFlow(
     {
         var sessionId = ctx.Request.Cookies[_session.CookieName];
         string? idTokenHint = null;
-        string realm;
 
         if (!string.IsNullOrEmpty(sessionId))
         {
-            var session = await sessionStore.GetAsync(sessionId, ct);
-            idTokenHint = session?.IdToken;
-            realm = session?.Realm ?? RealmFromHost(ctx);
+            // The session may already be gone (dropped when its tokens died), so the id_token_hint
+            // is best-effort — the end-session URL carries client_id either way.
+            idTokenHint = (await sessionStore.GetAsync(sessionId, ct))?.IdToken;
             await sessionStore.DeleteAsync(sessionId, ct);
-        }
-        else
-        {
-            realm = RealmFromHost(ctx);
         }
 
         ClearSessionCookie(ctx);
 
-        if (string.IsNullOrEmpty(realm))
+        if (!tenantResolver.TryResolve(ctx.Request.Host.Value, out var tenant))
         {
             return Results.Redirect("/");
         }
 
-        return Results.Redirect(keycloak.BuildEndSessionUrl(realm, idTokenHint, Origin(ctx) + "/"));
+        return Results.Redirect(keycloak.BuildEndSessionUrl(tenant, idTokenHint, Origin(ctx) + "/"));
+    }
+
+    /// <summary>
+    /// Is the caller already signed in? Resolve the cookie exactly as <c>Check</c> would — a
+    /// session must still yield an identity, not merely have a record in the store. Answering
+    /// "yes" for a session whose tokens are dead is a redirect loop: the SSR gate sends every
+    /// unauthenticated request here, and here we send it straight back.
+    /// </summary>
+    private async Task<bool> IsSignedInAsync(HttpContext ctx, CancellationToken ct)
+    {
+        var sessionId = ctx.Request.Cookies[_session.CookieName];
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            return false;
+        }
+
+        ResolvedIdentity? identity;
+        try
+        {
+            identity = await sessionResolver.ResolveSessionAsync(sessionId, ctx.Request.Host.Value, ct);
+        }
+        catch (Exception ex)
+        {
+            // Redis or Keycloak is unreachable. A fresh sign-in is the safe answer — it fails
+            // visibly at Keycloak instead of ping-ponging the browser.
+            logger.LogWarning(ex, "Session resolution failed during sign-in; starting a fresh flow");
+            return false;
+        }
+
+        if (identity is null)
+        {
+            // The resolver has already dropped the record if it was unrecoverable; drop the cookie
+            // too so the browser stops replaying an id that can never work again.
+            ClearSessionCookie(ctx);
+            return false;
+        }
+
+        if (identity.RotatedSessionId is not null)
+        {
+            AppendSessionCookie(ctx, identity.RotatedSessionId);
+        }
+
+        return true;
     }
 
     private async Task ProvisionAsync(string realm, KeycloakIdentity identity, CancellationToken ct)
@@ -231,9 +265,6 @@ public sealed class AuthFlow(
             SameSite = SameSiteMode.Lax,
             Path = "/",
         });
-
-    private string RealmFromHost(HttpContext ctx) =>
-        tenantResolver.TryResolve(ctx.Request.Host.Value, out var tenant) ? tenant.Realm : "";
 
     // The public origin is always HTTPS here (TLS terminates at Cloudflare; Envoy overwrites the
     // internal :scheme to http). Build redirect/post-logout URLs from the preserved Host.
