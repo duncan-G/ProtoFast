@@ -368,9 +368,12 @@ KC_KCADM_CONFIG="/tmp/kcadm-deploy.config"
 # Widen by adding to this list. smtpServer is deliberately ABSENT: the JSON holds
 # ${SMTP_*} placeholders that only the realm import substitutes, so pushing it
 # would write the literal "${SMTP_HOST:localhost}" strings into the live realm.
+# That exclusion also covers fromDisplayName, which rides along inside smtpServer —
+# an established realm keeps whatever From name it was created with until someone
+# changes it in the admin console.
 KC_REALM_KEYS="registrationAllowed registrationEmailAsUsername loginWithEmailAllowed
 duplicateEmailsAllowed resetPasswordAllowed editUsernameAllowed rememberMe
-verifyEmail loginTheme passwordPolicy bruteForceProtected"
+verifyEmail loginTheme emailTheme passwordPolicy bruteForceProtected"
 
 # Same idea one level down, for keys that live in the realm's "attributes" map
 # (kcadm addresses a dotted attribute name by quoting it). Action tokens default
