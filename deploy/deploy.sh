@@ -232,9 +232,16 @@ sync_keycloak_config() {
 # after this change) reads as changed and takes one restart — which is the point.
 KC_CONFIG_STATE="${APP_DIR}/.keycloak-config-applied"
 
+# The compose file is part of the config, not just the realm and theme files: it
+# carries keycloak's environment, and a variable added there is as invisible to a
+# running container as a new theme is. Leaving it out meant a compose-only change
+# — a new env var, nothing else — synced to the box, matched the old fingerprint,
+# and skipped the recreate that was the entire point of the change.
 kc_config_fingerprint() {
-  find "${APP_DIR}/keycloak" -type f -print0 2>/dev/null | sort -z |
-    xargs -0 -r md5sum 2>/dev/null | md5sum | cut -d' ' -f1
+  { find "${APP_DIR}/keycloak" -type f -print0 2>/dev/null | sort -z |
+      xargs -0 -r md5sum 2>/dev/null
+    md5sum "$COMPOSE_FILE" 2>/dev/null
+  } | md5sum | cut -d' ' -f1
 }
 
 keycloak_config_changed() {
@@ -621,10 +628,20 @@ PY
 # Themes are read through Keycloak's theme cache in production mode, so files that
 # sync_keycloak_config just wrote are invisible until the container restarts. Only
 # needed on the config-only path — an apply that recreates the container reloads
-# them anyway. Restart (not recreate): same container, same pinned tag.
+# them anyway.
+#
+# RECREATE, not `compose restart`. A restart reuses the existing container, and a
+# container's environment is fixed when it is created — so a new `environment:` key
+# in the compose file is invisible to a restart no matter how many times it runs.
+# That is not hypothetical: BACKCHANNEL_LOGOUT_URL was added to keycloak's env and
+# the realm JSON changed in the same deploy, so this path restarted, the variable
+# never entered the container, and reconcile_keycloak_realm read it back empty and
+# skipped the logout URL — leaving both clients with back-channel logout on and
+# nowhere to send it. The tag is unchanged either way, so recreating costs one
+# extra container start and nothing else; --import-realm is idempotent.
 restart_keycloak_for_config() {
-  log "keycloak config changed on disk; restarting keycloak so the theme cache reloads"
-  compose restart keycloak
+  log "keycloak config changed on disk; recreating keycloak so it reads the new config"
+  compose up -d --force-recreate keycloak
 }
 
 # Compose bind-mounts ./postgres/initdb into the official image's initdb.d. Docker
