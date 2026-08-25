@@ -549,6 +549,20 @@ a:hover {
   flex-direction: column;
   gap: var(--space-6);
 }
+/* webauthn-register.ftl emits Register as a bare <input> and Cancel in the
+   next form — siblings in .pf-content, so the form gap above never reaches
+   them. Make the input a block box so they cannot sit on one line. */
+#registerWebAuthn {
+  display: flex;
+}
+#registerWebAuthn + #kc-webauthn-settings-form {
+  margin-top: var(--space-8);
+}
+.pf-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
 #kc-content-wrapper > *:not(:first-child) {
   margin-top: var(--space-6);
 }
