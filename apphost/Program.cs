@@ -86,7 +86,10 @@ if (!builder.ExecutionContext.IsPublishMode)
     keycloak
         .WithEnvironment("SMTP_HOST", mailEndpoint.Property(EndpointProperty.Host))
         .WithEnvironment("SMTP_PORT", mailEndpoint.Property(EndpointProperty.Port))
-        .WithEnvironment("SMTP_FROM", "no-reply@protofast.dev");
+        .WithEnvironment("SMTP_FROM", "no-reply@protofast.dev")
+        // WebAuthn RP ID must be the origin hostname. protofast.dev is correct in
+        // prod (covers auth.protofast.dev); locally the ceremony runs on localhost.
+        .WithEnvironment("WEBAUTHN_RP_ID", "localhost");
 }
 
 // Auth

@@ -339,7 +339,8 @@ a:hover {
   padding: var(--space-2) calc(var(--space-3) * 1.2);
   border-radius: var(--radius-md);
 }
-.pf-btn:disabled {
+.pf-btn:disabled,
+.pf-btn[aria-disabled="true"] {
   opacity: 0.45;
   cursor: not-allowed;
 }

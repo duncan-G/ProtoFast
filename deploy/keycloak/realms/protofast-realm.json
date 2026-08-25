@@ -37,14 +37,14 @@
   "webAuthnPolicyPasswordlessRpEntityName": "ProtoFast",
   "webAuthnPolicyPasswordlessPasskeysEnabled": true,
   "webAuthnPolicyPasswordlessMediation": "conditional",
-  "webAuthnPolicyPasswordlessRpId": "protofast.dev",
+  "webAuthnPolicyPasswordlessRpId": "${WEBAUTHN_RP_ID:protofast.dev}",
   "webAuthnPolicyPasswordlessSignatureAlgorithms": [
     "ES256",
     "RS256"
   ],
   "webAuthnPolicyPasswordlessAttestationConveyancePreference": "none",
   "webAuthnPolicyPasswordlessAuthenticatorAttachment": "not specified",
-  "webAuthnPolicyPasswordlessResidentKey": "Yes",
+  "webAuthnPolicyPasswordlessResidentKey": "required",
   "webAuthnPolicyPasswordlessUserVerificationRequirement": "required",
   "webAuthnPolicyPasswordlessCreateTimeout": 0,
   "webAuthnPolicyPasswordlessAvoidSameAuthenticatorRegister": false,
