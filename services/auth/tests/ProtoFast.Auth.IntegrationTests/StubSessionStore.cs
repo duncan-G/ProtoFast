@@ -2,20 +2,40 @@ using ProtoFast.Auth.Api.Sessions;
 
 namespace ProtoFast.Auth.IntegrationTests;
 
-/// <summary>An empty session store — every lookup misses. Enough to exercise the anonymous resolve
-/// path and DI wiring without a Redis server.</summary>
+/// <summary>An in-memory session store — enough to exercise the resolve and sign-in paths without
+/// a Redis server. Tests plant sessions with <see cref="Seed"/>; every other lookup misses.</summary>
 internal sealed class StubSessionStore : ISessionStore
 {
+    private readonly Dictionary<string, SessionData> _sessions = new(StringComparer.Ordinal);
+
+    public string Seed(SessionData data)
+    {
+        var id = SessionIds.Generate();
+        _sessions[id] = data;
+        return id;
+    }
+
     public Task<string> CreateAsync(SessionData data, CancellationToken ct = default) =>
-        Task.FromResult(SessionIds.Generate());
+        Task.FromResult(Seed(data));
 
     public Task<SessionData?> GetAsync(string sessionId, CancellationToken ct = default) =>
-        Task.FromResult<SessionData?>(null);
+        Task.FromResult(_sessions.GetValueOrDefault(sessionId));
 
-    public Task DeleteAsync(string sessionId, CancellationToken ct = default) => Task.CompletedTask;
+    public Task DeleteAsync(string sessionId, CancellationToken ct = default)
+    {
+        _sessions.Remove(sessionId);
+        return Task.CompletedTask;
+    }
 
-    public Task UpdateAsync(string sessionId, SessionData data, CancellationToken ct = default) => Task.CompletedTask;
+    public Task UpdateAsync(string sessionId, SessionData data, CancellationToken ct = default)
+    {
+        _sessions[sessionId] = data;
+        return Task.CompletedTask;
+    }
 
-    public Task<string> ReplaceAsync(string oldSessionId, SessionData data, CancellationToken ct = default) =>
-        Task.FromResult(SessionIds.Generate());
+    public Task<string> ReplaceAsync(string oldSessionId, SessionData data, CancellationToken ct = default)
+    {
+        _sessions.Remove(oldSessionId);
+        return Task.FromResult(Seed(data));
+    }
 }

@@ -39,9 +39,13 @@ public sealed class SessionResolver(
     private readonly SessionPolicyOptions _session = sessionOptions.Value;
     private readonly JwtSecurityTokenHandler _handler = new();
 
-    public async Task<ResolvedIdentity?> ResolveAsync(string? cookieHeader, string? host, CancellationToken ct)
+    public Task<ResolvedIdentity?> ResolveAsync(string? cookieHeader, string? host, CancellationToken ct) =>
+        ResolveSessionAsync(SessionIds.ParseCookie(cookieHeader, _session.CookieName), host, ct);
+
+    /// <summary>Same resolution from an already-parsed session id — for the auth endpoints, which
+    /// run with ext_authz off and read the cookie themselves.</summary>
+    public async Task<ResolvedIdentity?> ResolveSessionAsync(string? sessionId, string? host, CancellationToken ct)
     {
-        var sessionId = SessionIds.ParseCookie(cookieHeader, _session.CookieName);
         if (string.IsNullOrEmpty(sessionId))
         {
             return null;
@@ -78,7 +82,7 @@ public sealed class SessionResolver(
             // Access token is expired/invalid — try a silent refresh with the stored refresh token.
             if (session.RefreshExpiresAt <= now)
             {
-                return null; // refresh token dead → session is over
+                return await DropAsync(sessionId, ct).ConfigureAwait(false);
             }
 
             KeycloakTokens refreshed;
@@ -89,7 +93,13 @@ public sealed class SessionResolver(
             catch (KeycloakException ex)
             {
                 logger.LogInformation(ex, "Refresh failed for realm {Realm}; treating as anonymous", session.Realm);
-                return null;
+
+                // Keycloak refusing the grant is final — typically the SSO session ended, which a
+                // sign-out on a sibling host in the same realm does. A 5xx or transport blip is
+                // transient, so leave the session alone and let the next request try again.
+                return ex.IsGrantRejected
+                    ? await DropAsync(sessionId, ct).ConfigureAwait(false)
+                    : null;
             }
 
             var identity = KeycloakClaims.Read(refreshed.AccessToken, refreshed.IdToken);
@@ -114,6 +124,18 @@ public sealed class SessionResolver(
             current.Roles,
             current.CachedInternalJwt!,
             rotatedId);
+    }
+
+    /// <summary>
+    /// Erases a session that can never resolve again, and reports it as anonymous. Leaving the
+    /// record behind is what turns a dead session into a redirect loop: the SSR gate bounces the
+    /// unannotated request to /signin, and /signin sees a session still sitting in the store and
+    /// bounces it straight back to the page that just failed.
+    /// </summary>
+    private async Task<ResolvedIdentity?> DropAsync(string sessionId, CancellationToken ct)
+    {
+        await sessionStore.DeleteAsync(sessionId, ct).ConfigureAwait(false);
+        return null;
     }
 
     private async Task<bool> IsAccessTokenValidAsync(SessionData session, TenantConfig tenant, CancellationToken ct)

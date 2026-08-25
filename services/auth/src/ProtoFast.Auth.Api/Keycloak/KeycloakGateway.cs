@@ -51,9 +51,13 @@ public sealed class KeycloakGateway(
             ["client_secret"] = _options.GetClientSecret(tenant.ClientId),
         }, ct);
 
-    public string BuildEndSessionUrl(string realm, string? idTokenHint, string postLogoutRedirectUri) =>
-        PublicRealmBase(realm) + "/protocol/openid-connect/logout" + Query(
+    public string BuildEndSessionUrl(TenantConfig tenant, string? idTokenHint, string postLogoutRedirectUri) =>
+        PublicRealmBase(tenant.Realm) + "/protocol/openid-connect/logout" + Query(
             ("post_logout_redirect_uri", postLogoutRedirectUri),
+            // Signing out of a session whose tokens are already gone leaves no id_token_hint, and
+            // without either hint Keycloak has no client to validate the redirect against and
+            // refuses it. client_id always rides along so the redirect stays valid.
+            ("client_id", tenant.ClientId),
             ("id_token_hint", idTokenHint));
 
     public async Task<TokenValidationParameters> GetValidationParametersAsync(string realm, CancellationToken ct = default)
@@ -100,7 +104,9 @@ public sealed class KeycloakGateway(
         var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            throw new KeycloakException($"Keycloak token endpoint returned {(int)response.StatusCode}.");
+            throw new KeycloakException(
+                $"Keycloak token endpoint returned {(int)response.StatusCode}{ErrorSuffix(body)}.",
+                response.StatusCode);
         }
 
         using var doc = JsonDocument.Parse(body);
@@ -113,6 +119,28 @@ public sealed class KeycloakGateway(
             IdToken: root.TryGetProperty("id_token", out var idt) ? idt.GetString() : null,
             AccessExpiresAt: now + TimeSpan.FromSeconds(GetInt(root, "expires_in", 300)),
             RefreshExpiresAt: now + TimeSpan.FromSeconds(GetInt(root, "refresh_expires_in", 1800)));
+    }
+
+    /// <summary>The OAuth error pair from a failed token response, so the reason Keycloak refused
+    /// ("invalid_grant: Session not active") lands in our log instead of only Keycloak's.</summary>
+    private static string ErrorSuffix(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            var error = doc.RootElement.TryGetProperty("error", out var e) ? e.GetString() : null;
+            if (string.IsNullOrEmpty(error))
+            {
+                return "";
+            }
+
+            var description = doc.RootElement.TryGetProperty("error_description", out var d) ? d.GetString() : null;
+            return string.IsNullOrEmpty(description) ? $" ({error})" : $" ({error}: {description})";
+        }
+        catch (JsonException)
+        {
+            return "";
+        }
     }
 
     private static int GetInt(JsonElement root, string name, int fallback) =>
