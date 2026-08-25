@@ -8,47 +8,47 @@
   "registrationEmailAsUsername": true,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
-  "resetPasswordAllowed": true,
+  "resetPasswordAllowed": false,
   "editUsernameAllowed": false,
   "rememberMe": true,
   "verifyEmail": true,
   "loginTheme": "protofast",
   "emailTheme": "protofast",
-
   "bruteForceProtected": true,
   "permanentLockout": false,
-  "failureFactor": 30,
+  "failureFactor": 10,
   "maxFailureWaitSeconds": 900,
   "minimumQuickLoginWaitSeconds": 60,
   "waitIncrementSeconds": 60,
   "quickLoginCheckMilliSeconds": 1000,
   "maxDeltaTimeSeconds": 43200,
-
-  "passwordPolicy": "length(12) and notUsername and notEmail",
-
+  "passwordPolicy": "",
   "ssoSessionIdleTimeout": 28800,
   "ssoSessionMaxLifespan": 604800,
   "accessTokenLifespan": 300,
   "accessTokenLifespanForImplicitFlow": 900,
   "revokeRefreshToken": true,
   "refreshTokenMaxReuse": 0,
-
   "attributes": {
     "actionTokenGeneratedByUserLifespan.verify-email": "43200",
-    "actionTokenGeneratedByUserLifespan.reset-credentials": "3600"
+    "actionTokenGeneratedByUserLifespan.reset-credentials": "3600",
+    "acr.loa.map": "{\"basic\":1,\"passkey\":2}"
   },
-
   "webAuthnPolicyPasswordlessRpEntityName": "ProtoFast",
-  "webAuthnPolicyPasswordlessRpId": "protofast.dev",
-  "webAuthnPolicyPasswordlessSignatureAlgorithms": ["ES256", "RS256"],
+  "webAuthnPolicyPasswordlessPasskeysEnabled": true,
+  "webAuthnPolicyPasswordlessMediation": "conditional",
+  "webAuthnPolicyPasswordlessRpId": "${WEBAUTHN_RP_ID:protofast.dev}",
+  "webAuthnPolicyPasswordlessSignatureAlgorithms": [
+    "ES256",
+    "RS256"
+  ],
   "webAuthnPolicyPasswordlessAttestationConveyancePreference": "none",
   "webAuthnPolicyPasswordlessAuthenticatorAttachment": "not specified",
-  "webAuthnPolicyPasswordlessRequireResidentKey": "Yes",
+  "webAuthnPolicyPasswordlessResidentKey": "required",
   "webAuthnPolicyPasswordlessUserVerificationRequirement": "required",
   "webAuthnPolicyPasswordlessCreateTimeout": 0,
   "webAuthnPolicyPasswordlessAvoidSameAuthenticatorRegister": false,
   "webAuthnPolicyPasswordlessAcceptableAaguids": [],
-
   "smtpServer": {
     "host": "${SMTP_HOST:localhost}",
     "port": "${SMTP_PORT:1025}",
@@ -60,22 +60,30 @@
     "user": "${SMTP_USER:}",
     "password": "${SMTP_PASSWORD:}"
   },
-
   "requiredActions": [
     {
-      "alias": "VERIFY_EMAIL",
-      "name": "Verify Email",
-      "providerId": "VERIFY_EMAIL",
+      "alias": "verify-email-code",
+      "name": "Verify Email by Code",
+      "providerId": "verify-email-code",
       "enabled": true,
       "defaultAction": true,
       "priority": 10,
       "config": {}
     },
     {
+      "alias": "VERIFY_EMAIL",
+      "name": "Verify Email",
+      "providerId": "VERIFY_EMAIL",
+      "enabled": false,
+      "defaultAction": false,
+      "priority": 11,
+      "config": {}
+    },
+    {
       "alias": "UPDATE_PASSWORD",
       "name": "Update Password",
       "providerId": "UPDATE_PASSWORD",
-      "enabled": true,
+      "enabled": false,
       "defaultAction": false,
       "priority": 40,
       "config": {}
@@ -108,11 +116,10 @@
       "config": {}
     }
   ],
-
   "authenticationFlows": [
     {
-      "alias": "passkey-or-password browser",
-      "description": "Email-first browser flow offering passkey or password",
+      "alias": "passwordless browser",
+      "description": "Email-first browser flow: passkey or a mailed code, never a password",
       "providerId": "basic-flow",
       "topLevel": true,
       "builtIn": false,
@@ -138,20 +145,46 @@
           "autheticatorFlow": true,
           "requirement": "ALTERNATIVE",
           "priority": 30,
-          "flowAlias": "passkey-or-password forms",
+          "flowAlias": "passwordless forms",
           "userSetupAllowed": false
         }
       ]
     },
     {
-      "alias": "passkey-or-password forms",
-      "description": "Username, then passkey or password",
+      "alias": "passwordless forms",
+      "description": "Two branches keyed on the level of authentication the client asked for. Both are CONDITIONAL and nothing here is ALTERNATIVE: Keycloak discards every ALTERNATIVE that sits beside a REQUIRED or CONDITIONAL sibling.",
       "providerId": "basic-flow",
       "topLevel": false,
       "builtIn": false,
       "authenticationExecutions": [
         {
-          "authenticator": "auth-username-form",
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "requirement": "CONDITIONAL",
+          "priority": 10,
+          "flowAlias": "passwordless sign-in",
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "requirement": "CONDITIONAL",
+          "priority": 20,
+          "flowAlias": "passwordless step-up",
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "passwordless sign-in",
+      "description": "Ordinary sign-in. The level-1 condition is what stamps a level on the session; without it the step-up branch below would fire on every first authentication, because an unlevelled session matches any level condition.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-level-of-authentication",
+          "authenticatorConfig": "basic-level-of-authentication",
           "authenticatorFlow": false,
           "autheticatorFlow": false,
           "requirement": "REQUIRED",
@@ -159,49 +192,58 @@
           "userSetupAllowed": false
         },
         {
-          "authenticatorFlow": true,
-          "autheticatorFlow": true,
+          "authenticator": "auth-username-form",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
           "requirement": "REQUIRED",
           "priority": 20,
-          "flowAlias": "passkey-or-password credentials",
-          "userSetupAllowed": false
-        }
-      ]
-    },
-    {
-      "alias": "passkey-or-password credentials",
-      "description": "Stored credential if the account has one, otherwise the finish-setup branch",
-      "providerId": "basic-flow",
-      "topLevel": false,
-      "builtIn": false,
-      "authenticationExecutions": [
-        {
-          "authenticatorFlow": true,
-          "autheticatorFlow": true,
-          "requirement": "CONDITIONAL",
-          "priority": 10,
-          "flowAlias": "passkey-or-password stored credential",
           "userSetupAllowed": false
         },
         {
           "authenticatorFlow": true,
           "autheticatorFlow": true,
-          "requirement": "CONDITIONAL",
-          "priority": 20,
-          "flowAlias": "finish account setup",
+          "requirement": "REQUIRED",
+          "priority": 30,
+          "flowAlias": "passwordless credentials",
           "userSetupAllowed": false
         }
       ]
     },
     {
-      "alias": "passkey-or-password stored credential",
-      "description": "Passkey (WebAuthn passwordless) or password. Skipped when the account has neither.",
+      "alias": "passwordless credentials",
+      "description": "Passkey if this device has one, otherwise a code mailed to the address. Both are ALTERNATIVE, so either satisfies the step and the credential chooser can move between them.",
       "providerId": "basic-flow",
       "topLevel": false,
       "builtIn": false,
       "authenticationExecutions": [
         {
-          "authenticator": "conditional-user-configured",
+          "authenticator": "webauthn-authenticator-passwordless",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "email-otp",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "passwordless step-up",
+      "description": "Runs only for a client that asked for the passkey level (the admin console). Its max age is what makes it re-prompt inside a live SSO session instead of being satisfied once and forgotten.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-level-of-authentication",
+          "authenticatorConfig": "passkey-level-of-authentication",
           "authenticatorFlow": false,
           "autheticatorFlow": false,
           "requirement": "REQUIRED",
@@ -212,65 +254,108 @@
           "authenticator": "webauthn-authenticator-passwordless",
           "authenticatorFlow": false,
           "autheticatorFlow": false,
-          "requirement": "ALTERNATIVE",
+          "requirement": "REQUIRED",
           "priority": 20,
-          "userSetupAllowed": false
-        },
-        {
-          "authenticator": "auth-password-form",
-          "authenticatorFlow": false,
-          "autheticatorFlow": false,
-          "requirement": "ALTERNATIVE",
-          "priority": 30,
           "userSetupAllowed": false
         }
       ]
     },
     {
-      "alias": "finish account setup",
-      "description": "Half-registered account (no passkey, no password): email a link to set the first one.",
+      "alias": "passwordless registration",
+      "description": "Registration with no password step",
       "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "registration-page-form",
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "flowAlias": "passwordless registration form",
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "passwordless registration form",
+      "description": "Email address only. registration-password-action is absent rather than disabled: it stamps an UPDATE_PASSWORD required action on every new user even when the realm has that action turned off.",
+      "providerId": "form-flow",
       "topLevel": false,
       "builtIn": false,
       "authenticationExecutions": [
         {
-          "authenticator": "conditional-sub-flow-executed",
-          "authenticatorConfig": "credential-branch-skipped",
+          "authenticator": "registration-user-creation",
           "authenticatorFlow": false,
           "autheticatorFlow": false,
           "requirement": "REQUIRED",
           "priority": 10,
           "userSetupAllowed": false
-        },
-        {
-          "authenticator": "reset-credential-email",
-          "authenticatorFlow": false,
-          "autheticatorFlow": false,
-          "requirement": "REQUIRED",
-          "priority": 20,
-          "userSetupAllowed": false
         }
       ]
     }
   ],
-
   "authenticatorConfig": [
     {
-      "alias": "credential-branch-skipped",
+      "alias": "basic-level-of-authentication",
       "config": {
-        "flow_to_check": "passkey-or-password stored credential",
-        "check_result": "not-executed"
+        "loa-condition-level": "1",
+        "loa-max-age": "604800"
+      }
+    },
+    {
+      "alias": "passkey-level-of-authentication",
+      "config": {
+        "loa-condition-level": "2",
+        "loa-max-age": "900"
       }
     }
   ],
-
-  "browserFlow": "passkey-or-password browser",
-  "registrationFlow": "registration",
+  "browserFlow": "passwordless browser",
+  "registrationFlow": "passwordless registration",
   "directGrantFlow": "direct grant",
   "resetCredentialsFlow": "reset credentials",
   "clientAuthenticationFlow": "clients",
   "dockerAuthenticationFlow": "docker auth",
-
+  "identityProviders": [
+    {
+      "alias": "google",
+      "displayName": "Google",
+      "providerId": "google",
+      "enabled": false,
+      "trustEmail": true,
+      "storeToken": false,
+      "addReadTokenRoleOnCreate": false,
+      "linkOnly": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "clientId": "${GOOGLE_CLIENT_ID:}",
+        "clientSecret": "${GOOGLE_CLIENT_SECRET:}",
+        "defaultScope": "openid profile email",
+        "syncMode": "IMPORT"
+      }
+    },
+    {
+      "alias": "apple",
+      "displayName": "Apple",
+      "providerId": "apple",
+      "enabled": false,
+      "trustEmail": true,
+      "storeToken": false,
+      "addReadTokenRoleOnCreate": false,
+      "linkOnly": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "clientId": "${APPLE_CLIENT_ID:}",
+        "teamId": "${APPLE_TEAM_ID:}",
+        "keyId": "${APPLE_KEY_ID:}",
+        "p8PrivateKey": "${APPLE_PRIVATE_KEY:}",
+        "defaultScope": "openid name email",
+        "syncMode": "IMPORT"
+      }
+    }
+  ],
   "clients": [
     {
       "clientId": "protofast-web",
@@ -333,11 +418,12 @@
         "post.logout.redirect.uris": "https://admin.protofast.dev/*##https://localhost:20000/*##https://localhost:20001/*",
         "backchannel.logout.url": "${BACKCHANNEL_LOGOUT_URL:}",
         "backchannel.logout.session.required": "true",
-        "backchannel.logout.revoke.offline.tokens": "false"
+        "backchannel.logout.revoke.offline.tokens": "false",
+        "client.session.idle.timeout": "900",
+        "client.session.max.lifespan": "3600"
       }
     }
   ],
-
   "components": {
     "org.keycloak.userprofile.UserProfileProvider": [
       {

@@ -77,6 +77,15 @@ services:
       Tenants__ByHost__protofast.dev__ClientId: protofast-web
       Tenants__ByHost__admin.protofast.dev__Realm: protofast
       Tenants__ByHost__admin.protofast.dev__ClientId: admin
+      # Admin-only re-authentication policy. Both clients share the realm's SSO session, so
+      # without these a sign-in on the product site walks into the admin console silently.
+      # max_age forces *a* re-authentication; acr_values asks the realm for the level whose
+      # branch demands a passkey, and the callback refuses the sign-in if the token comes
+      # back at a lower one. Leave ACR_VALUES empty until staff passkey coverage and the
+      # break-glass procedure are both in place — asking for a level the realm cannot reach
+      # locks the admin console.
+      Tenants__ByHost__admin.protofast.dev__MaxAge: "${ADMIN_MAX_AGE:-900}"
+      Tenants__ByHost__admin.protofast.dev__AcrValues: "${ADMIN_ACR_VALUES:-}"
     volumes:
       - /usr/local/bin/grpc_health_probe:/usr/local/bin/grpc_health_probe:ro
     healthcheck: *grpc-health
@@ -232,10 +241,29 @@ services:
       SMTP_STARTTLS: "${SMTP_STARTTLS:-true}"
       SMTP_USER: "${SMTP_USER:-}"
       SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      # Social sign-in, substituted into the realm import. Both providers ship
+      # DISABLED in the realm JSON, so an absent value here is a no-op rather than a
+      # button that leads to an error page — enable them in the admin console once
+      # the credentials are really set. Apple has no shared secret: APPLE_PRIVATE_KEY
+      # is the .p8 signing key (base64 body, one line, no PEM armour) that the
+      # provider signs a fresh client secret from on every token request.
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+      APPLE_CLIENT_ID: "${APPLE_CLIENT_ID:-}"
+      APPLE_TEAM_ID: "${APPLE_TEAM_ID:-}"
+      APPLE_KEY_ID: "${APPLE_KEY_ID:-}"
+      APPLE_PRIVATE_KEY: "${APPLE_PRIVATE_KEY:-}"
     volumes:
       - ./keycloak/realms:/opt/keycloak/data/import:ro
       # Custom "protofast" login theme (realm import sets loginTheme: protofast).
       - ./keycloak/themes:/opt/keycloak/themes:ro
+      # Server extensions: the email-OTP authenticator and required action the
+      # browser flow depends on, plus the Apple identity provider. A bind mount
+      # rather than a custom image works because this runs `kc.sh start` WITHOUT
+      # --optimized, so the server re-runs its augmentation at boot and picks the
+      # JAR up. Losing this mount is not cosmetic — the browser flow references
+      # `email-otp` by id and cannot run without it.
+      - ./keycloak/providers:/opt/keycloak/providers:ro
     # Cross-host HTTP ingress for Envoy's Keycloak edge vhost (private IP : 8083).
     ports:
       - "8083:8080"

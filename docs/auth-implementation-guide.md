@@ -14,8 +14,8 @@ deferred, not removed):
 
 | Decision | Choice for this milestone |
 | --- | --- |
-| Sign-in factors | **Email + password** and **email + passkey (WebAuthn)** only |
-| Email verification | **Required** — not in the original doc, added here. Enforced by Keycloak's *Verify Email* required action + SMTP |
+| Sign-in factors | **No passwords, in any realm.** A passkey, a Google or Apple account, or a code typed from an email — see [`auth-credential-plan.md`](./auth-credential-plan.md), which supersedes this row |
+| Email verification | **Required**, by typed code rather than a clicked link. Enforced by the `verify-email-code` required action from our own provider JAR + SMTP |
 | Login / signup / verify UI | **Keycloak-hosted pages** (OIDC redirect model from the architecture doc), *not* a custom Angular form. The `AuthenticationSample` repo drives Cognito from a custom UI — that is **inspiration only**; we follow the doc's redirect/BFF flow |
 | Realms / clients | Only the **`protofast`** realm exists, with clients **`protofast-web`** and **`admin`**. `myfitness` / `theplot` are designed-for but **not created** (no code, no realm) |
 | Browser credential | Opaque, HttpOnly session cookie. Browser never sees a Keycloak token (BFF) |
@@ -35,9 +35,12 @@ login / register / verify-email / passkey-enrollment**, and auth-svc only:
 3. issues/validates the opaque session cookie, and
 4. answers Envoy's ext_authz `Check`.
 
-This keeps password hashing, WebAuthn ceremonies, verification emails, lockout,
-and password reset **inside Keycloak** — we configure them, we don't reimplement
-them. The Cognito sample reimplements all of that because Cognito has no hosted
+This keeps WebAuthn ceremonies, verification emails and lockout **inside
+Keycloak** — we configure them, we don't reimplement them. The one thing Keycloak
+has no answer for is the emailed code, which it simply does not ship; that lives
+in a provider JAR of ours ([`infra/keycloak/providers/email-otp`](../infra/keycloak/providers/email-otp/))
+and plugs into the same machinery. Password hashing and password reset are not on
+this list any more because there are no passwords. The Cognito sample reimplements all of that because Cognito has no hosted
 flow we wanted; ignore that part.
 
 ### What the sample *is* good for

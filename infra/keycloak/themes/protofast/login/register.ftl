@@ -12,6 +12,14 @@
                 <#if messagesPerField.existsError('email')>
                     <span id="input-error-email" class="${properties.kcInputErrorMessageClass!}" aria-live="polite">
                         ${kcSanitize(messagesPerField.get('email'))?no_esc}
+                        <#-- "Already registered" is the one email error with somewhere to go:
+                             every account can be opened from the sign-in form, with a passkey,
+                             a linked provider, or a code to this address. Matching on the
+                             rendered message is safe because both sides come from the same
+                             bundle; a format or length error falls through with no link. -->
+                        <#if messagesPerField.get('email') == msg("emailExistsMessage")>
+                            <a href="${url.loginUrl}" class="pf-link">${msg("emailExistsSignIn")}</a>
+                        </#if>
                     </span>
                 </#if>
             </div>

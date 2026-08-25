@@ -19,6 +19,18 @@
 #   scripts/populate-secrets.sh                         # generate any missing managed keys
 #   scripts/populate-secrets.sh Payments_StripeKey=sk_live_...   # set/override specific keys
 #
+# Social sign-in (all optional; the realm ships both providers disabled, so an
+# absent value just means no button):
+#   Auth_Google__ClientId, Auth_Google__ClientSecret
+#   Auth_Apple__ClientId   — Apple's "Services ID", not the app bundle id
+#   Auth_Apple__TeamId, Auth_Apple__KeyId
+#   Auth_Apple__PrivateKey — the .p8 contents as the base64 body on ONE line, with
+#     no BEGIN/END armour. Apple has no shared client secret: the provider signs a
+#     fresh one from this key per token request, so nothing here ever expires.
+#
+#   scripts/populate-secrets.sh \
+#       Auth_Apple__PrivateKey="$(grep -v -- ----- AuthKey_ABC123.p8 | tr -d '\n')"
+#
 # Env:
 #   SECRET_ID   (default: <project>/app)  — must match aws_secretsmanager_secret.app.name
 #   AWS_REGION  (default: from your AWS config)

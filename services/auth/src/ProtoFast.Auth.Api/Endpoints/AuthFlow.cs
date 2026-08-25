@@ -26,16 +26,27 @@ public sealed class AuthFlow(
     SessionResolver sessionResolver,
     AuthDbContext db,
     IOptions<SessionPolicyOptions> sessionOptions,
+    IOptions<SubscriptionOptions> subscriptionOptions,
     TimeProvider clock,
     ILogger<AuthFlow> logger)
 {
     private readonly SessionPolicyOptions _session = sessionOptions.Value;
+    private readonly SubscriptionOptions _subscriptions = subscriptionOptions.Value;
 
-    /// <summary>/signin, /signup (registration), /reset — set up correlation, 302 to Keycloak.</summary>
+    /// <summary>/signin, /signup (registration), /add-passkey — set up correlation, 302 to Keycloak.</summary>
     /// <param name="skipIfAuthenticated">When true (sign-in/sign-up), an already-valid session
-    /// short-circuits straight to the return target instead of re-running the flow. Password reset
-    /// leaves this off — a signed-in user resetting credentials is a legitimate intent.</param>
-    public async Task<IResult> StartAsync(HttpContext ctx, bool registration, CancellationToken ct, bool skipIfAuthenticated = true)
+    /// short-circuits straight to the return target instead of re-running the flow. An endpoint
+    /// whose whole purpose is to reach Keycloak — /add-passkey — has to switch this off, or it
+    /// bounces off the very session it depends on and never gets there.</param>
+    /// <param name="kcAction">An Application Initiated Action to run inside the authorize request.
+    /// The correlation records that this round trip carried the offer, so the callback reports
+    /// its outcome rather than chaining a second one.</param>
+    public async Task<IResult> StartAsync(
+        HttpContext ctx,
+        bool registration,
+        CancellationToken ct,
+        bool skipIfAuthenticated = true,
+        string? kcAction = null)
     {
         // These endpoints run with ext_authz OFF, so identity isn't injected — but the session
         // cookie still rides along. If it resolves to a live session the user is already signed in;
@@ -63,10 +74,17 @@ public sealed class AuthFlow(
 
         await correlationStore.SaveAsync(
             state,
-            new CorrelationData(verifier, redirectUri, returnUrl, tenant.Realm, tenant.ClientId, Activity.Current?.Id ?? ""),
+            new CorrelationData(
+                verifier,
+                redirectUri,
+                returnUrl,
+                tenant.Realm,
+                tenant.ClientId,
+                Activity.Current?.Id ?? "",
+                PasskeyOffer: kcAction == KeycloakActions.RegisterPasskey),
             ct);
 
-        return Results.Redirect(keycloak.BuildAuthorizeUrl(tenant, redirectUri, state, challenge, registration));
+        return Results.Redirect(keycloak.BuildAuthorizeUrl(tenant, redirectUri, state, challenge, registration, kcAction));
     }
 
     /// <summary>/signin-oidc — verify state, exchange code, provision, issue the session cookie.</summary>
@@ -126,7 +144,21 @@ public sealed class AuthFlow(
             return Results.Redirect("/");
         }
 
-        await ProvisionAsync(correlation.Realm, identity, ct);
+        // acr_values is a request, not a guarantee: a realm that has not been given the step-up
+        // branch happily issues a token at whatever level it did reach. Gating the admin console
+        // on a level we merely asked for would be no gate at all, so check what came back.
+        var hostTenant = HostTenant(ctx, correlation);
+        if (hostTenant.AcrValues is { Length: > 0 } required
+            && !string.Equals(identity.Acr, required, StringComparison.Ordinal))
+        {
+            logger.LogError(
+                "Realm {Realm} returned acr {Acr} for client {ClientId}; {Required} was required",
+                correlation.Realm, identity.Acr ?? "(none)", correlation.ClientId, required);
+            activity?.SetStatus(ActivityStatusCode.Error, "Required acr not satisfied");
+            return Results.Redirect("/");
+        }
+
+        var user = await ProvisionAsync(correlation.Realm, identity, ct);
 
         var now = clock.GetUtcNow();
         var session = new SessionData
@@ -143,14 +175,127 @@ public sealed class AuthFlow(
             RefreshExpiresAt = tokens.RefreshExpiresAt,
             CreatedAt = now,
             KcSessionId = identity.SessionId,
+            Subscribed = user.SubscribedAt is not null,
         };
+
+        // A callback that lands while a session cookie is already live replaces it, which is
+        // routine for /reset and unavoidable for the passkey offer — that second leg is a
+        // whole authorize round trip and comes back with a fresh token set. Drop the record
+        // the cookie is about to stop pointing at, or every offer leaves one behind in Redis
+        // until its TTL runs out.
+        var previousSessionId = ctx.Request.Cookies[_session.CookieName];
 
         var sessionId = await sessionStore.CreateAsync(session, ct);
         AppendSessionCookie(ctx, sessionId);
 
+        if (!string.IsNullOrEmpty(previousSessionId) && previousSessionId != sessionId)
+        {
+            await sessionStore.DeleteAsync(previousSessionId, ct);
+        }
+
         activity?.SetStatus(ActivityStatusCode.Ok);
-        return Results.Redirect(correlation.ReturnUrl);
+
+        // This round trip carried the passkey offer — sign-up, where it rides along on the one
+        // authorize request, or the second leg chained off a sign-in. Record what happened.
+        // Cancelling is a legitimate answer — the user is asked again next time they sign in,
+        // and session lifetime is the whole of the cadence.
+        if (correlation.PasskeyOffer)
+        {
+            var status = query[KeycloakActions.StatusParameter].ToString();
+            if (string.Equals(status, KeycloakActions.StatusSuccess, StringComparison.OrdinalIgnoreCase))
+            {
+                await StampPasskeyAsync(user, now, ct);
+            }
+
+            activity?.SetTag("auth.passkey_offer_status", string.IsNullOrEmpty(status) ? "none" : status);
+        }
+
+        // An account that has to subscribe hands off to Angular, because the subscription
+        // workflow is Angular's and takes minutes, a payment redirect and a webhook. Both
+        // branches end at the same doorway; Angular just decides when.
+        if (_subscriptions.Enabled && user.SubscribedAt is null)
+        {
+            return Results.Redirect(WithFlag(correlation.ReturnUrl, _subscriptions.ReturnUrlFlag));
+        }
+
+        // Already offered on this trip; never chain a second one.
+        if (correlation.PasskeyOffer)
+        {
+            return Results.Redirect(correlation.ReturnUrl);
+        }
+
+        return await OfferPasskeyOrReturnAsync(ctx, correlation, hostTenant, user, identity, now, ct);
     }
+
+    /// <summary>
+    /// Chains the passkey offer onto the sign-in that just completed. Returns straight to the
+    /// app instead when the account already has one. Sign-up does not come through here — it
+    /// carries the offer on its own authorize request, because the session registration leaves
+    /// behind cannot satisfy a follow-up one (see <c>/signup</c> in <see cref="AuthEndpoints"/>).
+    /// </summary>
+    private async Task<IResult> OfferPasskeyOrReturnAsync(
+        HttpContext ctx,
+        CorrelationData correlation,
+        TenantConfig tenant,
+        UserAccount user,
+        KeycloakIdentity identity,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        // A sign-in that used a passkey is proof of one, whatever the local column says. Repair
+        // it here and the round trip below is skipped from now on — this is what covers a
+        // credential added through Keycloak's own account console.
+        if (identity.AuthenticatedWithPasskey && user.PasskeyRegisteredAt is null)
+        {
+            await StampPasskeyAsync(user, now, ct);
+        }
+
+        if (user.PasskeyRegisteredAt is not null)
+        {
+            return Results.Redirect(correlation.ReturnUrl);
+        }
+
+        var redirectUri = Origin(ctx) + "/signin-oidc";
+        var (verifier, challenge) = Pkce.Create();
+        var state = SessionIds.Generate();
+
+        await correlationStore.SaveAsync(
+            state,
+            new CorrelationData(
+                verifier,
+                redirectUri,
+                correlation.ReturnUrl,
+                tenant.Realm,
+                tenant.ClientId,
+                Activity.Current?.Id ?? "",
+                PasskeyOffer: true),
+            ct);
+
+        return Results.Redirect(keycloak.BuildAuthorizeUrl(
+            tenant, redirectUri, state, challenge, registration: false, KeycloakActions.RegisterPasskey));
+    }
+
+    private async Task StampPasskeyAsync(UserAccount user, DateTimeOffset now, CancellationToken ct)
+    {
+        user.PasskeyRegisteredAt = now;
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// The full tenant config for the host this callback arrived on, which carries the per-client
+    /// re-authentication policy the correlation record does not. Falls back to realm and client
+    /// alone if the host no longer maps anywhere, or maps somewhere else — the correlation is the
+    /// authority on which client this flow belongs to.
+    /// </summary>
+    private TenantConfig HostTenant(HttpContext ctx, CorrelationData correlation) =>
+        tenantResolver.TryResolve(ctx.Request.Host.Value, out var tenant)
+        && tenant.Realm == correlation.Realm
+        && tenant.ClientId == correlation.ClientId
+            ? tenant
+            : new TenantConfig { Realm = correlation.Realm, ClientId = correlation.ClientId };
+
+    private static string WithFlag(string returnUrl, string flag) =>
+        returnUrl + (returnUrl.Contains('?') ? '&' : '?') + Uri.EscapeDataString(flag) + "=1";
 
     /// <summary>/signout — drop the session, clear the cookie, 302 to Keycloak end-session.</summary>
     public async Task<IResult> SignOutAsync(HttpContext ctx, CancellationToken ct)
@@ -219,7 +364,7 @@ public sealed class AuthFlow(
         return true;
     }
 
-    private async Task ProvisionAsync(string realm, KeycloakIdentity identity, CancellationToken ct)
+    private async Task<UserAccount> ProvisionAsync(string realm, KeycloakIdentity identity, CancellationToken ct)
     {
         var user = await db.Users.FirstOrDefaultAsync(
             u => u.Realm == realm && u.Subject == identity.Subject, ct);
@@ -227,7 +372,7 @@ public sealed class AuthFlow(
 
         if (user is null)
         {
-            db.Users.Add(new UserAccount
+            user = new UserAccount
             {
                 Id = Guid.NewGuid(),
                 Realm = realm,
@@ -235,7 +380,8 @@ public sealed class AuthFlow(
                 Email = identity.Email,
                 CreatedAt = now,
                 LastLoginAt = now,
-            });
+            };
+            db.Users.Add(user);
         }
         else
         {
@@ -244,6 +390,7 @@ public sealed class AuthFlow(
         }
 
         await db.SaveChangesAsync(ct);
+        return user;
     }
 
     private void AppendSessionCookie(HttpContext ctx, string sessionId) =>

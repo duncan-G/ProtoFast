@@ -194,7 +194,7 @@ public class SessionResolverTests
 
         public SecurityKey? SigningKey { get; set; }
 
-        public string BuildAuthorizeUrl(TenantConfig tenant, string redirectUri, string state, string codeChallenge, bool registration) => "";
+        public string BuildAuthorizeUrl(TenantConfig tenant, string redirectUri, string state, string codeChallenge, bool registration, string? kcAction = null) => "";
 
         public Task<KeycloakTokens> ExchangeCodeAsync(TenantConfig tenant, string code, string redirectUri, string codeVerifier, CancellationToken ct = default) =>
             throw new NotSupportedException();
@@ -221,7 +221,7 @@ public class SessionResolverTests
 
     private sealed class FakeJwtFactory : IInternalJwtFactory
     {
-        public InternalJwt Create(string subject, string tenant, IReadOnlyList<string> roles) =>
+        public InternalJwt Create(string subject, string tenant, IReadOnlyList<string> roles, bool subscribed = false) =>
             new("internal-jwt", DateTimeOffset.UtcNow.AddMinutes(5));
     }
 }

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -16,7 +17,7 @@ public sealed class KeycloakGateway(
     private readonly KeycloakOptions _options = options.Value;
     private readonly ConcurrentDictionary<string, CachedKeys> _keyCache = new();
 
-    public string BuildAuthorizeUrl(TenantConfig tenant, string redirectUri, string state, string codeChallenge, bool registration)
+    public string BuildAuthorizeUrl(TenantConfig tenant, string redirectUri, string state, string codeChallenge, bool registration, string? kcAction = null)
     {
         var query = Query(
             ("client_id", tenant.ClientId),
@@ -26,7 +27,16 @@ public sealed class KeycloakGateway(
             ("state", state),
             ("code_challenge", codeChallenge),
             ("code_challenge_method", "S256"),
-            ("prompt", registration ? "create" : null));
+            ("prompt", registration ? "create" : null),
+            ("kc_action", kcAction),
+            // Belt to the callback's braces: the callback already skips the round trip for a
+            // user it knows has a passkey, so this only catches a local record that has gone
+            // stale — an enrolment made through Keycloak's own account console, say.
+            ("kc_action_parameter",
+                kcAction == KeycloakActions.RegisterPasskey ? KeycloakActions.SkipIfExists : null),
+            // Both are per-host policy and both are empty everywhere except the admin console.
+            ("max_age", tenant.MaxAge?.ToString(CultureInfo.InvariantCulture)),
+            ("acr_values", tenant.AcrValues));
 
         return PublicRealmBase(tenant.Realm) + "/protocol/openid-connect/auth" + query;
     }

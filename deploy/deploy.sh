@@ -185,13 +185,36 @@ PY
   # From address is non-secret but lives with the SMTP creds so the verified SES
   # domain (var.cloudflare_zone) can override the compose default (no-reply@protofast.dev).
   v="$(_secret_get Auth_Smtp__From || true)";                         if [ -n "$v" ]; then set_env "$ENV_FILE" SMTP_FROM "$v"; fi
+
+  # Social sign-in credentials, substituted into the realm import the same way the
+  # client secrets are. All optional: the realm ships both providers DISABLED, so
+  # an absent value simply leaves that button unavailable rather than rendering one
+  # that leads to an error page.
+  #
+  # Apple has no shared client secret — the provider signs a fresh one per token
+  # request — so what travels here is the .p8 signing key. Store it as the base64
+  # body on ONE line, without the BEGIN/END armour: .env cannot carry newlines, and
+  # the provider strips armour and whitespace before parsing anyway.
+  v="$(_secret_get Auth_Google__ClientId || true)";                    if [ -n "$v" ]; then set_env "$ENV_FILE" GOOGLE_CLIENT_ID "$v"; fi
+  v="$(_secret_get Auth_Google__ClientSecret || true)";                if [ -n "$v" ]; then set_env "$ENV_FILE" GOOGLE_CLIENT_SECRET "$v"; fi
+  v="$(_secret_get Auth_Apple__ClientId || true)";                     if [ -n "$v" ]; then set_env "$ENV_FILE" APPLE_CLIENT_ID "$v"; fi
+  v="$(_secret_get Auth_Apple__TeamId || true)";                       if [ -n "$v" ]; then set_env "$ENV_FILE" APPLE_TEAM_ID "$v"; fi
+  v="$(_secret_get Auth_Apple__KeyId || true)";                        if [ -n "$v" ]; then set_env "$ENV_FILE" APPLE_KEY_ID "$v"; fi
+  v="$(_secret_get Auth_Apple__PrivateKey || true)";                   if [ -n "$v" ]; then set_env "$ENV_FILE" APPLE_PRIVATE_KEY "$v"; fi
 }
 
 # Sync the Keycloak realm JSON and custom themes from S3 before (re)starting
 # Keycloak. Without the realm, `--import-realm` has nothing to import and the
 # protofast realm doesn't exist — sign-in returns 404. The compose bind-mounts
 # these into the container: ./keycloak/realms -> /opt/keycloak/data/import,
-# ./keycloak/themes -> /opt/keycloak/themes. Relative to APP_DIR (/opt/protofast).
+# ./keycloak/themes -> /opt/keycloak/themes, ./keycloak/providers ->
+# /opt/keycloak/providers. Relative to APP_DIR (/opt/protofast).
+#
+# providers/ carries the email-OTP authenticator and required action, which the
+# sign-in flow depends on: a Keycloak that starts without that JAR has no
+# `email-otp` authenticator and refuses to run the browser flow at all. It is a
+# committed build artifact (infra/keycloak/providers/build.sh), so it travels in
+# the same S3 sync as the realm and the themes.
 # Best-effort: if ASSETS_BUCKET is unset (pre-split host) or the sync fails, warn
 # but don't abort — an existing host with no realm config can still start Keycloak
 # (it just won't reimport the realm). The deploy job now passes ASSETS_BUCKET via
@@ -205,7 +228,7 @@ sync_keycloak_config() {
     return 0
   fi
   log "syncing keycloak config from s3://${bucket}/deploy/keycloak/"
-  mkdir -p "${APP_DIR}/keycloak/realms" "${APP_DIR}/keycloak/themes"
+  mkdir -p "${APP_DIR}/keycloak/realms" "${APP_DIR}/keycloak/themes" "${APP_DIR}/keycloak/providers"
   # shellcheck disable=SC2086  # ${region:+...} is intentionally word-split
   aws s3 sync "s3://${bucket}/deploy/keycloak/" "${APP_DIR}/keycloak/" \
     ${region:+--region "$region"} 2>&1 ||
@@ -371,9 +394,24 @@ KC_KCADM_CONFIG="/tmp/kcadm-deploy.config"
 # That exclusion also covers fromDisplayName, which rides along inside smtpServer —
 # an established realm keeps whatever From name it was created with until someone
 # changes it in the admin console.
+# webAuthnPolicyPasswordless* is here because none of it reconciled before, so it
+# only ever applied to a realm created from scratch — including the Passkeys
+# switch, which is what puts the passkey prompt on the email form ahead of the
+# emailed code. failureFactor matters more than it used to: with no password left
+# in the realm it is the lockout threshold for guessing a six-digit code.
 KC_REALM_KEYS="registrationAllowed registrationEmailAsUsername loginWithEmailAllowed
 duplicateEmailsAllowed resetPasswordAllowed editUsernameAllowed rememberMe
-verifyEmail loginTheme emailTheme passwordPolicy bruteForceProtected"
+verifyEmail loginTheme emailTheme passwordPolicy bruteForceProtected failureFactor
+webAuthnPolicyPasswordlessRpEntityName webAuthnPolicyPasswordlessRpId
+webAuthnPolicyPasswordlessSignatureAlgorithms
+webAuthnPolicyPasswordlessAttestationConveyancePreference
+webAuthnPolicyPasswordlessAuthenticatorAttachment
+webAuthnPolicyPasswordlessResidentKey
+webAuthnPolicyPasswordlessUserVerificationRequirement
+webAuthnPolicyPasswordlessCreateTimeout
+webAuthnPolicyPasswordlessAvoidSameAuthenticatorRegister
+webAuthnPolicyPasswordlessAcceptableAaguids
+webAuthnPolicyPasswordlessPasskeysEnabled webAuthnPolicyPasswordlessMediation"
 
 # Same idea one level down, for keys that live in the realm's "attributes" map
 # (kcadm addresses a dotted attribute name by quoting it). Action tokens default
@@ -389,7 +427,13 @@ actionTokenGeneratedByUserLifespan.reset-credentials"
 # that already exists is skipped wholesale, so a live deployment would keep the
 # pre-logout client config and signing out of one host would go on leaving the
 # other host's session alive until its access token lapsed.
-KC_CLIENT_ATTRS="backchannel.logout.url backchannel.logout.session.required"
+# The two session overrides are the cheap half of hardening the admin console:
+# without a password, the realm SSO session alone would carry a mailbox holder
+# into the admin console for up to a week. They are per-client and reconciled
+# for the same reason as the logout keys — an already-existing realm never sees
+# them from the import.
+KC_CLIENT_ATTRS="backchannel.logout.url backchannel.logout.session.required
+client.session.idle.timeout client.session.max.lifespan"
 
 # Same carve-out one level up, for per-CLIENT keys that are ordinary fields rather
 # than entries in the "attributes" map. frontchannelLogout belongs here and not in
@@ -478,11 +522,21 @@ def emit(name, value):
     print(f"{name}={value}")
 
 
+def scalar(v):
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    # A few WebAuthn policy keys are arrays. kcadm reads a value starting with
+    # "[" as JSON, so the list has to arrive as compact JSON rather than as
+    # Python's str() (which would emit single quotes and be rejected).
+    if isinstance(v, (list, dict)):
+        return json.dumps(v, separators=(",", ":"))
+    return str(v)
+
+
 for key in argv[:split]:
     if key not in realm:
         continue
-    v = realm[key]
-    emit(key, ("true" if v else "false") if isinstance(v, bool) else str(v))
+    emit(key, scalar(realm[key]))
 
 attributes = realm.get("attributes", {})
 for key in argv[split + 1:]:

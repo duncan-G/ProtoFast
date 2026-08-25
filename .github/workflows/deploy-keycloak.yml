@@ -18,6 +18,8 @@ on:
       - "deploy/docker-compose.host-b.yml"
       - "deploy/keycloak/realms/**"
       - "deploy/keycloak/themes/**"
+      # The built provider JAR (infra/keycloak/providers/build.sh stages it here).
+      - "deploy/keycloak/providers/**"
       - "deploy/deploy.sh"
   workflow_dispatch:
     inputs:

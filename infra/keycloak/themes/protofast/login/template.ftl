@@ -43,6 +43,92 @@
       <link href="${url.resourcesPath}/${style}" rel="stylesheet">
     </#list>
   </#if>
+  <#-- Keycloak's WebAuthn modules (webauthnRegister.js / webauthnAuthenticate.js)
+       import the bare specifier "rfc4648". Without this map the module fails to
+       load, the Register button — which sits outside the form — does nothing,
+       and 1Password never gets a credentials.create() to intercept. Copied
+       from base/login/template.ftl. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "rfc4648": "${url.resourcesCommonPath}/vendor/rfc4648/rfc4648.js"
+      }
+    }
+  </script>
+
+  <#-- Authenticator SPIs push per-page scripts through this list; base's
+       template.ftl is the only thing that renders it, so overriding the
+       template drops them. -->
+  <#if scripts??>
+    <#list scripts as script>
+      <script src="${script}" type="text/javascript"></script>
+    </#list>
+  </#if>
+
+  <#-- The rest of this block is base/login/template.ftl's head scripts, carried
+       here because overriding template.ftl replaces base's <head> wholesale
+       rather than extending it — the same reason the import map above went
+       missing. base's menu-button-links.js is deliberately NOT carried: it only
+       drives the locale dropdown keyboard nav, and this theme renders no locale
+       switcher (the realm leaves internationalizationEnabled off). -->
+
+  <#-- Signing in on another tab leaves this one sitting on a dead form. Poll for
+       the session cookie and follow it across when one appears. -->
+  <script type="module">
+    <#outputformat "JavaScript">
+    import { startSessionPolling } from ${(url.resourcesPath + "/js/authChecker.js")?c};
+
+    startSessionPolling(
+      ${url.ssoLoginInOtherTabsUrl?c}
+    );
+    </#outputformat>
+  </script>
+
+  <#-- base's login.ftl and login-username.ftl render their Google/Apple buttons
+       as <a data-once-link> and rely on this handler to disable them on click;
+       without it a double click fires the identity-provider redirect twice. The
+       `passwordless` flow lands on login-passkeys-conditional-authenticate.ftl
+       by default, which has no social section — login-username.ftl is the
+       fallback when the passkey prompt is skipped. Harmless no-op elsewhere.
+       Anchors can't match :disabled, so styles.css keys the dimmed state off the
+       aria-disabled attribute this sets. -->
+  <script type="module">
+    document.addEventListener("click", (event) => {
+      const link = event.target.closest("a[data-once-link]");
+
+      if (!link) {
+        return;
+      }
+
+      if (link.getAttribute("aria-disabled") === "true") {
+        event.preventDefault();
+        return;
+      }
+
+      const { disabledClass } = link.dataset;
+
+      if (disabledClass) {
+        link.classList.add(...disabledClass.trim().split(/\s+/));
+      }
+
+      link.setAttribute("role", "link");
+      link.setAttribute("aria-disabled", "true");
+    });
+  </script>
+
+  <#-- Restarting the flow in another tab invalidates this page's auth session.
+       Reload rather than let the user post into a stale one. -->
+  <#if authenticationSession??>
+    <script type="module">
+      <#outputformat "JavaScript">
+      import { checkAuthSession } from ${(url.resourcesPath + "/js/authChecker.js")?c};
+
+      checkAuthSession(
+        ${authenticationSession.authSessionIdHash?c}
+      );
+      </#outputformat>
+    </script>
+  </#if>
 </head>
 
 <body class="${properties.kcBodyClass!}">

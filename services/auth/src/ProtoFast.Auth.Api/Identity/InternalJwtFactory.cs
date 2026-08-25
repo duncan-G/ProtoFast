@@ -36,7 +36,7 @@ public sealed class InternalJwtFactory : IInternalJwtFactory, IDisposable
         _signingCredentials = new SigningCredentials(key, SecurityAlgorithms.EcdsaSha256);
     }
 
-    public InternalJwt Create(string subject, string tenant, IReadOnlyList<string> roles)
+    public InternalJwt Create(string subject, string tenant, IReadOnlyList<string> roles, bool subscribed = false)
     {
         var now = _clock.GetUtcNow();
         var expires = now + _options.Lifetime;
@@ -45,6 +45,7 @@ public sealed class InternalJwtFactory : IInternalJwtFactory, IDisposable
         {
             new(JwtRegisteredClaimNames.Sub, subject),
             new("tenant", tenant),
+            new("subscribed", subscribed ? "true" : "false", ClaimValueTypes.Boolean),
         };
         claims.AddRange(roles.Select(role => new Claim("roles", role)));
 

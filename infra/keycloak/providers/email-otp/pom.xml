@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Keycloak server extensions for the protofast realm, packaged as one JAR that is
+  dropped into /opt/keycloak/providers.
+
+  The Keycloak dependencies are `provided`: the server already has them on its
+  classpath and shipping a second copy inside the JAR is how a provider ends up
+  loading a different version of a class than the server it runs in. Their version
+  is pinned to the running server's — `kc.sh build` refuses to load a provider
+  compiled against a different SPI and says so at start-up, which is the failure
+  we want (loud, at boot) rather than a NoSuchMethodError under a user's sign-in.
+
+  Nothing here is built on a developer machine or a CI image directly; the build
+  runs inside `maven:3-eclipse-temurin-21` (see ../build.sh), so no JDK has to be
+  installed anywhere.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>dev.protofast</groupId>
+  <artifactId>protofast-keycloak</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+  <name>ProtoFast Keycloak providers</name>
+
+  <properties>
+    <!-- Must equal the server tag: KEYCLOAK_TAG in deploy/docker-compose.host-b.yml
+         and WithImageTag() in apphost/Program.cs. build.sh passes -Dkeycloak.version
+         from the tag it is given, so this default only applies to a bare `mvn package`. -->
+    <keycloak.version>26.7.0</keycloak.version>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.keycloak</groupId>
+      <artifactId>keycloak-core</artifactId>
+      <version>${keycloak.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.keycloak</groupId>
+      <artifactId>keycloak-server-spi</artifactId>
+      <version>${keycloak.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.keycloak</groupId>
+      <artifactId>keycloak-server-spi-private</artifactId>
+      <version>${keycloak.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.keycloak</groupId>
+      <artifactId>keycloak-services</artifactId>
+      <version>${keycloak.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>jakarta.ws.rs</groupId>
+      <artifactId>jakarta.ws.rs-api</artifactId>
+      <version>3.1.0</version>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <!-- Stable name: the deploy fingerprint hashes the file, and a version-stamped
+         name would leave the previous JAR behind in the providers directory, where
+         Keycloak would load both. -->
+    <finalName>protofast-keycloak</finalName>
+  </build>
+</project>

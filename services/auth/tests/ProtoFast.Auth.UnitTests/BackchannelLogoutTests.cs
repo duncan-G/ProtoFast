@@ -391,7 +391,7 @@ public class BackchannelLogoutTests
         /// out to Keycloak, so it is the thing an unknown realm must not reach.</summary>
         public bool KeysFetched { get; private set; }
 
-        public string BuildAuthorizeUrl(TenantConfig tenant, string redirectUri, string state, string codeChallenge, bool registration) => "";
+        public string BuildAuthorizeUrl(TenantConfig tenant, string redirectUri, string state, string codeChallenge, bool registration, string? kcAction = null) => "";
 
         public Task<KeycloakTokens> ExchangeCodeAsync(TenantConfig tenant, string code, string redirectUri, string codeVerifier, CancellationToken ct = default) =>
             throw new NotSupportedException();

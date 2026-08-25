@@ -57,7 +57,7 @@ __CORS_ALLOW_ORIGIN_MATCHES__
               # safe_regex matches the :path WITH its query string (unlike prefix/path), so allow
               # an optional ?… — the guard sends /signin?returnUrl=… and the OIDC callback always
               # arrives as /signin-oidc?code=&state=. Without this they fall through to the SPA → 404.
-              regex: "^/(signin|signup|signin-oidc|signout|reset)(\\?.*)?$"
+              regex: "^/(signin|signup|signin-oidc|signout|reset|add-passkey)(\\?.*)?$"
           route: { cluster: auth }
           typed_per_filter_config:
             envoy.filters.http.ext_authz:

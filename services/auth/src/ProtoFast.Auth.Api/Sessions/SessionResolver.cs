@@ -168,7 +168,7 @@ public sealed class SessionResolver(
     private SessionData WithFreshJwt(SessionData session, DateTimeOffset now)
     {
         _ = now;
-        var minted = jwtFactory.Create(session.Sub, session.Realm, session.Roles);
+        var minted = jwtFactory.Create(session.Sub, session.Realm, session.Roles, session.Subscribed);
         return session with
         {
             CachedInternalJwt = minted.Token,
