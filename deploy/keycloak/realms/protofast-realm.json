@@ -13,6 +13,7 @@
   "rememberMe": true,
   "verifyEmail": true,
   "loginTheme": "protofast",
+  "emailTheme": "protofast",
 
   "bruteForceProtected": true,
   "permanentLockout": false,
@@ -52,7 +53,7 @@
     "host": "${SMTP_HOST:localhost}",
     "port": "${SMTP_PORT:1025}",
     "from": "${SMTP_FROM:no-reply@protofast.dev}",
-    "fromDisplayName": "ProtoFast",
+    "fromDisplayName": "Protofast",
     "ssl": "${SMTP_SSL:false}",
     "starttls": "${SMTP_STARTTLS:false}",
     "auth": "${SMTP_AUTH:false}",
