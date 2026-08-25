@@ -1,1 +1,13 @@
 @import "tailwindcss";
+
+/* iOS Safari paints overscroll and the notch / home-indicator regions from
+   html/body, not from the inner `.nocturne` shell. Match the header/footer. */
+html {
+  color-scheme: dark;
+}
+
+html,
+body {
+  min-height: 100%;
+  background-color: var(--color-bg);
+}
