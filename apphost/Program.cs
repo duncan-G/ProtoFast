@@ -45,6 +45,11 @@ var keycloak = builder.AddKeycloak("keycloak", 8080)
     // Custom "protofast" login theme (referenced by loginTheme in the realm import).
     // start-dev disables theme caching, so edits under this dir show up on refresh.
     .WithBindMount("../infra/keycloak/themes", "/opt/keycloak/themes", isReadOnly: true)
+    // Server extensions: the email-OTP authenticator and required action the browser
+    // flow depends on, plus the Apple identity provider. The built JAR is staged under
+    // deploy/ (not infra/) so dev and prod load the same artifact — rebuild it with
+    // infra/keycloak/providers/build.sh after changing the Java, and restart Keycloak.
+    .WithBindMount("../deploy/keycloak/providers", "/opt/keycloak/providers", isReadOnly: true)
     // Ship Keycloak's own logs to the collector's OTLP logs pipeline (same collector
     // as traces/metrics). opentelemetry-logs is a Preview feature, so it must be
     // listed in KC_FEATURES before the telemetry-logs options are recognized.

@@ -43,6 +43,10 @@ namespace ProtoFast.Auth.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_login_at");
 
+                    b.Property<DateTimeOffset?>("PasskeyRegisteredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("passkey_registered_at");
+
                     b.Property<string>("Realm")
                         .IsRequired()
                         .HasMaxLength(128)
@@ -54,6 +58,10 @@ namespace ProtoFast.Auth.Data.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
                         .HasColumnName("subject");
+
+                    b.Property<DateTimeOffset?>("SubscribedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("subscribed_at");
 
                     b.HasKey("Id")
                         .HasName("pk_users");

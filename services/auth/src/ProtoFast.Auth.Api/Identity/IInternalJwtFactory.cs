@@ -4,9 +4,13 @@ namespace ProtoFast.Auth.Api.Identity;
 /// per request (guide §3.9).</summary>
 public sealed record InternalJwt(string Token, DateTimeOffset ExpiresAt);
 
-/// <summary>Mints the ES256-signed internal JWT (<c>sub</c>/<c>tenant</c>/<c>roles</c>) that
-/// backends trust.</summary>
+/// <summary>Mints the ES256-signed internal JWT (<c>sub</c>/<c>tenant</c>/<c>roles</c>/
+/// <c>subscribed</c>) that backends trust.</summary>
 public interface IInternalJwtFactory
 {
-    InternalJwt Create(string subject, string tenant, IReadOnlyList<string> roles);
+    /// <param name="subscribed">Whether the account has a live subscription. Minted here rather
+    /// than read from a Keycloak claim: this service already knows it from the local user row,
+    /// and putting it in Keycloak would mean an admin credential to write it and staleness
+    /// between token refreshes.</param>
+    InternalJwt Create(string subject, string tenant, IReadOnlyList<string> roles, bool subscribed = false);
 }

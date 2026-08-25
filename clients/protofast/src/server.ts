@@ -47,12 +47,23 @@ const angularApp = new AngularNodeAppEngine({
  */
 
 /**
+ * Paths that only mean anything for a signed-in user. `/subscribe` is here for the same
+ * reason `/app` is: the sign-in callback diverts unsubscribed accounts to it, so rendering
+ * it for an anonymous request would show a checkout to somebody with no account.
+ */
+const PROTECTED_PREFIXES = ['/app', '/subscribe'];
+
+/**
  * Protected-area gate (guide §7). The edge only annotates identity, so the SSR host itself
- * enforces /app: anonymous requests (no `x-user-id` from ext_authz) are bounced to the BFF
- * sign-in server-side — no flash of protected chrome — and personalized responses are never cached.
+ * enforces these paths: anonymous requests (no `x-user-id` from ext_authz) are bounced to the
+ * BFF sign-in server-side — no flash of protected chrome — and personalized responses are
+ * never cached.
  */
 app.use((req, res, next) => {
-  if (req.path === '/app' || req.path.startsWith('/app/')) {
+  const protectedPath = PROTECTED_PREFIXES.some(
+    (prefix) => req.path === prefix || req.path.startsWith(`${prefix}/`),
+  );
+  if (protectedPath) {
     res.setHeader('Cache-Control', 'private, no-store');
     if (!req.headers['x-user-id']) {
       res.redirect(302, `/signin?returnUrl=${encodeURIComponent(req.originalUrl)}`);

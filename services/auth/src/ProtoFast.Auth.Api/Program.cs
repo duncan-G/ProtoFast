@@ -29,6 +29,7 @@ builder.Services.Configure<TenantOptions>(builder.Configuration.GetSection("Tena
 builder.Services.Configure<KeycloakOptions>(builder.Configuration.GetSection("Keycloak"));
 builder.Services.Configure<SessionPolicyOptions>(builder.Configuration.GetSection("Session"));
 builder.Services.Configure<InternalJwtOptions>(builder.Configuration.GetSection("InternalJwt"));
+builder.Services.Configure<SubscriptionOptions>(builder.Configuration.GetSection("Subscriptions"));
 
 builder.AddRedisClient("redis");        // IConnectionMultiplexer (Aspire wires the connection string)
 builder.AddNpgsqlDataSource("auth");    // NpgsqlDataSource for the AuthDbContext
@@ -49,7 +50,7 @@ builder.Services.AddScoped<AuthFlow>();
 var app = builder.Build();
 
 app.MapDefaultEndpoints();
-app.MapAuthEndpoints();                  // /signin /signup /signin-oidc /signout /reset (HTTP)
+app.MapAuthEndpoints();                  // /signin /signup /signin-oidc /signout /reset /add-passkey (HTTP)
 app.MapGrpcService<AuthorizationService>(); // ext_authz Check (gRPC)
 
 app.Run();

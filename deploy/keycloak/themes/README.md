@@ -9,6 +9,13 @@ Aspire host at `/opt/keycloak/themes`). Keep this copy in sync with it — they 
 the same committed theme, staged here so the deploy bundle that syncs `deploy/`
 to the host carries the theme without depending on `infra/`.
 
+Two of the login pages this theme styles are **not** in this directory. The
+email-code forms ship as theme resources inside the provider JAR
+([`../providers/`](../providers/)) so they travel with the authenticator that
+renders them; they import `template.ftl` by name, which resolves through the
+theme chain, so they still come out wearing this theme. Their copy lives in the
+JAR's own message bundle, under `pfOtp*` keys.
+
 `protofast` ships two theme types, both selected in the realm import
 (`../realms/protofast-realm.json`) and both reconciled onto an already-existing
 realm by `KC_REALM_KEYS` in `../../deploy.sh`:

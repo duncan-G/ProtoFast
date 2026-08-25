@@ -11,7 +11,10 @@ public interface IKeycloakGateway
 {
     /// <summary>Authorization-Code-with-PKCE authorize URL. <paramref name="registration"/> adds
     /// <c>prompt=create</c> (the Keycloak registration page).</summary>
-    string BuildAuthorizeUrl(TenantConfig tenant, string redirectUri, string state, string codeChallenge, bool registration);
+    /// <param name="kcAction">An Application Initiated Action to run inside this authorize
+    /// request (see <see cref="KeycloakActions"/>). Keycloak reports the outcome back on the
+    /// callback and a cancelled action still completes the sign-in.</param>
+    string BuildAuthorizeUrl(TenantConfig tenant, string redirectUri, string state, string codeChallenge, bool registration, string? kcAction = null);
 
     Task<KeycloakTokens> ExchangeCodeAsync(TenantConfig tenant, string code, string redirectUri, string codeVerifier, CancellationToken ct = default);
 

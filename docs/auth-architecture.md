@@ -1,7 +1,7 @@
 # Multi-Tenant Auth Architecture (Cloudflare → Envoy → Keycloak)
 
 Edge-terminated, BFF-style authentication for multiple client domains under
-`*.protofast.dev`, with **Envoy ext_authz** delegating to a central auth service that resolves tenant → Keycloak realm dynamically. Angular SSR renders identity-aware HTML; the browser only ever holds an opaque session cookie. 
+`*.protofast.dev`, with **Envoy ext_authz** delegating to a central auth service that resolves tenant → Keycloak realm dynamically. Angular SSR renders identity-aware HTML; the browser only ever holds an opaque session cookie.
 
 ## Components
 
@@ -100,8 +100,38 @@ flowchart LR
 
 ## Flow A — root user: sign in on `protofast.dev`, redirect to `admin`
 
-Staff log in once; the admin console authenticates **silently** because both
-clients share the `protofast` realm and Keycloak holds an SSO session.
+Staff log in once, and the admin console authenticates off the realm SSO session
+both clients share.
+
+**It is no longer silent, and must not be.** With no password in the realm, a
+sign-in that is silent from the admin console's point of view means the admin
+console is reachable with a mailbox and nothing else, for as long as the SSO
+session lives. Three things narrow that, in increasing order of cost:
+
+1. **Short client sessions on `admin`** — `client.session.idle.timeout` and
+   `client.session.max.lifespan` well below the realm's, so the window is
+   minutes rather than a week.
+2. **`max_age` on the admin client's authorize request**
+   (`Tenants__ByHost__admin.protofast.dev__MaxAge`), which turns step 6 below
+   from a silent redirect into a real prompt. On its own that prompt can still
+   be answered with an emailed code.
+3. **ACR step-up** (`…__AcrValues=passkey`), which routes the admin client
+   through the realm's level-2 branch and demands a passkey specifically. This is
+   the one that closes the gap, and the one gated on staff actually having
+   passkeys and on a written break-glass procedure — turn it on before both are
+   true and the admin console locks.
+
+Step-up narrows the gap rather than closing it: an attacker holding the mailbox
+signs in at the low level, hits the admin gate with no passkey, and can enrol one
+on the spot through the same offer the product uses. Closing *that* needs one of
+— requiring an existing passkey to enrol another on a privileged account,
+granting admin roles only after a passkey exists, or accepting the mailbox as the
+root of trust and hardening it (staff mail on a provider with enforced
+hardware-key 2SV). The last is unglamorous and probably right for a team this
+size.
+
+The diagram below shows the unhardened path; step 6 is the one the three measures
+above act on.
 
 ```mermaid
 sequenceDiagram
@@ -157,9 +187,12 @@ sequenceDiagram
     CF->>E: tunnel (Host: myfitness.protofast.dev) — bypass cache
     E->>A: route /signup (direct, no gate)
     A-->>A: Host → realm=myfitness, client=myfitness-web
-    A-->>B: Set-Cookie correlation · 302 → KC /realms/myfitness/auth?prompt=create
-    B->>KC: register (myfitness realm only)
-    KC-->>B: 302 → myfitness.protofast.dev/signin-oidc?code=...
+    A-->>B: Set-Cookie correlation · 302 → KC /auth?prompt=create&kc_action=webauthn-register-passwordless
+    B->>KC: register — email address only, no password field
+    KC-->>KC: mail a six-digit code (verify-email-code required action)
+    B->>KC: type the code back into the same tab
+    KC-->>B: add a passkey, or cancel — both continue
+    KC-->>B: 302 → myfitness.protofast.dev/signin-oidc?code=...&kc_action_status=success|cancelled
     B->>E: GET /signin-oidc?code=...
     E->>A: route /signin-oidc
     A->>KC: code → token exchange (myfitness secret)
@@ -178,6 +211,30 @@ sequenceDiagram
 
 > `SSR` = Angular SSR Node server, `API` = app / gRPC backend (omitted from the
 > participant list above for brevity; both are Envoy upstreams).
+
+The code is typed rather than clicked because a link strands people: registering
+on a laptop and opening the mail on a phone proves the address but mints the
+session on the phone, where the user is not. A code is readable anywhere and
+typed where you started. It also makes link-prefetching mail scanners harmless.
+
+The passkey offer is an Application Initiated Action on an ordinary authorize
+request, and cancelling it does not fail the sign-in. It is made at the end of
+the sign-in itself because that is the only moment the user is definitely present
+and definitely finished — no banner, no dashboard card, no settings nudge. A user
+who cancels is asked again at their next sign-in, and session lifetime is the
+whole of the cadence.
+
+**Sign-up carries the action on its own authorize request; sign-in chains it onto
+a second one.** That asymmetry is Keycloak's, not ours. After a sign-in the SSO
+cookie satisfies the follow-up authorize silently, so the second round trip costs
+two redirects and nothing else. After a *registration* it does not: registration
+is a different top-level flow and records no authenticated level against the
+browser flow, so Keycloak's Cookie authenticator answers the follow-up with
+"strong authentication required" and drops the brand-new account into the sign-in
+branch — which, in a realm whose only other credential is a mailed code, means a
+second code seconds after the one that just verified the address. Putting
+`kc_action` on the registration request itself runs the offer as the last step of
+the flow the user is already in.
 
 ---
 

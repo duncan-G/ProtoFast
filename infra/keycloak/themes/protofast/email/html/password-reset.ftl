@@ -1,12 +1,11 @@
 <#--
-  Reached two ways, and the copy has to read correctly for both:
-    - "Forgot password?" on the sign-in page.
-    - The browser flow's `finish account setup` branch, whose Send Reset Email
-      execution fires for an account that has neither passkey nor password —
-      somebody who abandoned sign-up. For them nothing is being *re*set; they
-      are setting a first password.
-  Hence "set", not "reset" — the same reason the login theme words its shared
-  page `updatePasswordTitle=Set your password`.
+  Unreachable in this realm and kept only so the inherited template still resolves.
+  There are no passwords to reset: resetPasswordAllowed is off, the reset-credentials
+  flow is unbound, and the sign-in page has no "Forgot password?" link. An account
+  with no passkey signs in with a code mailed to its address instead.
+
+  If this ever arrives in somebody's inbox, something is misconfigured. The wording
+  stays "set" rather than "reset" so that it would at least read correctly.
 -->
 <#import "template.ftl" as layout>
 <@layout.emailLayout heading=msg("pfResetHeading") preheader=msg("pfResetPreheader")>

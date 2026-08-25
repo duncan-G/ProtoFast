@@ -33,6 +33,14 @@ public sealed record SessionData
     /// <summary>When the session was first created — the anchor for the absolute TTL cap.</summary>
     public required DateTimeOffset CreatedAt { get; init; }
 
+    /// <summary>
+    /// Whether the account was subscribed when this session was created. Read from the local
+    /// user row at the callback and carried into the internal JWT, so a backend never has to
+    /// ask anybody: Keycloak has no opinion about subscriptions, and a claim minted there would
+    /// need a standing admin credential to write. It refreshes when the session does.
+    /// </summary>
+    public bool Subscribed { get; init; }
+
     public string? CachedInternalJwt { get; init; }
     public DateTimeOffset? InternalJwtExpiresAt { get; init; }
 }

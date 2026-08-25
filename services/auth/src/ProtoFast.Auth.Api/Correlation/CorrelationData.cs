@@ -8,10 +8,15 @@ namespace ProtoFast.Auth.Api.Correlation;
 /// <param name="Traceparent">W3C traceparent of the <c>/signin</c> request, carried across the
 /// Keycloak round-trip so the callback resumes the same trace. Empty for entries written before
 /// this field existed.</param>
+/// <param name="PasskeyOffer">True when this authorize request carried the passkey offer — the
+/// second leg chained off a sign-in, or the single leg of a sign-up. The callback reads it to
+/// report the offer's outcome and to stop, so a cancelled offer can never chain into another
+/// redirect.</param>
 public sealed record CorrelationData(
     string CodeVerifier,
     string RedirectUri,
     string ReturnUrl,
     string Realm,
     string ClientId,
-    string Traceparent = "");
+    string Traceparent = "",
+    bool PasskeyOffer = false);
