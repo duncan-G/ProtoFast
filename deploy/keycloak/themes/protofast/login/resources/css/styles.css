@@ -615,7 +615,10 @@ hr {
 .pf-input-group .pf-input {
   padding-right: 2.5rem;
 }
+/* Borderless too, so it needs the same appearance reset as .pf-linkbutton. */
 .pf-reveal {
+  appearance: none;
+  -webkit-appearance: none;
   position: absolute;
   right: 4px;
   display: inline-flex;
@@ -696,7 +699,12 @@ hr {
 }
 
 /* A resend has to be a form POST, not a link — but it should read as a link. */
+/* iOS Safari re-applies the native button bezel — a white pill on this dark
+   ground — as soon as a <button> loses its border, so the appearance reset is
+   what actually keeps this looking like a link there. */
 .pf-linkbutton {
+  appearance: none;
+  -webkit-appearance: none;
   padding: 0;
   background: transparent;
   border: 0;
