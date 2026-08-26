@@ -59,10 +59,28 @@ interface PricingTier {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [ImagePlaceholder, ProtofastLogo, RouterLink],
   templateUrl: './landing.html',
+  // Escape closes the menu panel from anywhere, including while focus sits on
+  // one of its links.
+  host: { '(document:keydown.escape)': 'closeMenu()' },
 })
 export class Landing {
   protected readonly auth = inject(AuthIdentityService);
   private readonly destroyRef = inject(DestroyRef);
+
+  /**
+   * Whether the collapsed-nav menu panel is open. Below lg the section links
+   * live in it, and below sm so do Sign in / Start building — on a phone it is
+   * the only route to the account actions, so nothing else may gate it.
+   */
+  protected readonly menuOpen = signal(false);
+
+  protected toggleMenu(): void {
+    this.menuOpen.update((open) => !open);
+  }
+
+  protected closeMenu(): void {
+    this.menuOpen.set(false);
+  }
 
   /** Example prompts the hero field types through. */
   private readonly prompts = [
