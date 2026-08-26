@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using ProtoFast.Auth.Api.Accounts;
 using ProtoFast.Auth.Api.Correlation;
 using ProtoFast.Auth.Api.Sessions;
 
@@ -64,6 +65,9 @@ public sealed class TestAuthWebApplicationFactory : WebApplicationFactory<Progra
 
             services.RemoveAll<ICorrelationStore>();
             services.AddSingleton<ICorrelationStore, StubCorrelationStore>();
+
+            services.RemoveAll<IEmailChangeStore>();
+            services.AddSingleton<IEmailChangeStore, StubEmailChangeStore>();
         });
     }
 }

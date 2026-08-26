@@ -3,6 +3,7 @@
   because here the code proves a new address rather than opening an existing account.
 -->
 <#import "template.ftl" as layout>
+<#import "otp-resend.ftl" as resend>
 <@layout.registrationLayout displayMessage=!messagesPerField.existsError('code'); section>
     <#if section = "header">
         <h1 class="pf-title">${msg("pfOtpVerifyTitle")}</h1>
@@ -21,13 +22,6 @@
                     name="login" id="kc-verify-otp-submit" type="submit">${msg("pfOtpVerifySubmit")}</button>
         </form>
 
-        <form id="kc-verify-email-otp-resend" action="${url.loginAction}" method="post" class="${properties.kcFormClass!} pf-otp-resend">
-            <input type="hidden" name="otpAction" value="resend"/>
-            <#if otpResendAllowed>
-                <button type="submit" class="pf-linkbutton">${msg("pfOtpResend")}</button>
-            <#else>
-                <span class="${properties.kcInputHelperTextClass!}">${msg("pfOtpResendWait", otpResendIn)}</span>
-            </#if>
-        </form>
+        <@resend.form id="kc-verify-email-otp-resend"/>
     </#if>
 </@layout.registrationLayout>

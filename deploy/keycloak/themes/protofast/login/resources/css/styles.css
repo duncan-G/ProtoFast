@@ -550,21 +550,20 @@ a:hover {
   flex-direction: column;
   gap: var(--space-6);
 }
-/* webauthn-register.ftl emits Register as a bare <input> and Cancel in the
-   next form — siblings in .pf-content, so the form gap above never reaches
-   them. Make the input a block box so they cannot sit on one line. */
-#registerWebAuthn,
-#kc-try-again {
-  display: flex;
-}
-#registerWebAuthn + #kc-webauthn-settings-form,
-#kc-try-again + #kc-webauthn-settings-form {
-  margin-top: var(--space-8);
-}
+/* The passkey pages emit their primary action as a bare <input> and their Skip
+   button inside a second <form> — siblings with no common form, so the form gap
+   above never reaches them. This theme's own webauthn-register.ftl and
+   webauthn-error.ftl wrap the pair in .pf-buttons, which spaces them instead.
+   Gap matches .pf-card's vertical padding so Register/Skip sit the same
+   distance apart as the card inset. Skip's wrapping <form> is zeroed so a
+   user-agent form margin cannot add to that gap. */
 .pf-buttons {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-8);
+}
+.pf-buttons form {
+  margin: 0;
 }
 #kc-content-wrapper > *:not(:first-child) {
   margin-top: var(--space-6);

@@ -117,3 +117,6 @@ Thumbs.db
 # The JAR is committed under deploy/keycloak/providers/ (see
 # infra/keycloak/providers/build.sh); the build tree that produced it is not.
 infra/keycloak/providers/*/target/
+
+
+.nvmrc

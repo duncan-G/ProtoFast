@@ -26,6 +26,8 @@ public class HostWiringTests(TestAuthWebApplicationFactory factory) : IClassFixt
         Assert.NotNull(sp.GetRequiredService<SessionResolver>());
         Assert.NotNull(sp.GetRequiredService<IReplayGuard>());
         Assert.NotNull(sp.GetRequiredService<BackchannelLogout>());
+        Assert.NotNull(sp.GetRequiredService<IKeycloakAdmin>());
+        Assert.NotNull(sp.GetRequiredService<AccountFlow>());
 
         // The gRPC service is activated per-call (not a DI registration); prove its deps resolve.
         Assert.NotNull(ActivatorUtilities.CreateInstance<AuthorizationService>(sp));

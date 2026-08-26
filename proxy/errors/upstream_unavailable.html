@@ -15,6 +15,11 @@
   Nocturne's --font-body, but this page renders precisely when the platform is
   already degraded, and a render-blocking third-party stylesheet is the wrong
   trade here. Inter is requested locally and falls back to the system stack.
+
+  The tab icon is a data: URI of the same swarm mark as
+  clients/protofast/public/favicon.svg. Without a <link rel="icon"> the
+  browser fetches /favicon.ico from this origin; that route still hits the
+  (down) web cluster, and the cached Angular CLI ico is what then shows.
 -->
 <html lang="en">
   <head>
@@ -22,6 +27,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <title>Temporarily unavailable</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23232532'/%3E%3Cg stroke='%23796cbf' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M7 10 H14'/%3E%3Cpath d='M7 16 H17'/%3E%3Cpath d='M7 22 H14'/%3E%3C/g%3E%3Ccircle cx='23.5' cy='16' r='3.5' fill='%239184d9'/%3E%3C/svg%3E"
+    />
     <style>
       /* ── Nocturne tokens (verbatim from nocturne.css `:root`) ─────────── */
       :root {
@@ -96,13 +106,29 @@
         position: relative;
         z-index: 1;
         display: flex;
-        flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: var(--space-8);
         min-height: 100vh;
         min-height: 100dvh;
-        padding: 3rem 1.5rem;
+        /* The extra 36px at the foot lifts the centred block 18px above the
+           true middle — a block this short reads as sunken when it is measured
+           dead centre. Bottom padding rather than a negative top margin, so
+           the lift can never pull the brand off the top of a short viewport. */
+        padding: 3rem 1.5rem calc(3rem + 36px);
+      }
+
+      /* One left edge for the whole block. The card's padding is re-applied as
+         the brand's indent (`--pf-card-pad`), so the mark starts on the same
+         line as the kicker, heading, copy and button instead of floating
+         centred above them. Both read from the one custom property: change the
+         card's padding and the lockup follows it. */
+      .pf-stack {
+        --pf-card-pad: calc(var(--space-8) * 1.2);
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-8);
+        width: min(24rem, 100%);
       }
 
       /* ── Brand ─────────────────────────────────────────────────────────
@@ -112,6 +138,7 @@
       .pf-brand {
         display: inline-flex;
         align-items: center;
+        padding-left: var(--pf-card-pad);
         gap: 0.5em;
         font-family: var(--font-heading);
         font-weight: var(--font-heading-weight);
@@ -127,10 +154,13 @@
       }
 
       /* ── Card ──────────────────────────────────────────────────────────
-         Flush-left contents, per the system's direction — not centred. */
+         Flush-left contents, per the system's direction — not centred. The
+         stack's width is the paragraph's measure plus this padding, so the
+         copy runs to the card's edge instead of leaving a ragged empty right
+         half. Padding is even on all four sides; the brand borrows it. */
       .pf-card {
-        width: min(27.5rem, 100%);
-        padding: var(--space-8) calc(var(--space-8) * 1.2);
+        width: 100%;
+        padding: var(--pf-card-pad);
         background: var(--color-surface);
         border-radius: var(--radius-lg);
         box-shadow: var(--shadow-md);
@@ -164,9 +194,9 @@
       }
       .pf-body {
         margin: var(--space-3) 0 0;
-        max-width: 34ch;
         font-size: 14px;
         color: var(--color-neutral-400);
+        text-wrap: pretty;
       }
 
       .pf-actions {
@@ -175,9 +205,13 @@
 
       /* Nocturne outlines its primary action — an accent border on
          transparent, never a filled accent. Do not "fix" this into a solid
-         button. */
+         button.
+
+         Full-bleed across the card, so the vertical padding grows with it:
+         a button this wide at the inline button's height reads as a bar. */
       .pf-btn {
-        display: inline-flex;
+        display: flex;
+        width: 100%;
         align-items: center;
         justify-content: center;
         gap: 6px;
@@ -189,7 +223,7 @@
         color: var(--color-accent);
         background: transparent;
         border: 1px solid var(--color-accent);
-        padding: var(--space-2) calc(var(--space-3) * 1.2);
+        padding: var(--space-4) calc(var(--space-3) * 1.2);
         border-radius: var(--radius-md);
       }
       .pf-btn:hover {
@@ -217,6 +251,12 @@
           no-repeat top / 100% 1px;
       }
 
+      /* Nocturne's body link: accent, underlined, with the sheet's offset. */
+      .pf-meta a {
+        color: var(--color-accent);
+        text-underline-offset: 3px;
+      }
+
       /* Themed interaction states, never the browser defaults. */
       :focus {
         outline: none;
@@ -234,39 +274,44 @@
     <div class="pf-glow" aria-hidden="true"></div>
 
     <div class="pf-page">
-      <span class="pf-brand">
-        <svg class="pf-brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-          <g stroke-width="2.8" stroke-linecap="round">
-            <path d="M5 6 H13" stroke="var(--color-accent-800)" />
-            <path d="M5 11 H16" stroke="var(--color-accent-700)" />
-            <path d="M5 16 H19" stroke="var(--color-accent-600)" />
-            <path d="M5 21 H16" stroke="var(--color-accent-700)" />
-            <path d="M5 26 H13" stroke="var(--color-accent-800)" />
-          </g>
-          <circle cx="25" cy="16" r="4" fill="var(--color-accent)" />
-        </svg><span>Protofast</span>
-      </span>
+      <div class="pf-stack">
+        <span class="pf-brand">
+          <svg class="pf-brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+            <g stroke-width="2.8" stroke-linecap="round">
+              <path d="M5 6 H13" stroke="var(--color-accent-800)" />
+              <path d="M5 11 H16" stroke="var(--color-accent-700)" />
+              <path d="M5 16 H19" stroke="var(--color-accent-600)" />
+              <path d="M5 21 H16" stroke="var(--color-accent-700)" />
+              <path d="M5 26 H13" stroke="var(--color-accent-800)" />
+            </g>
+            <circle cx="25" cy="16" r="4" fill="var(--color-accent)" />
+          </svg><span>Protofast</span>
+        </span>
 
-      <main class="pf-card" role="alert" aria-live="polite">
-        <p class="pf-kicker">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 9v4" />
-            <path d="M12 17h.01" />
-            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
-          </svg>
-          Service unavailable
-        </p>
-        <h1 class="pf-title">We&rsquo;ll be right back</h1>
-        <p class="pf-body">
-          One of our services is briefly unreachable. This is usually temporary
-          — please try again in a moment.
-        </p>
-        <div class="pf-actions">
-          <button class="pf-btn" type="button" onclick="location.reload()">Retry</button>
-        </div>
-        <p class="pf-meta">If the problem persists, please contact support.</p>
-      </main>
+        <main class="pf-card" role="alert" aria-live="polite">
+          <p class="pf-kicker">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 9v4" />
+              <path d="M12 17h.01" />
+              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+            </svg>
+            Service unavailable
+          </p>
+          <h1 class="pf-title">We&rsquo;ll be right back</h1>
+          <p class="pf-body">
+            One of our services is briefly unreachable. This is usually
+            temporary &mdash; please try again in a moment.
+          </p>
+          <div class="pf-actions">
+            <button class="pf-btn" type="button" onclick="location.reload()">Retry</button>
+          </div>
+          <p class="pf-meta">
+            If the problem persists,
+            <a href="mailto:support@protofast.dev">contact support</a>.
+          </p>
+        </main>
+      </div>
     </div>
   </body>
 </html>

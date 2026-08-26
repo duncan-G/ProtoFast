@@ -30,6 +30,22 @@ public class PasskeyOfferTests(TestAuthWebApplicationFactory factory) : IClassFi
         Assert.Contains("kc_action_parameter=skip_if_exists", location, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Sign-up carries the offer on the registration authorize itself. Chaining it onto a second
+    /// round trip — which is what sign-in does — would cost the brand-new account a second mailed
+    /// code: registration records no authenticated level against the browser flow, so Keycloak
+    /// answers the follow-up with "strong authentication required" and asks for a credential again.
+    /// </summary>
+    [Fact]
+    public async Task Sign_up_carries_the_enrolment_action_on_its_own_authorize_request()
+    {
+        var response = await GetAsync("/signup");
+
+        var location = response.Headers.Location?.ToString() ?? "";
+        Assert.Contains("prompt=create", location, StringComparison.Ordinal);
+        Assert.Contains("kc_action=webauthn-register-passwordless", location, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Sign_in_does_not_carry_the_enrolment_action()
     {

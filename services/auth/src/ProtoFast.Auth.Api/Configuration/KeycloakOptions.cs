@@ -1,3 +1,5 @@
+using ProtoFast.Auth.Api.Keycloak;
+
 namespace ProtoFast.Auth.Api.Configuration;
 
 public sealed class KeycloakOptions
@@ -18,6 +20,21 @@ public sealed class KeycloakOptions
     // Confidential-client secrets — auth-svc is the only holder (BFF). From the Auth_ SM secret.
     public string ClientSecretProtofastWeb { get; init; } = "";
     public string ClientSecretAdmin { get; init; } = "";
+
+    /// <summary>
+    /// Service-account client used for the Admin API calls account management needs — reading a
+    /// user's passkeys, removing one, deleting the account. Its service account holds
+    /// <c>view-users</c> and <c>manage-users</c> on <c>realm-management</c> and nothing else, and
+    /// no sign-in path touches it (see <see cref="IKeycloakAdmin"/>).
+    /// </summary>
+    public string AdminClientId { get; init; } = "account-admin";
+
+    /// <summary>
+    /// The <see cref="AdminClientId"/> secret. Empty disables account management rather than
+    /// failing at startup: a deployment whose realm has no such client yet still signs people in,
+    /// and the endpoints that need it answer 503.
+    /// </summary>
+    public string AdminClientSecret { get; init; } = "";
 
     public string ResolvePublicAuthority() =>
         string.IsNullOrEmpty(PublicAuthority) ? Authority : PublicAuthority;

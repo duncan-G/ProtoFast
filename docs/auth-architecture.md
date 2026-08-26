@@ -236,6 +236,23 @@ second code seconds after the one that just verified the address. Putting
 `kc_action` on the registration request itself runs the offer as the last step of
 the flow the user is already in.
 
+That only covers registrations that start at `/signup`. The realm allows
+registration, so Keycloak's own **"New user? Register"** link on the login page
+reaches the same callback by way of `/signin` — with no offer aboard, which used
+to chain one and buy exactly the second code described above. **The callback
+therefore never chains the offer onto a first login**: the account was created by
+this very callback, so whatever the browser did to get here, it did not leave a
+level behind on the browser flow. The offer waits for their next sign-in, where
+the cookie satisfies it silently — the same cadence a user who cancels is on.
+
+Two corollaries. The level a follow-up authorize demands is the higher of the
+client's `acr_values` and the level the `kc_action` itself implies, so this
+happens even on the product host, which asks for no ACR at all. And a brand-new
+account that taps **Add a passkey** on the subscribe or account page pays the same
+second code, because `/add-passkey` is that same raised-level authorize; a user
+who *signed in* does not, since `basic-level-of-authentication` carries a
+`loa-max-age` of seven days.
+
 ---
 
 ## Identity & token relay (BFF)

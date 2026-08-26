@@ -30,13 +30,15 @@
       </div>
 
       <!--
-        The account pair. At 320px the bar fits the logo, one action and the menu
-        button — not two — so below sm the secondary action moves to the panel
-        and the primary CTA keeps the bar. Never the reverse: the CTA is the
-        whole point of the page, and the panel still keeps sign-in one tap away.
+        The account controls. At 320px the bar fits the logo, one action and the
+        menu button — not two — so below sm the secondary action moves to the
+        panel and the primary CTA keeps the bar. Never the reverse: the CTA is
+        the whole point of the page, and the panel still keeps sign-in one tap
+        away. Signed in, the pair collapses into the avatar menu, which is small
+        enough to keep the bar at every width.
       -->
       <div class="flex items-center gap-4 sm:gap-6">
-        <!-- /signin, /signup, /signout are BFF endpoints, not Angular routes — full-page navigation. -->
+        <!-- /signin, /signup are BFF endpoints, not Angular routes — full-page navigation. -->
         @if (auth.authenticated) {
           <a
             routerLink="/app"
@@ -44,7 +46,8 @@
           >
             Go to app
           </a>
-          <a href="/signout" rel="external" class="btn btn-primary">Sign out</a>
+          <!-- Account and sign-out live behind the avatar; see shared/account-menu.ts. -->
+          <app-account-menu />
         } @else {
           <a
             href="/signin"

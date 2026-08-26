@@ -65,6 +65,16 @@ services:
       # seeded into .env by deploy.sh ensure_secret_files.
       Auth_Keycloak__ClientSecretProtofastWeb: "${PROTOFAST_WEB_CLIENT_SECRET}"
       Auth_Keycloak__ClientSecretAdmin: "${ADMIN_CLIENT_SECRET}"
+      Auth_Keycloak__AdminClientSecret: "${ACCOUNT_ADMIN_CLIENT_SECRET}"
+      # The relay auth-svc sends its own mail through — the email-change code, and the heads-up
+      # to the address that just lost the account. Same .env values Keycloak's realm import reads
+      # for its own SMTP block below: one relay, one verified sender, two services on it.
+      Auth_Smtp__Host: "${SMTP_HOST:-}"
+      Auth_Smtp__Port: "${SMTP_PORT:-587}"
+      Auth_Smtp__From: "${SMTP_FROM:-no-reply@protofast.dev}"
+      Auth_Smtp__StartTls: "${SMTP_STARTTLS:-true}"
+      Auth_Smtp__User: "${SMTP_USER:-}"
+      Auth_Smtp__Password: "${SMTP_PASSWORD:-}"
       # NOTE: no Auth_InternalJwt__PrivateKeyPem* here. auth is the only service with the
       # Secrets Manager provider (Program.cs, Production only), so the EC P-256 private key
       # reaches it as InternalJwt:PrivateKeyPem straight from the Auth_InternalJwt__PrivateKeyPem
@@ -225,6 +235,7 @@ services:
       JAVA_OPTS_APPEND: "-Dkeycloak.migration.replace-placeholders=true"
       PROTOFAST_WEB_CLIENT_SECRET: "${PROTOFAST_WEB_CLIENT_SECRET}"
       ADMIN_CLIENT_SECRET: "${ADMIN_CLIENT_SECRET}"
+      ACCOUNT_ADMIN_CLIENT_SECRET: "${ACCOUNT_ADMIN_CLIENT_SECRET}"
       # Client "Home URL" (client.baseUrl) — where the login-page brand link returns the
       # user. Overrides the realm import's dev-localhost default with the public app domains.
       PROTOFAST_WEB_BASE_URL: "${PROTOFAST_WEB_BASE_URL:-https://protofast.dev}"

@@ -1,16 +1,17 @@
 import { Component, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { AuthIdentityService } from '../../auth/auth-identity';
+import { AccountMenu } from '../../shared/account-menu';
 
 @Component({
   selector: 'app-dashboard',
-  imports: [RouterLink],
+  imports: [AccountMenu, RouterLink],
   template: `
     <div class="min-h-screen bg-gray-50">
       <header class="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
         <a routerLink="/" class="font-semibold text-gray-900">ProtoFast Admin</a>
-        <!-- BFF endpoint, not an Angular route — full-page navigation. -->
-        <a href="/signout" rel="external" class="text-sm text-gray-600 hover:underline">Sign out</a>
+        <!-- Account and sign-out live behind the avatar; see shared/account-menu.ts. -->
+        <app-account-menu />
       </header>
 
       <main class="mx-auto max-w-3xl px-4 py-16 space-y-2">

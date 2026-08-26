@@ -1,5 +1,7 @@
+using ProtoFast.Auth.Api.Accounts;
 using ProtoFast.Auth.Api.Configuration;
 using ProtoFast.Auth.Api.Correlation;
+using ProtoFast.Auth.Api.Email;
 using ProtoFast.Auth.Api.Endpoints;
 using ProtoFast.Auth.Api.Identity;
 using ProtoFast.Auth.Api.Keycloak;
@@ -30,6 +32,7 @@ builder.Services.Configure<KeycloakOptions>(builder.Configuration.GetSection("Ke
 builder.Services.Configure<SessionPolicyOptions>(builder.Configuration.GetSection("Session"));
 builder.Services.Configure<InternalJwtOptions>(builder.Configuration.GetSection("InternalJwt"));
 builder.Services.Configure<SubscriptionOptions>(builder.Configuration.GetSection("Subscriptions"));
+builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection("Smtp"));
 
 builder.AddRedisClient("redis");        // IConnectionMultiplexer (Aspire wires the connection string)
 builder.AddNpgsqlDataSource("auth");    // NpgsqlDataSource for the AuthDbContext
@@ -40,17 +43,22 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ITenantResolver, TenantResolver>();
 builder.Services.AddSingleton<ISessionStore, RedisSessionStore>();
 builder.Services.AddSingleton<ICorrelationStore, RedisCorrelationStore>();
+builder.Services.AddSingleton<IEmailChangeStore, RedisEmailChangeStore>();
 builder.Services.AddSingleton<IKeycloakGateway, KeycloakGateway>();
+builder.Services.AddSingleton<IKeycloakAdmin, KeycloakAdmin>();
+builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
 builder.Services.AddSingleton<IInternalJwtFactory, InternalJwtFactory>();
 builder.Services.AddSingleton<IReplayGuard, RedisReplayGuard>();
 builder.Services.AddSingleton<SessionResolver>();
 builder.Services.AddSingleton<BackchannelLogout>();
 builder.Services.AddScoped<AuthFlow>();
+builder.Services.AddScoped<AccountFlow>();
 
 var app = builder.Build();
 
 app.MapDefaultEndpoints();
 app.MapAuthEndpoints();                  // /signin /signup /signin-oidc /signout /reset /add-passkey (HTTP)
+app.MapAccountEndpoints();               // /account/me /account/email(/confirm) /account/passkeys /account/delete (HTTP)
 app.MapGrpcService<AuthorizationService>(); // ext_authz Check (gRPC)
 
 app.Run();

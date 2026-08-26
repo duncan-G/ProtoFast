@@ -1,11 +1,12 @@
 <header class="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
   <a routerLink="/" class="font-semibold text-gray-900">ProtoFast Admin</a>
-  <nav class="flex gap-4 text-sm">
+  <nav class="flex items-center gap-4 text-sm">
     @if (auth.authenticated) {
       <a routerLink="/app" class="text-indigo-600 hover:underline">Console</a>
-      <!-- BFF endpoints, not Angular routes — full-page navigation, no credential forms here. -->
-      <a href="/signout" rel="external" class="text-gray-600 hover:underline">Sign out</a>
+      <!-- Account and sign-out live behind the avatar; see shared/account-menu.ts. -->
+      <app-account-menu />
     } @else {
+      <!-- BFF endpoints, not Angular routes — full-page navigation, no credential forms here. -->
       <a href="/signin" rel="external" class="text-indigo-600 hover:underline">Sign in</a>
       <a href="/signup" rel="external" class="text-gray-600 hover:underline">Create account</a>
     }

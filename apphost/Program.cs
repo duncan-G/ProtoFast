@@ -76,16 +76,21 @@ var keycloak = builder.AddKeycloak("keycloak", 8080)
     // noise. Keeps the request-scoped auth/sign-in spans intact.
     .WithEnvironment("KC_TRACING_INFINISPAN_ENABLED", "false");
 
+IResourceBuilder<ContainerResource>? smtp4dev = null;
 if (!builder.ExecutionContext.IsPublishMode)
 {
-    var mailEndpoint = builder.AddContainer("smtp4dev", "rnwood/smtp4dev")
+    smtp4dev = builder.AddContainer("smtp4dev", "rnwood/smtp4dev")
         .WithHttpEndpoint(targetPort: 80, name: "web")
-        .WithEndpoint(targetPort: 25, name: "smtp")
-        .GetEndpoint("smtp", KnownNetworkIdentifiers.DefaultAspireContainerNetwork);
+        .WithEndpoint(targetPort: 25, name: "smtp");
+
+    // Keycloak is a container, so it has to reach smtp4dev by container DNS and the
+    // in-network SMTP port — not the host-published mapping auth-svc uses below.
+    var mailFromContainer = smtp4dev.GetEndpoint(
+        "smtp", KnownNetworkIdentifiers.DefaultAspireContainerNetwork);
 
     keycloak
-        .WithEnvironment("SMTP_HOST", mailEndpoint.Property(EndpointProperty.Host))
-        .WithEnvironment("SMTP_PORT", mailEndpoint.Property(EndpointProperty.Port))
+        .WithEnvironment("SMTP_HOST", mailFromContainer.Property(EndpointProperty.Host))
+        .WithEnvironment("SMTP_PORT", mailFromContainer.Property(EndpointProperty.Port))
         .WithEnvironment("SMTP_FROM", "no-reply@protofast.dev")
         // WebAuthn RP ID must be the origin hostname. protofast.dev is correct in
         // prod (covers auth.protofast.dev); locally the ceremony runs on localhost.
@@ -102,6 +107,20 @@ var auth = builder.AddProject<Projects.ProtoFast_Auth_Api>("auth")
     .WaitFor(keycloak)
     .WithEnvironment("Auth_Keycloak__Authority", keycloak.GetEndpoint("http"))
     .WithEnvironment("Auth_InternalJwt__PrivateKeyPem", internalJwtPrivateKeyPem);
+
+if (smtp4dev is not null)
+{
+    // Auth is a host process. appsettings.Development.json still says localhost:1025
+    // (MailHog's usual mapping), but Aspire publishes smtp4dev's SMTP on an allocated
+    // port — so without these, email-change hits connection-refused on 1025.
+    var mailFromHost = smtp4dev.GetEndpoint("smtp", KnownNetworkIdentifiers.LocalhostNetwork);
+    auth
+        .WaitFor(smtp4dev)
+        .WithEnvironment("Auth_Smtp__Host", mailFromHost.Property(EndpointProperty.Host))
+        .WithEnvironment("Auth_Smtp__Port", mailFromHost.Property(EndpointProperty.Port))
+        .WithEnvironment("Auth_Smtp__StartTls", "false")
+        .WithEnvironment("Auth_Smtp__From", "no-reply@protofast.dev");
+}
 
 // Where Keycloak POSTs the logout token when an SSO session ends. Keycloak runs in a container
 // and auth is a host process, so this needs the host-gateway alias the same way Envoy's upstream

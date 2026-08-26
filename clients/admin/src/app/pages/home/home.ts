@@ -1,11 +1,6 @@
-import {
-  Component,
-  afterNextRender,
-  inject,
-  signal,
-  ChangeDetectionStrategy,
-} from '@angular/core';
+import { Component, afterNextRender, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { AccountMenu } from '../../shared/account-menu';
 import { createClient } from '@connectrpc/connect';
 import { Greeter } from '../../../lib/gen/greet_pb';
 import { GRPC_TRANSPORT } from '../../grpc-transport';
@@ -13,7 +8,7 @@ import { AuthIdentityService } from '../../auth/auth-identity';
 
 @Component({
   selector: 'app-home',
-  imports: [RouterLink],
+  imports: [AccountMenu, RouterLink],
   templateUrl: './home.html',
   changeDetection: ChangeDetectionStrategy.Eager,
 })
