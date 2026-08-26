@@ -392,6 +392,24 @@
     color: var(--color-accent);
   }
 
+  /* A row in the collapsed-nav menu panel. Full-bleed hit area with a hairline
+     between rows, sized for a thumb rather than a cursor. */
+  .mobile-nav-link {
+    display: block;
+    padding: 13px 0;
+    font-size: 15px;
+    color: var(--color-neutral-300);
+    text-decoration: none;
+    border-bottom: 1px solid var(--color-divider);
+  }
+  .mobile-nav-link:last-of-type {
+    border-bottom: none;
+  }
+  .mobile-nav-link:hover,
+  .mobile-nav-link:active {
+    color: var(--color-accent);
+  }
+
   /* — tables — */
   .table {
     width: 100%;

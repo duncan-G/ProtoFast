@@ -11,3 +11,57 @@ body {
   min-height: 100%;
   background-color: var(--color-bg);
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Large-display page zoom.
+
+   The marketing shell is a fixed 1080px column drawn almost entirely in px
+   (Nocturne's tokens are px, and the landing template carries the canvas's
+   fixed sizes over verbatim). Past ~1600px of viewport it stops growing and
+   just floats in the middle of the screen — on a 4K panel it reads as a
+   postage stamp. `zoom` scales the whole subtree the way browser zoom does —
+   type, spacing, hairlines, radii and shadows together — so the column keeps
+   roughly the share of the screen it has on a laptop, without redesigning the
+   page per breakpoint.
+
+   The steps below aim the 1192px column (1080 + gutters) at ~75% of the
+   viewport near the low end, easing to ~50% on a 4K panel. To make the effect
+   stronger or weaker, change the `--page-zoom` values — nothing else reads
+   them. Unlayered on purpose: it has to outrank the `min-h-screen` utility.
+
+   `zoom` does not divide viewport units, so a `100vh` min-height inside the
+   scaled subtree would render as `100vh * zoom` and add a phantom scrollbar.
+   Dividing it back out keeps "at least one screen tall" meaning one screen.
+   ────────────────────────────────────────────────────────────────────────── */
+@media (min-width: 1600px) {
+  .nocturne {
+    zoom: var(--page-zoom);
+    min-height: calc(100vh / var(--page-zoom));
+    --page-zoom: 1.05;
+  }
+}
+@media (min-width: 1800px) {
+  .nocturne {
+    --page-zoom: 1.15;
+  }
+}
+@media (min-width: 2100px) {
+  .nocturne {
+    --page-zoom: 1.25;
+  }
+}
+@media (min-width: 2500px) {
+  .nocturne {
+    --page-zoom: 1.35;
+  }
+}
+@media (min-width: 2900px) {
+  .nocturne {
+    --page-zoom: 1.45;
+  }
+}
+@media (min-width: 3400px) {
+  .nocturne {
+    --page-zoom: 1.6;
+  }
+}
