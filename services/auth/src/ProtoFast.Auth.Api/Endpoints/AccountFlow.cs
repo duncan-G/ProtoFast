@@ -117,10 +117,10 @@ public sealed class AccountFlow(
     /// has read that mailbox would turn a typo into a permanent lockout. The pending change lives
     /// in Redis until the code comes back.</para>
     ///
-    /// <para>Whether the address already belongs to somebody else is deliberately not checked at
-    /// this point. Answering it here would turn the endpoint into an account-existence oracle for
-    /// anyone with a session; the conflict surfaces at confirm time instead, by which point the
-    /// user has proved they read that mailbox and learns nothing they could not already see.</para>
+    /// <para>An address another account already holds is refused here, before any mail goes out:
+    /// a user who mistypes someone else's address should learn it while they can still fix it,
+    /// not after fetching a code that was never going to commit. Confirm time checks again, and
+    /// remains the authoritative answer — nothing reserves the address in between.</para>
     /// </summary>
     public async Task<IResult> RequestEmailChangeAsync(HttpContext ctx, CancellationToken ct)
     {
@@ -149,6 +149,30 @@ public sealed class AccountFlow(
                 "email_unchanged",
                 "That is already the address on your account.",
                 StatusCodes.Status400BadRequest);
+        }
+
+        // Ahead of the cooldown, so a typo that lands on a taken address does not cost the user a
+        // minute before they can try the right one. It does mean an unthrottled answer to "does
+        // this address have an account here", which the confirm-time conflict gave up eventually
+        // anyway; the throttle guards the mailbox, and no mail is sent on this path.
+        bool taken;
+        try
+        {
+            taken = await admin.IsEmailTakenAsync(session.Realm, newEmail, session.Subject, ct);
+        }
+        catch (Exception ex)
+        {
+            // No point mailing a code for a change that could not be written either.
+            logger.LogError(ex, "Could not check whether an address is taken in realm {Realm}", session.Realm);
+            return KeycloakUnavailable("Your email address could not be changed. Please try again.");
+        }
+
+        if (taken)
+        {
+            return Problem(
+                "email_taken",
+                "That address already belongs to another account.",
+                StatusCodes.Status409Conflict);
         }
 
         if (!mail.IsConfigured)
@@ -261,6 +285,9 @@ public sealed class AccountFlow(
         switch (outcome)
         {
             case EmailUpdateOutcome.AddressTaken:
+                // Asked and answered when the change was started; reaching it here means the
+                // address was claimed inside the fifteen minutes, and Keycloak's own uniqueness
+                // check is the only one that cannot be raced.
                 await SafeDeletePendingAsync(session, ct);
                 return Problem(
                     "email_taken",

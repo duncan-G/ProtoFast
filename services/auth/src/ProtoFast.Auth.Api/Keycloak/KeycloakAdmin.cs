@@ -92,6 +92,45 @@ public sealed class KeycloakAdmin(
         await ThrowIfFailedAsync(response, "delete user", ct).ConfigureAwait(false);
     }
 
+    public async Task<bool> IsEmailTakenAsync(
+        string realm, string email, string exceptSubject, CancellationToken ct = default)
+    {
+        // Both fields, because the write conflicts on either. The realm has
+        // registrationEmailAsUsername, so for anything it registered the two hold the same string
+        // and the second query is a formality — but a user an operator created by hand can have a
+        // username that is somebody else's future email address, and that still 409s at the PUT.
+        return await AnyOtherUserAsync(realm, "email", email, exceptSubject, ct).ConfigureAwait(false)
+               || await AnyOtherUserAsync(realm, "username", email, exceptSubject, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Whether the realm holds a user matching <paramref name="field"/> exactly, other than
+    /// <paramref name="exceptSubject"/>. <c>exact</c> keeps a substring of a longer address from
+    /// reading as a conflict; two records are enough to answer, since the only match that is not
+    /// an answer is the caller's own.
+    /// </summary>
+    private async Task<bool> AnyOtherUserAsync(
+        string realm, string field, string value, string exceptSubject, CancellationToken ct)
+    {
+        var query = $"?{field}={Uri.EscapeDataString(value)}&exact=true&briefRepresentation=true&max=2";
+        using var request = new HttpRequestMessage(HttpMethod.Get, UsersBase(realm) + query);
+        using var response = await SendAsync(realm, request, ct).ConfigureAwait(false);
+
+        await ThrowIfFailedAsync(response, $"search users by {field}", ct).ConfigureAwait(false);
+
+        var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        using var doc = JsonDocument.Parse(body);
+        if (doc.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        return doc.RootElement.EnumerateArray().Any(user =>
+            user.TryGetProperty("id", out var id)
+            && id.GetString() is { Length: > 0 } found
+            && !string.Equals(found, exceptSubject, StringComparison.Ordinal));
+    }
+
     public async Task<EmailUpdateOutcome> UpdateEmailAsync(
         string realm, string subject, string email, CancellationToken ct = default)
     {
@@ -285,8 +324,11 @@ public sealed class KeycloakAdmin(
     private string RealmBase(string realm) =>
         $"{_options.Authority.TrimEnd('/')}/realms/{Uri.EscapeDataString(realm)}";
 
+    private string UsersBase(string realm) =>
+        $"{_options.Authority.TrimEnd('/')}/admin/realms/{Uri.EscapeDataString(realm)}/users";
+
     private string UserBase(string realm, string subject) =>
-        $"{_options.Authority.TrimEnd('/')}/admin/realms/{Uri.EscapeDataString(realm)}/users/{Uri.EscapeDataString(subject)}";
+        $"{UsersBase(realm)}/{Uri.EscapeDataString(subject)}";
 
     private sealed record CachedToken(string AccessToken, DateTimeOffset ExpiresAt);
 }

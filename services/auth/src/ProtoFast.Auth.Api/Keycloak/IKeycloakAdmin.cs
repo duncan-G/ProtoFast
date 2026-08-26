@@ -45,6 +45,21 @@ public interface IKeycloakAdmin
     Task DeleteUserAsync(string realm, string subject, CancellationToken ct = default);
 
     /// <summary>
+    /// Whether some <em>other</em> account in the realm already holds <paramref name="email"/> —
+    /// asked before a confirmation code is mailed, so a user learns the address is unavailable
+    /// while they can still correct it rather than after proving they read that mailbox.
+    ///
+    /// <para>Advisory only. Nothing locks the address between this call and the write, so
+    /// <see cref="UpdateEmailAsync"/> answering <see cref="EmailUpdateOutcome.AddressTaken"/>
+    /// stays the authoritative answer; this one spares the user the round trip in the ordinary
+    /// case.</para>
+    /// </summary>
+    /// <param name="exceptSubject">The account doing the asking — its own record matching is not a
+    /// conflict.</param>
+    Task<bool> IsEmailTakenAsync(
+        string realm, string email, string exceptSubject, CancellationToken ct = default);
+
+    /// <summary>
     /// Writes a new email address onto the account, marking it verified — this is only ever
     /// called once auth-svc has proven the user reads that mailbox.
     ///
@@ -63,7 +78,9 @@ public enum EmailUpdateOutcome
     Updated,
 
     /// <summary>Another account in the realm already holds the address
-    /// (<c>duplicateEmailsAllowed</c> is off). Nothing was written.</summary>
+    /// (<c>duplicateEmailsAllowed</c> is off). Nothing was written. Reached even though
+    /// <see cref="IKeycloakAdmin.IsEmailTakenAsync"/> was asked first, when the address was
+    /// claimed in between.</summary>
     AddressTaken,
 
     /// <summary>The Keycloak user is gone — deleted from under a session that outlived it.</summary>

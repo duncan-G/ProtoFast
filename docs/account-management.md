@@ -44,7 +44,7 @@ also refuse a request whose `Origin` is another site, which is belt to the `Same
 Two steps, both on our own origin, and the account does not move between them.
 
 1. **`POST /account/email`** normalises the address, refuses one that is already on the account,
-   and mails a six-digit code to it. The pending change — the address, a salted SHA-256 of the
+   refuses one another account already holds (`409 email_taken`), and mails a six-digit code to it. The pending change — the address, a salted SHA-256 of the
    code, and a 15-minute deadline — goes to Redis under `emailchg:{realm}:{sub}`, one per account,
    so asking again simply replaces it. A per-account cooldown (60s) keeps a session from using the
    endpoint to write repeatedly to a mailbox whose owner asked for none of this.
@@ -58,10 +58,18 @@ destination an emailed sign-in code has, so committing a typo first — and aski
 its own verification mail afterwards — would turn a slip of the finger into a permanent lockout of
 an account with no password to fall back on.
 
-Whether the address already belongs to somebody else is deliberately **not** checked at step 1;
-answering it there would make the endpoint an account-existence oracle for anyone holding a
-session. The conflict surfaces at step 2 (`409 email_taken`), by which point the user has proved
-they read that mailbox and learns nothing they could not already discover.
+**A taken address is refused at both steps.** Step 1 asks Keycloak (`GET /users?email=…&exact=true`,
+and the same query on `username`, since the write conflicts on either) before any mail goes out, so
+a user who mistypes someone else's address learns it while they can still fix it rather than after
+fetching a code that was never going to commit. Nothing reserves the address in between, so step 2
+checks again and Keycloak's own uniqueness constraint — the one that cannot be raced — has the last
+word: an address claimed inside those fifteen minutes still ends in `409 email_taken` at confirm
+time. The step-1 check runs *before* the cooldown is taken, so a typo does not cost a minute; the
+price is that the endpoint answers "does this address have an account here" for anyone holding a
+session, which the confirm-time conflict conceded eventually in any case.
+
+If Keycloak cannot be reached for that check, step 1 answers `503` rather than mailing a code for a
+change that could not be written either.
 
 Once Keycloak accepts, nothing else may fail the request: the local `UserAccount.Email`, this
 browser's session record, and a heads-up to the *previous* address all follow, and each is logged
