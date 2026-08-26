@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "protofast-client",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-lc", "exec \"$(git rev-parse --show-toplevel)/scripts/dev-client.sh\""],
+      "port": 4300,
+      "autoPort": true
+    }
+  ]
+}
