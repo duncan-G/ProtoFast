@@ -49,6 +49,7 @@ Ground rules:
 | `Auth_DbPassword`                         | auto-generated          | `auth` DB role                                     |
 | `Auth_Keycloak__ClientSecretProtofastWeb` | 4.1                     | Keycloak realm import + auth BFF (`protofast-web`) |
 | `Auth_Keycloak__ClientSecretAdmin`        | 4.1                     | Keycloak realm import + auth BFF (`admin`)         |
+| `Auth_Keycloak__AdminClientSecret`        | 4.1                     | Keycloak realm import + auth-svc (`account-admin`) |
 | `Auth_InternalJwt__PrivateKeyPem`         | 4.1 (PEM)               | auth-svc (EC P-256 private key)                    |
 | `Shared_InternalJwt__PublicKeyPem`        | 4.1 (PEM)               | api + payments (matching public key)               |
 | `Auth_InternalJwt__KeyId`                 | 4.1 (default `prod-1`)  | auth-svc `kid` header                              |
@@ -76,6 +77,7 @@ openssl pkey -in jwt-private.pem -pubout -out jwt-public.pem
 scripts/populate-secrets.sh \
   Auth_Keycloak__ClientSecretProtofastWeb="$(openssl rand -hex 32)" \
   Auth_Keycloak__ClientSecretAdmin="$(openssl rand -hex 32)" \
+  Auth_Keycloak__AdminClientSecret="$(openssl rand -hex 32)" \
   Auth_InternalJwt__PrivateKeyPem="$(cat jwt-private.pem)" \
   Shared_InternalJwt__PublicKeyPem="$(cat jwt-public.pem)" \
   Auth_InternalJwt__KeyId=prod-1
@@ -83,7 +85,9 @@ scripts/populate-secrets.sh \
 shred -u jwt-private.pem jwt-public.pem
 ```
 
-Keycloak's `--import-realm` and auth-svc must agree on the client secret values (`PROTOFAST_WEB_CLIENT_SECRET` / `ADMIN_CLIENT_SECRET` in `.env`), so always rotate both keys together.
+Keycloak's `--import-realm` and auth-svc must agree on the client secret values (`PROTOFAST_WEB_CLIENT_SECRET` / `ADMIN_CLIENT_SECRET` / `ACCOUNT_ADMIN_CLIENT_SECRET` in `.env`), so always rotate all three keys together.
+
+`Auth_Keycloak__AdminClientSecret` is the `account-admin` service account behind account management (passkey removal, email change, account deletion — [docs/account-management.md](../docs/account-management.md)). It differs from the other two at bootstrap: the realm import only ever creates realms, so on a realm that already exists the client never appears and the secret has nowhere to land — run [scripts/keycloak-apply-account-admin-client.py](../scripts/keycloak-apply-account-admin-client.py) once against the live realm to create it and set the secret on it. Missing or mismatched, sign-in is unaffected and the `/account/*` endpoints answer 503.
 
 ### 4.2 SES SMTP (Keycloak email)
 

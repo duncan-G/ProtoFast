@@ -6,6 +6,7 @@
   Two forms, not one: the second posts a resend and must not carry the code field.
 -->
 <#import "template.ftl" as layout>
+<#import "otp-resend.ftl" as resend>
 <@layout.registrationLayout displayMessage=!messagesPerField.existsError('code'); section>
     <#if section = "header">
         <h1 class="pf-title">${msg("pfOtpSignInTitle")}</h1>
@@ -25,13 +26,6 @@
                     name="login" id="kc-otp-submit" type="submit">${msg("pfOtpSubmit")}</button>
         </form>
 
-        <form id="kc-email-otp-resend" action="${url.loginAction}" method="post" class="${properties.kcFormClass!} pf-otp-resend">
-            <input type="hidden" name="otpAction" value="resend"/>
-            <#if otpResendAllowed>
-                <button type="submit" class="pf-linkbutton">${msg("pfOtpResend")}</button>
-            <#else>
-                <span class="${properties.kcInputHelperTextClass!}">${msg("pfOtpResendWait", otpResendIn)}</span>
-            </#if>
-        </form>
+        <@resend.form id="kc-email-otp-resend"/>
     </#if>
 </@layout.registrationLayout>

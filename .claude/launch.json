@@ -7,6 +7,16 @@
       "runtimeArgs": ["-lc", "exec \"$(git rev-parse --show-toplevel)/scripts/dev-client.sh\""],
       "port": 4300,
       "autoPort": true
+    },
+    {
+      "name": "admin-client",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-lc",
+        "CLIENT=admin exec \"$(git rev-parse --show-toplevel)/scripts/dev-client.sh\""
+      ],
+      "port": 4301,
+      "autoPort": true
     }
   ]
 }

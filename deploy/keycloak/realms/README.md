@@ -96,6 +96,33 @@ registration form action attaches an `UPDATE_PASSWORD` required action to every
 new user whether or not the realm has that action enabled — and a disabled action
 never runs, so it would sit pending on every account forever.
 
+## Account management
+
+Two things in this file exist for the account page (`docs/account-management.md`), not for
+sign-in:
+
+- **`account-admin`** is a confidential client with service accounts on and every browser flow
+  off. Its service-account user holds `view-users` and `manage-users` on `realm-management` and
+  nothing else — the whole of the standing admin credential in this system. auth-svc uses it for
+  the three calls a user makes about their own account that no OIDC flow expresses: list my
+  passkeys, remove one, delete my account, and write a new email address onto it. The sign-in path
+  still never asks the Admin API anything. Its `fullScopeAllowed` is `true` and has to be: a client with full scope off strips
+  every role it has no scope mapping for, and the resulting token — carrying neither of the two
+  roles — is one the Admin API answers 403 to. The client holds nothing but those roles, so full
+  scope here *is* that grant.
+- **`editUsernameAllowed` is `true`.** With `registrationEmailAsUsername` the email *is* the
+  username, so an email change is a username change, and auth-svc writes both in one Admin API
+  call once it has verified the new address itself. A `manage-users` admin can edit a username
+  whatever this flag says, so the flag is belt to that braces rather than the thing that permits
+  the write — it is worth re-testing against a live realm before turning it off. What it no longer
+  does is unlock the account console's email field: nothing links to that console any more.
+
+Neither reaches a realm that already exists on its own: the import skips existing realms, and the
+deploy reconcile never creates clients. `editUsernameAllowed` is reconciled (it is on
+`KC_REALM_KEYS`); the client is not, so run
+[`scripts/keycloak-apply-account-admin-client.py`](../../../scripts/keycloak-apply-account-admin-client.py)
+once against the live realm.
+
 ## The provider JAR
 
 `email-otp` and `verify-email-code` are not built into Keycloak. They come from

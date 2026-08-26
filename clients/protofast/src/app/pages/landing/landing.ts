@@ -9,6 +9,7 @@ import {
 import { RouterLink } from '@angular/router';
 import { ImagePlaceholder } from './image-placeholder';
 import { ProtofastLogo } from '../../shared/protofast-logo';
+import { AccountMenu } from '../../shared/account-menu';
 import { AuthIdentityService } from '../../auth/auth-identity';
 
 /** A line in the hero's live build console — one agent, one job, one state. */
@@ -57,7 +58,7 @@ interface PricingTier {
 @Component({
   selector: 'app-landing',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ImagePlaceholder, ProtofastLogo, RouterLink],
+  imports: [AccountMenu, ImagePlaceholder, ProtofastLogo, RouterLink],
   templateUrl: './landing.html',
   // Escape closes the menu panel from anywhere, including while focus sits on
   // one of its links.

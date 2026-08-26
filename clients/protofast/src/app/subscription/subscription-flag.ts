@@ -13,14 +13,18 @@ export const SUBSCRIBE_ROUTE = '/subscribe';
 
 /**
  * Routes that must stay reachable while the flag is set, or the redirect loops: the
- * subscription workflow itself, and the way out of the account.
+ * subscription workflow itself, and the ways out of the account.
+ *
+ * `/app/account` is here because deleting an account is a way out, and an account that
+ * declined to subscribe is exactly the one likely to want it. Nothing else on that page
+ * needs a subscription either.
  *
  * `/signout` is a BFF endpoint rather than an Angular route, so it never reaches the
  * guard — it is listed anyway because the allowlist is the thing anyone will read to
  * answer "what is exempt?", and a future in-app sign-out link should not have to
  * rediscover this.
  */
-export const SUBSCRIPTION_EXEMPT_PREFIXES = [SUBSCRIBE_ROUTE, '/signout'];
+export const SUBSCRIPTION_EXEMPT_PREFIXES = [SUBSCRIBE_ROUTE, '/app/account', '/signout'];
 
 export function isSubscriptionExempt(url: string): boolean {
   const path = url.split('?')[0];

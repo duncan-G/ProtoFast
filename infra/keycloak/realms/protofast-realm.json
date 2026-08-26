@@ -9,7 +9,7 @@
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": false,
-  "editUsernameAllowed": false,
+  "editUsernameAllowed": true,
   "rememberMe": true,
   "verifyEmail": true,
   "loginTheme": "protofast",
@@ -421,6 +421,36 @@
         "backchannel.logout.revoke.offline.tokens": "false",
         "client.session.idle.timeout": "900",
         "client.session.max.lifespan": "3600"
+      }
+    },
+    {
+      "clientId": "account-admin",
+      "name": "ProtoFast Account Administration",
+      "description": "Service account auth-svc uses for the Admin API calls account management needs: read a user's passkeys, remove one, delete the account.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${ACCOUNT_ADMIN_CLIENT_SECRET:dev-account-admin-secret}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": true,
+      "redirectUris": [],
+      "webOrigins": []
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-account-admin",
+      "enabled": true,
+      "serviceAccountClientId": "account-admin",
+      "clientRoles": {
+        "realm-management": [
+          "view-users",
+          "manage-users"
+        ]
       }
     }
   ],

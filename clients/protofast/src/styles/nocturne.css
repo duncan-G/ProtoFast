@@ -2,7 +2,7 @@
    Nocturne — vendored from the Claude Design project "Protofast landing
    redesign" (_ds/nocturne-d804af75-f4b0-4cc2-ada2-5104ee9a50a9/styles.css).
 
-   THREE DEVIATIONS FROM THE SOURCE, so re-syncing stays obvious:
+   FOUR DEVIATIONS FROM THE SOURCE, so re-syncing stays obvious:
 
    1. The bare element base rules (body, h1-h6, p, a, img, figure,
       :focus-visible, ::selection) are scoped under `:where(.nocturne)` rather
@@ -16,8 +16,16 @@
       layer, unlayered element selectors would beat every Tailwind utility.
    3. The Google Fonts @import moved to index.html as a preconnected <link>
       (a chained CSS @import blocks rendering).
+   4. Local additions at the foot of the sheet, for the two screens the landing
+      page the system was drawn for never had: the `--color-danger` ramp with
+      the `.btn-danger` that reads from it, `.account-menu-item` for the
+      signed-in header menu, and the account page's own furniture (`.split`,
+      `.panel`, `.code-cell`, `.spinner`, `.rise` and their destructive
+      variants). Kept in their own block, below everything vendored, so a
+      re-sync is still a straight overwrite of what sits above it.
 
-   The `:root` token block and every component class are verbatim.
+   Everything above that block — the `:root` token set and every component
+   class — is verbatim.
 
    To retune the look, edit the tokens at the top — everything reads from
    them. See the project's readme.md for the system's rules.
@@ -518,6 +526,227 @@
     .glow,
     .glow-delayed {
       opacity: 1;
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     Local additions — NOT from the vendored source. See deviation 4 up top.
+     ══════════════════════════════════════════════════════════════════════ */
+
+  :root {
+    /* Danger, derived the way the ramps above were: the accent's own OKLCH
+       lightness (0.660) carried to red, at chroma 0.145 so it still reads as
+       red rather than as another dusty neutral at that value. Landing on
+       5.3:1 against --color-bg, within a whisker of the accent's 5.45. */
+    --color-danger: #dd6a64;
+
+    /* Three steps off it, taken from the account mockups rather than
+       re-derived, because a destructive surface needs more than one value: a
+       ground to mix from (--color-danger itself), a border that sits *under*
+       the text it encloses, and a headline tint pale enough to read as a
+       heading rather than as another button. */
+    --color-danger-200: oklch(0.85 0.06 25);
+    --color-danger-300: oklch(0.72 0.13 25);
+    --color-danger-600: oklch(0.6 0.12 25);
+  }
+
+  /* Outline-only, like .btn-primary — a destructive action should be legible
+     at a glance without competing with the page's real primary for weight. */
+  .btn-danger {
+    color: var(--color-danger-300);
+    border-color: var(--color-danger-600);
+  }
+  /* `btn btn-ghost btn-danger` — a destructive action that is one of several in
+     a row and should not carry a box. Both classes land on border-color, and
+     .btn-danger is the later of the two, so the border has to be put back. */
+  .btn-ghost.btn-danger {
+    border-color: transparent;
+  }
+  .btn-danger:hover {
+    background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  }
+  .btn-danger:active {
+    background: color-mix(in srgb, var(--color-danger) 22%, transparent);
+  }
+  .btn-danger:focus-visible {
+    outline-color: var(--color-danger);
+  }
+
+  /* A row in the account menu (src/app/shared/account-menu.ts) — the panel the
+     avatar button opens in every signed-in header. Padded for a thumb rather
+     than a cursor, and flat until pointed at, so the two rows read as one
+     surface instead of two buttons.
+
+     Qualified with the element on purpose: the landing header is a `.nav`, and
+     `.nav a` (0,1,1) would otherwise outrank a bare class and hand these rows
+     the nav's own colours on one page out of three. */
+  a.account-menu-item {
+    display: block;
+    padding: 9px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    line-height: 1.2;
+    color: var(--color-neutral-300);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  a.account-menu-item:hover,
+  a.account-menu-item:focus-visible {
+    background: color-mix(in srgb, var(--color-text) 7%, transparent);
+    color: var(--color-text);
+  }
+
+  /* ────────────────────────────────────────────────────────────────────────
+     Shapes the account page asks for (src/app/pages/account/account.ts). All
+     of them are section-level furniture rather than one-page trim, which is
+     why they live here and not in the component's own template.
+     ──────────────────────────────────────────────────────────────────────── */
+
+  /* Two columns: the prose on the left, the controls on the right, so a section
+     can grow — a form opening, a code panel appearing — without shoving its own
+     heading down the page. Wraps to one column below ~534px, which is exactly
+     where 170 + 34 + 330 stops fitting. */
+  .split {
+    container-type: inline-size;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 34px;
+  }
+  .split > .split-aside {
+    flex: 0 1 190px;
+    min-width: 170px;
+  }
+  .split > .split-main {
+    flex: 1 1 330px;
+    min-width: 0;
+  }
+  /* Once the row has wrapped, the aside is no longer a column: it is a heading
+     sitting above the controls, and should have the width of one. Left at its
+     190px basis it would set the prose in a ribbon with a phone's worth of
+     empty space beside it. Keyed off the section's own width rather than the
+     viewport's, so the page's padding is not baked in here. */
+  @container (max-width: 533px) {
+    .split > .split-aside {
+      flex-basis: 100%;
+    }
+  }
+
+  /* A panel that opened inside a section. Recessed rather than raised — .card
+     is the raised one — so an expanding control reads as part of the section it
+     came out of instead of as a second card stacked on the first. */
+  .panel {
+    padding: var(--space-6);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-text) 3%, transparent);
+    box-shadow: inset 0 0 0 1px var(--color-divider);
+  }
+
+  /* The same panel in the destructive register, and then the same panel once
+     the user has armed it: identical geometry, twice the edge and twice the
+     ground, so arming is visible without the box moving. */
+  .panel-danger {
+    padding: var(--space-6);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-danger) 6%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-danger) 32%, transparent);
+  }
+  .panel-danger-armed {
+    background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-danger) 55%, transparent);
+  }
+
+  /* A destructive confirmation that opens *inside* a list row, as a strip below
+     it, so the row it is asking about stays on screen — the thing a dialog over
+     the page cannot do. */
+  .strip-danger {
+    background: color-mix(in srgb, var(--color-danger) 11%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-danger) 30%, transparent);
+  }
+
+  /* A dashed slot where a list would be. Dashed, not solid, so an empty list
+     does not read as a card with nothing in it. */
+  .empty-slot {
+    padding: 20px 18px;
+    border-radius: var(--radius-md);
+    border: 1px dashed color-mix(in srgb, var(--color-text) 18%, transparent);
+  }
+
+  /* One digit of a confirmation code. The cells are presentation only: a single
+     transparent input lies across the whole row, so paste, autofill and the
+     one-time-code keyboard all keep working on one real field. That input has
+     nothing of its own to show focus with, hence the group ring — and
+     :focus-within rather than :focus-visible, because clicking the cells is the
+     ordinary way in and would otherwise give no feedback at all. */
+  .code-cells {
+    display: flex;
+    gap: 7px;
+  }
+  .code-cell {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 50px;
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    box-shadow: inset 0 0 0 1px var(--color-divider);
+    font-family: var(--font-mono);
+    font-size: 19px;
+  }
+  .code-cells:focus-within .code-cell {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 55%, transparent);
+  }
+  .code-input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    border: 0;
+    background: transparent;
+    cursor: text;
+    font-size: 16px; /* under 16px, iOS Safari zooms the page on focus */
+  }
+
+  @keyframes nocturne-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes nocturne-rise {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* An inline busy mark, sized for a line of 13–14px text and drawn entirely
+     from currentColor — so it takes the colour of the button or label holding
+     it, and there is one of these rather than one per accent. */
+  .spinner {
+    display: inline-block;
+    flex: none;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    border: 1.6px solid color-mix(in srgb, currentColor 35%, transparent);
+    border-top-color: currentColor;
+    animation: nocturne-spin 0.8s linear infinite;
+  }
+
+  /* What a panel does when it opens in place. */
+  .rise {
+    animation: nocturne-rise 0.22s ease both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spinner,
+    .rise {
+      animation: none;
     }
   }
 }

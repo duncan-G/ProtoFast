@@ -50,14 +50,27 @@ __CORS_ALLOW_ORIGIN_MATCHES__
         #
         # This list is an ALLOWLIST, and auth-svc serves one endpoint that must stay off it:
         # /backchannel-logout. Keycloak posts it a logout token over the internal network, and it
-        # deletes sessions on the strength of that token alone. Widening this to a prefix would
-        # hand the internet a session-deletion endpoint.
+        # deletes sessions on the strength of that token alone. Widening this regex to a prefix
+        # would hand the internet a session-deletion endpoint.
+        #
+        # Keep the regex small. Envoy rejects RDS updates whose RE2 program size exceeds 100
+        # (default error threshold); stuffing /account/* into this alternation tripped that and
+        # left both vhosts with no routes at all.
         - match:
             safe_regex:
               # safe_regex matches the :path WITH its query string (unlike prefix/path), so allow
               # an optional ?… — the guard sends /signin?returnUrl=… and the OIDC callback always
               # arrives as /signin-oidc?code=&state=. Without this they fall through to the SPA → 404.
               regex: "^/(signin|signup|signin-oidc|signout|reset|add-passkey)(\\?.*)?$"
+          route: { cluster: auth }
+          typed_per_filter_config:
+            envoy.filters.http.ext_authz:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+              disabled: true
+        # Account management JSON on auth-svc. Prefix, not another regex: /account/* is disjoint
+        # from /backchannel-logout, and the SPA page lives at /app/account. ext_authz OFF because
+        # these endpoints resolve the session cookie themselves.
+        - match: { prefix: "/account/" }
           route: { cluster: auth }
           typed_per_filter_config:
             envoy.filters.http.ext_authz:

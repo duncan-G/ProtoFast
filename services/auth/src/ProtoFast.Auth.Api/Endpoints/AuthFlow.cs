@@ -158,7 +158,7 @@ public sealed class AuthFlow(
             return Results.Redirect("/");
         }
 
-        var user = await ProvisionAsync(correlation.Realm, identity, ct);
+        var (user, firstLogin) = await ProvisionAsync(correlation.Realm, identity, ct);
 
         var now = clock.GetUtcNow();
         var session = new SessionData
@@ -224,21 +224,24 @@ public sealed class AuthFlow(
             return Results.Redirect(correlation.ReturnUrl);
         }
 
-        return await OfferPasskeyOrReturnAsync(ctx, correlation, hostTenant, user, identity, now, ct);
+        return await OfferPasskeyOrReturnAsync(ctx, correlation, hostTenant, user, identity, firstLogin, now, ct);
     }
 
     /// <summary>
     /// Chains the passkey offer onto the sign-in that just completed. Returns straight to the
-    /// app instead when the account already has one. Sign-up does not come through here — it
-    /// carries the offer on its own authorize request, because the session registration leaves
-    /// behind cannot satisfy a follow-up one (see <c>/signup</c> in <see cref="AuthEndpoints"/>).
+    /// app instead when the account already has one, or when this is the account's first login
+    /// here. Sign-up through <c>/signup</c> does not come through here at all — it carries the
+    /// offer on its own authorize request (see <see cref="AuthEndpoints"/>).
     /// </summary>
+    /// <param name="firstLogin">This callback provisioned the account. A chained offer would cost
+    /// the user a second mailed code, so there is none — see the guard below.</param>
     private async Task<IResult> OfferPasskeyOrReturnAsync(
         HttpContext ctx,
         CorrelationData correlation,
         TenantConfig tenant,
         UserAccount user,
         KeycloakIdentity identity,
+        bool firstLogin,
         DateTimeOffset now,
         CancellationToken ct)
     {
@@ -251,6 +254,21 @@ public sealed class AuthFlow(
         }
 
         if (user.PasskeyRegisteredAt is not null)
+        {
+            return Results.Redirect(correlation.ReturnUrl);
+        }
+
+        // A first login is an account that has just been registered — through Keycloak's own
+        // "Register" link on the login page, since the realm allows registration, or through any
+        // other route that reaches this callback without the offer already aboard. Registration
+        // is a different top-level flow and records no authenticated level against the browser
+        // flow, while the offer's kc_action raises the level a follow-up authorize demands
+        // (Keycloak takes the higher of the client's acr_values and the level its action implies).
+        // So the Cookie authenticator would answer the round trip below with "strong authentication
+        // required" and drop the brand-new account into the sign-in branch — in a realm whose only
+        // other credential is a mailed code, a second code seconds after the one that just verified
+        // the address. Ask at their next sign-in, where the cookie satisfies the offer silently.
+        if (firstLogin)
         {
             return Results.Redirect(correlation.ReturnUrl);
         }
@@ -364,11 +382,17 @@ public sealed class AuthFlow(
         return true;
     }
 
-    private async Task<UserAccount> ProvisionAsync(string realm, KeycloakIdentity identity, CancellationToken ct)
+    /// <summary>
+    /// First-login provisioning. <c>FirstLogin</c> reports that this callback is the one that
+    /// created the local row — the account has never completed a browser flow here before, which
+    /// is what the passkey offer has to know (see <see cref="OfferPasskeyOrReturnAsync"/>).
+    /// </summary>
+    private async Task<(UserAccount User, bool FirstLogin)> ProvisionAsync(string realm, KeycloakIdentity identity, CancellationToken ct)
     {
         var user = await db.Users.FirstOrDefaultAsync(
             u => u.Realm == realm && u.Subject == identity.Subject, ct);
         var now = clock.GetUtcNow();
+        var firstLogin = user is null;
 
         if (user is null)
         {
@@ -390,29 +414,14 @@ public sealed class AuthFlow(
         }
 
         await db.SaveChangesAsync(ct);
-        return user;
+        return (user, firstLogin);
     }
 
     private void AppendSessionCookie(HttpContext ctx, string sessionId) =>
-        ctx.Response.Cookies.Append(_session.CookieName, sessionId, new CookieOptions
-        {
-            HttpOnly = true,
-            Secure = true,
-            SameSite = SameSiteMode.Lax, // Lax survives the top-level redirect back from Keycloak; Strict drops it
-            IsEssential = true,
-            Path = "/",
-            MaxAge = _session.AbsoluteTtl,
-            // No Domain → host-only: a session for one host can never be replayed at another (realm isolation).
-        });
+        SessionCookie.Append(ctx, _session, sessionId);
 
     private void ClearSessionCookie(HttpContext ctx) =>
-        ctx.Response.Cookies.Delete(_session.CookieName, new CookieOptions
-        {
-            HttpOnly = true,
-            Secure = true,
-            SameSite = SameSiteMode.Lax,
-            Path = "/",
-        });
+        SessionCookie.Clear(ctx, _session);
 
     // The public origin is always HTTPS here (TLS terminates at Cloudflare; Envoy overwrites the
     // internal :scheme to http). Build redirect/post-logout URLs from the preserved Host.

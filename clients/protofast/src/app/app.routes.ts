@@ -22,6 +22,14 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/dashboard/dashboard').then((m) => m.Dashboard),
   },
   {
+    // Account management. Same gates as /app — it is part of the protected area — and the
+    // subscription guard is exempt here (see SUBSCRIPTION_EXEMPT_PREFIXES): an account that
+    // has not subscribed must still be able to leave.
+    path: 'app/account',
+    canActivate: [authGuard, subscriptionGuard],
+    loadComponent: () => import('./pages/account/account').then((m) => m.Account),
+  },
+  {
     // Catch-all: unmatched paths render a branded 404 (SSR returns HTTP 404) instead of
     // falling through to Express's bare "Cannot GET …".
     path: '**',

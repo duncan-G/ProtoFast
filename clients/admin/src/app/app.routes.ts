@@ -13,6 +13,12 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/dashboard/dashboard').then((m) => m.Dashboard),
   },
   {
+    // Account management — same gate as /app; the SSR host protects every admin page anyway.
+    path: 'app/account',
+    canActivate: [authGuard],
+    loadComponent: () => import('./pages/account/account').then((m) => m.Account),
+  },
+  {
     // Catch-all: unmatched paths render a 404 page (SSR returns HTTP 404) instead of
     // falling through to Express's bare "Cannot GET …".
     path: '**',
