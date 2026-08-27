@@ -89,12 +89,35 @@ the `acr` claim that comes back, because asking is not getting.
 
     passwordless registration                     (registrationFlow)
       \- passwordless registration form
-           \- Registration User Profile Creation
+           \- Registration User Creation with Claim
 
 `registration-password-action` is **absent**, not disabled. Keycloak's
 registration form action attaches an `UPDATE_PASSWORD` required action to every
 new user whether or not the realm has that action enabled — and a disabled action
 never runs, so it would sit pending on every account forever.
+
+### Signing up again with an address you never verified
+
+`protofast-registration-user-creation` replaces Keycloak's stock user creation
+(`registration-user-creation`) and differs from it in one case. Sign-up writes the
+account and *then* asks for a mailed code, so closing the tab at that screen leaves a
+**shell**: an account holding an address nobody has ever proved. Stock Keycloak answers
+the next sign-up with "email already registered" forever — the one thing you cannot do
+with that address is the thing you were trying to do. Here that sign-up resumes the shell
+instead: same row, same code screen, no duplicate.
+
+Unverified means unproved *in this realm* — every way in ends at a mailed code or a
+passkey, and the code path sets `emailVerified`. So a shell has no session, no local user
+row and nothing to take. A stranger who guesses someone's abandoned address gets a mail
+they cannot read and reaches nothing; the code is still the only way through. Anything
+that is not a shell — verified, holds a credential, linked to Google or Apple, federated,
+disabled — is refused exactly as before, and the form links to sign-in.
+
+A shell stays reclaimable from sign-up until the address is proved. Mail is paced
+separately: sixty seconds between codes to the same address (stamped on the account,
+so a new tab does not reset it) and three codes per authentication session. Hitting
+either limit stays on the code screen and leaves the last mailed code valid — it
+never turns the next sign-up into "already registered".
 
 ## Account management
 
@@ -125,7 +148,8 @@ once against the live realm.
 
 ## The provider JAR
 
-`email-otp` and `verify-email-code` are not built into Keycloak. They come from
+`email-otp`, `verify-email-code` and `protofast-registration-user-creation` are
+not built into Keycloak. They come from
 [`../providers/protofast-keycloak.jar`](../providers/), built from
 [`infra/keycloak/providers/email-otp`](../../../infra/keycloak/providers/email-otp/).
 **The browser flow names `email-otp` by id, so a Keycloak that starts without
@@ -154,8 +178,10 @@ this file only affects a brand-new realm. For a running deployment:
   [`scripts/keycloak-apply-passwordless-flow.py`](../../../scripts/keycloak-apply-passwordless-flow.py)
   once, by hand, watching it. It registers `verify-email-code`, builds both flows,
   rebinds the realm and then deletes the retired ones — in that order, so an
-  interrupted run leaves a realm that still signs people in. It is idempotent and
-  takes `--dry-run`.
+  interrupted run leaves a realm that still signs people in. It also swaps stock
+  user creation out of the registration form for
+  `protofast-registration-user-creation`, adding the replacement before removing
+  what it replaces. It is idempotent and takes `--dry-run`.
 
 ## Adding a tenant realm
 

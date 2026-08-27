@@ -31,6 +31,8 @@ export interface AccountView {
 export interface PendingEmailChange {
   email: string;
   expiresAt: string;
+  /** False when a live code is already out for this address and nothing new was mailed. */
+  sent?: boolean;
 }
 
 /** Where the BFF sends the user back to after a round trip it owns. */

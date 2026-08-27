@@ -43,6 +43,18 @@
       <link href="${url.resourcesPath}/${style}" rel="stylesheet">
     </#list>
   </#if>
+  <#-- Passkey offer + naming share one card. .pf-group / .pf-btn set display
+       and beat the UA [hidden] rule, which is how both steps paint at once.
+       Keycloak serves styles.css from an unhashed /resources/{version}/ URL,
+       so these ID rules travel with the HTML. webauthnRegister.js only
+       toggles the hidden attribute — it does not need a matching class. -->
+  <style>
+    #pf-passkey-name[hidden],
+    #pf-passkey-save[hidden],
+    #pf-passkey-actions[hidden] {
+      display: none !important;
+    }
+  </style>
   <#-- Keycloak's WebAuthn modules (webauthnRegister.js / webauthnAuthenticate.js)
        import the bare specifier "rfc4648". Without this map the module fails to
        load, the Register button — which sits outside the form — does nothing,

@@ -181,7 +181,7 @@ import { ACCOUNT_ROUTE, AccountApi, AccountView } from '../../account/account-ap
                     class="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50
                            transition disabled:opacity-50"
                     [disabled]="emailBusy()"
-                    (click)="abandonEmailChange()"
+                    (click)="useDifferentAddress()"
                   >
                     Use a different address
                   </button>
@@ -391,9 +391,13 @@ export class Account {
   }
 
   protected startEmailChange(): void {
-    this.newEmail.set('');
     this.emailCode.set('');
     this.clearEmailMessages();
+    if (this.view()?.pendingEmail) {
+      this.emailStep.set('code');
+      return;
+    }
+    this.newEmail.set('');
     this.emailStep.set('address');
   }
 
@@ -413,7 +417,11 @@ export class Account {
       const pending = await this.api.requestEmailChange(target);
       this.emailCode.set('');
       this.emailStep.set('code');
-      this.emailNotice.set(`Code sent to ${pending.email}.`);
+      this.emailNotice.set(
+        pending.sent === false
+          ? `Enter the code already sent to ${pending.email}.`
+          : `Code sent to ${pending.email}.`,
+      );
       // Re-read so the pending address on the view is the server's, not this page's guess.
       this.view.set(await this.api.load());
     } catch (err) {
@@ -453,21 +461,20 @@ export class Account {
     }
   }
 
-  /** Drops the change, whether or not a code has been sent — cancelling nothing is not an error. */
-  protected async abandonEmailChange(): Promise<void> {
-    this.emailBusy.set(true);
+  /** Closes the form. A mailed code stays parked so it can still be entered. */
+  protected abandonEmailChange(): void {
     this.clearEmailMessages();
-    try {
-      await this.api.cancelEmailChange();
-      this.view.set(await this.api.load());
-    } catch (err) {
-      this.emailError.set(message(err));
-    } finally {
-      this.emailBusy.set(false);
-      this.emailStep.set('idle');
-      this.newEmail.set('');
-      this.emailCode.set('');
-    }
+    this.emailStep.set('idle');
+    this.newEmail.set('');
+    this.emailCode.set('');
+  }
+
+  /** Keeps the mailed code; sending a different address is what replaces it. */
+  protected useDifferentAddress(): void {
+    this.clearEmailMessages();
+    this.emailCode.set('');
+    this.newEmail.set('');
+    this.emailStep.set('address');
   }
 
   private clearEmailMessages(): void {

@@ -49,7 +49,7 @@ public class EmailOtpAuthenticator implements Authenticator {
 
         // A code already in flight is reused: "Try another way" can bring the user back
         // here, and re-sending on every visit would burn the per-session send budget.
-        if (!codes.hasLiveCode()) {
+        if (!codes.hasLiveCode(user)) {
             error = EmailOtpForm.message(codes.send(
                     user, EmailOtpForm.MAIL_SIGN_IN_SUBJECT, EmailOtpForm.MAIL_SIGN_IN));
         }
@@ -75,7 +75,7 @@ public class EmailOtpAuthenticator implements Authenticator {
             return;
         }
 
-        EmailOtpService.VerifyResult result = codes.verify(form.getFirst(EmailOtpForm.FIELD_CODE));
+        EmailOtpService.VerifyResult result = codes.verify(user, form.getFirst(EmailOtpForm.FIELD_CODE));
         if (result == EmailOtpService.VerifyResult.VALID) {
             context.getEvent().detail(Details.AUTH_METHOD, EmailOtpAuthenticatorFactory.PROVIDER_ID);
             context.success();
@@ -118,7 +118,7 @@ public class EmailOtpAuthenticator implements Authenticator {
     private static Response page(AuthenticationFlowContext context, EmailOtpService codes, UserModel user, String error) {
         var form = EmailOtpForm.prepare(context.form(), codes, user);
         if (error != null) {
-            form.setError(error, String.valueOf(codes.secondsUntilResend()));
+            form.setError(error, String.valueOf(codes.secondsUntilResend(user)));
         }
         return form.createForm(EmailOtpForm.PAGE_SIGN_IN);
     }

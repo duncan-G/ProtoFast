@@ -11,12 +11,13 @@ custom Keycloak image:
 
 That works because neither environment runs `--optimized`: dev is Aspire's
 `start-dev` and prod is `kc.sh start --import-realm`, so the server re-runs its
-augmentation at boot and picks the JAR up. Registration shows in the log as three
+augmentation at boot and picks the JAR up. Registration shows in the log as four
 `KC-SERVICES0047 … internal SPI` lines at start-up — one per provider. Their
 absence means the mount is wrong.
 
-**This is not optional cargo.** The realm's browser flow names `email-otp` by id,
-so a Keycloak that starts without this JAR cannot run the sign-in flow at all.
+**This is not optional cargo.** The realm's browser flow names `email-otp` by id
+and its registration flow names `protofast-registration-user-creation`, so a
+Keycloak that starts without this JAR can run neither sign-in nor sign-up.
 
 ## What is in it
 
@@ -24,6 +25,7 @@ so a Keycloak that starts without this JAR cannot run the sign-in flow at all.
 | --- | --- | --- |
 | Authenticator | `email-otp` | Signs a user in with a code mailed to their address — the floor credential of every account |
 | Required action | `verify-email-code` | Proves the address at sign-up by code instead of by a clicked link |
+| Form action | `protofast-registration-user-creation` | Creates the user from the sign-up form, or resumes an unverified sign-up that already holds the address |
 | Identity provider | `apple` | Sign in with Apple, minting its own client secret per token request |
 
 ## Rebuilding

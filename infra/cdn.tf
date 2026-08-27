@@ -2,6 +2,12 @@
 # immutable bundles aggressively; bypass SSR HTML and the gRPC-Web / OTLP API
 # paths. gRPC-Web POSTs are never cached by default, so the bypass rule is
 # belt-and-suspenders.
+#
+# Edge TTL respects origin Cache-Control. The previous override_origin + 1y
+# treated every .css/.js on the zone as an immutable hashed Angular bundle,
+# including Keycloak theme files whose URL only moves when the Keycloak image
+# tag does. Origin headers are the source of truth: hashed SSR assets already
+# send max-age=31536000, Keycloak sends whatever spi-theme-static-max-age is.
 
 resource "cloudflare_ruleset" "cache" {
   zone_id = data.cloudflare_zone.this.id
@@ -20,20 +26,19 @@ resource "cloudflare_ruleset" "cache" {
         cache = false
       }
     },
-    # Cache content-hashed static assets for a year (immutable).
+    # Eligible for cache; TTL comes from the origin, not a zone-wide 1y override.
     {
       ref         = "cache_hashed_assets"
-      description = "Cache Angular hashed bundles and static assets aggressively"
+      description = "Cache static assets according to origin Cache-Control"
       expression  = "(http.request.uri.path.extension in {\"js\" \"mjs\" \"css\" \"woff2\" \"woff\" \"ttf\" \"png\" \"jpg\" \"jpeg\" \"webp\" \"avif\" \"svg\" \"ico\" \"gif\"})"
       action      = "set_cache_settings"
       action_parameters = {
         cache = true
         edge_ttl = {
-          mode    = "override_origin"
-          default = 31536000
-          # This rule matches on file extension alone, so an origin error for an asset-looking
-          # path lands here too. Without this carve-out a transient 4xx/5xx is pinned at the edge
-          # for the full year (0 = no-cache: keep revalidating with the origin instead).
+          mode = "respect_origin"
+          # This rule matches on file extension alone, so an origin error for an
+          # asset-looking path lands here too. Without this carve-out a transient
+          # 4xx/5xx would follow origin (or be cached) instead of revalidating.
           status_code_ttl = [
             {
               status_code_range = {
@@ -44,11 +49,9 @@ resource "cloudflare_ruleset" "cache" {
             }
           ]
         }
-        # respect_origin, not override_origin: the SSR host already serves hashed assets with
-        # `Cache-Control: public, max-age=31536000` (express.static maxAge '1y'), so nothing is
-        # lost — while an error response keeps its own headers instead of being cached in the
-        # browser for a year, where no cache purge can reach it. Browser TTL has no per-status
-        # setting, so deferring to the origin is the only way to scope it.
+        # Same as edge: hashed SSR assets send max-age=1y; unhashed Keycloak
+        # theme files send a short max-age. A browser cache of 1y cannot be
+        # purged, so the origin header has to be the one that is right.
         browser_ttl = {
           mode = "respect_origin"
         }

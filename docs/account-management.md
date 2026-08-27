@@ -25,9 +25,9 @@ never a router link: Angular decides *when* to send the user, Keycloak runs the 
 | Endpoint | Behaviour |
 | --- | --- |
 | `GET /account/me` | The account as the page renders it: email, its WebAuthn credentials, and any email change still waiting on its code. `passkeysUnavailable` reports "Keycloak could not be asked" rather than failing the whole request. |
-| `POST /account/email` | `{ newEmail }` → mails a six-digit code to that address and parks the change in Redis. Nothing is written to Keycloak. |
+| `POST /account/email` | `{ newEmail }` → mails a six-digit code, or returns the live attempt if that address already has one inside the send cooldown. Nothing is written to Keycloak. |
 | `POST /account/email/confirm` | `{ code }` → writes the parked address to Keycloak and commits the change everywhere else. |
-| `DELETE /account/email` | Abandons a parked change. Cancelling nothing is not an error. |
+| `DELETE /account/email` | Drops a parked change (wrong-code exhaustion). Closing the form does not call this — the mailed code stays enterable. |
 | `DELETE /account/passkeys/{credentialId}` | Removes one credential. A credential Keycloak no longer has counts as success. |
 | `POST /account/delete` | Deletes the Keycloak user, the local `UserAccount` row, and every session the browser holds. |
 
@@ -46,8 +46,12 @@ Two steps, both on our own origin, and the account does not move between them.
 1. **`POST /account/email`** normalises the address, refuses one that is already on the account,
    refuses one another account already holds (`409 email_taken`), and mails a six-digit code to it. The pending change — the address, a salted SHA-256 of the
    code, and a 15-minute deadline — goes to Redis under `emailchg:{realm}:{sub}`, one per account,
-   so asking again simply replaces it. A per-account cooldown (60s) keeps a session from using the
-   endpoint to write repeatedly to a mailbox whose owner asked for none of this.
+   so asking again simply replaces it. Mail is paced separately from the parked change: sixty
+   seconds before the same mailbox is written to again, and five mails per account per fifteen
+   minutes. Closing the form does not delete the parked code — the mail already in the inbox
+   still works, and asking for that same address again during the wait returns the live
+   attempt instead of refusing. A *different* address after a typo is a different mailbox and
+   can go out at once, unless the account has already spent its window.
 2. **`POST /account/email/confirm`** checks the code — five wrong guesses and the change is
    dropped, because six digits is a small space — then does a read-modify-write of the Keycloak
    user, setting `email`, `username` and `emailVerified: true`. The address written is the one

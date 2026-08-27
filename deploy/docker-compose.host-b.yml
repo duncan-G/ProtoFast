@@ -187,7 +187,7 @@ services:
     # kc.sh. `$$` escapes compose interpolation so the shell sees a literal `$(...)`.
     entrypoint: ["/bin/bash", "-c"]
     command:
-      - 'export KC_DB_PASSWORD="$$(cat /run/secrets/kc-db-password)"; exec /opt/keycloak/bin/kc.sh start --import-realm'
+      - 'export KC_DB_PASSWORD="$$(cat /run/secrets/kc-db-password)"; exec /opt/keycloak/bin/kc.sh start --import-realm --spi-theme--static-max-age=300'
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
@@ -208,6 +208,11 @@ services:
       KC_PROXY_HEADERS: xforwarded          # behind Envoy on Host A
       KC_HTTP_ENABLED: "true"
       KC_HEALTH_ENABLED: "true"             # /health/ready for the deploy gate
+      # Theme CSS/JS URLs are /resources/{keycloak-version}/… — not content
+      # hashes — so they cannot share Angular's 1y max-age. This is only the
+      # HTTP Cache-Control on static theme files (css/js/img). Login HTML is
+      # already no-store; compiled FreeMarker templates stay cached in process.
+      KC_SPI_THEME__STATIC_MAX_AGE: "300"
       # Export Keycloak's logs to Host A's otel-collector (same receiver the .NET
       # services use). opentelemetry-logs is a Preview feature (Keycloak >= 26.5),
       # so it must be listed in KC_FEATURES before the telemetry-logs options apply.

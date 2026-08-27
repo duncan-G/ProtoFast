@@ -286,7 +286,7 @@
       "builtIn": false,
       "authenticationExecutions": [
         {
-          "authenticator": "registration-user-creation",
+          "authenticator": "protofast-registration-user-creation",
           "authenticatorFlow": false,
           "autheticatorFlow": false,
           "requirement": "REQUIRED",

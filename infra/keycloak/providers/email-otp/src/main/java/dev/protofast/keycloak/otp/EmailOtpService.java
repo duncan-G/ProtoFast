@@ -20,15 +20,16 @@ import org.keycloak.sessions.AuthenticationSessionModel;
 /**
  * Issues, mails and checks the six-digit codes that stand in for a password.
  *
- * <p>The code itself is never stored. What lives in the authentication session is a
- * SHA-256 digest salted with that session's own id and tab id, so a digest lifted out
- * of one session cannot be replayed in another — and a code that leaks after the fact
- * is worth nothing once the session is gone.
+ * <p>The code itself is never stored. What lives on the user is a SHA-256 digest
+ * salted with the realm and user ids, so a second sign-up in a new tab can still
+ * accept the mail that is already on the way. A digest is worthless without the
+ * six digits, and it is dropped once the code is used, expires, or is spent.
  *
- * <p>Every counter (attempts, resends, cooldown) is a note on the same authentication
- * session, which means it dies with the session and cannot be reset by starting the
- * step again. The realm's brute-force protector is a separate, longer-lived control
- * that the callers feed on every wrong code.
+ * <p>The cooldown is stamped on the user too: a fresh OIDC request is one click
+ * away and must not mint another mail. The per-tab send cap still lives on the
+ * authentication session, because that is the resend button, not a new attempt.
+ * The realm's brute-force protector is a separate, longer-lived control that the
+ * callers feed on every wrong code.
  */
 final class EmailOtpService {
 
@@ -48,11 +49,14 @@ final class EmailOtpService {
     private static final Logger LOG = Logger.getLogger(EmailOtpService.class);
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    private static final String NOTE_DIGEST = "pf.otp.digest";
-    private static final String NOTE_EXPIRES_AT = "pf.otp.expiresAt";
-    private static final String NOTE_ATTEMPTS = "pf.otp.attempts";
     private static final String NOTE_SENDS = "pf.otp.sends";
     private static final String NOTE_SENT_AT = "pf.otp.sentAt";
+
+    /** Live code and throttle: survive a new authentication session. */
+    private static final String ATTR_DIGEST = "pf.otp.digest";
+    private static final String ATTR_EXPIRES_AT = "pf.otp.expiresAt";
+    private static final String ATTR_ATTEMPTS = "pf.otp.attempts";
+    private static final String ATTR_SENT_AT = "pf.otp.sentAt";
 
     enum SendResult {
         SENT,
@@ -96,10 +100,10 @@ final class EmailOtpService {
         }
 
         int now = Time.currentTime();
-        int sends = note(NOTE_SENDS, 0);
-        if (sends > 0 && now - note(NOTE_SENT_AT, 0) < RESEND_COOLDOWN_SECONDS) {
+        if (secondsUntilResend(user) > 0) {
             return SendResult.COOLDOWN;
         }
+        int sends = note(NOTE_SENDS, 0);
         if (sends >= MAX_SENDS) {
             return SendResult.LIMIT_REACHED;
         }
@@ -122,78 +126,96 @@ final class EmailOtpService {
             return SendResult.MAIL_FAILED;
         }
 
-        authSession.setAuthNote(NOTE_DIGEST, digest(code));
-        authSession.setAuthNote(NOTE_EXPIRES_AT, String.valueOf(now + LIFETIME_SECONDS));
-        authSession.setAuthNote(NOTE_ATTEMPTS, "0");
+        user.setSingleAttribute(ATTR_DIGEST, digest(user, code));
+        user.setSingleAttribute(ATTR_EXPIRES_AT, String.valueOf(now + LIFETIME_SECONDS));
+        user.setSingleAttribute(ATTR_ATTEMPTS, "0");
+        user.setSingleAttribute(ATTR_SENT_AT, String.valueOf(now));
         authSession.setAuthNote(NOTE_SENDS, String.valueOf(sends + 1));
         authSession.setAuthNote(NOTE_SENT_AT, String.valueOf(now));
         return SendResult.SENT;
     }
 
-    VerifyResult verify(String input) {
-        String expected = authSession.getAuthNote(NOTE_DIGEST);
+    VerifyResult verify(UserModel user, String input) {
+        String expected = user.getFirstAttribute(ATTR_DIGEST);
         if (expected == null) {
             return VerifyResult.NO_CODE;
         }
-        if (Time.currentTime() > note(NOTE_EXPIRES_AT, 0)) {
-            discard();
+        if (Time.currentTime() > attribute(user, ATTR_EXPIRES_AT)) {
+            discard(user);
             return VerifyResult.EXPIRED;
         }
 
         // Count the attempt before checking it, so an abandoned request still spends
         // its budget and a client that never reads the response gains nothing.
-        int attempts = note(NOTE_ATTEMPTS, 0) + 1;
-        authSession.setAuthNote(NOTE_ATTEMPTS, String.valueOf(attempts));
+        int attempts = attribute(user, ATTR_ATTEMPTS) + 1;
+        user.setSingleAttribute(ATTR_ATTEMPTS, String.valueOf(attempts));
 
         String candidate = input == null ? "" : input.replaceAll("\\s", "");
         if (MessageDigest.isEqual(
                 expected.getBytes(StandardCharsets.UTF_8),
-                digest(candidate).getBytes(StandardCharsets.UTF_8))) {
-            discard(); // single use
+                digest(user, candidate).getBytes(StandardCharsets.UTF_8))) {
+            discard(user);
             return VerifyResult.VALID;
         }
 
         if (attempts >= MAX_ATTEMPTS) {
-            discard();
+            discard(user);
             return VerifyResult.ATTEMPTS_EXHAUSTED;
         }
         return VerifyResult.INVALID;
     }
 
     /** Seconds left on the resend cooldown; 0 when another code can be asked for now. */
-    int secondsUntilResend() {
-        if (note(NOTE_SENDS, 0) == 0) {
-            return 0;
+    int secondsUntilResend(UserModel user) {
+        int now = Time.currentTime();
+        int remaining = 0;
+        if (note(NOTE_SENDS, 0) > 0) {
+            remaining = note(NOTE_SENT_AT, 0) + RESEND_COOLDOWN_SECONDS - now;
         }
-        int remaining = note(NOTE_SENT_AT, 0) + RESEND_COOLDOWN_SECONDS - Time.currentTime();
+        int lastOnUser = attribute(user, ATTR_SENT_AT);
+        if (lastOnUser > 0) {
+            remaining = Math.max(remaining, lastOnUser + RESEND_COOLDOWN_SECONDS - now);
+        }
         return Math.max(remaining, 0);
     }
 
-    boolean resendAllowed() {
-        return note(NOTE_SENDS, 0) < MAX_SENDS && secondsUntilResend() == 0;
-    }
-
-    /** True once a code has been mailed in this session — the form is a re-render, not a first visit. */
-    boolean issued() {
-        return note(NOTE_SENDS, 0) > 0;
+    boolean resendAllowed(UserModel user) {
+        return note(NOTE_SENDS, 0) < MAX_SENDS && secondsUntilResend(user) == 0;
     }
 
     /** Is there a code out there that could still be typed in successfully? */
-    boolean hasLiveCode() {
-        return authSession.getAuthNote(NOTE_DIGEST) != null && Time.currentTime() <= note(NOTE_EXPIRES_AT, 0);
+    boolean hasLiveCode(UserModel user) {
+        return user.getFirstAttribute(ATTR_DIGEST) != null
+                && Time.currentTime() <= attribute(user, ATTR_EXPIRES_AT);
     }
 
-    /** Forgets everything about this session's codes, so the next visit starts from zero. */
-    void reset() {
-        discard();
-        authSession.removeAuthNote(NOTE_SENDS);
-        authSession.removeAuthNote(NOTE_SENT_AT);
+    /** Drop the mailed-code state once the address is proved. */
+    static void clearThrottle(UserModel user) {
+        user.removeAttribute(ATTR_DIGEST);
+        user.removeAttribute(ATTR_EXPIRES_AT);
+        user.removeAttribute(ATTR_ATTEMPTS);
+        user.removeAttribute(ATTR_SENT_AT);
     }
 
-    private void discard() {
-        authSession.removeAuthNote(NOTE_DIGEST);
-        authSession.removeAuthNote(NOTE_EXPIRES_AT);
-        authSession.removeAuthNote(NOTE_ATTEMPTS);
+    private void discard(UserModel user) {
+        user.removeAttribute(ATTR_DIGEST);
+        user.removeAttribute(ATTR_EXPIRES_AT);
+        user.removeAttribute(ATTR_ATTEMPTS);
+    }
+
+    private static int attribute(UserModel user, String name) {
+        if (user == null) {
+            return 0;
+        }
+        String raw = user.getFirstAttribute(name);
+        if (raw == null) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(raw);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     private static String generate() {
@@ -202,15 +224,15 @@ final class EmailOtpService {
     }
 
     /**
-     * Salted with the parent session id and the tab id: the digest is meaningful only
-     * inside the exact browser tab that asked for the code.
+     * Salted with the realm and the user, not the browser tab: signing up again
+     * must still be able to type the code that is already in the inbox.
      */
-    private String digest(String code) {
+    private String digest(UserModel user, String code) {
         try {
             MessageDigest sha = MessageDigest.getInstance("SHA-256");
-            sha.update(authSession.getParentSession().getId().getBytes(StandardCharsets.UTF_8));
+            sha.update(realm.getId().getBytes(StandardCharsets.UTF_8));
             sha.update((byte) 0);
-            sha.update(authSession.getTabId().getBytes(StandardCharsets.UTF_8));
+            sha.update(user.getId().getBytes(StandardCharsets.UTF_8));
             sha.update((byte) 0);
             sha.update(code.getBytes(StandardCharsets.UTF_8));
             return Base64.getEncoder().encodeToString(sha.digest());
