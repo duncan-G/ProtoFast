@@ -16,12 +16,26 @@
      a browser with no module support at all, where nothing below runs and the
      button is the whole page — base's behaviour, unregressed.
 
-  2. No list of registered authenticators. Base renders one when
-     `shouldDisplayAuthenticators` is set, to pick a credential before the prompt
-     opens. The prompt itself is the picker once it opens by itself, and a list
-     the user never asked for would be the click we just removed. The hidden
-     `authn_select` form stays — that is what scopes the ceremony to this user's
-     credentials, and getAllowCredentials() reads it.
+  2. No list of registered authenticators, and no allowCredentials. Base renders
+     a list when `shouldDisplayAuthenticators` is set, to pick a credential
+     before the prompt opens, and scopes the ceremony to that user's credential
+     ids via the hidden `authn_select` form. Both are gone here.
+
+     The prompt itself is the picker once it opens by itself, so the list would
+     be the click we just removed. And the ids cost more than they buy: our
+     passkeys are discoverable (webAuthnPolicyPasswordlessResidentKey is
+     `required`), so naming them filters nothing the authenticator would not
+     have found — but base sends them with no `transports`, and a browser handed
+     a credential id it cannot place falls back to its security-key UI. On a
+     desktop with no local passkey that is a dead end: "insert your security key
+     and touch it" for a passkey that lives on a phone. Asking with an empty
+     allowCredentials makes it the discoverable-credential ceremony it always
+     was, and the browser offers its full passkey picker — local, and the
+     cross-device QR.
+
+     Keycloak still checks server-side that the credential returned belongs to
+     the user in the auth session, so a passkey for another account fails the
+     step rather than being filtered out of the picker up front.
 
   The waiting copy is the passkey-setup page's, one step over: same medallion,
   same body-then-buttons stack, same spinner-in-the-button busy state.
@@ -42,14 +56,6 @@
             <input type="hidden" id="userHandle" name="userHandle"/>
             <input type="hidden" id="error" name="error"/>
         </form>
-
-        <#if authenticators??>
-            <form id="authn_select" class="${properties.kcFormClass!}">
-                <#list authenticators.authenticators as authenticator>
-                    <input type="hidden" name="authn_use_chk" value="${authenticator.credentialId}"/>
-                </#list>
-            </form>
-        </#if>
 
         <div class="pf-passkey">
             <#-- Rendered in the resting state, not the waiting one, even though the
@@ -75,7 +81,7 @@
             // doAuthenticate rather than authenticateByWebAuthn: the wrapper posts
             // every rejection straight back to Keycloak as a failed ceremony, and an
             // auto-started prompt has one rejection that is not one — see below.
-            import { doAuthenticate, getAllowCredentials, returnSuccess, returnFailure }
+            import { doAuthenticate, returnSuccess, returnFailure }
                 from "${url.resourcesPath}/js/webauthnAuthenticate.js";
 
             const input = {
@@ -130,10 +136,7 @@
 
                 const startedAt = Date.now();
                 try {
-                    const result = await doAuthenticate({
-                        ...input,
-                        allowCredentials: input.isUserIdentified ? getAllowCredentials() : []
-                    });
+                    const result = await doAuthenticate({ ...input, allowCredentials: [] });
                     // Undefined means doAuthenticate already posted the
                     // unsupported-browser error and this page is on its way out.
                     if (result) {
