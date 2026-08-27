@@ -1,4 +1,4 @@
-<Project Sdk="Aspire.AppHost.Sdk/13.5.2">
+<Project Sdk="Aspire.AppHost.Sdk/13.5.3">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -18,10 +18,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.Hosting.JavaScript" Version="13.5.2" />
-    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.5.2" />
-    <PackageReference Include="Aspire.Hosting.Redis" Version="13.5.2" />
-    <PackageReference Include="Aspire.Hosting.Keycloak" Version="13.5.2-preview.1.26421.6" />
+    <PackageReference Include="Aspire.Hosting.JavaScript" Version="13.5.3" />
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.5.3" />
+    <PackageReference Include="Aspire.Hosting.Redis" Version="13.5.3" />
+    <PackageReference Include="Aspire.Hosting.Keycloak" Version="13.5.3-preview.1.26425.3" />
   </ItemGroup>
 
 </Project>
