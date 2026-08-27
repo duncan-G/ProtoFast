@@ -187,6 +187,14 @@ body.pf-body {
   gap: 5px;
 }
 
+/* The `hidden` attribute is only a UA `display: none`, which every component
+   rule on this page that sets a display of its own (.pf-group above, .pf-btn,
+   .pf-buttons) silently beats. The passkey naming step toggles `hidden` on both
+   a group and a button, so make the attribute mean what it says. */
+[hidden] {
+  display: none !important;
+}
+
 .pf-label,
 label {
   display: block;
@@ -522,14 +530,14 @@ a:hover {
    header next to the title. The glyphs are `display: block` for the chooser,
    which otherwise stacks the key above "Add a passkey". :has() keeps
    login/register's title-plus-subtitle stack unchanged. */
-.pf-card-header:has(.pf-glyph-key),
-.pf-card-header:has(.pf-glyph-passkey) {
+.pf-card-header:has(> .pf-glyph-key),
+.pf-card-header:has(> .pf-glyph-passkey) {
   display: flex;
   align-items: center;
   gap: var(--space-3);
 }
-.pf-card-header .pf-glyph-key,
-.pf-card-header .pf-glyph-passkey {
+.pf-card-header > .pf-glyph-key,
+.pf-card-header > .pf-glyph-passkey {
   flex-shrink: 0;
   width: 1.1em;
   height: 1.1em;
@@ -550,12 +558,12 @@ a:hover {
   flex-direction: column;
   gap: var(--space-6);
 }
-/* The passkey pages emit their primary action as a bare <input> and their Skip
-   button inside a second <form> — siblings with no common form, so the form gap
-   above never reaches them. This theme's own webauthn-register.ftl and
+/* The passkey pages emit their primary action as a bare <input> and their
+   Cancel button inside a second <form> — siblings with no common form, so the
+   form gap above never reaches them. This theme's own webauthn-register.ftl and
    webauthn-error.ftl wrap the pair in .pf-buttons, which spaces them instead.
-   Gap matches .pf-card's vertical padding so Register/Skip sit the same
-   distance apart as the card inset. Skip's wrapping <form> is zeroed so a
+   Gap matches .pf-card's vertical padding so Register/Cancel sit the same
+   distance apart as the card inset. Cancel's wrapping <form> is zeroed so a
    user-agent form margin cannot add to that gap. */
 .pf-buttons {
   display: flex;
@@ -565,8 +573,132 @@ a:hover {
 .pf-buttons form {
   margin: 0;
 }
-#kc-content-wrapper > *:not(:first-child) {
-  margin-top: var(--space-6);
+
+/* ── Passkey setup ─────────────────────────────────────────────────────── */
+/* webauthn-register.ftl. The card is one column of explanation rather than a
+   form: medallion, title, what is about to happen, the two actions, and the one
+   fact about the key that is worth stating before someone offers a fingerprint.
+   .pf-content sets no rhythm of its own (only base's #kc-content-wrapper does),
+   so the stack carries its own gap. */
+.pf-passkey {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+/* Accent as glow, not flood: a pulsing halo behind a punched-out disc, with the
+   glyph on top. ::before is the halo, ::after the disc that keeps the pulse from
+   washing over the glyph. Both are positioned, and ::after is last in tree
+   order, so the glyph needs a z-index of its own or the disc paints over it. */
+.pf-medallion {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 66px;
+  height: 66px;
+  margin-bottom: var(--space-6);
+  color: var(--color-accent);
+}
+.pf-medallion::before,
+.pf-medallion::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+}
+.pf-medallion::before {
+  inset: 0;
+  background: var(--color-accent);
+  opacity: 0.25;
+  animation: pf-pulse 2.4s ease-in-out infinite;
+}
+.pf-medallion::after {
+  inset: 9px;
+  background: var(--color-surface);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent);
+}
+.pf-medallion > .pf-glyph-key,
+.pf-medallion > .pf-glyph-passkey {
+  position: relative;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+}
+
+.pf-passkey-body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-neutral-400);
+}
+
+.pf-passkey-privacy {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--color-neutral-600);
+}
+.pf-passkey-privacy .pf-glyph-lock {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  /* Optically on the first line's cap height, which matters once the note
+     wraps to two lines on a narrow card. */
+  margin-top: 3px;
+}
+
+/* The waiting state, while the browser's passkey prompt is open. Only the busy
+   button shows a spinner; the label beside it has already been swapped by then. */
+.pf-spinner {
+  display: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1.6px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-top-color: currentColor;
+  animation: pf-spin 0.8s linear infinite;
+}
+[aria-busy="true"] > .pf-spinner {
+  display: inline-block;
+}
+/* A waiting button is disabled, but .pf-btn:disabled's dimming is meant for an
+   action that is unavailable — at 0.45 the spinner and its label stop being
+   readable, and this is the one thing on screen still saying something. */
+.pf-btn[aria-busy="true"]:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+@keyframes pf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes pf-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.12);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pf-medallion::before,
+  .pf-spinner {
+    animation: none;
+  }
+}
+/* "Sign in another way" is a sibling of the nested form, not a child of it, so
+   .pf-form's gap never reaches it. Base keyed this off #kc-content-wrapper;
+   this theme's wrapper is .pf-content and has no id. Same gap as .pf-buttons
+   so the link sits as far under the primary action as Cancel does. */
+.pf-try-another {
+  margin: 0;
+  margin-top: var(--space-8);
 }
 #kc-form-options {
   font-size: 13px;
@@ -782,6 +914,7 @@ hr {
    currentColor, so the theme still ships no icon font. */
 .pf-glyph-key,
 .pf-glyph-passkey,
+.pf-glyph-lock,
 .pf-choice-chevron {
   display: block;
   width: 18px;
@@ -801,6 +934,10 @@ hr {
 .pf-glyph-passkey {
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='9.5' cy='7.5' r='3.5'/%3E%3Cpath d='M3 20.5c0-3.6 2.9-6.5 6.5-6.5'/%3E%3Ccircle cx='17' cy='13' r='2.5'/%3E%3Cpath d='M17 15.5V21l1.6-1.3L17 18.4'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='9.5' cy='7.5' r='3.5'/%3E%3Cpath d='M3 20.5c0-3.6 2.9-6.5 6.5-6.5'/%3E%3Ccircle cx='17' cy='13' r='2.5'/%3E%3Cpath d='M17 15.5V21l1.6-1.3L17 18.4'/%3E%3C/svg%3E");
+}
+.pf-glyph-lock {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='10' width='16' height='10' rx='2'/%3E%3Cpath d='M8 10V7a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='10' width='16' height='10' rx='2'/%3E%3Cpath d='M8 10V7a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E");
 }
 .pf-choice-chevron {
   width: 14px;
