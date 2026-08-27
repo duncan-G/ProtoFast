@@ -160,9 +160,9 @@
         <#nested "form">
 
         <#if auth?has_content && auth.showTryAnotherWayLink() && showAnotherWayIfPresent>
-          <form action="${url.loginAction}" class="pf-form" method="post">
+          <form id="kc-select-try-another-way-form" action="${url.loginAction}" class="pf-form pf-try-another" method="post">
             <input type="hidden" name="tryAnotherWay" value="on"/>
-            <a href="#" class="pf-link" onclick="document.forms['kc-select-try-another-way-form'] ? document.forms['kc-select-try-another-way-form'].submit() : this.closest('form').submit(); return false;">${msg("doTryAnotherWay")}</a>
+            <a href="#" class="pf-link" onclick="document.forms['kc-select-try-another-way-form'].submit(); return false;">${msg("doTryAnotherWay")}</a>
           </form>
         </#if>
 
