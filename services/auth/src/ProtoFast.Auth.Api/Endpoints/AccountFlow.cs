@@ -38,7 +38,7 @@ public sealed record EmailChangeConfirmation(string? Code);
 
 /// <summary>What <c>POST /account/email</c> answers with: where the code went, and how long it
 /// is good for.</summary>
-public sealed record PendingEmailChangeView(string Email, DateTimeOffset ExpiresAt);
+public sealed record PendingEmailChangeView(string Email, DateTimeOffset ExpiresAt, bool Sent = true);
 
 /// <summary>
 /// The account-management endpoints behind <c>/account/*</c> — what a signed-in user can do to
@@ -187,11 +187,22 @@ public sealed class AccountFlow(
         // The mailbox being claimed belongs to someone who did not ask for any of this, and one
         // session must not be able to keep writing to it.
         if (!await emailChanges.TryTakeSendSlotAsync(
-                session.Realm, session.Subject, EmailChangeCode.RequestCooldown, ct))
+                session.Realm, session.Subject, newEmail, EmailChangeCode.RequestCooldown, ct))
         {
+            // The mailbox already has a live code. Hand that attempt back rather than
+            // refusing: cancel-and-retry used to delete the hash, so the mail in the
+            // inbox had nothing to match and the cooldown blocked a replacement.
+            var existing = await emailChanges.GetAsync(session.Realm, session.Subject, ct);
+            if (existing is not null
+                && string.Equals(existing.NewEmail, newEmail, StringComparison.OrdinalIgnoreCase)
+                && existing.ExpiresAt > clock.GetUtcNow())
+            {
+                return Results.Ok(new PendingEmailChangeView(existing.NewEmail, existing.ExpiresAt, Sent: false));
+            }
+
             return Problem(
                 "too_soon",
-                "A code was just sent. Wait a minute before asking for another.",
+                "A code was already sent. Wait before asking for another.",
                 StatusCodes.Status429TooManyRequests);
         }
 
@@ -215,6 +226,14 @@ public sealed class AccountFlow(
         catch (Exception ex)
         {
             logger.LogError(ex, "Could not mail an email-change code in realm {Realm}", session.Realm);
+            try
+            {
+                await emailChanges.ReleaseSendSlotAsync(session.Realm, session.Subject, newEmail, ct);
+            }
+            catch (Exception releaseEx)
+            {
+                logger.LogWarning(releaseEx, "Could not release the send slot after a failed mail");
+            }
             await SafeDeletePendingAsync(session, ct);
             return Problem(
                 "mail_unavailable",
@@ -222,7 +241,7 @@ public sealed class AccountFlow(
                 StatusCodes.Status503ServiceUnavailable);
         }
 
-        return Results.Accepted(value: new PendingEmailChangeView(newEmail, pending.ExpiresAt));
+        return Results.Accepted(value: new PendingEmailChangeView(newEmail, pending.ExpiresAt, Sent: true));
     }
 
     /// <summary>
@@ -310,7 +329,10 @@ public sealed class AccountFlow(
         return Results.NoContent();
     }
 
-    /// <summary>DELETE /account/email — abandon a change that has not been confirmed.</summary>
+    /// <summary>
+    /// DELETE /account/email — abandon a change that has not been confirmed. The send limits
+    /// stay: mail that already left is still mail.
+    /// </summary>
     public async Task<IResult> CancelEmailChangeAsync(HttpContext ctx, CancellationToken ct)
     {
         if (!IsSameOrigin(ctx))

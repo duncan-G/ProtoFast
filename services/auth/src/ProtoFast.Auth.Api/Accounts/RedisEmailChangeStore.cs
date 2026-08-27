@@ -7,6 +7,7 @@ public sealed class RedisEmailChangeStore(IConnectionMultiplexer redis, TimeProv
 {
     private const string KeyPrefix = "emailchg:";
     private const string CooldownPrefix = "emailchg:cool:";
+    private const string SendsPrefix = "emailchg:n:";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -33,10 +34,50 @@ public sealed class RedisEmailChangeStore(IConnectionMultiplexer redis, TimeProv
     public Task DeleteAsync(string realm, string subject, CancellationToken ct = default) =>
         _db.KeyDeleteAsync(Key(realm, subject));
 
-    public Task<bool> TryTakeSendSlotAsync(
-        string realm, string subject, TimeSpan cooldown, CancellationToken ct = default) =>
-        // SET NX with a TTL: the key's existence *is* the cooldown, and it lapses on its own.
-        _db.StringSetAsync(CooldownPrefix + realm + ":" + subject, "1", cooldown, When.NotExists);
+    public async Task<bool> TryTakeSendSlotAsync(
+        string realm, string subject, string newEmail, TimeSpan cooldown, CancellationToken ct = default)
+    {
+        // Per mailbox, not per account: cancelling and typing a different address is a typo
+        // fix, not a licence to keep writing to the inbox that just got a code.
+        var mailbox = MailboxCooldownKey(realm, newEmail);
+        if (!await _db.StringSetAsync(mailbox, "1", cooldown, When.NotExists).ConfigureAwait(false))
+        {
+            return false;
+        }
+
+        var sendsKey = AccountSendsKey(realm, subject);
+        var n = await _db.StringIncrementAsync(sendsKey).ConfigureAwait(false);
+        if (n == 1)
+        {
+            await _db.KeyExpireAsync(sendsKey, EmailChangeCode.SendWindow).ConfigureAwait(false);
+        }
+
+        if (n <= EmailChangeCode.MaxSendsPerWindow)
+        {
+            return true;
+        }
+
+        await _db.KeyDeleteAsync(mailbox).ConfigureAwait(false);
+        await _db.StringDecrementAsync(sendsKey).ConfigureAwait(false);
+        return false;
+    }
+
+    public async Task ReleaseSendSlotAsync(
+        string realm, string subject, string newEmail, CancellationToken ct = default)
+    {
+        await _db.KeyDeleteAsync(MailboxCooldownKey(realm, newEmail)).ConfigureAwait(false);
+        var n = await _db.StringDecrementAsync(AccountSendsKey(realm, subject)).ConfigureAwait(false);
+        if (n <= 0)
+        {
+            await _db.KeyDeleteAsync(AccountSendsKey(realm, subject)).ConfigureAwait(false);
+        }
+    }
 
     private static string Key(string realm, string subject) => KeyPrefix + realm + ":" + subject;
+
+    private static string MailboxCooldownKey(string realm, string email) =>
+        CooldownPrefix + realm + ":" + email;
+
+    private static string AccountSendsKey(string realm, string subject) =>
+        SendsPrefix + realm + ":" + subject;
 }

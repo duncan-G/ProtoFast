@@ -198,6 +198,14 @@ import { ACCOUNT_ROUTE, AccountApi, AccountView } from '../../account/account-ap
                     >
                       Cancel
                     </button>
+                    <button
+                      type="button"
+                      class="btn btn-ghost"
+                      [disabled]="emailBusy()"
+                      (click)="useDifferentAddress()"
+                    >
+                      Use a different address
+                    </button>
                     <span class="flex-1"></span>
                     @if (resendIn() > 0) {
                       <span class="text-muted text-[12.5px]">{{ resendLabel() }}</span>
@@ -608,9 +616,13 @@ export class Account {
   }
 
   protected startEmailChange(): void {
-    this.newEmail.set('');
     this.emailCode.set('');
     this.emailError.set('');
+    if (this.view()?.pendingEmail) {
+      this.emailStep.set('code');
+      return;
+    }
+    this.newEmail.set('');
     this.emailStep.set('address');
   }
 
@@ -627,10 +639,12 @@ export class Account {
     this.emailBusy.set(true);
     this.emailError.set('');
     try {
-      await this.api.requestEmailChange(target);
+      const pending = await this.api.requestEmailChange(target);
       this.emailCode.set('');
       this.emailStep.set('code');
-      this.startResendCooldown();
+      if (pending.sent !== false) {
+        this.startResendCooldown();
+      }
       // Re-read so the pending address on the view is the server's, not this page's guess.
       this.view.set(await this.api.load());
     } catch (err) {
@@ -679,33 +693,21 @@ export class Account {
   }
 
   /**
-   * Drops the change. Which is two different acts depending on where it is cancelled from: in the
-   * address step nothing has been mailed, so there is nothing parked and closing the form is
-   * entirely local — the endpoint would accept the call and do nothing, at the cost of two round
-   * trips. Once a code is out there is server state behind it, and that has to be dropped.
-   *
-   * The step is the test rather than `pendingEmail`, because a send whose follow-up read failed
-   * leaves the page on the code step with a view that has not caught up yet — and that parked
-   * change still has to be cancelled.
+   * Closes the form. A code that has already been mailed stays parked — cancel used to
+   * delete it, which left the inbox holding a code nothing would accept, and the send
+   * cooldown blocked a replacement. Change email again to type it.
    */
-  protected async abandonEmailChange(): Promise<void> {
-    if (this.emailStep() === 'address' && !this.view()?.pendingEmail) {
-      this.emailError.set('');
-      this.resetEmailChange();
-      return;
-    }
-
-    this.emailBusy.set(true);
+  protected abandonEmailChange(): void {
     this.emailError.set('');
-    try {
-      await this.api.cancelEmailChange();
-      this.view.set(await this.api.load());
-    } catch (err) {
-      this.emailError.set(message(err));
-    } finally {
-      this.emailBusy.set(false);
-      this.resetEmailChange();
-    }
+    this.resetEmailChange();
+  }
+
+  /** Keeps the mailed code; the next send replaces it if a different address goes out. */
+  protected useDifferentAddress(): void {
+    this.emailError.set('');
+    this.emailCode.set('');
+    this.newEmail.set('');
+    this.emailStep.set('address');
   }
 
   private resetEmailChange(): void {

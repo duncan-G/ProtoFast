@@ -181,16 +181,17 @@ body.pf-body {
   gap: var(--space-6);
 }
 
-.pf-group {
+.pf-group:not([hidden]) {
   display: flex;
   flex-direction: column;
   gap: 5px;
 }
 
-/* The `hidden` attribute is only a UA `display: none`, which every component
-   rule on this page that sets a display of its own (.pf-group above, .pf-btn,
-   .pf-buttons) silently beats. The passkey naming step toggles `hidden` on both
-   a group and a button, so make the attribute mean what it says. */
+/* The `hidden` attribute is only a UA `display: none`. Component rules that
+   set display (.pf-group, .pf-btn, .pf-buttons) beat that UA rule, which is
+   why they are gated on :not([hidden]) above and below. This is the belt:
+   even an ungated display later in the file cannot unhide a naming-step
+   control. */
 [hidden] {
   display: none !important;
 }
@@ -330,8 +331,13 @@ a:hover {
 /* ── Buttons ───────────────────────────────────────────────────────────── */
 /* Nocturne outlines its primary action — an accent border on transparent, never
    a filled accent. Do not "fix" this into a solid button. */
-.pf-btn {
+/* Display is the only property gated on :not([hidden]). The rest stays on
+   .pf-btn so variant rules (.pf-btn--primary's border-color, --large's
+   padding) are not out-specified by the attribute inside :not(). */
+.pf-btn:not([hidden]) {
   display: inline-flex;
+}
+.pf-btn {
   align-items: center;
   justify-content: center;
   gap: 6px;
@@ -565,7 +571,7 @@ a:hover {
    Gap matches .pf-card's vertical padding so Register/Cancel sit the same
    distance apart as the card inset. Cancel's wrapping <form> is zeroed so a
    user-agent form margin cannot add to that gap. */
-.pf-buttons {
+.pf-buttons:not([hidden]) {
   display: flex;
   flex-direction: column;
   gap: var(--space-8);
@@ -584,6 +590,17 @@ a:hover {
   display: flex;
   flex-direction: column;
   gap: var(--space-8);
+}
+
+/* Offer and naming share one card. ID + [hidden], not [hidden] alone:
+   .pf-group / .pf-btn set display and beat the UA rule. Keycloak serves
+   this sheet from an unhashed /resources/{version}/ URL, so the same
+   selectors also live in template.ftl — a cached sheet cannot unhide
+   markup that already contains both steps. */
+#pf-passkey-name[hidden],
+#pf-passkey-save[hidden],
+#pf-passkey-actions[hidden] {
+  display: none !important;
 }
 
 /* Accent as glow, not flood: a pulsing halo behind a punched-out disc, with the

@@ -26,7 +26,7 @@ What it builds, to match the realm JSON:
 
     passwordless registration                     (bound as registrationFlow)
       \\- passwordless registration form
-           \\- Registration User Profile Creation
+           \\- Registration User Creation with Claim
 
 Three things about that shape are load-bearing and easy to get wrong by hand:
 
@@ -42,6 +42,12 @@ Three things about that shape are load-bearing and easy to get wrong by hand:
   regardless of whether the realm has that action enabled, and a disabled action
   never runs — so it would sit pending on every account forever.
 
+The registration form runs `protofast-registration-user-creation` rather than stock
+`registration-user-creation`: same user creation, except that a sign-up landing on an
+address whose account was never verified resumes that account instead of refusing it as
+a duplicate. On a realm that still has the stock row, the replacement is added BEFORE
+the old one is removed — see OBSOLETE_REGISTRATION_ROWS.
+
 It also registers the `verify-email-code` required action. A provider that ships in
 a new JAR is not registered on an existing realm automatically; until it is, the
 realm has no such action and deploy.sh's reconcile can only warn about it.
@@ -50,9 +56,10 @@ Order matters: everything is built and populated BEFORE the realm is rebound, an
 the old flows are deleted only after the rebind succeeds. An interrupted run leaves
 a realm that still signs people in. Re-running is a no-op.
 
-Requires the `email-otp` authenticator to exist on the server — that is the
-provider JAR in deploy/keycloak/providers/. Without it Keycloak rejects the
-execution and the run stops before anything is rebound.
+Requires the `email-otp` authenticator and the `protofast-registration-user-creation`
+form action to exist on the server — that is the provider JAR in
+deploy/keycloak/providers/. Without them Keycloak rejects the execution, and the run
+stops before anything is rebound.
 
 Usage (dev, admin/admin on a local container):
 
@@ -88,6 +95,14 @@ REGISTRATION_FLOW = "passwordless registration"
 # Retired by this script, in this order. Only the top-level flow needs naming —
 # deleting it takes its sub-flows and their authenticator configs with it.
 OBSOLETE_TOP_FLOWS = ["passkey-or-password browser"]
+
+# Rows the registration form no longer carries, by display name. Stock user creation
+# was replaced by `protofast-registration-user-creation`, which resumes an unverified
+# sign-up instead of refusing the address. Removed only AFTER its replacement is in
+# place: a form flow that briefly has both creates no user twice — the second action
+# fails loudly on a user already set — while one that briefly has neither would let a
+# registration through creating nobody at all.
+OBSOLETE_REGISTRATION_ROWS = ["Registration User Profile Creation"]
 
 REQUIRED_ACTION = ("verify-email-code", "Verify Email by Code")
 
@@ -177,8 +192,8 @@ REGISTRATION_TREE = [
         "Email address only; no password step",
         "REQUIRED",
         [
-            Node("registration-user-creation",
-                 "Registration User Profile Creation", "REQUIRED"),
+            Node("protofast-registration-user-creation",
+                 "Registration User Creation with Claim", "REQUIRED"),
         ],
         flow_type="form-flow",
         provider="registration-page-form"),
@@ -347,6 +362,20 @@ def bind_and_configure(admin):
     })
 
 
+def delete_obsolete_rows(admin):
+    """Drop retired executions from the registration form, once its replacement is there."""
+    for display_name in OBSOLETE_REGISTRATION_ROWS:
+        if DRY_RUN:
+            say(f"remove {display_name!r} from 'passwordless registration form' if present")
+            continue
+        row = row_named(rows_under(admin, REGISTRATION_FLOW, "passwordless registration form"),
+                        display_name)
+        if row is None:
+            continue
+        say(f"remove retired row {display_name!r} from 'passwordless registration form'")
+        admin.call("DELETE", f"authentication/executions/{row['id']}")
+
+
 def delete_obsolete(admin):
     flows = {f["alias"]: f for f in admin.top_level_flows()}
     for alias in OBSOLETE_TOP_FLOWS:
@@ -360,12 +389,18 @@ def delete_obsolete(admin):
 
 def assert_provider_present(admin):
     """Fail before touching anything if the provider JAR is not loaded."""
+    missing = []
     providers = admin.call("GET", "authentication/authenticator-providers")
     if not any(p.get("id") == "email-otp" for p in providers):
+        missing.append("email-otp")
+    form_actions = admin.call("GET", "authentication/form-action-providers")
+    if not any(p.get("id") == "protofast-registration-user-creation" for p in form_actions):
+        missing.append("protofast-registration-user-creation")
+    if missing:
         raise SystemExit(
-            "the 'email-otp' authenticator is not on this server. Deploy the provider "
-            "JAR (deploy/keycloak/providers/protofast-keycloak.jar) and restart "
-            "Keycloak before running this."
+            f"{', '.join(missing)} is not on this server. Deploy the provider JAR "
+            "(deploy/keycloak/providers/protofast-keycloak.jar) and restart Keycloak "
+            "before running this."
         )
 
 
@@ -383,6 +418,7 @@ def main():
     say(f"realm {REALM!r}: building {REGISTRATION_FLOW!r}")
     build_flow(admin, REGISTRATION_FLOW, "Registration with no password step",
                REGISTRATION_TREE)
+    delete_obsolete_rows(admin)
 
     # Only now that both flows exist and are fully populated.
     bind_and_configure(admin)

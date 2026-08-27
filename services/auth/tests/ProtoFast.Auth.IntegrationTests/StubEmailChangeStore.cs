@@ -8,7 +8,8 @@ namespace ProtoFast.Auth.IntegrationTests;
 public sealed class StubEmailChangeStore : IEmailChangeStore
 {
     private readonly ConcurrentDictionary<string, PendingEmailChange> _pending = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, byte> _cooldowns = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, byte> _mailboxCooldowns = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, int> _accountSends = new(StringComparer.Ordinal);
 
     public Task SaveAsync(string realm, string subject, PendingEmailChange pending, CancellationToken ct = default)
     {
@@ -26,8 +27,35 @@ public sealed class StubEmailChangeStore : IEmailChangeStore
     }
 
     public Task<bool> TryTakeSendSlotAsync(
-        string realm, string subject, TimeSpan cooldown, CancellationToken ct = default) =>
-        Task.FromResult(_cooldowns.TryAdd(Key(realm, subject), 0));
+        string realm, string subject, string newEmail, TimeSpan cooldown, CancellationToken ct = default)
+    {
+        if (!_mailboxCooldowns.TryAdd(MailboxKey(realm, newEmail), 0))
+        {
+            return Task.FromResult(false);
+        }
+
+        var n = _accountSends.AddOrUpdate(AccountKey(realm, subject), 1, (_, count) => count + 1);
+        if (n <= EmailChangeCode.MaxSendsPerWindow)
+        {
+            return Task.FromResult(true);
+        }
+
+        _mailboxCooldowns.TryRemove(MailboxKey(realm, newEmail), out _);
+        _accountSends.AddOrUpdate(AccountKey(realm, subject), 0, (_, count) => count - 1);
+        return Task.FromResult(false);
+    }
+
+    public Task ReleaseSendSlotAsync(
+        string realm, string subject, string newEmail, CancellationToken ct = default)
+    {
+        _mailboxCooldowns.TryRemove(MailboxKey(realm, newEmail), out _);
+        _accountSends.AddOrUpdate(AccountKey(realm, subject), 0, (_, count) => Math.Max(0, count - 1));
+        return Task.CompletedTask;
+    }
 
     private static string Key(string realm, string subject) => realm + ":" + subject;
+
+    private static string MailboxKey(string realm, string email) => "cool:" + realm + ":" + email;
+
+    private static string AccountKey(string realm, string subject) => "n:" + realm + ":" + subject;
 }

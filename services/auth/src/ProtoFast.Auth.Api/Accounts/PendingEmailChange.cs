@@ -30,9 +30,17 @@ public static class EmailChangeCode
     /// inbox is not a standing key to the account.</summary>
     public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(15);
 
-    /// <summary>How long before the same account may ask for another code — the mailbox of the
-    /// address being claimed belongs to someone who did not ask for any of this.</summary>
+    /// <summary>How long before the same mailbox may be mailed again. Cancel does not reset
+    /// this: the recipient did not ask for any of this, and giving up on the change is not a
+    /// licence to keep writing to them. A different address is a different mailbox.</summary>
     public static readonly TimeSpan RequestCooldown = TimeSpan.FromSeconds(60);
+
+    /// <summary>Mails one account may trigger in <see cref="SendWindow"/>, cancel included.
+    /// Stops a session from cycling addresses to get around the per-mailbox wait.</summary>
+    public const int MaxSendsPerWindow = 5;
+
+    /// <summary>Window for <see cref="MaxSendsPerWindow"/>.</summary>
+    public static readonly TimeSpan SendWindow = TimeSpan.FromMinutes(15);
 
     /// <summary>Guesses allowed per code. Five of a million, then the change is gone.</summary>
     public const int MaxAttempts = 5;

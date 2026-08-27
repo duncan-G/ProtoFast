@@ -36,8 +36,8 @@ final class EmailOtpForm {
         return form
                 .setAttribute("otpEmail", user.getEmail() == null ? "" : user.getEmail())
                 .setAttribute("otpCodeLength", EmailOtpService.CODE_DIGITS)
-                .setAttribute("otpResendAllowed", codes.resendAllowed())
-                .setAttribute("otpResendIn", String.valueOf(codes.secondsUntilResend()))
+                .setAttribute("otpResendAllowed", codes.resendAllowed(user))
+                .setAttribute("otpResendIn", String.valueOf(codes.secondsUntilResend(user)))
                 .setAttribute("otpSendsLeft", EmailOtpService.MAX_SENDS);
     }
 

@@ -12,6 +12,8 @@ import org.keycloak.events.EventType;
 import org.keycloak.models.UserModel;
 import org.keycloak.services.managers.BruteForceProtector;
 
+import dev.protofast.keycloak.signup.SignupClaims;
+
 /**
  * Proves the address at sign-up by asking for a mailed code instead of a clicked link.
  *
@@ -47,7 +49,7 @@ public class VerifyEmailByCodeAction implements RequiredActionProvider {
 
         EmailOtpService codes = codes(context);
         String error = null;
-        if (!codes.hasLiveCode()) {
+        if (!codes.hasLiveCode(user)) {
             error = EmailOtpForm.message(codes.send(
                     user, EmailOtpForm.MAIL_VERIFY_EMAIL_SUBJECT, EmailOtpForm.MAIL_VERIFY_EMAIL));
         }
@@ -68,9 +70,11 @@ public class VerifyEmailByCodeAction implements RequiredActionProvider {
             return;
         }
 
-        EmailOtpService.VerifyResult result = codes.verify(form.getFirst(EmailOtpForm.FIELD_CODE));
+        EmailOtpService.VerifyResult result = codes.verify(user, form.getFirst(EmailOtpForm.FIELD_CODE));
         if (result == EmailOtpService.VerifyResult.VALID) {
             user.setEmailVerified(true);
+            SignupClaims.clear(user);
+            EmailOtpService.clearThrottle(user);
             done(context);
             return;
         }
@@ -115,7 +119,7 @@ public class VerifyEmailByCodeAction implements RequiredActionProvider {
     private static Response page(RequiredActionContext context, EmailOtpService codes, String error) {
         var form = EmailOtpForm.prepare(context.form(), codes, context.getUser());
         if (error != null) {
-            form.setError(error, String.valueOf(codes.secondsUntilResend()));
+            form.setError(error, String.valueOf(codes.secondsUntilResend(context.getUser())));
         }
         return form.createForm(EmailOtpForm.PAGE_VERIFY_EMAIL);
     }
