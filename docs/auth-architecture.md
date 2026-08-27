@@ -94,6 +94,31 @@ flowchart LR
     R -->|/api/* /payments/*| BACK[app / gRPC backend<br/>ext_authz ENFORCE]
 ```
 
+### The `auth.protofast.dev` vhost is an allowlist
+
+Keycloak serves its admin console, its admin REST API, the per-realm account
+console, the realm metadata document and the `master` realm's own login form on
+the same port as the login pages. None of that is used from a browser — the BFF
+reaches Keycloak over the private network (`Auth_Keycloak__Authority`) for token
+exchange, JWKS and the account-admin API, and operators reach the admin console
+from Host A's private IP. So the Keycloak vhost
+([`proxy/envoy.keycloak-vhost.yaml.tmpl`](../proxy/envoy.keycloak-vhost.yaml.tmpl))
+routes the interactive sign-in surface and **404s everything else at Envoy**:
+
+| Allowed                                          | What needs it                                                              |
+| ------------------------------------------------ | -------------------------------------------------------------------------- |
+| `/realms/{realm}/protocol/openid-connect/auth`   | sign-in, sign-up (`prompt=create`), passkey enrolment (`kc_action`)        |
+| `/realms/{realm}/protocol/openid-connect/logout` | RP-initiated logout and its confirm page                                    |
+| `/realms/{realm}/login-actions/…`                | every form POST and link the login/registration/OTP/WebAuthn pages produce |
+| `/realms/{realm}/broker/{alias}/login\|endpoint`  | social sign-in start + IdP callback (providers ship disabled)               |
+| `/resources/…`                                   | theme CSS/JS/images, incl. the base theme's WebAuthn modules                |
+
+`/realms/master/*` is refused ahead of those rules, and any method outside
+`GET/HEAD/POST/OPTIONS` gets a 405. The allowed set is the *whole* browser-visible
+flow — the login pages make no XHR of their own, so every step is a navigation or
+a form POST. Adding a browser-facing Keycloak endpoint means adding a rule, never
+widening the catch-all.
+
 
 
 ---

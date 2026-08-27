@@ -1,8 +1,42 @@
     # Keycloak edge vhost (prod publish only). Login/OIDC endpoints reachable
-    # through the tunnel on a dedicated domain. Unlike the client vhosts this
-    # routes every path straight to Keycloak (no /auth /payments /api gRPC split,
-    # no x-client header). Keycloak runs with KC_PROXY_HEADERS=xforwarded and
+    # through the tunnel on a dedicated domain. Unlike the client vhosts there is
+    # no /auth /payments /api gRPC split and no x-client header — everything here
+    # is Keycloak. Keycloak runs with KC_PROXY_HEADERS=xforwarded and
     # KC_HOSTNAME=https://__KEYCLOAK_DOMAIN__, so the forwarded Host/proto are trusted.
+    #
+    # This vhost is an ALLOWLIST and it is the only thing standing between the
+    # public internet and every non-login page Keycloak serves on the same port:
+    # the admin console (/admin/{realm}/console/), the admin REST API
+    # (/admin/realms/…), the account console (/realms/{realm}/account), the realm
+    # metadata document and JWKS, and the master realm's own login form — the one
+    # that fronts the bootstrap admin. None of that is used from a browser: the
+    # BFF talks to Keycloak over the private network (Auth_Keycloak__Authority =
+    # http://keycloak:8080) for token exchange, JWKS and the account-admin API, and
+    # operators reach the admin console from Host A's private IP. So the browser
+    # needs exactly the interactive sign-in surface and nothing else; anything not
+    # listed below gets a 404 from Envoy and never reaches Keycloak.
+    #
+    # The allowed set is the whole browser-visible flow, verified against the
+    # rendered login pages (Keycloak 26.7, theme `protofast`):
+    #   /realms/{realm}/protocol/openid-connect/auth    sign-in, sign-up (prompt=create),
+    #                                                   passkey enrolment (kc_action=…)
+    #   /realms/{realm}/protocol/openid-connect/logout  RP-initiated logout + its confirm page
+    #   /realms/{realm}/login-actions/…                 every form POST and every link the login,
+    #                                                   registration, email-OTP, WebAuthn and
+    #                                                   action-token (email link) pages produce —
+    #                                                   authenticate, registration, required-action,
+    #                                                   action-token, restart, reset-credentials
+    #   /realms/{realm}/broker/{alias}/login|endpoint   social sign-in start + IdP callback
+    #   /resources/…                                    theme CSS/JS/images, including the base
+    #                                                   theme's webauthn/passkey modules
+    # The login pages make no XHR of their own — every step is a navigation or a
+    # form POST — so this list is complete, not a subset that "mostly works".
+    #
+    # Regexes are matched against the :path INCLUDING the query string (unlike
+    # prefix/path matches), hence the trailing (\?.*)? on the exact-path rules.
+    # Keep each one small: Envoy rejects a route config whose RE2 program size
+    # exceeds 100, and a rejected RDS update leaves the vhost with no routes at
+    # all. That is why this is several short regexes rather than one alternation.
     #
     # x-forwarded-proto is re-asserted here because the listener's
     # scheme_header_transformation (scheme_to_overwrite: http, which keeps the
@@ -16,11 +50,72 @@
     # the truthful value on every path that reaches this vhost.
     - name: keycloak
       domains: ["__KEYCLOAK_DOMAIN__"]
+      # ext_authz annotates requests with the session identity the CLIENT apps need.
+      # Keycloak resolves its own SSO cookie and ignores the headers, so a Check call
+      # per login request would only buy a cross-host round trip on the critical path.
+      typed_per_filter_config:
+        envoy.filters.http.ext_authz:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+          disabled: true
+      request_headers_to_add:
+        - header: { key: "x-forwarded-proto", value: "https" }
+          append_action: OVERWRITE_IF_EXISTS_OR_ADD
       routes:
-        - match: { prefix: "/" }
-          route:
+        # Nothing the browser does here is a write outside a form POST. Refusing the
+        # rest up front means a future widening of the path rules below still cannot
+        # turn into a PUT/DELETE against the admin API.
+        - match:
+            prefix: "/"
+            headers:
+              - name: ":method"
+                string_match:
+                  safe_regex:
+                    regex: "GET|HEAD|POST|OPTIONS"
+                invert_match: true
+          direct_response:
+            status: 405
+            body: { inline_string: "Method Not Allowed\n" }
+
+        # The master realm holds the bootstrap admin and no application user. Denied
+        # ahead of the allow rules so the realm-agnostic [^/?]+ below cannot serve its
+        # login form to the internet.
+        - match: { prefix: "/realms/master" }
+          direct_response: &keycloak_denied
+            status: 404
+            body: { inline_string: "Not Found\n" }
+
+        # --- allowed: the interactive sign-in surface ---
+        - match:
+            safe_regex:
+              regex: "^/realms/[^/?]+/protocol/openid-connect/auth(\\?.*)?$"
+          route: &keycloak_route
             cluster: keycloak
             timeout: 0s
-          request_headers_to_add:
-            - header: { key: "x-forwarded-proto", value: "https" }
-              append_action: OVERWRITE_IF_EXISTS_OR_ADD
+        - match:
+            safe_regex:
+              regex: "^/realms/[^/?]+/protocol/openid-connect/logout(\\?.*)?$"
+          route: *keycloak_route
+        - match:
+            safe_regex:
+              regex: "^/realms/[^/?]+/login-actions/.*"
+          route: *keycloak_route
+        # Google/Apple ship disabled in the realm import, so these 404 at Keycloak
+        # today. They are here so enabling a provider in the admin console is the
+        # only step needed — a social login that dead-ends at the edge is a worse
+        # failure than an unused route.
+        - match:
+            safe_regex:
+              regex: "^/realms/[^/?]+/broker/[^/?]+/(login|endpoint).*"
+          route: *keycloak_route
+        # Theme static assets: /resources/{kc-version}/{type}/{theme}/… — the login
+        # CSS, the favicon, and the base theme's WebAuthn/passkey ES modules.
+        - match: { prefix: "/resources/" }
+          route: *keycloak_route
+
+        # --- everything else ---
+        # 404 rather than 403: a refusal that distinguishes "exists but blocked" from
+        # "not here" maps the surface for whoever is probing. Add a rule above (never
+        # a hole here) if a browser-facing endpoint is genuinely needed — e.g. serving
+        # /realms/{realm}/.well-known/openid-configuration to a third-party OIDC client.
+        - match: { prefix: "/" }
+          direct_response: *keycloak_denied
