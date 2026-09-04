@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ProtoFast Edge Patchboard</title>
+<meta name="description" content="Interactive map of the Envoy edge configuration rendered from proxy/.">
+
+<!-- Optional: falls back to the local stacks in styles.css when offline. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap">
+
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">proxy/ · envoy 1.39</p>
+    <div class="title-row">
+      <h1>ProtoFast Edge Patchboard</h1>
+      <button type="button" id="themeToggle" class="theme-toggle" aria-label="Switch colour theme">theme</button>
+    </div>
+    <p class="lede">Every request that reaches the platform enters here. Follow it left to right — tunnel, listener,
+      virtual host, route, upstream — and click any block to read exactly how that hop is configured.</p>
+  </header>
+
+  <div class="modebar">
+    <div class="seg" role="group" aria-label="Envoy mode">
+      <button type="button" data-mode="publish" aria-pressed="true">publish</button>
+      <button type="button" data-mode="dev" aria-pressed="false">dev</button>
+      <button type="button" data-mode="dev-host" aria-pressed="false">dev-host</button>
+    </div>
+    <p class="mode-note" id="modeNote"></p>
+  </div>
+
+  <div class="layout">
+    <div>
+      <div class="board-scroll">
+        <div class="board" id="board">
+          <svg id="wires" aria-hidden="true"></svg>
+          <div class="col" id="col-ingress"></div>
+          <div class="col" id="col-listener"></div>
+          <div class="col" id="col-vhost"></div>
+          <div class="col" id="col-route"></div>
+          <div class="col" id="col-cluster"></div>
+        </div>
+      </div>
+      <div class="legend">
+        <span><i></i>request path</span>
+        <span><i class="ctl"></i>out-of-band (identity check, telemetry)</span>
+        <span><i class="sq"></i>answered by Envoy, never forwarded</span>
+      </div>
+    </div>
+
+    <aside class="inspector" id="inspector" aria-live="polite"></aside>
+  </div>
+
+  <footer>
+    <p>
+      There is no checked-in <code>envoy.yaml</code>. <a href="../../proxy/entrypoint.sh">proxy/entrypoint.sh</a>
+      renders one from the templates beside it at container start, then execs Envoy; the generated
+      <code>/tmp/envoy.yaml</code> and <code>/etc/envoy/discovery/*.yaml</code> are echoed to the log on boot,
+      which is the fastest way to check what a template change actually produced.
+    </p>
+    <p>
+      Values shown here are the ones <a href="../../deploy/docker-compose.host-edge.yml">deploy/docker-compose.host-edge.yml</a>
+      and the Aspire AppHost supply. Templates:
+      <a href="../../proxy/envoy.yaml.tmpl">envoy.yaml</a> ·
+      <a href="../../proxy/envoy.listener.yaml.tmpl">listener</a> ·
+      <a href="../../proxy/envoy.rds.yaml.tmpl">rds</a> ·
+      <a href="../../proxy/envoy.vhost.yaml.tmpl">vhost</a> ·
+      <a href="../../proxy/envoy.keycloak-vhost.yaml.tmpl">keycloak-vhost</a> ·
+      <a href="../../proxy/envoy.cluster.yaml.tmpl">cluster</a>.
+      Prose version: <a href="../new/04-edge.md">docs/new/04-edge.md</a>.
+    </p>
+    <p class="edit-note">
+      This page is hand-maintained — it is not generated from the templates. When you change routing,
+      update <code>board.js</code> in the same commit.
+    </p>
+  </footer>
+</div>
+
+<script src="board.js"></script>
+</body>
+</html>

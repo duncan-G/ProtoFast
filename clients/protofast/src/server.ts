@@ -1,4 +1,4 @@
-import './instrumentation';
+import './telemetry.server';
 
 import {
   AngularNodeAppEngine,
@@ -12,18 +12,15 @@ import { join } from 'node:path';
 const browserDistFolder = join(import.meta.dirname, '../browser');
 
 const app = express();
-// Browser-facing hostnames this app answers for, injected by the deployment
-// (`NG_ALLOWED_HOSTS`) because they are not known at build time. Angular's SSRF guard rejects
-// any request whose `Host`/`X-Forwarded-Host` is not listed — with the empty build-time list in
-// angular.json and nothing supplied here, that is *every* request (HTTP 400).
+
+// NG_ALLOWED_HOSTS is a comma-separated list of allowed hosts.
 const allowedHosts = (process.env['NG_ALLOWED_HOSTS'] ?? '')
   .split(',')
   .map((host) => host.trim())
   .filter((host) => host.length > 0);
 
-// Requests reach this process through Envoy, the trusted edge that sets
-// `x-forwarded-*` (and `x-client`). Trust those proxy headers so SSR builds
-// the request URL from the original host rather than the internal one.
+// Requests reach this app through Envoy. Trust the forwarded host and proto it sets.
+// Angular's SSRF guard rejects any request whose `Host`/`X-Forwarded-Host` is not listed.
 const angularApp = new AngularNodeAppEngine({
   allowedHosts,
   trustProxyHeaders: [
@@ -35,18 +32,6 @@ const angularApp = new AngularNodeAppEngine({
 });
 
 /**
- * Example Express Rest API endpoints can be defined here.
- * Uncomment and define endpoints as necessary.
- *
- * Example:
- * ```ts
- * app.get('/api/{*splat}', (req, res) => {
- *   // Handle API request
- * });
- * ```
- */
-
-/**
  * Paths that only mean anything for a signed-in user. `/subscribe` is here for the same
  * reason `/app` is: the sign-in callback diverts unsubscribed accounts to it, so rendering
  * it for an anonymous request would show a checkout to somebody with no account.
@@ -54,7 +39,7 @@ const angularApp = new AngularNodeAppEngine({
 const PROTECTED_PREFIXES = ['/app', '/subscribe'];
 
 /**
- * Protected-area gate (guide §7). The edge only annotates identity, so the SSR host itself
+ * Protected-area gate. The edge only annotates identity, so the SSR host itself
  * enforces these paths: anonymous requests (no `x-user-id` from ext_authz) are bounced to the
  * BFF sign-in server-side — no flash of protected chrome — and personalized responses are
  * never cached.
@@ -97,10 +82,10 @@ app.use((req, res, next) => {
 });
 
 /**
- * Start the server if this module is the main entry point, or it is ran via PM2.
+ * Start the server if this module is the main entry point.
  * The server listens on the port defined by the `PORT` environment variable, or defaults to 4000.
  */
-if (isMainModule(import.meta.url) || process.env['pm_id']) {
+if (isMainModule(import.meta.url)) {
   const port = process.env['PORT'] || 4000;
   app.listen(port, (error) => {
     if (error) {

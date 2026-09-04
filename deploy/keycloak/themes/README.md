@@ -1,7 +1,7 @@
 # Keycloak themes (prod)
 
 This directory is the **prod** mount source for Keycloak's custom themes
-(`docker-compose.host-b.yml` mounts it at `/opt/keycloak/themes`, read-only).
+(`docker-compose.host-services.yml` mounts it at `/opt/keycloak/themes`, read-only).
 
 The canonical, hand-edited theme lives in
 [`infra/keycloak/themes/`](../../../infra/keycloak/themes/) (mounted by the dev

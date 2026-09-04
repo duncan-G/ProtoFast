@@ -307,8 +307,8 @@ jobs:
           # Envoy dials Host B's services → HOST_B_IP). Passed to deploy.sh so every
           # apply re-seeds it into .env (deploy.sh, ECR-style self-sufficiency).
           case "${{ inputs.host }}" in
-            edge)     role=edge;     compose=deploy/docker-compose.host-a.yml; peer_role=services; peer_var=HOST_B_IP ;;
-            services) role=services; compose=deploy/docker-compose.host-b.yml; peer_role=edge;     peer_var=HOST_A_IP ;;
+            edge)     role=edge;     compose=deploy/docker-compose.host-edge.yml; peer_role=services; peer_var=HOST_B_IP ;;
+            services) role=services; compose=deploy/docker-compose.host-services.yml; peer_role=edge;     peer_var=HOST_A_IP ;;
             *) echo "unknown host '${{ inputs.host }}' (expected edge|services)" >&2; exit 2 ;;
           esac
           echo "role=${role}" >> "$GITHUB_OUTPUT"
@@ -477,7 +477,7 @@ jobs:
         run: |
           set -euo pipefail
           # Publish under the host-specific name cloud-init pulls (user_data.host_*
-          # → docker-compose.host-a.yml / host-b.yml). deploy.sh is shared by both hosts.
+          # → docker-compose.host-edge.yml / host-services.yml). deploy.sh is shared by both hosts.
           aws s3 cp "${{ steps.route.outputs.compose }}" "s3://${ASSETS_BUCKET}/deploy/${{ steps.route.outputs.object }}"
           aws s3 cp deploy/deploy.sh                     "s3://${ASSETS_BUCKET}/deploy/deploy.sh"
           # Host B also carries the pg_dump backup script (§6.3) the timer runs.

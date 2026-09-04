@@ -1,4 +1,4 @@
-# Host B — SERVICES + STATE compose topology (two-instance restructure §3.2).
+# Host Services — SERVICES + STATE compose topology.
 #
 # Runs the three gRPC backends plus the new stateful tier: Keycloak (identity),
 # Postgres (Keycloak's `keycloak` DB + auth's durable `auth` DB, on the
@@ -12,7 +12,7 @@
 #
 # Services export telemetry to Host A's otel-collector at ${HOST_A_IP}:4317.
 #
-# Local/CI use: docker compose -f docker-compose.host-b.yml --env-file .env --env-file versions.env config
+# Local/CI use: docker compose -f docker-compose.host-services.yml --env-file .env --env-file versions.env config
 
 # Shared .NET service env. Telemetry crosses to Host A's collector (private IP,
 # SG-admitted). Kept generic so auth can merge its own connection strings on top

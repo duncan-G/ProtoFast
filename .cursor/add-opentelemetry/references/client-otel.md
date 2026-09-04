@@ -329,7 +329,7 @@ In `src/server.ts` (SSR entry), import instrumentation as the very
 first line:
 
 ```typescript
-import './instrumentation';
+import './telemetry.server.ts';
 
 import { AngularNodeAppEngine, ... } from '@angular/ssr/node';
 // ... rest of server.ts unchanged

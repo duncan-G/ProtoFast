@@ -1,7 +1,7 @@
 # Keycloak realm import (prod)
 
 This directory is the **prod** mount source for Keycloak's `--import-realm`
-(`docker-compose.host-b.yml` mounts it at `/opt/keycloak/data/import`).
+(`docker-compose.host-services.yml` mounts it at `/opt/keycloak/data/import`).
 
 The canonical, hand-edited realm export lives in
 [`infra/keycloak/realms/`](../../../infra/keycloak/realms/) (used by the dev

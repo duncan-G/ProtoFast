@@ -7,7 +7,7 @@ custom Keycloak image:
 | | mount |
 | --- | --- |
 | dev | [`apphost/Program.cs`](../../../apphost/Program.cs) → `WithBindMount` |
-| prod | [`docker-compose.host-b.yml`](../../docker-compose.host-b.yml), synced from S3 by `deploy.sh` |
+| prod | [`docker-compose.host-services.yml`](../../docker-compose.host-services.yml), synced from S3 by `deploy.sh` |
 
 That works because neither environment runs `--optimized`: dev is Aspire's
 `start-dev` and prod is `kc.sh start --import-realm`, so the server re-runs its

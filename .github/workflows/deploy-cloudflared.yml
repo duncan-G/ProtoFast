@@ -22,7 +22,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/deploy-cloudflared.yml"
-      - "deploy/docker-compose.host-a.yml"
+      - "deploy/docker-compose.host-edge.yml"
       - "deploy/deploy.sh"
   workflow_dispatch:
     inputs:
@@ -46,7 +46,7 @@ env:
   INSTANCE_TAG_VALUE: "app-server"
   # The pinned upstream image tag. Bump here (or override via workflow_dispatch)
   # to roll the tunnel forward/back; keep in sync with the compose default
-  # (CLOUDFLARED_TAG) in deploy/docker-compose.host-a.yml.
+  # (CLOUDFLARED_TAG) in deploy/docker-compose.host-edge.yml.
   DEFAULT_CLOUDFLARED_TAG: "2026.6.1"
 
 jobs:
@@ -103,7 +103,7 @@ jobs:
           # gzip BEFORE base64: SSM caps the document + all parameters at 97KB total and
           # the raw-encoded pair exceeds it (deploy.sh alone is ~84KB base64). Both files
           # are compressible text, so this lands near 31KB — see _component-deploy.yml.
-          COMPOSE_B64=$(gzip -9 -c deploy/docker-compose.host-a.yml | base64 -w0)
+          COMPOSE_B64=$(gzip -9 -c deploy/docker-compose.host-edge.yml | base64 -w0)
           DEPLOY_B64=$(gzip -9 -c deploy/deploy.sh | base64 -w0)
 
           cmd_id=$(aws ssm send-command \
