@@ -136,7 +136,7 @@ systemctl enable protofast-pgbackup.timer
 # the lifecycle unit bring the stack up (and register the drain for shutdown).
 # Bootstrap order respects depends_on (postgres -> keycloak; services independent).
 if aws s3 cp "s3://${assets_bucket}/deploy/versions.env" /opt/protofast/versions.env --region "${aws_region}"; then
-  aws s3 cp "s3://${assets_bucket}/deploy/docker-compose.host-b.yml" /opt/protofast/docker-compose.yml --region "${aws_region}"
+  aws s3 cp "s3://${assets_bucket}/deploy/docker-compose.host-services.yml" /opt/protofast/docker-compose.yml --region "${aws_region}"
   aws s3 cp "s3://${assets_bucket}/deploy/deploy.sh"                  /opt/protofast/deploy.sh          --region "${aws_region}"
   chmod +x /opt/protofast/deploy.sh
   # Backup script (best-effort: absent on a very first deploy until published).

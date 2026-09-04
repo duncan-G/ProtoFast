@@ -1,9 +1,9 @@
-# Host A — EDGE compose topology (two-instance restructure, docs/two-instance-restructure-plan.md §3.1).
+# Host Edge — EDGE compose topology.
 #
 # Runs the public-facing edge: cloudflared (the only egress to Cloudflare), Envoy,
 # the unified SSR clients host, the otel-collector, and the Aspire Dashboard. The
 # three gRPC backends + Keycloak + Postgres + Redis live on Host B
-# (docker-compose.host-b.yml); Envoy now dials Host B's PRIVATE IP (${HOST_B_IP})
+# (docker-compose.host-services.yml); Envoy now dials Host B's PRIVATE IP (${HOST_B_IP})
 # on its published ports instead of Docker service names.
 #
 # Still NO public inbound: cloudflared dials out; the only cross-host ingress is
@@ -11,7 +11,7 @@
 # the self-referencing security group (infra §4.3). Same per-component deploy +
 # *_TAG manifest conventions as the original single-box compose.
 #
-# Local/CI use: docker compose -f docker-compose.host-a.yml --env-file .env --env-file versions.env config
+# Local/CI use: docker compose -f docker-compose.host-edge.yml --env-file .env --env-file versions.env config
 
 x-otel-grpc: &otel-grpc "http://otel-collector:4317"
 
@@ -90,7 +90,7 @@ services:
     restart: unless-stopped
     # Publish the OTLP receivers so Host B's services can export telemetry across
     # the private network (admitted by the self-referencing SG, infra §4.3). This
-    # is the only cross-host ingress on Host A.
+    # is the only cross-host ingress on Host Edge.
     ports:
       - "4317:4317"
       - "4318:4318"
@@ -113,5 +113,5 @@ services:
 
 secrets:
   tunnel-token:
-    # Written root-only by cloud-init user_data (Host A only).
+    # Written root-only by cloud-init user_data (Host Edge only).
     file: /opt/protofast/tunnel-token

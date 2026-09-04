@@ -1,7 +1,27 @@
+using System.Net.Security;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+
 namespace ProtoFast.AppHost.ClientApp;
 
 public static class ClientAppResourceBuilderExtensions
 {
+    /// <summary>
+    /// Probe client used by the dev-server health check. Aspire mints a self-signed certificate
+    /// per resource, so ordinary validation would fail every probe; the connection only ever
+    /// goes to a loopback port on the developer's own machine.
+    /// </summary>
+    private static readonly HttpClient DevServerProbe = new(new SocketsHttpHandler
+    {
+        SslOptions = new SslClientAuthenticationOptions
+        {
+            RemoteCertificateValidationCallback = (_, _, _, _) => true,
+        },
+    })
+    {
+        Timeout = TimeSpan.FromSeconds(5),
+    };
+
     /// <summary>
     /// Adds a single client's Angular dev server (run mode only). The browser reaches the
     /// client through its per-client Envoy listener; <paramref name="serverEndpoint"/> is
@@ -34,6 +54,7 @@ public static class ClientAppResourceBuilderExtensions
             .WithEnvironment("SERVER_URL", serverEndpoint);
 
         clientAppDev.WithOtelEndpoints(clientOtelEndpoint, clientServerOtelEndpoint);
+        clientAppDev.WithDevServerHealthCheck(builder, clientName);
 
         // Unpinned endpoint: resolves per consumer network, so the Envoy
         // container sees a host it can reach instead of "localhost".
@@ -71,6 +92,65 @@ public static class ClientAppResourceBuilderExtensions
         host.WithOtelEndpoints(clientOtelEndpoint, clientServerOtelEndpoint);
 
         return host.GetEndpoint("http");
+    }
+
+    /// <summary>
+    /// Reports the dev server unhealthy until it actually serves HTTP.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>ng serve</c> survives a failed Angular build: the process stays up and simply never
+    /// binds its port. With no health check registered Aspire treats "process running" as
+    /// healthy, so a broken build shows green on the dashboard while Envoy's requests to the
+    /// upstream time out (<c>UF ... upstream_reset_before_response_started</c>).
+    /// </para>
+    /// <para>
+    /// This is an association only — nothing waits on it. Adding <c>WaitFor</c> on the proxy
+    /// would also hold Envoy (and therefore the working clients) behind a cold Angular build.
+    /// </para>
+    /// </remarks>
+    private static void WithDevServerHealthCheck<T>(
+        this IResourceBuilder<T> clientApp,
+        IDistributedApplicationBuilder builder,
+        string clientName)
+        where T : IResourceWithEndpoints
+    {
+        // Pinned to localhost: the probe runs in the apphost process, not in Envoy's network.
+        var endpoint = clientApp.GetEndpoint("https", KnownNetworkIdentifiers.LocalhostNetwork);
+        var healthCheckKey = $"{clientName}-dev-server";
+
+        builder.Services
+            .AddHealthChecks()
+            .AddAsyncCheck(healthCheckKey, async cancellationToken =>
+            {
+                if (!endpoint.IsAllocated)
+                {
+                    return HealthCheckResult.Unhealthy("Dev server endpoint is not allocated yet.");
+                }
+
+                try
+                {
+                    using var response = await DevServerProbe.GetAsync(
+                        new Uri(new Uri(endpoint.Url), "/"),
+                        HttpCompletionOption.ResponseHeadersRead,
+                        cancellationToken);
+
+                    // Any answer means the build finished and the server is listening. The status
+                    // code itself is not a health signal: `/` is a redirect to sign-in for a client
+                    // whose root is protected (admin), and Angular's SSRF guard answers 400 for a
+                    // Host it was not told to allow.
+                    return (int)response.StatusCode < 500
+                        ? HealthCheckResult.Healthy()
+                        : HealthCheckResult.Unhealthy(
+                            $"Dev server returned {(int)response.StatusCode}.");
+                }
+                catch (Exception ex)
+                {
+                    return HealthCheckResult.Unhealthy("Dev server is not accepting requests.", ex);
+                }
+            });
+
+        clientApp.WithHealthCheck(healthCheckKey);
     }
 
     private static IResourceBuilder<IResourceWithEnvironment> WithOtelEndpoints(

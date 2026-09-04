@@ -51,7 +51,7 @@ locals {
     grpc_health_probe_arch    = var.instance_arch
   })
 
-  user_data_host_a = templatefile("${path.module}/templates/user_data.host_a.sh.tftpl", {
+  user_data_edge = templatefile("${path.module}/templates/user_data.host_edge.sh.tftpl", {
     common_setup     = local.common_setup
     ecr_registry     = local.ecr_registry
     aws_region       = var.aws_region
@@ -65,7 +65,7 @@ locals {
     host_b_ip        = local.host_b_private_ip
   })
 
-  user_data_host_b = templatefile("${path.module}/templates/user_data.host_b.sh.tftpl", {
+  user_data_services = templatefile("${path.module}/templates/user_data.host_services.sh.tftpl", {
     common_setup    = local.common_setup
     ecr_registry    = local.ecr_registry
     aws_region      = var.aws_region
@@ -88,7 +88,7 @@ resource "aws_instance" "host_a" {
   associate_public_ip_address = true
   ipv6_address_count          = 1
 
-  user_data                   = local.user_data_host_a
+  user_data                   = local.user_data_edge
   user_data_replace_on_change = true
 
   metadata_options {
@@ -107,7 +107,7 @@ resource "aws_instance" "host_a" {
   }
 
   tags = {
-    Name                   = "${var.project}-host-a"
+    Name                   = "${var.project}-edge"
     (var.instance_tag_key) = var.instance_tag_value
     Role                   = "edge"
   }
@@ -125,7 +125,7 @@ resource "aws_instance" "host_b" {
   associate_public_ip_address = true
   ipv6_address_count          = 1
 
-  user_data = local.user_data_host_b
+  user_data = local.user_data_services
   # Replacement is DELIBERATE here: Host B holds the Keycloak + auth data on
   # the pgdata EBS volume. A boot-config edit must not silently rebuild it (§8) —
   # change this to true only for an intentional rebuild and drain first (§6.2).
@@ -148,7 +148,7 @@ resource "aws_instance" "host_b" {
   }
 
   tags = {
-    Name                   = "${var.project}-host-b"
+    Name                   = "${var.project}-services"
     (var.instance_tag_key) = var.instance_tag_value
     Role                   = "services"
   }

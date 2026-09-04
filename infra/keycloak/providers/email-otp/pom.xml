@@ -26,7 +26,7 @@
   <name>ProtoFast Keycloak providers</name>
 
   <properties>
-    <!-- Must equal the server tag: KEYCLOAK_TAG in deploy/docker-compose.host-b.yml
+    <!-- Must equal the server tag: KEYCLOAK_TAG in deploy/docker-compose.host-services.yml
          and WithImageTag() in apphost/Program.cs. build.sh passes -Dkeycloak.version
          from the tag it is given, so this default only applies to a bare `mvn package`. -->
     <keycloak.version>26.7.0</keycloak.version>

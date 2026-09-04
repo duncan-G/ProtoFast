@@ -15,7 +15,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/deploy-keycloak.yml"
-      - "deploy/docker-compose.host-b.yml"
+      - "deploy/docker-compose.host-services.yml"
       - "deploy/keycloak/realms/**"
       - "deploy/keycloak/themes/**"
       # The built provider JAR (infra/keycloak/providers/build.sh stages it here).
@@ -42,7 +42,7 @@ env:
   ASSETS_BUCKET: ${{ vars.ASSETS_BUCKET }}
   INSTANCE_TAG_KEY: "protofast:role"
   INSTANCE_TAG_VALUE: "app-server"
-  # Keep in sync with the KEYCLOAK_TAG default in deploy/docker-compose.host-b.yml.
+  # Keep in sync with the KEYCLOAK_TAG default in deploy/docker-compose.host-services.yml.
   DEFAULT_KEYCLOAK_TAG: "26.7"
 
 jobs:
@@ -103,7 +103,7 @@ jobs:
           # gzip BEFORE base64: SSM caps the document + all parameters at 97KB total and
           # the raw-encoded pair exceeds it (deploy.sh alone is ~84KB base64). Both files
           # are compressible text, so this lands near 35KB — see _component-deploy.yml.
-          COMPOSE_B64=$(gzip -9 -c deploy/docker-compose.host-b.yml | base64 -w0)
+          COMPOSE_B64=$(gzip -9 -c deploy/docker-compose.host-services.yml | base64 -w0)
           DEPLOY_B64=$(gzip -9 -c deploy/deploy.sh | base64 -w0)
 
           cmd_id=$(aws ssm send-command \
@@ -185,7 +185,7 @@ jobs:
       - name: Publish deploy artifacts to S3
         run: |
           set -euo pipefail
-          aws s3 cp deploy/docker-compose.host-b.yml "s3://${ASSETS_BUCKET}/deploy/docker-compose.host-b.yml"
+          aws s3 cp deploy/docker-compose.host-services.yml "s3://${ASSETS_BUCKET}/deploy/docker-compose.host-services.yml"
           aws s3 cp deploy/deploy.sh                 "s3://${ASSETS_BUCKET}/deploy/deploy.sh"
           aws s3 cp deploy/postgres/backup.sh        "s3://${ASSETS_BUCKET}/deploy/backup.sh"
 

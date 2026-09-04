@@ -23,29 +23,40 @@ import { ACCOUNT_ROUTE, AccountApi, AccountView } from '../../account/account-ap
  * The one exception is enrolling a passkey, which is a WebAuthn ceremony that needs Keycloak's own
  * origin — a BFF endpoint reached by full-page navigation, never a router link.
  *
- * Every section is the same shape (`.split` in src/styles/nocturne.css): the explanation on the
- * left, the controls on the right. Each feature expands where it stands — no modals, and the only
- * route change in the page is the passkey hand-off, which has to leave. Because a section's
- * heading sits in its own column, a form opening below it moves nothing but itself.
+ * The page is one 700px column. A section is a lettered label, the controls at full width beneath
+ * it, and the sentence that explains them beneath *those* — prose as a footnote to a control
+ * rather than an introduction to it. The controls sit on `.surface-card` rows; a form opening
+ * replaces the row it came from with a `.panel` of the same ground and geometry, so a section
+ * reads as one card that grew rather than two cards stacked. Everything that arrives carries
+ * `.rise`, and rows in the passkey list stagger, so an addition is seen rather than just found.
+ *
+ * Still no modals, and the only route change in the page is the passkey hand-off, which has to
+ * leave.
  */
 @Component({
   selector: 'app-account',
   imports: [AccountMenu, DatePipe, RouterLink, ProtofastLogo],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="nocturne flex min-h-screen flex-col antialiased">
-      <header class="border-b border-[var(--color-divider)]">
-        <nav class="mx-auto flex w-full max-w-[880px] items-center px-6 py-4 sm:px-10">
+    <!-- The wash is the landing page's, dimmed and moved to the top-left corner: enough to keep
+         the header off a flat ground, not enough to compete with the accent ring on an open form. -->
+    <div
+      class="nocturne flex min-h-screen flex-col bg-[radial-gradient(1100px_520px_at_12%_-12%,color-mix(in_srgb,var(--color-accent)_11%,transparent),transparent_62%)] antialiased"
+    >
+      <header>
+        <nav class="mx-auto flex w-full max-w-[700px] items-center px-6 py-[17px] sm:px-8">
           <a routerLink="/app" class="mr-auto no-underline"><app-protofast-logo /></a>
           <!-- Account and sign-out live behind the avatar; see shared/account-menu.ts. -->
           <app-account-menu />
         </nav>
       </header>
 
-      <main class="mx-auto w-full max-w-[880px] flex-1 px-6 pt-[38px] pb-[56px] sm:px-10">
+      <main class="mx-auto w-full max-w-[700px] flex-1 px-6 pb-[100px] sm:px-8">
         @if (deleted()) {
-          <div class="card elev-sm items-start gap-2.5 px-5 py-[26px]">
-            <h1 class="text-[19px]">Account deleted</h1>
+          <div
+            class="surface-card rise mt-[22px] flex flex-col items-start gap-2.5 px-[22px] py-[26px]"
+          >
+            <h1 class="text-[26px]">Account deleted</h1>
             <p class="m-0 max-w-[380px] text-muted text-[13.5px] leading-[1.55]">
               {{ view()?.email ?? 'Your account' }} is gone, along with everything stored under it.
               You've been signed out on every device.
@@ -54,435 +65,423 @@ import { ACCOUNT_ROUTE, AccountApi, AccountView } from '../../account/account-ap
             <a href="/" rel="external" class="btn btn-secondary mt-1">Back to protofast.dev</a>
           </div>
         } @else {
-          <h1 class="mb-1.5 text-[38px]">Account</h1>
-          <p class="mb-[30px] text-muted text-[14.5px]">How you sign in, and how to leave.</p>
+          <!-- ──────────────────────── title, and who this is ───────────────────────── -->
+          <div class="flex flex-wrap items-end justify-between gap-[17px] pt-[22px] pb-[17px]">
+            <div class="min-w-0">
+              <p
+                class="m-0 mb-2.5 text-[11px] tracking-[0.14em] text-[var(--color-accent)] uppercase"
+              >
+                Settings
+              </p>
+              <h1 class="mb-1.5 text-[46px] tracking-[-0.03em]">Account</h1>
+              <p class="m-0 text-muted text-[15px]">How you sign in, and how to leave.</p>
+            </div>
+
+            <!-- The same address the Email section holds, as identification rather than as a
+                 control: it answers "which account am I about to change" before anything is. -->
+            <div
+              class="flex min-w-0 items-center gap-2.5 rounded-[var(--radius-lg)] bg-[color-mix(in_srgb,var(--color-surface)_70%,transparent)] px-[11px] py-[9px] shadow-[var(--shadow-sm)]"
+            >
+              <span
+                class="grid h-[34px] w-[34px] flex-none place-items-center rounded-full bg-[linear-gradient(150deg,var(--color-accent-600),var(--color-accent-800))] font-[family-name:var(--font-heading)] text-[13px] text-[var(--color-accent-100)]"
+                aria-hidden="true"
+                >{{ initial() }}</span
+              >
+              <span class="min-w-0 leading-[1.3]">
+                <span class="block truncate text-[13px]">{{ emailLabel() }}</span>
+                <span
+                  class="block text-[11px] text-[color-mix(in_srgb,var(--color-text)_45%,transparent)]"
+                  >{{ signInSummary() }}</span
+                >
+              </span>
+            </div>
+          </div>
+
+          <hr class="hr m-0" />
 
           @if (error()) {
-            <p class="panel-danger mb-[26px] text-[13px]" role="alert">{{ error() }}</p>
+            <p class="panel-danger rise mt-[17px] mb-0 text-[13px]" role="alert">{{ error() }}</p>
           }
 
           <!-- ───────────────────────────── email ───────────────────────────── -->
-          <section class="split">
-            <div class="split-aside">
-              <h2 class="text-[17px]">Email</h2>
-              <p class="m-0 text-muted text-[12.5px] leading-[1.5]">
-                The address that reaches your account and receives sign-in codes. A change is
-                confirmed at the new address first, so a typo can't lock you out.
-              </p>
-            </div>
+          <section class="py-[22px]">
+            <h2 class="section-label">Email</h2>
 
-            <div class="split-main flex flex-col gap-[14px]">
-              <div
-                class="flex flex-wrap items-center gap-3 rounded-[var(--radius-md)] bg-[var(--color-surface)] px-[15px] py-[13px] shadow-[var(--shadow-sm)]"
-              >
-                <div class="min-w-0 flex-[1_1_200px]">
-                  <p class="card-kicker">Signed in as</p>
-                  <p class="mt-[3px] mb-0 text-[15.5px] [overflow-wrap:anywhere]">
-                    {{ loading() ? '…' : (view()?.email ?? 'Unknown') }}
+            @if (emailStep() === 'idle') {
+              <div class="surface-card surface-row rise flex-wrap">
+                <svg
+                  class="h-[18px] w-[18px] flex-none text-[var(--color-accent)]"
+                  viewBox="0 0 256 256"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M224 48H32a8 8 0 0 0-8 8v136a16 16 0 0 0 16 16h176a16 16 0 0 0 16-16V56a8 8 0 0 0-8-8m-96 85.15L52.57 64h150.86ZM98.71 128 40 181.81v-107.6ZM109.19 139l13.39 12.26a8 8 0 0 0 10.84 0L146.81 139l50.29 46.09H58.9Zm48.1-11 58.71-53.79v107.62Z"
+                  />
+                </svg>
+                <div class="mr-auto min-w-0 flex-[1_1_180px]">
+                  <p
+                    class="m-0 text-[10px] tracking-[0.12em] text-[color-mix(in_srgb,var(--color-text)_45%,transparent)] uppercase"
+                  >
+                    Signed in as
+                  </p>
+                  <p class="mt-[3px] mb-0 text-[16px] [overflow-wrap:anywhere]">
+                    {{ emailLabel() }}
                   </p>
                 </div>
-                @if (emailStep() === 'idle') {
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  [disabled]="loading()"
+                  (click)="startEmailChange()"
+                >
+                  Change
+                </button>
+              </div>
+            }
+
+            @if (emailStep() === 'address') {
+              <div class="panel rise flex flex-col gap-3">
+                <div class="field">
+                  <label for="new-email">New email address</label>
+                  <input
+                    id="new-email"
+                    class="input max-w-[380px] min-h-[40px]"
+                    type="email"
+                    placeholder="you@example.com"
+                    autocomplete="email"
+                    spellcheck="false"
+                    [value]="newEmail()"
+                    [disabled]="emailBusy()"
+                    (input)="newEmail.set($any($event.target).value)"
+                    (keyup.enter)="sendEmailCode()"
+                  />
+                </div>
+                <p class="m-0 text-muted text-[12.5px] leading-[1.5]">
+                  We'll send a six-digit code there. Your current address keeps working until the
+                  new one is confirmed.
+                </p>
+                <div class="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    class="btn btn-secondary"
-                    [disabled]="loading()"
-                    (click)="startEmailChange()"
+                    class="btn btn-primary"
+                    [disabled]="!newEmailValid() || emailBusy()"
+                    (click)="sendEmailCode()"
                   >
-                    Change email
+                    @if (emailBusy()) {
+                      <span class="spinner" aria-hidden="true"></span>
+                    }
+                    {{ emailBusy() ? 'Sending code' : 'Send code' }}
                   </button>
-                }
-              </div>
-
-              @if (emailError()) {
-                <p class="panel-danger text-[13px]" role="alert">{{ emailError() }}</p>
-              }
-
-              @if (emailStep() === 'address') {
-                <div class="panel rise flex flex-col gap-3">
-                  <div class="field">
-                    <label for="new-email">New email address</label>
-                    <input
-                      id="new-email"
-                      class="input max-w-[340px]"
-                      type="email"
-                      placeholder="you@example.com"
-                      autocomplete="email"
-                      spellcheck="false"
-                      [value]="newEmail()"
-                      [disabled]="emailBusy()"
-                      (input)="newEmail.set($any($event.target).value)"
-                      (keyup.enter)="sendEmailCode()"
-                    />
-                  </div>
-                  <p class="m-0 text-muted text-[12.5px] leading-[1.5]">
-                    We'll send a six-digit code there. Your current address keeps working until the
-                    new one is confirmed.
-                  </p>
-                  <div class="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      class="btn btn-primary"
-                      [disabled]="!newEmailValid() || emailBusy()"
-                      (click)="sendEmailCode()"
-                    >
-                      @if (emailBusy()) {
-                        <span class="spinner" aria-hidden="true"></span>
-                      }
-                      {{ emailBusy() ? 'Sending code' : 'Send code' }}
-                    </button>
-                    <button
-                      type="button"
-                      class="btn btn-ghost"
-                      [disabled]="emailBusy()"
-                      (click)="abandonEmailChange()"
-                    >
-                      Cancel
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-ghost"
+                    [disabled]="emailBusy()"
+                    (click)="abandonEmailChange()"
+                  >
+                    Cancel
+                  </button>
                 </div>
-              }
+              </div>
+            }
 
-              @if (emailStep() === 'code') {
-                <div class="panel rise flex flex-col gap-[13px]">
-                  <p class="m-0 text-[13.5px] leading-[1.5]">
-                    Enter the code we sent to
-                    <span class="text-[var(--color-accent-300)] [overflow-wrap:anywhere]">{{
-                      pendingEmail()
-                    }}</span>
-                  </p>
+            @if (emailStep() === 'code') {
+              <div class="panel rise flex flex-col gap-[13px]">
+                <p class="m-0 text-[13.5px] leading-[1.5]">
+                  Enter the code we sent to
+                  <span class="text-[var(--color-accent-300)] [overflow-wrap:anywhere]">{{
+                    pendingEmail()
+                  }}</span>
+                </p>
 
-                  <!--
-                    The six boxes are presentation; the field is the one input lying across them.
-                    Keeping it a single field is what lets paste, autofill and the one-time-code
-                    keyboard work at all — six inputs would break every one of them.
-                  -->
-                  <div class="relative w-max max-w-full">
-                    <div class="code-cells" aria-hidden="true">
-                      @for (cell of codeCells(); track $index) {
-                        <div class="code-cell">{{ cell }}</div>
-                      }
-                    </div>
-                    <input
-                      #codeField
-                      class="code-input"
-                      type="text"
-                      inputmode="numeric"
-                      autocomplete="one-time-code"
-                      maxlength="6"
-                      spellcheck="false"
-                      aria-label="Confirmation code"
-                      [value]="emailCode()"
-                      [disabled]="emailBusy()"
-                      (input)="setEmailCode(codeField)"
-                      (keyup.enter)="confirmEmailChange()"
-                    />
-                  </div>
-
-                  <div class="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      class="btn btn-primary"
-                      [disabled]="emailCode().length !== 6 || emailBusy()"
-                      (click)="confirmEmailChange()"
-                    >
-                      @if (emailBusy()) {
-                        <span class="spinner" aria-hidden="true"></span>
-                      }
-                      {{ emailBusy() ? 'Confirming' : 'Confirm change' }}
-                    </button>
-                    <button
-                      type="button"
-                      class="btn btn-ghost"
-                      [disabled]="emailBusy()"
-                      (click)="abandonEmailChange()"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      class="btn btn-ghost"
-                      [disabled]="emailBusy()"
-                      (click)="useDifferentAddress()"
-                    >
-                      Use a different address
-                    </button>
-                    <span class="flex-1"></span>
-                    @if (resendIn() > 0) {
-                      <span class="text-muted text-[12.5px]">{{ resendLabel() }}</span>
-                    } @else {
-                      <button
-                        type="button"
-                        class="btn btn-ghost text-[12.5px]"
-                        [disabled]="emailBusy()"
-                        (click)="resendEmailCode()"
-                      >
-                        Resend code
-                      </button>
+                <!--
+                  The six boxes are presentation; the field is the one input lying across them.
+                  Keeping it a single field is what lets paste, autofill and the one-time-code
+                  keyboard work at all — six inputs would break every one of them.
+                -->
+                <div class="relative w-max max-w-full">
+                  <div class="code-cells" aria-hidden="true">
+                    @for (cell of codeCells(); track $index) {
+                      <div class="code-cell">{{ cell }}</div>
                     }
                   </div>
+                  <input
+                    #codeField
+                    class="code-input"
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="one-time-code"
+                    maxlength="6"
+                    spellcheck="false"
+                    aria-label="Confirmation code"
+                    [value]="emailCode()"
+                    [disabled]="emailBusy()"
+                    (input)="setEmailCode(codeField)"
+                    (keyup.enter)="confirmEmailChange()"
+                  />
                 </div>
-              }
-            </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    class="btn btn-primary"
+                    [disabled]="emailCode().length !== 6 || emailBusy()"
+                    (click)="confirmEmailChange()"
+                  >
+                    @if (emailBusy()) {
+                      <span class="spinner" aria-hidden="true"></span>
+                    }
+                    {{ emailBusy() ? 'Confirming' : 'Confirm change' }}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-ghost"
+                    [disabled]="emailBusy()"
+                    (click)="abandonEmailChange()"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-ghost"
+                    [disabled]="emailBusy()"
+                    (click)="useDifferentAddress()"
+                  >
+                    Use a different address
+                  </button>
+                  <span class="flex-1"></span>
+                  @if (resendIn() > 0) {
+                    <span class="text-muted text-[12.5px]">{{ resendLabel() }}</span>
+                  } @else {
+                    <button
+                      type="button"
+                      class="btn btn-ghost text-[12.5px]"
+                      [disabled]="emailBusy()"
+                      (click)="resendEmailCode()"
+                    >
+                      Resend code
+                    </button>
+                  }
+                </div>
+              </div>
+            }
+
+            @if (emailError()) {
+              <p class="panel-danger rise mt-[8px] mb-0 text-[13px]" role="alert">
+                {{ emailError() }}
+              </p>
+            }
+
+            <p class="section-note">
+              The address that reaches your account and receives sign-in codes. A change is
+              confirmed at the new address first, so a typo can't lock you out.
+            </p>
           </section>
 
-          <hr class="hr my-[26px]" />
+          <hr class="hr m-0" />
 
           <!-- ──────────────────────────── passkeys ─────────────────────────── -->
-          <section class="split">
-            <div class="split-aside">
-              <h2 class="text-[17px]">Passkeys</h2>
-              <p class="m-0 text-muted text-[12.5px] leading-[1.5]">
-                Sign in with your face, fingerprint or device PIN. Keep one per device. Removing
-                them all is safe — a mailed code always works.
-              </p>
-            </div>
+          <section class="py-[22px]">
+            <h2 class="section-label">Passkeys</h2>
 
-            <div class="split-main flex flex-col gap-[14px]">
-              @if (loading()) {
-                <p class="m-0 text-muted text-[13px]">Loading your passkeys…</p>
-              } @else if (view()?.passkeysUnavailable) {
-                <div class="empty-slot flex flex-wrap items-center gap-[14px]">
-                  <div class="min-w-0 flex-[1_1_190px]">
-                    <p class="m-0 text-[14.5px]">Your passkeys couldn't be loaded</p>
-                    <p class="m-0 text-muted text-[12.5px]">
-                      Everything else on this page is still current.
-                    </p>
-                  </div>
-                  <button type="button" class="btn btn-secondary" (click)="reload()">
-                    Try again
-                  </button>
+            @if (loading()) {
+              <p class="m-0 text-muted text-[13px]">Loading your passkeys…</p>
+            } @else if (view()?.passkeysUnavailable) {
+              <div class="surface-card surface-row rise flex-wrap">
+                <div class="mr-auto min-w-0 flex-[1_1_190px]">
+                  <p class="m-0 text-[15px]">Your passkeys couldn't be loaded</p>
+                  <p class="m-0 text-muted text-[12px]">
+                    Everything else on this page is still current.
+                  </p>
                 </div>
-              } @else if (passkeys().length === 0) {
-                <div class="empty-slot flex flex-wrap items-center gap-[14px]">
-                  <svg
-                    class="h-[26px] w-[26px] shrink-0"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="var(--color-accent)"
-                    stroke-width="1.5"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
+                <button type="button" class="btn btn-secondary" (click)="reload()">
+                  Try again
+                </button>
+              </div>
+            } @else {
+              <ul class="m-0 flex list-none flex-col gap-2 p-0">
+                @for (passkey of passkeys(); track passkey.id) {
+                  <!-- Staggered, and capped at five steps so a long list does not turn its last
+                       row into a wait. A tracked row that was already here does not re-enter. -->
+                  <li
+                    class="surface-card rise overflow-hidden"
+                    [style.animation-delay.ms]="riseDelay($index)"
                   >
-                    <circle cx="8" cy="12" r="3.4" />
-                    <path d="M11.4 12H21" />
-                    <path d="M17.5 12v3.2" />
-                    <path d="M20.2 12v2.2" />
-                  </svg>
-                  <div class="min-w-0 flex-[1_1_190px]">
-                    <p class="m-0 text-[14.5px]">No passkeys yet</p>
-                    <p class="m-0 text-muted text-[12.5px]">
-                      Add one and this device signs you in without a code.
-                    </p>
-                  </div>
-                  <!-- /add-passkey is a BFF endpoint, not an Angular route — full-page navigation. -->
-                  <a
-                    [href]="addPasskeyUrl"
-                    rel="external"
-                    class="btn btn-primary"
-                    (click)="rememberPasskeysBeforeEnrolment()"
-                  >
-                    Add a passkey
-                  </a>
-                </div>
-              } @else {
-                <ul
-                  class="m-0 flex list-none flex-col overflow-hidden rounded-[var(--radius-md)] bg-[var(--color-surface)] p-0 shadow-[var(--shadow-sm)]"
-                >
-                  @for (passkey of passkeys(); track passkey.id) {
-                    <li
-                      class="flex flex-col border-t border-[color-mix(in_srgb,var(--color-text)_7%,transparent)]"
-                    >
-                      <div class="flex flex-wrap items-center gap-3 px-[15px] py-3">
-                        <svg
-                          class="h-[19px] w-[19px] shrink-0 opacity-65"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="1.5"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          aria-hidden="true"
-                        >
-                          <circle cx="8" cy="12" r="3.4" />
-                          <path d="M11.4 12H21" />
-                          <path d="M17.5 12v3.2" />
-                          <path d="M20.2 12v2.2" />
+                    <div class="surface-row flex-wrap">
+                      <span
+                        class="grid h-8 w-8 flex-none place-items-center rounded-full bg-[color-mix(in_srgb,var(--color-accent)_14%,transparent)] text-[var(--color-accent)]"
+                        aria-hidden="true"
+                      >
+                        <svg class="h-[17px] w-[17px]" viewBox="0 0 256 256" fill="currentColor">
+                          <path
+                            d="M180 32a76 76 0 0 0-72.31 99.86L36.69 202.9A15.86 15.86 0 0 0 32 214.22V240a8 8 0 0 0 8 8h40a8 8 0 0 0 8-8v-16h16a8 8 0 0 0 8-8v-16h16a8 8 0 0 0 5.66-2.34l14.48-14.48A76 76 0 1 0 180 32m0 24a20 20 0 1 1-20 20a20 20 0 0 1 20-20"
+                          />
                         </svg>
-                        <div class="min-w-0 flex-[1_1_170px]">
-                          <p class="m-0 flex flex-wrap items-center gap-2 text-[14.5px]">
-                            <span class="truncate">{{ passkey.label || 'Passkey' }}</span>
-                            @if (passkey.isNew) {
-                              <span class="tag tag-accent">New</span>
-                            }
-                          </p>
-                          <p class="card-meta m-0 text-[12px]">
-                            @if (passkey.createdAt) {
-                              Added {{ passkey.createdAt | date: 'mediumDate' }}
-                            } @else {
-                              Added some time ago
-                            }
-                            @if (!passkey.passwordless) {
-                              · second factor
-                            }
-                          </p>
-                        </div>
-
-                        @if (busyPasskeyId() === passkey.id) {
-                          <span class="inline-flex items-center gap-[7px] text-muted text-[12.5px]">
-                            <span class="spinner" aria-hidden="true"></span>Removing
-                          </span>
-                        } @else if (confirmingPasskeyId() !== passkey.id) {
-                          <button
-                            type="button"
-                            class="btn btn-ghost btn-danger text-[13px]"
-                            (click)="confirmingPasskeyId.set(passkey.id)"
-                          >
-                            Delete
-                          </button>
-                        }
+                      </span>
+                      <div class="mr-auto min-w-0 flex-[1_1_160px]">
+                        <p class="m-0 flex flex-wrap items-center gap-2 text-[15px]">
+                          <span class="truncate">{{ passkey.label || 'Passkey' }}</span>
+                          @if (passkey.isNew) {
+                            <span class="tag tag-accent">New</span>
+                          }
+                        </p>
+                        <p
+                          class="m-0 text-[12px] text-[color-mix(in_srgb,var(--color-text)_45%,transparent)]"
+                        >
+                          @if (passkey.createdAt) {
+                            Added {{ passkey.createdAt | date: 'mediumDate' }}
+                          } @else {
+                            Added some time ago
+                          }
+                          @if (!passkey.passwordless) {
+                            · second factor
+                          }
+                        </p>
                       </div>
 
-                      <!-- The confirmation opens under the row it is asking about, not over it. -->
-                      @if (confirmingPasskeyId() === passkey.id) {
-                        <div
-                          class="strip-danger rise flex flex-wrap items-center gap-3 px-[15px] py-3"
+                      @if (busyPasskeyId() === passkey.id) {
+                        <span class="inline-flex items-center gap-[7px] text-muted text-[12.5px]">
+                          <span class="spinner" aria-hidden="true"></span>Removing
+                        </span>
+                      } @else if (confirmingPasskeyId() !== passkey.id) {
+                        <button
+                          type="button"
+                          class="btn btn-ghost btn-muted-danger text-[13px]"
+                          (click)="confirmingPasskeyId.set(passkey.id)"
                         >
-                          <p class="m-0 min-w-0 flex-[1_1_210px] text-[13px] leading-[1.5]">
-                            Delete this passkey? Signing in from
-                            {{ passkey.label || 'that device' }} will need a mailed code again.
-                          </p>
-                          <div class="flex gap-2">
-                            <button
-                              type="button"
-                              class="btn btn-danger"
-                              (click)="removePasskey(passkey.id)"
-                            >
-                              Delete passkey
-                            </button>
-                            <button
-                              type="button"
-                              class="btn btn-ghost text-[var(--color-text)]"
-                              (click)="confirmingPasskeyId.set(null)"
-                            >
-                              Keep
-                            </button>
-                          </div>
-                        </div>
+                          Remove
+                        </button>
                       }
-                    </li>
-                  }
-                </ul>
-                <div>
-                  <a
-                    [href]="addPasskeyUrl"
-                    rel="external"
-                    class="btn btn-primary"
-                    (click)="rememberPasskeysBeforeEnrolment()"
-                  >
-                    Add another passkey
-                  </a>
-                </div>
-              }
-            </div>
+                    </div>
+
+                    <!-- The confirmation opens under the row it is asking about, not over it. -->
+                    @if (confirmingPasskeyId() === passkey.id) {
+                      <div
+                        class="strip-danger rise flex flex-wrap items-center gap-3 px-[17px] py-3"
+                      >
+                        <p class="m-0 min-w-0 flex-[1_1_210px] text-[13px] leading-[1.5]">
+                          Remove this passkey? Signing in from
+                          {{ passkey.label || 'that device' }} will need a mailed code again.
+                        </p>
+                        <div class="flex gap-2">
+                          <button
+                            type="button"
+                            class="btn btn-danger"
+                            (click)="removePasskey(passkey.id)"
+                          >
+                            Remove passkey
+                          </button>
+                          <button
+                            type="button"
+                            class="btn btn-ghost text-[var(--color-text)]"
+                            (click)="confirmingPasskeyId.set(null)"
+                          >
+                            Keep
+                          </button>
+                        </div>
+                      </div>
+                    }
+                  </li>
+                }
+
+                @if (passkeys().length === 0) {
+                  <li class="surface-card rise px-[17px] py-[15px] text-muted text-[13px]">
+                    No passkeys yet. You'll sign in with a mailed code.
+                  </li>
+                }
+              </ul>
+
+              <!-- /add-passkey is a BFF endpoint, not an Angular route — full-page navigation. -->
+              <a
+                [href]="addPasskeyUrl"
+                rel="external"
+                class="btn btn-primary mt-[11px]"
+                (click)="rememberPasskeysBeforeEnrolment()"
+              >
+                <svg
+                  class="h-[15px] w-[15px]"
+                  viewBox="0 0 256 256"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M224 128a8 8 0 0 1-8 8h-80v80a8 8 0 0 1-16 0v-80H40a8 8 0 0 1 0-16h80V40a8 8 0 0 1 16 0v80h80a8 8 0 0 1 8 8"
+                  />
+                </svg>
+                {{ passkeys().length === 0 ? 'Add a passkey' : 'Add another passkey' }}
+              </a>
+            }
+
+            <p class="section-note">
+              Face, fingerprint or device PIN — one per device. Removing them all is safe; a mailed
+              code always works.
+            </p>
           </section>
 
-          <hr class="hr my-[26px]" />
+          <hr class="hr m-0" />
 
-          <!-- ────────────────────────── delete account ─────────────────────── -->
-          <section class="split">
-            <div class="split-aside">
-              <h2 class="text-[17px]">Delete account</h2>
-              <p class="m-0 text-muted text-[12.5px] leading-[1.5]">
-                Removes your sign-in and everything we hold for you, immediately and for good. No
-                undo, no grace period.
-              </p>
-            </div>
+          <!-- ────────────────────────────── leaving ────────────────────────── -->
+          <section class="py-[22px]">
+            <h2 class="section-label">Leaving</h2>
 
-            <div class="split-main">
-              @if (deleteStep() === 'form') {
-                <div class="panel-danger flex flex-col gap-[13px]">
-                  <div class="field">
-                    <label for="delete-confirmation">
-                      Type
-                      <span class="text-[var(--color-text)] [overflow-wrap:anywhere]">{{
-                        view()?.email ?? 'your email address'
-                      }}</span>
-                      to confirm
-                    </label>
-                    <input
-                      id="delete-confirmation"
-                      class="input max-w-[340px]"
-                      type="email"
-                      placeholder="your email address"
-                      autocomplete="off"
-                      spellcheck="false"
-                      [value]="deleteConfirmation()"
-                      (input)="deleteConfirmation.set($any($event.target).value)"
-                    />
-                  </div>
-                  <div>
-                    <button
-                      type="button"
-                      class="btn btn-danger"
-                      [disabled]="!confirmationMatches()"
-                      (click)="deleteStep.set('confirm')"
-                    >
-                      Delete my account
-                    </button>
-                  </div>
+            @if (deleteStep() === 'closed') {
+              <div class="rise">
+                <button type="button" class="btn btn-danger" (click)="openDelete()">
+                  Delete my account…
+                </button>
+                <p class="section-note max-w-[460px]">
+                  Removes your sign-in and everything we hold for you, immediately and for good. No
+                  undo, no grace period.
+                </p>
+              </div>
+            } @else {
+              <div class="panel-danger rise max-w-[460px]">
+                <p
+                  class="m-0 mb-1.5 font-[family-name:var(--font-heading)] text-[15px] text-[var(--color-danger-200)]"
+                >
+                  This is permanent
+                </p>
+                <p class="m-0 mb-[13px] text-muted text-[13px] leading-[1.6]">
+                  Your passkeys, and everything stored under this account, go with it. Type your
+                  email address to confirm.
+                </p>
+                <input
+                  id="delete-confirmation"
+                  class="input mb-[13px] min-h-[40px]"
+                  type="email"
+                  autocomplete="off"
+                  spellcheck="false"
+                  [attr.aria-label]="
+                    'Type ' + (view()?.email ?? 'your email address') + ' to confirm'
+                  "
+                  [placeholder]="view()?.email ?? 'your email address'"
+                  [value]="deleteConfirmation()"
+                  [disabled]="deleting()"
+                  (input)="deleteConfirmation.set($any($event.target).value)"
+                />
+                <div class="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    class="btn btn-danger"
+                    [disabled]="!confirmationMatches() || deleting()"
+                    (click)="deleteAccount()"
+                  >
+                    @if (deleting()) {
+                      <span class="spinner" aria-hidden="true"></span>
+                    }
+                    {{ deleting() ? 'Deleting' : 'Delete forever' }}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-ghost text-[color-mix(in_srgb,var(--color-text)_60%,transparent)]"
+                    [disabled]="deleting()"
+                    (click)="cancelDelete()"
+                  >
+                    Keep my account
+                  </button>
                 </div>
-              } @else {
-                <div class="panel-danger panel-danger-armed rise flex flex-col gap-[13px]">
-                  <div class="flex items-start gap-2.5">
-                    <svg
-                      class="mt-0.5 h-[18px] w-[18px] shrink-0 text-[var(--color-danger-300)]"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="1.7"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M12 4.5 21 19.5H3z" />
-                      <path d="M12 10v4" />
-                      <path d="M12 17h.01" />
-                    </svg>
-                    <div class="min-w-0">
-                      <p class="m-0 text-[15px] text-[var(--color-danger-200)]">
-                        Delete {{ view()?.email }}?
-                      </p>
-                      <p class="mt-[3px] mb-0 text-muted text-[13px] leading-[1.5]">
-                        Your projects, exports and passkeys go with it. We can't bring any of it
-                        back.
-                      </p>
-                    </div>
-                  </div>
-                  <div class="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      class="btn btn-danger"
-                      [disabled]="deleting()"
-                      (click)="deleteAccount()"
-                    >
-                      @if (deleting()) {
-                        <span class="spinner" aria-hidden="true"></span>
-                      }
-                      {{ deleting() ? 'Deleting' : 'Yes, delete everything' }}
-                    </button>
-                    <button
-                      type="button"
-                      class="btn btn-ghost text-[var(--color-text)]"
-                      [disabled]="deleting()"
-                      (click)="cancelDelete()"
-                    >
-                      Keep my account
-                    </button>
-                  </div>
-                </div>
-              }
-            </div>
+              </div>
+            }
           </section>
         }
       </main>
@@ -500,11 +499,13 @@ export class Account {
   protected readonly deleteConfirmation = signal('');
 
   /**
-   * Deleting takes two deliberate acts, not one: typing the address arms the button, and the
-   * button swaps the form for a confirmation that spells out what goes. The first step proves the
-   * user knows which account this is; the second proves they meant it.
+   * Deleting still takes two deliberate acts, but the first one is now opening the thing at all:
+   * the section offers a single button, and the panel it opens is where the address is typed and
+   * the irreversible button lives. The old shape kept a confirmation form permanently expanded
+   * under the heading, which put the page's most destructive control on screen at all times and
+   * needed a second armed screen to make up for it.
    */
-  protected readonly deleteStep = signal<'form' | 'confirm'>('form');
+  protected readonly deleteStep = signal<'closed' | 'open'>('closed');
 
   /**
    * Which step of the email change is on screen. It is not purely local: `reload()` puts the page
@@ -521,7 +522,7 @@ export class Account {
   protected readonly resendIn = signal(0);
   private resendTimer: ReturnType<typeof setInterval> | null = null;
 
-  /** The passkey a Delete click has armed, if any — the second tap is the one that acts. */
+  /** The passkey a Remove click has armed, if any — the second tap is the one that acts. */
   protected readonly confirmingPasskeyId = signal<string | null>(null);
   protected readonly busyPasskeyId = signal<string | null>(null);
 
@@ -539,6 +540,29 @@ export class Account {
       ...passkey,
       isNew: !!known && !known.has(passkey.id),
     }));
+  });
+
+  /** The address, or what stands in for it while the first load is still out. */
+  protected readonly emailLabel = computed(() =>
+    this.loading() ? '…' : (this.view()?.email ?? 'Unknown'),
+  );
+
+  /** The avatar's one letter. Decoration, hence `aria-hidden` where it is rendered. */
+  protected readonly initial = computed(() => {
+    const email = this.view()?.email ?? '';
+    return (email[0] ?? '?').toUpperCase();
+  });
+
+  /**
+   * How this account signs in, as the identity chip states it. Says nothing rather than guessing
+   * when the credential list is the one thing that could not be read.
+   */
+  protected readonly signInSummary = computed(() => {
+    const view = this.view();
+    if (!view || view.passkeysUnavailable) {
+      return 'Signed in';
+    }
+    return view.passkeys.length > 0 ? 'Signed in · passkey' : 'Signed in · emailed code';
   });
 
   /** The six boxes, padded out so the empty ones still draw. */
@@ -569,9 +593,9 @@ export class Account {
   );
 
   /**
-   * Deleting is irreversible and the button sits under a heading that says so, so it stays inert
-   * until the user has typed the address the account is reached at. Case and stray spaces are not
-   * the point of the exercise.
+   * Deleting is irreversible, so the button in the open panel stays inert until the user has
+   * typed the address the account is reached at. Case and stray spaces are not the point of the
+   * exercise.
    */
   protected readonly confirmationMatches = computed(() => {
     const email = this.view()?.email?.trim().toLowerCase();
@@ -590,6 +614,14 @@ export class Account {
       this.consumeEnrolmentSnapshot();
       void this.reload();
     });
+  }
+
+  /**
+   * How long a list row waits before it rises. The cap is what keeps the stagger a flourish on a
+   * first paint rather than a delay on the row a returning user is looking for.
+   */
+  protected riseDelay(index: number): number {
+    return Math.min(index, PASSKEY_STAGGER_CAP) * PASSKEY_STAGGER_MS;
   }
 
   protected async reload(): Promise<void> {
@@ -781,12 +813,24 @@ export class Account {
     }
   }
 
+  /** Opens the confirmation panel. Nothing typed into a previous one survives into this one. */
+  protected openDelete(): void {
+    this.deleteConfirmation.set('');
+    this.deleteStep.set('open');
+  }
+
   protected cancelDelete(): void {
-    this.deleteStep.set('form');
+    this.deleteStep.set('closed');
     this.deleteConfirmation.set('');
   }
 
   protected async deleteAccount(): Promise<void> {
+    // The button is disabled until the address matches; this is the same guard for a click that
+    // arrived some other way (Enter on a stale focus, a synthetic event).
+    if (!this.confirmationMatches() || this.deleting()) {
+      return;
+    }
+
     this.deleting.set(true);
     this.error.set('');
     try {
@@ -807,6 +851,10 @@ export class Account {
 
 /** Matches `PendingEmailChange.RequestCooldown` on auth-svc — the countdown is only a courtesy. */
 const RESEND_COOLDOWN_SECONDS = 60;
+
+/** The passkey list's entrance stagger: one step per row, and no more than this many steps. */
+const PASSKEY_STAGGER_MS = 45;
+const PASSKEY_STAGGER_CAP = 5;
 
 const ENROLMENT_SNAPSHOT_KEY = 'protofast.account.passkeys-before-enrolment';
 

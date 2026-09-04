@@ -41,7 +41,7 @@ chmod 600 /opt/protofast/.env
 # deploy.sh, and the version manifest — and bring the edge up. On the very first
 # boot the manifest is absent, so skip and let the first deploy converge.
 if aws s3 cp "s3://${assets_bucket}/deploy/versions.env" /opt/protofast/versions.env --region "${aws_region}"; then
-  aws s3 cp "s3://${assets_bucket}/deploy/docker-compose.host-a.yml" /opt/protofast/docker-compose.yml --region "${aws_region}"
+  aws s3 cp "s3://${assets_bucket}/deploy/docker-compose.host-edge.yml" /opt/protofast/docker-compose.yml --region "${aws_region}"
   aws s3 cp "s3://${assets_bucket}/deploy/deploy.sh"                  /opt/protofast/deploy.sh          --region "${aws_region}"
   chmod +x /opt/protofast/deploy.sh
   /opt/protofast/deploy.sh bootstrap || echo "bootstrap failed; next deploy will converge"

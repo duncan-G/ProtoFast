@@ -4,43 +4,55 @@
 
 ```mermaid
 graph TD
-    subgraph Aspire["Aspire AppHost"]
-        direction TB
-        Dashboard["Dashboard"]
-    end
-
     Browser["Browser"]
 
-    Envoy["Envoy Front Proxy"]
-
-    subgraph Services[".NET gRPC Services"]
-        Auth["Auth · /auth/*"]
-        Payments["Payments · /payments/*"]
-        Api["Api · /api/*"]
+    subgraph Envoy["Envoy front proxy · one listener per client"]
+        LAdmin["admin listener"]
+        LPF["protofast listener"]
     end
 
-    subgraph Clients["Angular Clients"]
-        Admin["Admin · SSR · /"]
-        App["App · placeholder"]
+    subgraph Clients["Angular clients · SSR"]
+        NgAdmin["admin"]
+        NgPF["protofast"]
     end
 
-    Browser -->|HTTP| Clients
-    Browser -->|gRPC-Web| Envoy
-    Envoy -->|"/auth/*"| Auth
-    Envoy -->|"/payments/*"| Payments
-    Envoy -->|"/api/*"| Api
+    subgraph Services[".NET gRPC services"]
+        Auth["auth · BFF"]
+        Payments["payments"]
+        Api["api"]
+    end
 
-    Aspire -.-|orchestrates| Envoy
+    subgraph State["Stateful"]
+        KC["Keycloak"]
+        PG["Postgres"]
+        Redis["Redis"]
+    end
+
+    Browser -->|"https://localhost:20000"| LAdmin
+    Browser -->|"https://localhost:20001"| LPF
+    Browser -->|"login pages"| KC
+
+    LAdmin --> NgAdmin
+    LPF --> NgPF
+    LAdmin & LPF -->|"/signin · /account/*"| Auth
+    LAdmin & LPF -->|"/payments/*"| Payments
+    LAdmin & LPF -->|"/api/*"| Api
+    LAdmin & LPF -.->|"ext_authz Check"| Auth
+
+    Auth --> KC
+    Auth --> Redis
+    Auth --> PG
+    KC --> PG
+
+    Aspire["Aspire AppHost"] -.-|orchestrates| Envoy
     Aspire -.-|orchestrates| Clients
     Aspire -.-|orchestrates| Services
+    Aspire -.-|orchestrates| State
 ```
 
+Every request goes through Envoy: each client gets its own HTTPS listener, so pages and API calls share one origin. Envoy routes by path prefix — `/payments/*` and `/api/*` to the gRPC services, sign-in and account endpoints to `auth` — and asks `auth` who the caller is (ext_authz) before forwarding anything else. Ports are assigned by Aspire at startup, except the two client listeners, which are pinned because Keycloak's redirect URIs are exact.
 
-
-All ports are dynamically assigned by Aspire at startup — nothing is hardcoded.
-The browser loads the Angular clients directly. gRPC-Web requests from
-the clients flow through Envoy, which routes to the backend services
-by path prefix.
+For the full picture, including the production topology, see [docs/new/01-topology.md](docs/new/01-topology.md).
 
 ## Requirements
 

@@ -145,7 +145,7 @@ PY
     printf '%s\n' "$kc"   > "${APP_DIR}/kc-db-password"
     printf '%s\n' "$auth" > "${APP_DIR}/auth-db-password" )
   chmod 600 "${APP_DIR}/kc-db-password" "${APP_DIR}/auth-db-password"
-  # Same chown as user_data.host_b.sh.tftpl: Keycloak runs as uid 1000 and cats
+  # Same chown as user_data.host_services.sh.tftpl: Keycloak runs as uid 1000 and cats
   # this bind mount (no `_FILE` support). Rewriting as root:root 0600 here would
   # undo cloud-init and fail with Permission denied. Postgres still reads as root.
   chown 1000:1000 "${APP_DIR}/kc-db-password"
@@ -1243,7 +1243,7 @@ fi
 
 # Region, same self-sufficiency rationale as ECR. cloud-init seeds it, but auth's
 # container now interpolates AWS_REGION from .env for its in-process Secrets Manager
-# read (docker-compose.host-b.yml), and the AWS SDK resolves no region on its own —
+# read (docker-compose.host-services.yml), and the AWS SDK resolves no region on its own —
 # a blank one makes auth crash on boot with "No RegionEndpoint or ServiceURL
 # configured". Host B is pinned against re-provisioning, so a box whose .env predates
 # that line would never get one; the deploy job passes it on every apply.

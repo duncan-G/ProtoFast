@@ -17,6 +17,9 @@ const otelEndpoint = (process.env['SERVER_OTEL_ENDPOINT'] || '').replace(
 delete process.env['OTEL_SERVICE_NAME'];
 
 const isDev = process.env['NODE_ENV'] === 'development';
+
+// Default delay to send logs to telemetry server is 5 seconds.
+// Increase the speed in development.
 const batchConfig = isDev ? { scheduledDelayMillis: 1000 } : undefined;
 
 // In the unified SSR host every client bundle runs in one process; only the

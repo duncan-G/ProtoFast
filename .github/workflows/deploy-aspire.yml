@@ -21,7 +21,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/deploy-aspire.yml"
-      - "deploy/docker-compose.host-a.yml"
+      - "deploy/docker-compose.host-edge.yml"
       - "deploy/deploy.sh"
   workflow_dispatch:
     inputs:
@@ -101,7 +101,7 @@ jobs:
           # gzip BEFORE base64: SSM caps the document + all parameters at 97KB total and
           # the raw-encoded pair exceeds it (deploy.sh alone is ~84KB base64). Both files
           # are compressible text, so this lands near 31KB — see _component-deploy.yml.
-          COMPOSE_B64=$(gzip -9 -c deploy/docker-compose.host-a.yml | base64 -w0)
+          COMPOSE_B64=$(gzip -9 -c deploy/docker-compose.host-edge.yml | base64 -w0)
           DEPLOY_B64=$(gzip -9 -c deploy/deploy.sh | base64 -w0)
 
           cmd_id=$(aws ssm send-command \

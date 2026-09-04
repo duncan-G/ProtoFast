@@ -10,7 +10,7 @@
 # with the deploy bundle the same way the realm JSON and the themes do:
 #
 #   dev   apphost/Program.cs      -> /opt/keycloak/providers
-#   prod  deploy/docker-compose.host-b.yml (synced from S3 by deploy.sh)
+#   prod  deploy/docker-compose.host-services.yml (synced from S3 by deploy.sh)
 #
 # Re-run this after ANY change under email-otp/, and commit the result alongside
 # the source. A JAR that is newer than its sources is invisible to code review and

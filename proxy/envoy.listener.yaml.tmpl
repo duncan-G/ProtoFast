@@ -8,7 +8,11 @@
                 "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
                 codec_type: auto
                 stat_prefix: __LISTENER_NAME___http
+                # Use the remote ip address for the source ip address
                 use_remote_address: true
+                # Envoy will forward the scheme header to the upstream as https
+                # Upstream Kestrel servers are listening on HTTP/2 wihout TLS and will
+                # reject the request if https scheme header is present
                 scheme_header_transformation:
                   scheme_to_overwrite: http
                 rds:
@@ -23,10 +27,10 @@
                   - name: envoy.filters.http.grpc_web
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_web.v3.GrpcWeb
-                  # Annotate-only identity gate. It never denies; it injects identity headers for
-                  # valid sessions and is turned OFF per-route where annotation is pointless (static
-                  # assets, the auth flow itself). failure_mode_allow keeps public pages up if
-                  # auth-svc is down — the API stays fail-closed via the backend's internal-JWT check.
+                  # Checks identity through auth service. Never blocks: no session means
+                  # anonymous. Some routes skip this (static files, sign-in).
+                  # failure_mode_allow: if auth is down, continue as anonymous instead of 5xx
+                  # APIs still reject those requests — they require the injected JWT.
                   - name: envoy.filters.http.ext_authz
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
@@ -45,9 +49,39 @@
                     # failure/termination, no route/cluster, retries exhausted):
                     # serve our own non-cacheable 500 + styled HTML so cloudflared
                     # never falls through to Cloudflare's default error page.
+                    #
+                    # Page routes only. local_reply_config is listener-wide, but an HTML
+                    # body is wrong for the gRPC-web (/api/, /payments/), telemetry
+                    # (/otlp/) and JSON (/account/) surfaces, and the Keycloak vhost
+                    # (/realms/, /resources/) is a separate origin that must not render
+                    # this app's error page. Those keep Envoy's default empty body.
+                    #
+                    # Both :path and x-envoy-original-path are tested: the router applies
+                    # prefix_rewrite before the upstream failure is known, so /api/foo is
+                    # already :path=/foo by the time this runs, with the pre-rewrite path
+                    # in x-envoy-original-path. treat_missing_header_as_empty is required
+                    # there — an absent header does NOT satisfy invert_match, so without it
+                    # the unrewritten page routes (which never set it) match nothing.
                     - filter:
-                        response_flag_filter:
-                          flags: ["UH", "UF", "UC", "UT", "NC", "NR", "URX"]
+                        and_filter:
+                          filters:
+                            - response_flag_filter:
+                                flags: ["UH", "UF", "UC", "UT", "NC", "NR", "URX"]
+                            - header_filter:
+                                header:
+                                  name: ":path"
+                                  string_match:
+                                    safe_regex:
+                                      regex: "^/(api|payments|otlp|account|realms|resources)/.*"
+                                  invert_match: true
+                            - header_filter:
+                                header:
+                                  name: "x-envoy-original-path"
+                                  string_match:
+                                    safe_regex:
+                                      regex: "^/(api|payments|otlp|account|realms|resources)/.*"
+                                  treat_missing_header_as_empty: true
+                                  invert_match: true
                       status_code: 500
                       headers_to_add:
                         - header: { key: "cache-control", value: "no-store, no-cache, must-revalidate, max-age=0" }
@@ -69,11 +103,16 @@
                                 string_match:
                                   prefix: "/otlp/"
                                 invert_match: true
+                          # Set only on rewritten routes (/otlp/, /api/, /payments/).
+                          # treat_missing_header_as_empty because a missing header does not
+                          # satisfy invert_match on its own — without it this and_filter drops
+                          # every unrewritten request, i.e. all page and /account/ traffic.
                           - header_filter:
                               header:
                                 name: "x-envoy-original-path"
                                 string_match:
                                   prefix: "/otlp/"
+                                treat_missing_header_as_empty: true
                                 invert_match: true
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
@@ -91,11 +130,16 @@
                                 string_match:
                                   prefix: "/otlp/"
                                 invert_match: true
+                          # Set only on rewritten routes (/otlp/, /api/, /payments/).
+                          # treat_missing_header_as_empty because a missing header does not
+                          # satisfy invert_match on its own — without it this and_filter drops
+                          # every unrewritten request, i.e. all page and /account/ traffic.
                           - header_filter:
                               header:
                                 name: "x-envoy-original-path"
                                 string_match:
                                   prefix: "/otlp/"
+                                treat_missing_header_as_empty: true
                                 invert_match: true
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.access_loggers.open_telemetry.v3.OpenTelemetryAccessLogConfig
@@ -170,10 +214,9 @@
                   - name: envoy.filters.http.grpc_web
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_web.v3.GrpcWeb
-                  # Annotate-only identity gate. It never denies; it injects identity headers for
-                  # valid sessions and is turned OFF per-route where annotation is pointless (static
-                  # assets, the auth flow itself). failure_mode_allow keeps public pages up if
-                  # auth-svc is down — the API stays fail-closed via the backend's internal-JWT check.
+                  # Checks identity through auth service. Never blocks: no session means anonymous.
+                  # Some routes skip this (static files, sign-in). failure_mode_allow: if auth is down,
+                  # continue as anonymous instead of 5xx. APIs still reject those requests — they require the injected JWT.
                   - name: envoy.filters.http.ext_authz
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
@@ -192,9 +235,39 @@
                     # failure/termination, no route/cluster, retries exhausted):
                     # serve our own non-cacheable 500 + styled HTML so cloudflared
                     # never falls through to Cloudflare's default error page.
+                    #
+                    # Page routes only. local_reply_config is listener-wide, but an HTML
+                    # body is wrong for the gRPC-web (/api/, /payments/), telemetry
+                    # (/otlp/) and JSON (/account/) surfaces, and the Keycloak vhost
+                    # (/realms/, /resources/) is a separate origin that must not render
+                    # this app's error page. Those keep Envoy's default empty body.
+                    #
+                    # Both :path and x-envoy-original-path are tested: the router applies
+                    # prefix_rewrite before the upstream failure is known, so /api/foo is
+                    # already :path=/foo by the time this runs, with the pre-rewrite path
+                    # in x-envoy-original-path. treat_missing_header_as_empty is required
+                    # there — an absent header does NOT satisfy invert_match, so without it
+                    # the unrewritten page routes (which never set it) match nothing.
                     - filter:
-                        response_flag_filter:
-                          flags: ["UH", "UF", "UC", "UT", "NC", "NR", "URX"]
+                        and_filter:
+                          filters:
+                            - response_flag_filter:
+                                flags: ["UH", "UF", "UC", "UT", "NC", "NR", "URX"]
+                            - header_filter:
+                                header:
+                                  name: ":path"
+                                  string_match:
+                                    safe_regex:
+                                      regex: "^/(api|payments|otlp|account|realms|resources)/.*"
+                                  invert_match: true
+                            - header_filter:
+                                header:
+                                  name: "x-envoy-original-path"
+                                  string_match:
+                                    safe_regex:
+                                      regex: "^/(api|payments|otlp|account|realms|resources)/.*"
+                                  treat_missing_header_as_empty: true
+                                  invert_match: true
                       status_code: 500
                       headers_to_add:
                         - header: { key: "cache-control", value: "no-store, no-cache, must-revalidate, max-age=0" }
@@ -216,11 +289,16 @@
                                 string_match:
                                   prefix: "/otlp/"
                                 invert_match: true
+                          # Set only on rewritten routes (/otlp/, /api/, /payments/).
+                          # treat_missing_header_as_empty because a missing header does not
+                          # satisfy invert_match on its own — without it this and_filter drops
+                          # every unrewritten request, i.e. all page and /account/ traffic.
                           - header_filter:
                               header:
                                 name: "x-envoy-original-path"
                                 string_match:
                                   prefix: "/otlp/"
+                                treat_missing_header_as_empty: true
                                 invert_match: true
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
@@ -238,11 +316,16 @@
                                 string_match:
                                   prefix: "/otlp/"
                                 invert_match: true
+                          # Set only on rewritten routes (/otlp/, /api/, /payments/).
+                          # treat_missing_header_as_empty because a missing header does not
+                          # satisfy invert_match on its own — without it this and_filter drops
+                          # every unrewritten request, i.e. all page and /account/ traffic.
                           - header_filter:
                               header:
                                 name: "x-envoy-original-path"
                                 string_match:
                                   prefix: "/otlp/"
+                                treat_missing_header_as_empty: true
                                 invert_match: true
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.access_loggers.open_telemetry.v3.OpenTelemetryAccessLogConfig
