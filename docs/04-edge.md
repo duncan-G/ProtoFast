@@ -3,10 +3,6 @@
 *How the proxy's configuration is produced, what it routes, and what it enforces.
 Self-contained.*
 
-> **Looking for the map?** [`docs/edge-map/`](../edge-map/index.html) is an interactive
-> version of this page — entry, listeners, virtual hosts, routes and upstreams as a board you
-> click through, with each hop's settings shown next to it. Open `index.html` in a browser.
-
 ## Envoy's config is generated at container start
 
 There is no checked-in `envoy.yaml`. [`proxy/entrypoint.sh`](../../proxy/entrypoint.sh)
