@@ -14,6 +14,22 @@
       "Resource": "*"
     },
     {
+      "Sid": "DevSecret",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": "arn:aws:secretsmanager:*:*:secret:${project}/dev*"
+    },
+    {
+      "Sid": "NoProdSecretValues",
+      "Effect": "Deny",
+      "Action": ["secretsmanager:GetSecretValue", "secretsmanager:PutSecretValue"],
+      "Resource": "arn:aws:secretsmanager:*:*:secret:${project}/app*"
+    },
+    {
       "Sid": "NoSendCommandOrWrites",
       "Effect": "Deny",
       "Action": ["ssm:SendCommand", "iam:*", "organizations:*", "account:*"],

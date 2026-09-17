@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Populate / rotate the single ProtoFast app secret (§4.4).
+# Populate / rotate a ProtoFast Secrets Manager secret (§4.4).
 #
 # Secret values live ONLY in Secrets Manager — never in Terraform state. Terraform
 # creates the empty shell with NO version (the CI role is denied the value APIs);
@@ -11,13 +11,14 @@
 # key that is still missing is generated.
 #
 # Format: a JSON key/value map — the native Secrets Manager layout the console
-# produces and that the instances read (deploy.sh, cloud-init). Keys are prefixed
+# produces and that the instances (and the local AppHost) read. Keys are prefixed
 # to scope a value to a service: Infra_, Auth_, Payments_, Api_, Shared_. A legacy
 # ';'-separated blob from an older version is auto-migrated to a map on the next run.
 #
 # Usage:
-#   scripts/populate-secrets.sh                         # generate any missing managed keys
-#   scripts/populate-secrets.sh Payments_StripeKey=sk_live_...   # set/override specific keys
+#   scripts/populate-secrets.sh                         # prod protofast/app: generate missing managed keys
+#   scripts/populate-secrets.sh Payments_StripeKey=sk_live_...
+#   scripts/populate-secrets.sh --dev Payments_StripeKey=sk_test_...  # protofast/dev, as Developer SSO
 #
 # Social sign-in (all optional; the realm ships both providers disabled, so an
 # absent value just means no button):
@@ -32,17 +33,34 @@
 #       Auth_Apple__PrivateKey="$(grep -v -- ----- AuthKey_ABC123.p8 | tr -d '\n')"
 #
 # Env:
-#   SECRET_ID   (default: <project>/app)  — must match aws_secretsmanager_secret.app.name
+#   SECRET_ID   (default: <project>/app, or <project>/dev with --dev)
 #   AWS_REGION  (default: from your AWS config)
+#   AWS_PROFILE (use `developer` for --dev)
 set -euo pipefail
 
 PROJECT="${PROJECT:-protofast}"
-SECRET_ID="${SECRET_ID:-$PROJECT/app}"
+DEV=0
+if [[ "${1:-}" == "--dev" ]]; then
+  DEV=1
+  shift
+fi
+
+if [[ -z "${SECRET_ID:-}" ]]; then
+  if [[ "$DEV" -eq 1 ]]; then
+    SECRET_ID="$PROJECT/dev"
+  else
+    SECRET_ID="$PROJECT/app"
+  fi
+fi
 
 # Keys this script auto-generates a 32-char password for if absent. Manually-managed
 # keys (e.g. Payments_StripeKey, third-party API keys) are NOT listed here — pass
-# them as CLI args.
+# them as CLI args. The DEV secret is for laptop-only values (test API keys); it
+# does not generate the production DB passwords.
 MANAGED_KEYS="Infra_KcDbPassword Auth_DbPassword"
+if [[ "$DEV" -eq 1 ]]; then
+  MANAGED_KEYS=""
+fi
 
 # Pull the current value (treat the placeholder / a brand-new secret as empty).
 current=$(aws secretsmanager get-secret-value --secret-id "$SECRET_ID" \

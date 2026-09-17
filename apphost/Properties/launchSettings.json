@@ -11,7 +11,8 @@
         "DOTNET_ENVIRONMENT": "Development",
         "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "https://0.0.0.0:21251",
         "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "https://localhost:22011",
-        "ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS": "true"
+        "ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS": "true",
+        "AWS_PROFILE": "developer"
       }
     },
     "https-ssr-host": {
@@ -25,7 +26,8 @@
         "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "https://0.0.0.0:21251",
         "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "https://localhost:22011",
         "ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS": "true",
-        "SsrHost__Dev": "true"
+        "SsrHost__Dev": "true",
+        "AWS_PROFILE": "developer"
       }
     },
     "http": {
@@ -38,7 +40,8 @@
         "DOTNET_ENVIRONMENT": "Development",
         "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "http://localhost:19130",
         "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "http://localhost:20084",
-        "ASPIRE_ALLOW_UNSECURED_TRANSPORT": "true"
+        "ASPIRE_ALLOW_UNSECURED_TRANSPORT": "true",
+        "AWS_PROFILE": "developer"
       }
     }
   }

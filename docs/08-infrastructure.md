@@ -63,8 +63,9 @@ and the published deploy manifest. Fully private; only failed multipart uploads 
 lifecycle-expired, because the live client tag may sit unchanged for a long time.
 `ecr.tf`: one immutable-tag repository per image, scan-on-push, keep the last 20.
 
-**Secrets** (`secrets.tf`) — the empty `protofast/app` shell only; see
-[layer 06](06-secrets.md).
+**Secrets** (`secrets.tf`) — empty `protofast/app` (production) and `protofast/dev`
+(local AppHost) shells only; see [layer 06](06-secrets.md). The instance profile
+reads `/app`; Developer SSO reads `/dev`.
 
 **IAM** (`iam.tf`) — the instance profile (S3 read, ECR pull, Secrets Manager read,
 SSM plus a dedicated policy for streaming SSM output to CloudWatch Logs).

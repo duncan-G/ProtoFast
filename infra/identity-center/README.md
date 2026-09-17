@@ -12,7 +12,7 @@ Three groups, three jobs — one permission set each:
 | ----------------- | --------------- | ------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `Org-Admins`      | `OrgAdmin`      | 4h      | managed `AdministratorAccess`                                                 | Identity management + finops. Standing admin once root is locked.                                                        |
 | `Platform-Admins` | `PlatformAdmin` | 4h      | inline `[platform-admin.json](policies/platform-admin.json)`                  | Infra + deployments (`ecr`/`ssm` cover push and deploy). Boundary-capped, denies `organizations`/`account`/`aws-portal`. |
-| `Developers`      | `Developer`     | 8h      | managed `ViewOnlyAccess` + inline `[developer.json](policies/developer.json)` | Debug prod: read logs, SSM `StartSession`, pull images. No writes.                                                       |
+| `Developers`      | `Developer`     | 8h      | managed `ViewOnlyAccess` + inline `[developer.json](policies/developer.json)` | Debug prod: read logs, SSM `StartSession`, pull images. Get/Put on `protofast/dev` only; denied prod secret values. |
 
 
 

@@ -26,6 +26,8 @@
     <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.1" />
     <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.100.2" />
     <PackageReference Include="AWSSDK.SecretsManager" Version="4.0.100.2" />
+    <PackageReference Include="AWSSDK.SSO" Version="4.0.100.2" />
+    <PackageReference Include="AWSSDK.SSOOIDC" Version="4.0.100.2" />
   </ItemGroup>
 
 </Project>

@@ -46,9 +46,10 @@ Host B over the private subnet.
 - **Config in prod** = `deploy/docker-compose.host-*.yml` (shape)
   - `/opt/protofast/.env` (stable values, seeded from cloud-init and Secrets
   Manager) + `/opt/protofast/versions.env` (which image tag each component runs).
-- **Secrets** live in exactly one place: the AWS Secrets Manager secret
-`protofast/app`. Terraform creates it empty; values are written out of band by
-`scripts/populate-secrets.sh`.
+- **Secrets** live in AWS Secrets Manager. Production uses `protofast/app`; local
+  `aspire run` uses `protofast/dev`. Each .NET service reads the secret in-process.
+  The AppHost only authenticates SSO profile `developer`. Terraform creates both
+  empty; values are written out of band by `scripts/populate-secrets.sh`.
 - **Deploys** are per-component. Each component's artifact is tagged with a hash
 of its own source, so identical input reuses the existing artifact, and a
 rollback is "deploy this old tag again".

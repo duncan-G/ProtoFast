@@ -22,6 +22,11 @@ x-dotnet-env: &dotnet-env
   ASPNETCORE_HTTP_PORTS: "8080"
   ASPNETCORE_KESTREL__ENDPOINTDEFAULTS__PROTOCOLS: Http2
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://${HOST_A_IP}:4317"
+  # Every .NET service reads Secrets Manager in-process. The SDK takes credentials
+  # from the instance role over IMDS (hop limit 2 — infra/compute.tf) but resolves
+  # NO region on its own, so pass one or the client ctor throws.
+  AWS_REGION: ${AWS_REGION}
+  AWS_DEFAULT_REGION: ${AWS_REGION}
 
 x-grpc-health: &grpc-health
   test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=localhost:8080"]
@@ -45,14 +50,8 @@ services:
     # Postgres init script reads — §3.2).
     environment:
       <<: *dotnet-env
-      # auth reads the app secret (Auth_/Shared_ keys) from Secrets Manager itself at
-      # startup. The SDK takes credentials from the instance role over IMDS — which a
-      # container only reaches with metadata hop limit 2 (infra/compute.tf) — but it
-      # resolves NO region on its own, so pass one explicitly or the client ctor throws
-      # "No RegionEndpoint or ServiceURL configured". AWS_REGION comes from .env
-      # (cloud-init seeds it; every apply re-asserts it — deploy.sh).
-      AWS_REGION: ${AWS_REGION}
-      AWS_DEFAULT_REGION: ${AWS_REGION}
+      # auth reads protofast/app (Auth_/Shared_ keys) from Secrets Manager itself at
+      # startup. AWS_REGION is in x-dotnet-env.
       ConnectionStrings__redis: "redis:6379"
       # Chiseled images have no libgssapi_krb5; Npgsql Prefer otherwise logs a
       # load failure before falling through to password auth. We don't use Kerberos.
@@ -75,10 +74,9 @@ services:
       Auth_Smtp__StartTls: "${SMTP_STARTTLS:-true}"
       Auth_Smtp__User: "${SMTP_USER:-}"
       Auth_Smtp__Password: "${SMTP_PASSWORD:-}"
-      # NOTE: no Auth_InternalJwt__PrivateKeyPem* here. auth is the only service with the
-      # Secrets Manager provider (Program.cs, Production only), so the EC P-256 private key
-      # reaches it as InternalJwt:PrivateKeyPem straight from the Auth_InternalJwt__PrivateKeyPem
-      # entry in the app secret — no file, no bind mount, no host copy of the private key.
+      # NOTE: no Auth_InternalJwt__PrivateKeyPem* here. auth reads the EC P-256
+      # private key as InternalJwt:PrivateKeyPem from Auth_InternalJwt__PrivateKeyPem
+      # in protofast/app — no file, no bind mount, no host copy of the private key.
       # Setting PrivateKeyPemFile would SHADOW that: InternalJwtFactory prefers the file
       # whenever the path is non-empty.
       Auth_InternalJwt__KeyId: "${INTERNAL_JWT_KEY_ID:-prod-1}"

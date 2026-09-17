@@ -1,4 +1,5 @@
 ﻿using System.Security.Cryptography;
+using ProtoFast.AppHost.Aws;
 using ProtoFast.AppHost.ClientApp;
 using ProtoFast.AppHost.EnvoyProxy;
 using ProtoFast.AppHost.OpenTelemetryCollector;
@@ -6,6 +7,10 @@ using ProtoFast.AppHost.Postgres;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
+if (!builder.ExecutionContext.IsPublishMode)
+{
+    AwsDeveloperSso.EnsureAuthenticated();
+}
 
 // The unified SSR host serves every client in publish mode. Set SsrHost__Dev=true
 // (or run with --SsrHost:Dev=true) to smoke-test it locally instead of per-client
@@ -106,6 +111,7 @@ var auth = builder.AddProject<Projects.ProtoFast_Auth_Api>("auth")
     .WaitFor(authDb)
     .WaitFor(keycloak)
     .WithEnvironment("Auth_Keycloak__Authority", keycloak.GetEndpoint("http"))
+    .WithSsoProfile()
     .WithEnvironment("Auth_InternalJwt__PrivateKeyPem", internalJwtPrivateKeyPem);
 
 if (smtp4dev is not null)
@@ -144,11 +150,13 @@ keycloak
 // Payments
 var payments = builder.AddProject<Projects.ProtoFast_Payments_Api>("payments")
     .WithOtlpCollectorReference(otel)
+    .WithSsoProfile()
     .WithEnvironment("Shared_InternalJwt__PublicKeyPem", internalJwtPublicKeyPem);
 
 // Api
 var api = builder.AddProject<Projects.ProtoFast_Api>("api")
     .WithOtlpCollectorReference(otel)
+    .WithSsoProfile()
     .WithEnvironment("Shared_InternalJwt__PublicKeyPem", internalJwtPublicKeyPem);
 
 // Envoy Proxy

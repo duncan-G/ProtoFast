@@ -33,11 +33,24 @@ For `infra.yml`, `plan` is the default action. `destroy` tears down only the wor
 
 ## 4. Secrets
 
-All runtime values live in a single Secrets Manager secret, `protofast/app`. Terraform creates an empty shell; CI can neither read nor write the value. After the first `infra.yml` apply, fill it as **OrgAdmin** with [scripts/populate-secrets.sh](../scripts/populate-secrets.sh) (or manually in the console).
+Runtime values live in two Secrets Manager secrets. Terraform creates empty shells; CI can neither read nor write the values.
+
+| Secret | Who writes | Who reads |
+|---|---|---|
+| `protofast/app` | OrgAdmin, `scripts/populate-secrets.sh` | instance role + `auth` in-process |
+| `protofast/dev` | Developer SSO, `scripts/populate-secrets.sh --dev` | each .NET service in-process (SSO profile `developer`) |
+
+After the first `infra.yml` apply, fill production as **OrgAdmin** with [scripts/populate-secrets.sh](../scripts/populate-secrets.sh) (or manually in the console). Fill the DEV secret as a Developer:
+
+```sh
+export AWS_PROFILE=developer AWS_REGION=us-west-2
+aws sso login
+scripts/populate-secrets.sh --dev Payments_StripeKey=sk_test_...
+```
 
 Ground rules:
 
-- **OrgAdmin only.** PlatformAdmin has no `secretsmanager:` permissions, and the boundary blocks creating the IAM access key SES needs.
+- **OrgAdmin for `protofast/app`.** PlatformAdmin has no `secretsmanager:` value APIs, and the boundary blocks creating the IAM access key SES needs. Developer SSO can Get/Put `protofast/dev` only.
 - **The script is additive and idempotent.** Keys you don't pass are preserved; a bare run only generates the two DB passwords if they're missing. Re-run it any time to add or rotate keys.
 - **Never `terraform init`/`apply` this directory as OrgAdmin.** CI owns this state.
 - `deploy.sh` reads these keys on every Host B apply and seeds config files and `.env`. Missing DB passwords abort the deploy; missing auth, JWT, or SMTP keys leave those services broken or silent.

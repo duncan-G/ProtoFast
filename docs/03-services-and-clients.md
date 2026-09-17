@@ -38,10 +38,14 @@ Configuration sources, in increasing precedence:
 2. `appsettings.Development.json` — dev-only values (see [layer 02](02-local-development.md)).
 3. Environment variables, including the prefixed ones each service opts into:
    - `auth`: `builder.Configuration.AddEnvironmentVariables("Shared_")` then `("Auth_")`
-   - `payments`, `api`: `("Shared_")` only
-4. **`auth` only, and only when `ASPNETCORE_ENVIRONMENT=Production`**: the AWS
-   Secrets Manager provider, which pulls the `protofast/app` secret and keeps the
-   `Auth_`-prefixed keys. See [layer 06](06-secrets.md).
+   - `payments`: `("Shared_")` then `("Payments_")`
+   - `api`: `("Shared_")` then `("Api_")`
+4. **Secrets Manager**, in both Development and Production:
+   `auth` / `payments` / `api` each pull `protofast/app` (prod) or `protofast/dev`
+   (dev) and keep the keys matching their prefix plus `Shared_`. See
+   [layer 06](06-secrets.md). The AppHost only logs into SSO profile `developer`
+   so the services can resolve that profile. Auth integration tests boot the real
+   host as `Testing` and skip this provider.
 
 Connection strings arrive the standard way — `ConnectionStrings__redis`,
 `ConnectionStrings__auth` — injected by Aspire references in dev and written into
