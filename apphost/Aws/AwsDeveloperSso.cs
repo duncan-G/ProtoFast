@@ -12,6 +12,11 @@ internal static class AwsDeveloperSso
 {
     public const string ProfileName = "developer";
 
+    /// <summary>
+    /// Region child services talk to AWS in. Resolved by <see cref="EnsureAuthenticated"/>.
+    /// </summary>
+    public static string Region { get; private set; } = "";
+
     public static void EnsureAuthenticated()
     {
         Environment.SetEnvironmentVariable("AWS_PROFILE", ProfileName);
@@ -19,6 +24,9 @@ internal static class AwsDeveloperSso
 
         EnsureAwsCli();
         EnsureProfile();
+        Region = ResolveRegion();
+        Environment.SetEnvironmentVariable("AWS_REGION", Region);
+        Environment.SetEnvironmentVariable("AWS_DEFAULT_REGION", Region);
 
         if (IsAuthenticated())
         {
@@ -46,7 +54,40 @@ internal static class AwsDeveloperSso
 
         return resource
             .WithEnvironment("AWS_PROFILE", ProfileName)
-            .WithEnvironment("AWS_SDK_LOAD_CONFIG", "true");
+            .WithEnvironment("AWS_SDK_LOAD_CONFIG", "true")
+            // The AWS SDK reads no region from an SSO profile (the config file carries
+            // sso_region, which is the Identity Center region, not the workload's), so
+            // Secrets Manager in the services fails without this.
+            .WithEnvironment("AWS_REGION", Region)
+            .WithEnvironment("AWS_DEFAULT_REGION", Region);
+    }
+
+    /// <summary>
+    /// Environment first, then the profile's own region. Nothing is guessed: an SSO
+    /// profile with no region is a setup gap the developer has to close once.
+    /// </summary>
+    private static string ResolveRegion()
+    {
+        var fromEnvironment = Environment.GetEnvironmentVariable("AWS_REGION")
+                              ?? Environment.GetEnvironmentVariable("AWS_DEFAULT_REGION");
+        if (!string.IsNullOrWhiteSpace(fromEnvironment))
+        {
+            return fromEnvironment.Trim();
+        }
+
+        var configured = RunAws(["configure", "get", "region", "--profile", ProfileName], capture: true);
+        if (configured.ExitCode == 0 && !string.IsNullOrWhiteSpace(configured.StdOut))
+        {
+            return configured.StdOut.Trim();
+        }
+
+        throw new InvalidOperationException(
+            $"""
+             AWS profile '{ProfileName}' has no region, so services cannot reach Secrets Manager.
+             Set it once (use the region the protofast/* secrets live in):
+               aws configure set region <region> --profile {ProfileName}
+             Or export AWS_REGION before starting aspire.
+             """);
     }
 
     private static void EnsureAwsCli()

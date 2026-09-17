@@ -115,7 +115,13 @@ Configure the profile once, choosing the **Developer** permission set:
 
 ```bash
 aws configure sso --profile developer
+aws configure set region <region> --profile developer
 ```
+
+The region is a separate step: `aws configure sso` only writes `sso_region` (the
+Identity Center region), and the AWS SDK does not read that as the client region.
+Without it every service fails at startup with `No RegionEndpoint or ServiceURL
+configured`. Use the region the `protofast/*` secrets live in.
 
 Populate as that identity. Generate the local JWT pair and Keycloak secrets
 once, then add any extras:

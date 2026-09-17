@@ -15,7 +15,7 @@ URL. Stop with `Ctrl+C` or `aspire stop`.
 
 Prerequisites (installed idempotently by `bash scripts/setup-dev-dependencies.sh` on Ubuntu 24): .NET 10 SDK, Aspire CLI, Docker Engine, and Node 24.
 
-AWS CLI v2 and an SSO profile named **`developer`** (the Developer permission set) are required: the AppHost logs in at startup so each service can read `protofast/dev` from Secrets Manager. Configure once with `aws configure sso --profile developer`. See [layer 06](06-secrets.md).
+AWS CLI v2 and an SSO profile named **`developer`** (the Developer permission set) are required: the AppHost logs in at startup so each service can read `protofast/dev` from Secrets Manager. Configure once with `aws configure sso --profile developer`, and give that profile a region (`aws configure set region <region> --profile developer`) — an SSO profile has none by default, and the AppHost passes it to every service as `AWS_REGION`. See [layer 06](06-secrets.md).
 
 ## What the AppHost starts, and what it injects
 
