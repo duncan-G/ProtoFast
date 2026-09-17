@@ -1,0 +1,20 @@
+<!--
+  ThePlot mark — an open book: the left page carries the lines you read, the
+  right page opens into the play triangle you watch.
+
+  This is the reduced small-size cut of the lockup in
+  src/app/shared/theplot-logo.ts: the writing caret is dropped, because at 16px
+  on a browser tab it reads as a third line rather than as a cursor. Standalone
+  file, so the Reel & Ink tokens are inlined as their hex values — surface
+  #2b251f, accent-600 #a26e18, accent-500 #c48c38, accent-200 #f7e5ce.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="ThePlot">
+  <rect width="32" height="32" rx="7" fill="#2b251f"/>
+  <path d="M15 11.2C12.4 9.4 9 8.6 5.4 8.9V22.6C9 22.3 12.4 23.1 15 24.9Z" fill="#a26e18"/>
+  <path d="M17 11.2C19.6 9.4 23 8.6 26.6 8.9V22.6C23 22.3 19.6 23.1 17 24.9Z" fill="#c48c38"/>
+  <g stroke="#f7e5ce" stroke-width="1.7" stroke-linecap="round">
+    <path d="M8.2 14.8H12.4"/>
+    <path d="M8.2 18.4H11.2"/>
+  </g>
+  <path d="M20.6 13.4 24.9 16.6 20.6 19.8Z" fill="#f7e5ce" stroke="#f7e5ce" stroke-width="1.1" stroke-linejoin="round"/>
+</svg>

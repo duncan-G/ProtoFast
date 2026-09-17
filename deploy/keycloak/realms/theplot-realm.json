@@ -1,0 +1,446 @@
+{
+  "realm": "theplot",
+  "displayName": "ThePlot",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": true,
+  "rememberMe": true,
+  "verifyEmail": true,
+  "loginTheme": "theplot",
+  "emailTheme": "theplot",
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 10,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "passwordPolicy": "",
+  "ssoSessionIdleTimeout": 28800,
+  "ssoSessionMaxLifespan": 604800,
+  "accessTokenLifespan": 300,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "attributes": {
+    "actionTokenGeneratedByUserLifespan.verify-email": "43200",
+    "actionTokenGeneratedByUserLifespan.reset-credentials": "3600",
+    "acr.loa.map": "{\"basic\":1,\"passkey\":2}"
+  },
+  "webAuthnPolicyPasswordlessRpEntityName": "ThePlot",
+  "webAuthnPolicyPasswordlessPasskeysEnabled": true,
+  "webAuthnPolicyPasswordlessMediation": "conditional",
+  "webAuthnPolicyPasswordlessRpId": "${THEPLOT_WEBAUTHN_RP_ID:theplot.protofast.dev}",
+  "webAuthnPolicyPasswordlessSignatureAlgorithms": [
+    "ES256",
+    "RS256"
+  ],
+  "webAuthnPolicyPasswordlessAttestationConveyancePreference": "none",
+  "webAuthnPolicyPasswordlessAuthenticatorAttachment": "not specified",
+  "webAuthnPolicyPasswordlessResidentKey": "required",
+  "webAuthnPolicyPasswordlessUserVerificationRequirement": "required",
+  "webAuthnPolicyPasswordlessCreateTimeout": 0,
+  "webAuthnPolicyPasswordlessAvoidSameAuthenticatorRegister": false,
+  "webAuthnPolicyPasswordlessAcceptableAaguids": [],
+  "smtpServer": {
+    "host": "${SMTP_HOST:localhost}",
+    "port": "${SMTP_PORT:1025}",
+    "from": "${SMTP_FROM:no-reply@protofast.dev}",
+    "fromDisplayName": "ThePlot",
+    "ssl": "${SMTP_SSL:false}",
+    "starttls": "${SMTP_STARTTLS:false}",
+    "auth": "${SMTP_AUTH:false}",
+    "user": "${SMTP_USER:}",
+    "password": "${SMTP_PASSWORD:}"
+  },
+  "requiredActions": [
+    {
+      "alias": "verify-email-code",
+      "name": "Verify Email by Code",
+      "providerId": "verify-email-code",
+      "enabled": true,
+      "defaultAction": true,
+      "priority": 10,
+      "config": {}
+    },
+    {
+      "alias": "VERIFY_EMAIL",
+      "name": "Verify Email",
+      "providerId": "VERIFY_EMAIL",
+      "enabled": false,
+      "defaultAction": false,
+      "priority": 11,
+      "config": {}
+    },
+    {
+      "alias": "UPDATE_PASSWORD",
+      "name": "Update Password",
+      "providerId": "UPDATE_PASSWORD",
+      "enabled": false,
+      "defaultAction": false,
+      "priority": 40,
+      "config": {}
+    },
+    {
+      "alias": "UPDATE_PROFILE",
+      "name": "Update Profile",
+      "providerId": "UPDATE_PROFILE",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 20,
+      "config": {}
+    },
+    {
+      "alias": "webauthn-register",
+      "name": "Webauthn Register",
+      "providerId": "webauthn-register",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 70,
+      "config": {}
+    },
+    {
+      "alias": "webauthn-register-passwordless",
+      "name": "Webauthn Register Passwordless",
+      "providerId": "webauthn-register-passwordless",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 80,
+      "config": {}
+    }
+  ],
+  "authenticationFlows": [
+    {
+      "alias": "passwordless browser",
+      "description": "Email-first browser flow: passkey or a mailed code, never a password",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "identity-provider-redirector",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "requirement": "ALTERNATIVE",
+          "priority": 30,
+          "flowAlias": "passwordless forms",
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "passwordless forms",
+      "description": "Two branches keyed on the level of authentication the client asked for. Both are CONDITIONAL and nothing here is ALTERNATIVE: Keycloak discards every ALTERNATIVE that sits beside a REQUIRED or CONDITIONAL sibling.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "requirement": "CONDITIONAL",
+          "priority": 10,
+          "flowAlias": "passwordless sign-in",
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "requirement": "CONDITIONAL",
+          "priority": 20,
+          "flowAlias": "passwordless step-up",
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "passwordless sign-in",
+      "description": "Ordinary sign-in. The level-1 condition is what stamps a level on the session; without it the step-up branch below would fire on every first authentication, because an unlevelled session matches any level condition.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-level-of-authentication",
+          "authenticatorConfig": "basic-level-of-authentication",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "auth-username-form",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "requirement": "REQUIRED",
+          "priority": 30,
+          "flowAlias": "passwordless credentials",
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "passwordless credentials",
+      "description": "Passkey if this device has one, otherwise a code mailed to the address. Both are ALTERNATIVE, so either satisfies the step and the credential chooser can move between them.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "webauthn-authenticator-passwordless",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "email-otp",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "passwordless step-up",
+      "description": "Runs only for a client that asked for the passkey level (the admin console). Its max age is what makes it re-prompt inside a live SSO session instead of being satisfied once and forgotten.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-level-of-authentication",
+          "authenticatorConfig": "passkey-level-of-authentication",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "webauthn-authenticator-passwordless",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "passwordless registration",
+      "description": "Registration with no password step",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "registration-page-form",
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "flowAlias": "passwordless registration form",
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "passwordless registration form",
+      "description": "Email address only. registration-password-action is absent rather than disabled: it stamps an UPDATE_PASSWORD required action on every new user even when the realm has that action turned off.",
+      "providerId": "form-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "protofast-registration-user-creation",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    {
+      "alias": "basic-level-of-authentication",
+      "config": {
+        "loa-condition-level": "1",
+        "loa-max-age": "604800"
+      }
+    },
+    {
+      "alias": "passkey-level-of-authentication",
+      "config": {
+        "loa-condition-level": "2",
+        "loa-max-age": "900"
+      }
+    }
+  ],
+  "browserFlow": "passwordless browser",
+  "registrationFlow": "passwordless registration",
+  "directGrantFlow": "direct grant",
+  "resetCredentialsFlow": "reset credentials",
+  "clientAuthenticationFlow": "clients",
+  "dockerAuthenticationFlow": "docker auth",
+  "identityProviders": [
+    {
+      "alias": "google",
+      "displayName": "Google",
+      "providerId": "google",
+      "enabled": false,
+      "trustEmail": true,
+      "storeToken": false,
+      "addReadTokenRoleOnCreate": false,
+      "linkOnly": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "clientId": "${THEPLOT_GOOGLE_CLIENT_ID:}",
+        "clientSecret": "${THEPLOT_GOOGLE_CLIENT_SECRET:}",
+        "defaultScope": "openid profile email",
+        "syncMode": "IMPORT"
+      }
+    },
+    {
+      "alias": "apple",
+      "displayName": "Apple",
+      "providerId": "apple",
+      "enabled": false,
+      "trustEmail": true,
+      "storeToken": false,
+      "addReadTokenRoleOnCreate": false,
+      "linkOnly": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "clientId": "${THEPLOT_APPLE_CLIENT_ID:}",
+        "teamId": "${THEPLOT_APPLE_TEAM_ID:}",
+        "keyId": "${THEPLOT_APPLE_KEY_ID:}",
+        "p8PrivateKey": "${THEPLOT_APPLE_PRIVATE_KEY:}",
+        "defaultScope": "openid name email",
+        "syncMode": "IMPORT"
+      }
+    }
+  ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\":[{\"name\":\"username\",\"validations\":{\"length\":{\"min\":3,\"max\":255},\"username-prohibited-characters\":{},\"up-username-not-idn-homograph\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"email\",\"validations\":{\"email\":{},\"length\":{\"max\":255}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false}],\"groups\":[]}"
+          ]
+        }
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "theplot-web",
+      "name": "ThePlot Web",
+      "description": "ThePlot's browser client, and the only sign-in client in this realm. Confidential, authorization-code with PKCE S256, back-channel logout. The reviewer and admin roles are realm roles, so a reviewer signs in like any user.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "baseUrl": "${THEPLOT_WEB_BASE_URL:https://localhost:20002}",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${THEPLOT_WEB_CLIENT_SECRET:dev-theplot-web-secret}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "https://theplot.protofast.dev/signin-oidc",
+        "https://localhost:20002/signin-oidc"
+      ],
+      "webOrigins": [
+        "https://theplot.protofast.dev",
+        "+"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://theplot.protofast.dev/*##https://localhost:20002/*",
+        "backchannel.logout.url": "${BACKCHANNEL_LOGOUT_URL:}",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false"
+      }
+    },
+    {
+      "clientId": "account-admin",
+      "name": "ThePlot Account Administration",
+      "description": "Service account auth-svc uses for this realm's Admin API calls: read a user's passkeys, remove one, delete the account. A secret only authenticates in its own realm, so this is not the protofast account-admin's credential.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${THEPLOT_ACCOUNT_ADMIN_CLIENT_SECRET:dev-theplot-account-admin-secret}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": true,
+      "redirectUris": [],
+      "webOrigins": []
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-account-admin",
+      "enabled": true,
+      "serviceAccountClientId": "account-admin",
+      "clientRoles": {
+        "realm-management": [
+          "view-users",
+          "manage-users"
+        ]
+      }
+    }
+  ],
+  "roles": {
+    "realm": [
+      {
+        "name": "segmentation-reviewer",
+        "description": "May see and decide any pending segmentation review, not only their own documents. Read by ThePlot's review screen and enforced by api (plan \u00a79.10, \u00a717)."
+      },
+      {
+        "name": "segmentation-admin",
+        "description": "May read the model registry and its qualification state (ListModels)."
+      }
+    ]
+  }
+}

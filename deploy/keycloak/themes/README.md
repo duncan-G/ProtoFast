@@ -16,18 +16,27 @@ renders them; they import `template.ftl` by name, which resolves through the
 theme chain, so they still come out wearing this theme. Their copy lives in the
 JAR's own message bundle, under `pfOtp*` keys.
 
-`protofast` ships two theme types, both selected in the realm import
-(`../realms/protofast-realm.json`) and both reconciled onto an already-existing
-realm by `KC_REALM_KEYS` in `../../deploy.sh`:
+There is **one theme per realm**: `protofast` and `theplot`. Each ships two theme
+types, both selected in that realm's import (`../realms/<realm>-realm.json`) and
+both reconciled onto an already-existing realm by `KC_REALM_KEYS` in
+`../../deploy.sh` — so switching a realm's theme needs no manual step:
 
 | type    | realm key    | what it covers |
 | ------- | ------------ | -------------- |
 | `login` | `loginTheme` | sign-in, sign-up, reset/update password, OTP, verify-email, error pages |
 | `email` | `emailTheme` | every message the realm sends |
 
-Both render the Nocturne design system (see
+Each renders its own product's design system, so a realm's mail and auth pages
+read as the same product as its app: `protofast` renders Nocturne (see
 [`clients/protofast/src/styles/nocturne.css`](../../../clients/protofast/src/styles/nocturne.css)),
-so mail and auth pages read as the same product.
+`theplot` renders Reel & Ink (see
+[`clients/theplot/src/styles/nocturne.css`](../../../clients/theplot/src/styles/nocturne.css)) —
+the same geometry on a warm palette with its own brand.
+
+The two themes are **standalone siblings**, not parent and child: separate
+realms, separate brands, free to diverge. The one thing that may not drift
+between them is the `pf-*` class names, because the provider JAR's templates
+(below) are shared by every realm and hardcode them.
 
 ## The email theme in particular
 
@@ -51,4 +60,4 @@ on demand.
 reconcile deliberately never pushes (it holds `${SMTP_*}` placeholders that only
 the import substitutes). An established realm therefore keeps the From name it
 was created with — change it in the admin console under **Realm settings →
-Email** if it does not read `Protofast`.
+Email** if it does not read `Protofast` (or `ThePlot`, on that realm).

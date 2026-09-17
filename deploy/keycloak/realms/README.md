@@ -3,6 +3,20 @@
 This directory is the **prod** mount source for Keycloak's `--import-realm`
 (`docker-compose.host-services.yml` mounts it at `/opt/keycloak/data/import`).
 
+It holds **two realms**, and `--import-realm` reads the whole directory, so both
+import in one pass:
+
+| File | Realm | Serves |
+| --- | --- | --- |
+| `protofast-realm.json` | `protofast` | `protofast.dev` (`protofast-web`) and `admin.protofast.dev` (`admin`) |
+| `theplot-realm.json` | `theplot` | `theplot.protofast.dev` (`theplot-web`) |
+
+They are **separate realms**, which is a product decision and not an
+implementation detail: they share no SSO session and no user store, so the same
+person signing in to both has two accounts. Everything below describes
+`protofast-realm.json`; [Adding a tenant realm](#adding-a-tenant-realm) covers
+what `theplot-realm.json` changes and what it must keep identical.
+
 The canonical, hand-edited realm export lives in
 [`infra/keycloak/realms/`](../../../infra/keycloak/realms/) (used by the dev
 Aspire `WithRealmImport`). Keep this copy in sync with it — they are the same
@@ -185,20 +199,47 @@ this file only affects a brand-new realm. For a running deployment:
 
 ## Adding a tenant realm
 
-Do **not** fork this file. A tenant realm differs from `protofast` in exactly
-three things:
+`theplot-realm.json` is the worked example. A tenant realm differs from
+`protofast` in exactly three things, and **nothing else may drift**:
 
 1. **`webAuthnPolicyPasswordlessRpId`.** It is `protofast.dev` here, which
    correctly covers `protofast.dev` and `admin.protofast.dev`. A browser will
    also offer that passkey on `myfitness.protofast.dev`, and although Keycloak
    rejects it — different realm — its appearance in the picker leaks that the
    user has a ProtoFast account. Give every tenant realm its own RP ID before
-   launch.
-2. **Identity provider credentials.** Google and Apple are configured per realm.
-3. **`loginTheme` / `emailTheme`**, if the tenant is branded.
+   launch. ThePlot's is `${THEPLOT_WEBAUTHN_RP_ID:theplot.protofast.dev}`.
+2. **Identity provider credentials.** Google and Apple are configured per realm,
+   under `THEPLOT_`-prefixed variables. Each realm has its own broker redirect
+   URI (`/realms/theplot/broker/google/endpoint`), which has to be registered
+   with the provider before the button works — which is why they default to
+   empty rather than to the `protofast` values, and ship **disabled**.
+3. **`loginTheme` / `emailTheme`**, if the tenant is branded. Each theme
+   hardcodes its own brand — `login/messages/messages_en.properties` sets
+   `loginTitle` and `loginTitleHtml` rather than depending on `displayName`,
+   because `--import-realm` skips an existing realm and an established
+   deployment would otherwise render "Sign in to ". ThePlot has its own
+   `theplot` theme under [`../themes/`](../themes/) and both keys point at it;
+   a new tenant needs the same, or its sign-in page will read another product's
+   name. Both keys are in `KC_REALM_KEYS`, so the switch reconciles onto an
+   existing realm on the next deploy.
+
+   Copy `../themes/theplot` rather than `../themes/protofast` when branding the
+   next one: it is the worked example of a standalone sibling theme, and its
+   header comments say which names are brand and which — the `pf-*` classes the
+   shared provider JAR hardcodes — may not be renamed.
 
 Everything else — the flows, the required actions, the brute-force numbers, the
-credential model — is the same, and should stay literally the same.
+credential model, the user-profile component — is the same and should stay
+**literally** the same. `theplot-realm.json` was generated from this file rather
+than hand-written for that reason. When you change any of it here, mirror the
+change there in the same commit; nothing checks this automatically.
+
+A tenant realm also needs its own copy of the two things under
+[Account management](#account-management): an `account-admin` client (its secret
+only authenticates in its own realm — see
+`Auth_Keycloak__AdminClientSecretByRealm`) and that client's service-account
+user. And auth-svc needs the host mapped in `Tenants__ByHost`, or `/signin`
+never reaches Keycloak at all.
 
 ## Editing this file
 
