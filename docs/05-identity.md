@@ -56,12 +56,12 @@ for the naming rules).
 |---|---|---|
 | `Keycloak:Authority` | the AppHost-assigned Keycloak URL | `http://keycloak:8080` (private, same host) |
 | `Keycloak:PublicAuthority` | empty → falls back to `Authority` | `https://${KEYCLOAK_DOMAIN}` — used for redirects and as the expected token issuer |
-| `Keycloak:ClientSecretProtofastWeb` / `…Admin` | `dev-*-secret` | from Secrets Manager |
-| `Keycloak:AdminClientId` / `AdminClientSecret` | `account-admin` / dev secret | from Secrets Manager; empty disables account management (503) instead of failing startup |
+| `Keycloak:ClientSecretProtofastWeb` / `…Admin` | from Secrets Manager (`dev-*-secret` defaults) | from Secrets Manager |
+| `Keycloak:AdminClientId` / `AdminClientSecret` | `account-admin` / from Secrets Manager | from Secrets Manager; empty disables account management (503) instead of failing startup |
 | `Tenants:ByHost:<host>:Realm` / `:ClientId` | `localhost` → `protofast` / `protofast-web` | `protofast.dev` → `protofast-web`, `admin.protofast.dev` → `admin` |
 | `Tenants:ByHost:admin…:MaxAge` / `:AcrValues` | — | forces re-authentication (and optionally a passkey) when entering the admin console |
 | `Session:*` | defaults | defaults: `pf_session`, 8 h idle, 7 d absolute, id rotated on refresh |
-| `InternalJwt:PrivateKeyPem` / `:KeyId` | generated per run by the AppHost | private PEM from Secrets Manager; never a file in prod |
+| `InternalJwt:PrivateKeyPem` / `:KeyId` | from Secrets Manager (`protofast/dev`) | private PEM from Secrets Manager; never a file in prod |
 | `Smtp:*` | smtp4dev, injected by the AppHost | SES relay, same credentials Keycloak uses |
 | `Subscriptions:Enabled` | off | off until billing exists |
 

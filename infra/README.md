@@ -37,21 +37,22 @@ Runtime values live in two Secrets Manager secrets. Terraform creates empty shel
 
 | Secret | Who writes | Who reads |
 |---|---|---|
-| `protofast/app` | OrgAdmin, `scripts/populate-secrets.sh` | instance role + `auth` in-process |
-| `protofast/dev` | Developer SSO, `scripts/populate-secrets.sh --dev` | each .NET service in-process (SSO profile `developer`) |
+| `protofast/app` | OrgAdmin, `scripts/populate-secrets.sh --prod` | instance role + `auth` in-process |
+| `protofast/dev` | Developer SSO, `scripts/generate-dev-secrets.sh` | each .NET service in-process (SSO profile `developer`) |
 
-After the first `infra.yml` apply, fill production as **OrgAdmin** with [scripts/populate-secrets.sh](../scripts/populate-secrets.sh) (or manually in the console). Fill the DEV secret as a Developer:
+After the first `infra.yml` apply, fill production as **OrgAdmin** with [scripts/populate-secrets.sh](../scripts/populate-secrets.sh) `--prod` (or manually in the console). Fill the DEV secret as a Developer:
 
 ```sh
 export AWS_PROFILE=developer AWS_REGION=us-west-2
 aws sso login
-scripts/populate-secrets.sh --dev Payments_StripeKey=sk_test_...
+scripts/generate-dev-secrets.sh
+scripts/populate-secrets.sh Payments_StripeKey=sk_test_...
 ```
 
 Ground rules:
 
 - **OrgAdmin for `protofast/app`.** PlatformAdmin has no `secretsmanager:` value APIs, and the boundary blocks creating the IAM access key SES needs. Developer SSO can Get/Put `protofast/dev` only.
-- **The script is additive and idempotent.** Keys you don't pass are preserved; a bare run only generates the two DB passwords if they're missing. Re-run it any time to add or rotate keys.
+- **The script is additive and idempotent.** Keys you don't pass are preserved; `--prod` generates the two DB passwords if they're missing. Local JWT + Keycloak secrets come from `scripts/generate-dev-secrets.sh`. Re-run either any time to add or rotate keys.
 - **Never `terraform init`/`apply` this directory as OrgAdmin.** CI owns this state.
 - `deploy.sh` reads these keys on every Host B apply and seeds config files and `.env`. Missing DB passwords abort the deploy; missing auth, JWT, or SMTP keys leave those services broken or silent.
 - If the secret is ever deleted and recreated, its values are gone — re-run 4.1 and 4.2.
@@ -87,7 +88,7 @@ A single run sets the two Keycloak client secrets and the internal-JWT keypair (
 openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out jwt-private.pem
 openssl pkey -in jwt-private.pem -pubout -out jwt-public.pem
 
-scripts/populate-secrets.sh \
+scripts/populate-secrets.sh --prod \
   Auth_Keycloak__ClientSecretProtofastWeb="$(openssl rand -hex 32)" \
   Auth_Keycloak__ClientSecretAdmin="$(openssl rand -hex 32)" \
   Auth_Keycloak__AdminClientSecret="$(openssl rand -hex 32)" \
@@ -122,7 +123,7 @@ else
   read -r ACCESS_KEY_ID SECRET_ACCESS_KEY <<<"$(aws iam create-access-key \
     --user-name "$USER" --query 'AccessKey.[AccessKeyId,SecretAccessKey]' --output text)"
 
-  scripts/populate-secrets.sh \
+  scripts/populate-secrets.sh --prod \
     Auth_Smtp__Host="email-smtp.${AWS_REGION}.amazonaws.com" \
     Auth_Smtp__From="$FROM" \
     Auth_Smtp__User="$ACCESS_KEY_ID" \

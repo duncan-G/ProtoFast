@@ -16,9 +16,9 @@
 # ';'-separated blob from an older version is auto-migrated to a map on the next run.
 #
 # Usage:
-#   scripts/populate-secrets.sh                         # prod protofast/app: generate missing managed keys
-#   scripts/populate-secrets.sh Payments_StripeKey=sk_live_...
-#   scripts/populate-secrets.sh --dev Payments_StripeKey=sk_test_...  # protofast/dev, as Developer SSO
+#   scripts/populate-secrets.sh                         # protofast/dev, as Developer SSO
+#   scripts/populate-secrets.sh Payments_StripeKey=sk_test_...
+#   scripts/populate-secrets.sh --prod Payments_StripeKey=sk_live_...  # protofast/app: generate missing managed keys
 #
 # Social sign-in (all optional; the realm ships both providers disabled, so an
 # absent value just means no button):
@@ -33,15 +33,15 @@
 #       Auth_Apple__PrivateKey="$(grep -v -- ----- AuthKey_ABC123.p8 | tr -d '\n')"
 #
 # Env:
-#   SECRET_ID   (default: <project>/app, or <project>/dev with --dev)
+#   SECRET_ID   (default: <project>/dev, or <project>/app with --prod)
 #   AWS_REGION  (default: from your AWS config)
-#   AWS_PROFILE (use `developer` for --dev)
+#   AWS_PROFILE (use `developer` by default; OrgAdmin for --prod)
 set -euo pipefail
 
 PROJECT="${PROJECT:-protofast}"
-DEV=0
-if [[ "${1:-}" == "--dev" ]]; then
-  DEV=1
+DEV=1
+if [[ "${1:-}" == "--prod" ]]; then
+  DEV=0
   shift
 fi
 

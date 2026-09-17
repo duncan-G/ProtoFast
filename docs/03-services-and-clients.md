@@ -69,8 +69,10 @@ Details of what these mean for sign-in are in [layer 05](05-identity.md).
 `auth` holds an EC P-256 **private** key and signs a short-lived JWT for each
 authenticated call; `payments` and `api` hold only the matching **public** key and
 reject anything unsigned via a gRPC interceptor. So a compromised backend can read
-identity but cannot mint it. In dev the AppHost generates the pair per run; in
-prod the private key reaches `auth` through Secrets Manager and the public key is
+identity but cannot mint it. Both environments read the pair from Secrets Manager
+(`protofast/dev` or `protofast/app`); local values come from
+`scripts/generate-dev-secrets.sh`.
+In prod the public key is also written to `/opt/protofast/internal-jwt-pub` and
 mounted into the other two as a file (`Shared_InternalJwt__PublicKeyPemFile`).
 
 ## Angular clients

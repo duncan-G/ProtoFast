@@ -1,5 +1,4 @@
-﻿using System.Security.Cryptography;
-using ProtoFast.AppHost.Aws;
+﻿using ProtoFast.AppHost.Aws;
 using ProtoFast.AppHost.ClientApp;
 using ProtoFast.AppHost.EnvoyProxy;
 using ProtoFast.AppHost.OpenTelemetryCollector;
@@ -17,8 +16,6 @@ if (!builder.ExecutionContext.IsPublishMode)
 // dev servers — same Envoy listener URLs, no HMR.
 var useSsrHost = builder.ExecutionContext.IsPublishMode
     || bool.TryParse(builder.Configuration["SsrHost:Dev"], out var ssrHostDev) && ssrHostDev;
-
-var (internalJwtPrivateKeyPem, internalJwtPublicKeyPem) = GenerateInternalJwtKeyPair();
 
 var otel = builder.AddOpenTelemetryCollector("otel-collector");
 
@@ -111,8 +108,7 @@ var auth = builder.AddProject<Projects.ProtoFast_Auth_Api>("auth")
     .WaitFor(authDb)
     .WaitFor(keycloak)
     .WithEnvironment("Auth_Keycloak__Authority", keycloak.GetEndpoint("http"))
-    .WithSsoProfile()
-    .WithEnvironment("Auth_InternalJwt__PrivateKeyPem", internalJwtPrivateKeyPem);
+    .WithSsoProfile();
 
 if (smtp4dev is not null)
 {
@@ -150,14 +146,12 @@ keycloak
 // Payments
 var payments = builder.AddProject<Projects.ProtoFast_Payments_Api>("payments")
     .WithOtlpCollectorReference(otel)
-    .WithSsoProfile()
-    .WithEnvironment("Shared_InternalJwt__PublicKeyPem", internalJwtPublicKeyPem);
+    .WithSsoProfile();
 
 // Api
 var api = builder.AddProject<Projects.ProtoFast_Api>("api")
     .WithOtlpCollectorReference(otel)
-    .WithSsoProfile()
-    .WithEnvironment("Shared_InternalJwt__PublicKeyPem", internalJwtPublicKeyPem);
+    .WithSsoProfile();
 
 // Envoy Proxy
 var proxy = builder.AddEnvoyProxy("envoy", useSsrHost)
@@ -195,9 +189,3 @@ proxy
     .WithUpstreamEndpoint("API", api.GetEndpoint("http"));
 
 builder.Build().Run();
-
-static (string PrivatePem, string PublicPem) GenerateInternalJwtKeyPair()
-{
-    using var ec = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-    return (ec.ExportPkcs8PrivateKeyPem(), ec.ExportSubjectPublicKeyInfoPem());
-}

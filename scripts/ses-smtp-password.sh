@@ -18,7 +18,7 @@
 # read FROM off the send policy so it matches what the user may send as (the full
 # copy-paste block is in infra/README.md section 4.2):
 #
-#   scripts/populate-secrets.sh \
+#   scripts/populate-secrets.sh --prod \
 #     Auth_Smtp__Host="email-smtp.<region>.amazonaws.com" \
 #     Auth_Smtp__From="<ses:FromAddress from the ses-send policy>" \
 #     Auth_Smtp__User="<access-key-id>" \
