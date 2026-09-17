@@ -58,6 +58,14 @@ output "ses_from_address" {
   value       = var.enable_ses ? local.ses_from_address : null
 }
 
+output "secrets" {
+  description = "Secrets Manager secret names. Empty shells — values are written out of band."
+  value = {
+    app = aws_secretsmanager_secret.app.name
+    dev = aws_secretsmanager_secret.dev.name
+  }
+}
+
 # NOTE: the sender IAM user is NOT an output here — it is a resource of
 # infra/identity-center (ses-sender.tf), the only root whose applier can mint IAM
 # users. Read its name from that root's ses_smtp_user output, so there is one

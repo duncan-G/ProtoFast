@@ -10,7 +10,7 @@ variable is. Self-contained — no reading order required.*
 | A dev-only setting (ports, containers, injected env) | `apphost/Program.cs` | restart `aspire run` |
 | A production setting for a container | `deploy/docker-compose.host-edge.yml` or `…host-services.yml` | deploy any component on that host |
 | A stable production value (domains, `CLIENTS`, region) | `infra/templates/user_data.host_*.sh.tftpl` (new boxes) and `/opt/protofast/.env` (existing) | `terraform apply` and/or a deploy |
-| A secret value | `scripts/populate-secrets.sh Key=value` | deploy the consuming component |
+| A secret value | `scripts/generate-dev-secrets.sh` (local JWT/Keycloak) or `scripts/populate-secrets.sh Key=value` (`--prod` for prod) | restart aspire (dev) / deploy the consuming component (prod) |
 | Edge routing, CORS, allow-lists | `proxy/*.tmpl`, `proxy/entrypoint.sh` | deploy `envoy` |
 | A .NET service default | that service's `appsettings.json` | deploy that service |
 | A dev-only service default | `appsettings.Development.json` | restart |
@@ -32,20 +32,23 @@ variable is. Self-contained — no reading order required.*
 |---|---|---|
 | `Auth_Keycloak__Authority` | AppHost | compose (`http://keycloak:8080`) |
 | `Auth_Keycloak__PublicAuthority` | — | compose (`https://${KEYCLOAK_DOMAIN}`) |
-| `Auth_Keycloak__ClientSecretProtofastWeb` / `…Admin` / `AdminClientSecret` | `appsettings.Development.json` | Secrets Manager → compose `.env` |
-| `Auth_InternalJwt__PrivateKeyPem` | AppHost (generated) | Secrets Manager (in-process) |
-| `Auth_InternalJwt__KeyId` | `appsettings.Development.json` | `.env` (`INTERNAL_JWT_KEY_ID`) |
-| `Auth_Smtp__Host/Port/From/StartTls/User/Password` | AppHost → smtp4dev | `.env`, from Secrets Manager + SES |
+| `Auth_Keycloak__ClientSecretProtofastWeb` / `…Admin` / `AdminClientSecret` | Secrets Manager (`protofast/dev`) | Secrets Manager → compose `.env` |
+| `Auth_InternalJwt__PrivateKeyPem` | Secrets Manager (`protofast/dev`) | Secrets Manager (in-process) |
+| `Auth_InternalJwt__KeyId` | Secrets Manager (`dev-1`) | `.env` (`INTERNAL_JWT_KEY_ID`) |
+| `Auth_Smtp__Host/Port/From/StartTls` | AppHost → smtp4dev (not secrets) | `.env`, from Secrets Manager + SES |
+| `Auth_Smtp__User/Password` | — (smtp4dev needs none) | `.env`, from Secrets Manager + SES |
 | `Tenants__ByHost__<host>__Realm` / `__ClientId` / `__MaxAge` / `__AcrValues` | `appsettings.Development.json` | compose |
 | `ConnectionStrings__redis`, `ConnectionStrings__auth`, `ConnectionStrings__keycloak` | Aspire references | compose |
-| `Secrets:SecretId`, `Secrets:Prefix` | unused (Production only) | `appsettings.json` |
-| `AWS_REGION` / `AWS_DEFAULT_REGION` | — | compose (required by the SDK) |
+| `Secrets:SecretId`, `Secrets:Prefix` | `appsettings.Development.json` (`protofast/dev`) | `appsettings.json` (`protofast/app`) |
+| `AWS_REGION` / `AWS_DEFAULT_REGION` | SSO profile `developer` | compose (required by the SDK) |
+| `AWS_PROFILE` | AppHost (`developer`) | — |
 
 ### `payments` and `api`
 
 | Variable | Purpose |
 |---|---|
 | `Shared_InternalJwt__PublicKeyPem` (dev) / `…PublicKeyPemFile` (prod) | verify the internal JWT |
+| `Secrets:SecretId`, `Secrets:Prefix` | `protofast/dev` + `Payments_` / `Api_` in Development; `protofast/app` in Production |
 | `ASPNETCORE_HTTP_PORTS`, `ASPNETCORE_KESTREL__ENDPOINTDEFAULTS__PROTOCOLS` | gRPC over HTTP/2 on 8080 |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | telemetry; unset disables the exporters |
 

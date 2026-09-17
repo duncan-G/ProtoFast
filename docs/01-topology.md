@@ -138,7 +138,7 @@ stores the session in Redis and sets the `pf_session` cookie.
 | Envoy mode   | `dev` (one listener per client)                 | `publish` (one listener, vhost per domain)            |
 | Clients      | `ng serve` per client, HMR                      | prebuilt bundles pulled from S3 into the clients host |
 | Keycloak     | direct on `:8080`                               | behind Envoy's allow-listed `keycloak` vhost          |
-| Secrets      | `appsettings.Development.json` + generated keys | AWS Secrets Manager `protofast/app`                   |
+| Secrets      | each service reads `protofast/dev` (SSO `developer`) | AWS Secrets Manager `protofast/app`                   |
 | TLS          | Aspire dev certificate                          | Cloudflare edge cert + baked internal cert            |
 | Telemetry    | Aspire dashboard (local)                        | otel-collector on Host A → Aspire dashboard           |
 

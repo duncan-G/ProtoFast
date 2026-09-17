@@ -1,4 +1,3 @@
-using Amazon.Extensions.NETCore.Setup;
 using Microsoft.Extensions.Configuration;
 
 namespace ProtoFast.ServiceDefaults.Secrets;

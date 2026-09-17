@@ -21,7 +21,7 @@ locals {
   # key → SSO group display name. Three groups, three jobs:
   #   org_admins      — identity management + finops
   #   platform_admins — infra + deployments
-  #   developers      — read-only prod debugging
+  #   developers      — read-only prod debugging + the local-dev secret
   groups = {
     org_admins      = "Org-Admins"
     platform_admins = "Platform-Admins"
@@ -98,10 +98,12 @@ resource "aws_ssoadmin_permissions_boundary_attachment" "platform_admin" {
   }
 }
 
-# Developer — ViewOnly + debug shell + log read + image pull. No mutation.
+# Developer — ViewOnly + debug shell + log read + image pull + the DEV secret.
+# Get/Put on ${var.project}/dev only; an explicit deny keeps prod secret values
+# off this set even if a broader managed policy is attached later.
 resource "aws_ssoadmin_permission_set" "developer" {
   name             = "Developer"
-  description      = "Debug prod: read logs, SSM shell, pull images."
+  description      = "Debug prod (read-only) plus Get/Put on the local-dev secret."
   instance_arn     = local.instance_arn
   session_duration = "PT8H"
 }
@@ -113,7 +115,9 @@ resource "aws_ssoadmin_managed_policy_attachment" "developer_viewonly" {
 resource "aws_ssoadmin_permission_set_inline_policy" "developer" {
   instance_arn       = local.instance_arn
   permission_set_arn = aws_ssoadmin_permission_set.developer.arn
-  inline_policy      = file("${path.module}/policies/developer.json")
+  inline_policy = templatefile("${path.module}/policies/developer.json", {
+    project = var.project
+  })
 }
 
 # ---------------------------------------------------------------------------

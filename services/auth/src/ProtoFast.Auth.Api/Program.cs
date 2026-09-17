@@ -20,7 +20,9 @@ builder.AddServiceDefaults();
 builder.Configuration
     .AddEnvironmentVariables("Shared_")
     .AddEnvironmentVariables("Auth_");
-if (builder.Environment.IsProduction())
+// Integration tests boot this host via WebApplicationFactory with environment
+// "Testing" (TestAuthWebApplicationFactory). Skip SM there — no AWS, hermetic.
+if (!builder.Environment.IsEnvironment("Testing"))
 {
     builder.Configuration.AddSecretsManager(options => builder.Configuration.Bind("Secrets", options));
 }

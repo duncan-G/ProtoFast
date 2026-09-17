@@ -38,10 +38,14 @@ Configuration sources, in increasing precedence:
 2. `appsettings.Development.json` — dev-only values (see [layer 02](02-local-development.md)).
 3. Environment variables, including the prefixed ones each service opts into:
    - `auth`: `builder.Configuration.AddEnvironmentVariables("Shared_")` then `("Auth_")`
-   - `payments`, `api`: `("Shared_")` only
-4. **`auth` only, and only when `ASPNETCORE_ENVIRONMENT=Production`**: the AWS
-   Secrets Manager provider, which pulls the `protofast/app` secret and keeps the
-   `Auth_`-prefixed keys. See [layer 06](06-secrets.md).
+   - `payments`: `("Shared_")` then `("Payments_")`
+   - `api`: `("Shared_")` then `("Api_")`
+4. **Secrets Manager**, in both Development and Production:
+   `auth` / `payments` / `api` each pull `protofast/app` (prod) or `protofast/dev`
+   (dev) and keep the keys matching their prefix plus `Shared_`. See
+   [layer 06](06-secrets.md). The AppHost only logs into SSO profile `developer`
+   so the services can resolve that profile. Auth integration tests boot the real
+   host as `Testing` and skip this provider.
 
 Connection strings arrive the standard way — `ConnectionStrings__redis`,
 `ConnectionStrings__auth` — injected by Aspire references in dev and written into
@@ -65,8 +69,10 @@ Details of what these mean for sign-in are in [layer 05](05-identity.md).
 `auth` holds an EC P-256 **private** key and signs a short-lived JWT for each
 authenticated call; `payments` and `api` hold only the matching **public** key and
 reject anything unsigned via a gRPC interceptor. So a compromised backend can read
-identity but cannot mint it. In dev the AppHost generates the pair per run; in
-prod the private key reaches `auth` through Secrets Manager and the public key is
+identity but cannot mint it. Both environments read the pair from Secrets Manager
+(`protofast/dev` or `protofast/app`); local values come from
+`scripts/generate-dev-secrets.sh`.
+In prod the public key is also written to `/opt/protofast/internal-jwt-pub` and
 mounted into the other two as a file (`Shared_InternalJwt__PublicKeyPemFile`).
 
 ## Angular clients
