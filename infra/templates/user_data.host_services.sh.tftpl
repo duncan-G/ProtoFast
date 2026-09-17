@@ -28,6 +28,9 @@ grep -q /mnt/pgdata /etc/fstab || echo '/dev/sdf /mnt/pgdata ext4 defaults,nofai
 #   Infra_KcDbPassword -> kc-db-password  (Postgres superuser + Keycloak)
 #   Auth_DbPassword    -> auth-db-password (auth's `auth` role) AND, same value,
 #                         AUTH_DB_PASSWORD in .env (auth's ConnectionStrings__auth).
+#   Seg_DbPassword     -> segmentation-db-password (the `segmentation` role) AND
+#                         SEGMENTATION_DB_PASSWORD in .env, which api and the worker
+#                         both interpolate into ConnectionStrings__segmentation.
 # The host-side contract is unchanged from before — only the source is now SM,
 # not user_data — so the value never lands in Terraform state.
 umask 077
@@ -62,7 +65,8 @@ PY
 
 printf '%s\n' "$(secret_get Infra_KcDbPassword)" > /opt/protofast/kc-db-password
 printf '%s\n' "$(secret_get Auth_DbPassword)"    > /opt/protofast/auth-db-password
-chmod 600 /opt/protofast/kc-db-password /opt/protofast/auth-db-password
+printf '%s\n' "$(secret_get Seg_DbPassword)"     > /opt/protofast/segmentation-db-password
+chmod 600 /opt/protofast/kc-db-password /opt/protofast/auth-db-password /opt/protofast/segmentation-db-password
 # The Keycloak container runs as uid 1000 and reads kc-db-password directly (its
 # image has no `_FILE` support, unlike Postgres which reads it as root). A file
 # secret's host ownership/perms pass through the bind mount unchanged (Compose
@@ -73,6 +77,11 @@ chown 1000:1000 /opt/protofast/kc-db-password
 # Seed .env. HOST_ROLE scopes deploy.sh to this host's components (§5.1); HOST_A_IP
 # is the collector this host exports telemetry to (§3.2); AUTH_DB_PASSWORD is
 # interpolated into auth's ConnectionStrings__auth in the compose file.
+#
+# The SEGMENTATION_* values are Host B's half of the segmentation feature: api submits to the
+# queues and presigns into the bucket, and the worker consumes from them. Both read the same
+# names, which is the platform's rule — identical variable names in dev and prod, different
+# injector (plan §20).
 cat > /opt/protofast/.env <<ENV
 ECR=${ecr_registry}
 AWS_REGION=${aws_region}
@@ -81,6 +90,11 @@ HOST_A_IP=${host_a_ip}
 ASSETS_BUCKET=${assets_bucket}
 KEYCLOAK_DOMAIN=${keycloak_domain}
 AUTH_DB_PASSWORD=$(secret_get Auth_DbPassword)
+SEGMENTATION_DB_PASSWORD=$(secret_get Seg_DbPassword)
+SEGMENTATION_BUCKET=${segmentation_bucket}
+SEGMENTATION_RUNS_QUEUE_URL=${segmentation_runs_queue_url}
+SEGMENTATION_BULK_QUEUE_URL=${segmentation_bulk_queue_url}
+SEGMENTATION_BATCH_POLL_QUEUE_URL=${segmentation_batch_poll_queue_url}
 ENV
 chmod 600 /opt/protofast/.env
 

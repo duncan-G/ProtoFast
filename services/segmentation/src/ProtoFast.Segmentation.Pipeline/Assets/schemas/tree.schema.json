@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": ["title"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "headingLineId": { "type": "string", "pattern": "^L\\d{6}$" },
+        "level": { "type": "integer", "minimum": 1, "maximum": 6 },
+        "inferred": { "type": "boolean", "default": false },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/node" }, "minItems": 1 },
+        "paragraphs": { "type": "array", "items": { "type": "string", "pattern": "^P\\d{5}[a-z]*$" }, "minItems": 1 }
+      },
+      "oneOf": [
+        { "required": ["children"], "not": { "required": ["paragraphs"] } },
+        { "required": ["paragraphs"], "not": { "required": ["children"] } }
+      ]
+    }
+  },
+  "type": "object",
+  "required": ["tree"],
+  "properties": {
+    "tree": { "$ref": "#/$defs/node" },
+    "paragraphEdits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["op", "paragraphId", "reason"],
+        "properties": {
+          "op": { "enum": ["split", "merge"] },
+          "paragraphId": { "type": "string" },
+          "withParagraphId": { "type": "string" },
+          "beforeSentence": { "type": "integer", "minimum": 1 },
+          "reason": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>ProtoFast.Segmentation.Worker</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ContainerRepository>protofast-segmentation</ContainerRepository>
+    <ContainerFamily>noble-chiseled</ContainerFamily>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Npgsql" Version="13.5.3" />
+    <PackageReference Include="Aspire.StackExchange.Redis" Version="13.5.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ProtoFast.Segmentation.Data\ProtoFast.Segmentation.Data.csproj" />
+    <ProjectReference Include="..\ProtoFast.Segmentation.Pipeline\ProtoFast.Segmentation.Pipeline.csproj" />
+    <ProjectReference Include="..\ProtoFast.Segmentation.Routing\ProtoFast.Segmentation.Routing.csproj" />
+    <ProjectReference Include="..\ProtoFast.Segmentation.Storage\ProtoFast.Segmentation.Storage.csproj" />
+    <ProjectReference Include="..\..\..\shared\ServiceDefaults\ServiceDefaults.csproj" />
+  </ItemGroup>
+
+</Project>

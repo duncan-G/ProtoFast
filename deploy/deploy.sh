@@ -7,9 +7,10 @@
 #
 # Usage:  deploy.sh apply <component>=<tag> [<component>=<tag> ...]
 #
-#   component ∈ auth | payments | api | envoy | otel-collector | clients-host
-#               | aspire-dashboard
-#               | client-<name>            (e.g. client-admin, client-protofast)
+#   component ∈ auth | payments | api | segmentation | envoy | otel-collector
+#               | clients-host | aspire-dashboard
+#               | auth-migrations | segmentation-migrations
+#               | client-<name>            (e.g. client-admin, client-protofast, client-theplot)
 #
 # Contract (docs/independent-deployment-plan.md §5):
 #   /opt/protofast/                      deploy root (APP_DIR)
@@ -94,7 +95,8 @@ APP_SECRET_ID="${APP_SECRET_ID:-${PROJECT}/app}"
 
 # Re-seed the secret files that back the compose `secrets:` bind mounts
 # (Infra_KcDbPassword -> kc-db-password for the Postgres superuser + Keycloak,
-# Auth_DbPassword -> auth-db-password for auth's role). cloud-init seeds these at
+# Auth_DbPassword -> auth-db-password for auth's role, Seg_DbPassword ->
+# segmentation-db-password for the segmentation role). cloud-init seeds these at
 # first boot, but that is a one-shot: if the SM secret had no value yet at boot —
 # Terraform creates the shell EMPTY and scripts/populate-secrets.sh writes the value
 # out-of-band afterward — get-secret-value fails, cloud-init aborts (set -e), the
@@ -104,7 +106,7 @@ APP_SECRET_ID="${APP_SECRET_ID:-${PROJECT}/app}"
 # the deploy self-sufficient regardless of seed ordering. Scoped by the caller to
 # the services host (Host B); the edge host's compose references no secret files.
 ensure_secret_files() {
-  local region secret kc auth
+  local region secret kc auth seg
   region="$(get_env "$ENV_FILE" AWS_REGION)"; region="${region:-${AWS_REGION:-}}"
   secret="$(aws secretsmanager get-secret-value --secret-id "$APP_SECRET_ID" \
     ${region:+--region "$region"} --query SecretString --output text 2>/dev/null || true)"
@@ -137,14 +139,21 @@ PY
   }
   kc="$(_secret_get Infra_KcDbPassword || true)"
   auth="$(_secret_get Auth_DbPassword || true)"
+  seg="$(_secret_get Seg_DbPassword || true)"
   if [ -z "$kc" ] || [ -z "$auth" ]; then
     echo "ensure_secret_files: app secret '${APP_SECRET_ID}' is missing Infra_KcDbPassword and/or Auth_DbPassword" >&2
     exit 1
   fi
+  # Seg_DbPassword is a MANAGED key (scripts/populate-secrets.sh generates it), but a box that
+  # predates the segmentation feature will not have it yet. Failing the whole apply for that
+  # would take auth and api down over a component the box is not running, so the segmentation
+  # bits are skipped instead and the segmentation apply is the thing that fails, loudly.
   ( umask 077
     printf '%s\n' "$kc"   > "${APP_DIR}/kc-db-password"
-    printf '%s\n' "$auth" > "${APP_DIR}/auth-db-password" )
+    printf '%s\n' "$auth" > "${APP_DIR}/auth-db-password"
+    [ -n "$seg" ] && printf '%s\n' "$seg" > "${APP_DIR}/segmentation-db-password" )
   chmod 600 "${APP_DIR}/kc-db-password" "${APP_DIR}/auth-db-password"
+  [ -n "$seg" ] && chmod 600 "${APP_DIR}/segmentation-db-password"
   # Same chown as user_data.host_services.sh.tftpl: Keycloak runs as uid 1000 and cats
   # this bind mount (no `_FILE` support). Rewriting as root:root 0600 here would
   # undo cloud-init and fail with Permission denied. Postgres still reads as root.
@@ -152,6 +161,7 @@ PY
   # The same first-boot abort can leave AUTH_DB_PASSWORD out of .env (interpolated
   # into auth's ConnectionStrings__auth); re-assert it from the same value.
   set_env "$ENV_FILE" AUTH_DB_PASSWORD "$auth"
+  [ -n "$seg" ] && set_env "$ENV_FILE" SEGMENTATION_DB_PASSWORD "$seg"
 
   # Auth-svc + Keycloak realm secrets (single SM secret, Auth_/Shared_ prefixes — auth §8.2).
   #
@@ -182,6 +192,10 @@ PY
   # deletion). Absent, the realm import falls back to its dev default and auth-svc has no
   # secret at all — sign-in is unaffected and the account endpoints answer 503.
   v="$(_secret_get Auth_Keycloak__AdminClientSecret || true)";        if [ -n "$v" ]; then set_env "$ENV_FILE" ACCOUNT_ADMIN_CLIENT_SECRET "$v"; fi
+  # ThePlot's own realm: its browser client and its Admin API service account. Separate
+  # credentials, not the protofast ones renamed — a secret is only valid in its own realm.
+  v="$(_secret_get Auth_Keycloak__ClientSecretTheplotWeb || true)";   if [ -n "$v" ]; then set_env "$ENV_FILE" THEPLOT_WEB_CLIENT_SECRET "$v"; fi
+  v="$(_secret_get Auth_Keycloak__AdminClientSecretByRealm__theplot || true)"; if [ -n "$v" ]; then set_env "$ENV_FILE" THEPLOT_ACCOUNT_ADMIN_CLIENT_SECRET "$v"; fi
   v="$(_secret_get Auth_InternalJwt__KeyId || true)";                 if [ -n "$v" ]; then set_env "$ENV_FILE" INTERNAL_JWT_KEY_ID "$v"; fi
   v="$(_secret_get Auth_Smtp__Password || true)";                     if [ -n "$v" ]; then set_env "$ENV_FILE" SMTP_PASSWORD "$v"; fi
   v="$(_secret_get Auth_Smtp__Host || true)";                         if [ -n "$v" ]; then set_env "$ENV_FILE" SMTP_HOST "$v"; fi
@@ -295,13 +309,21 @@ record_keycloak_config_applied() {
 # still be missing. `up -d --force-recreate` guarantees the container matches the
 # current compose file. Keycloak's state is in Postgres, so this costs a restart.
 
-# Realm name declared by the realm JSON on disk (empty if there is none).
-kc_realm_name() {
-  local realm_file
-  realm_file="$(ls -1 "${APP_DIR}"/keycloak/realms/*.json 2>/dev/null | head -n1 || true)"
-  [ -n "$realm_file" ] || return 0
-  python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("realm",""))' \
-    "$realm_file" 2>/dev/null || true
+# Realm names declared by the realm JSONs on disk, one per line (empty if there are none).
+# Plural because the import directory holds more than one: protofast and theplot are separate
+# realms, and checking only the first would let the other stay missing with sign-in broken.
+kc_realm_names() {
+  local realm_files=()
+  mapfile -t realm_files < <(ls -1 "${APP_DIR}"/keycloak/realms/*.json 2>/dev/null || true)
+  [ "${#realm_files[@]}" -gt 0 ] || return 0
+  python3 -c 'import json,sys
+for path in sys.argv[1:]:
+    try:
+        name = json.load(open(path)).get("realm", "")
+    except Exception:
+        continue
+    if name:
+        print(name)' "${realm_files[@]}" 2>/dev/null || true
 }
 
 # HTTP status of a realm's OIDC discovery document, from inside the compose
@@ -317,23 +339,30 @@ keycloak_realm_status() {
 
 ensure_realm_imported() {
   local realm status deadline
-  realm="$(kc_realm_name)"
-  if [ -z "$realm" ]; then
+  local realms=() missing=() still=()
+  mapfile -t realms < <(kc_realm_names)
+  if [ "${#realms[@]}" -eq 0 ]; then
     log "WARNING: no realm JSON under ${APP_DIR}/keycloak/realms; skipping realm import check"
     return 0
   fi
-  status="$(keycloak_realm_status "$realm")"
-  case "$status" in
-    404) : ;;                       # missing — import it below
-    "" | 000)
-      log "WARNING: could not probe realm '${realm}' (keycloak unreachable); skipping realm import check"
-      return 0 ;;
-    *) return 0 ;;                  # already there
-  esac
 
-  log "realm '${realm}' does not exist in keycloak; recreating keycloak so --import-realm runs"
+  # One recreate covers every missing realm: --import-realm reads the whole directory, so the
+  # restart below imports all of them in a single pass.
+  for realm in "${realms[@]}"; do
+    status="$(keycloak_realm_status "$realm")"
+    case "$status" in
+      404) missing+=("$realm") ;;   # missing — import it below
+      "" | 000)
+        log "WARNING: could not probe realm '${realm}' (keycloak unreachable); skipping realm import check"
+        return 0 ;;
+      *) : ;;                       # already there
+    esac
+  done
+  [ "${#missing[@]}" -gt 0 ] || return 0
+
+  log "realm(s) '${missing[*]}' do not exist in keycloak; recreating keycloak so --import-realm runs"
   if ! compose up -d --no-deps --force-recreate keycloak; then
-    log "ERROR: could not recreate keycloak; realm '${realm}' NOT imported"
+    log "ERROR: could not recreate keycloak; realm(s) '${missing[*]}' NOT imported"
     return 1
   fi
 
@@ -346,15 +375,19 @@ ensure_realm_imported() {
     sleep 5
   done
 
-  status="$(keycloak_realm_status "$realm")"
-  if [ "$status" = 404 ]; then
+  for realm in "${missing[@]}"; do
+    if [ "$(keycloak_realm_status "$realm")" = 404 ]; then
+      still+=("$realm")
+    fi
+  done
+  if [ "${#still[@]}" -gt 0 ]; then
     # The import ran and refused the file. Keycloak logs the reason and keeps
     # serving, so nothing else surfaces it — say so loudly and fail the run.
-    log "ERROR: realm '${realm}' STILL missing after the import restart. Sign-in stays broken."
+    log "ERROR: realm(s) '${still[*]}' STILL missing after the import restart. Sign-in stays broken."
     log "Check the container log for KC-SERVICES0005 (\`docker logs \$(docker ps -qf name=keycloak)\`)."
     return 1
   fi
-  log "realm '${realm}' imported from $(ls -1 "${APP_DIR}"/keycloak/realms/*.json | head -n1 | xargs basename)"
+  log "realm(s) '${missing[*]}' imported from ${APP_DIR}/keycloak/realms"
   record_keycloak_config_applied
 }
 
@@ -462,19 +495,15 @@ reconcile_keycloak_realm() {
   fi
 
   local realm_file realm secret cid out rc=0
-  realm_file="$(ls -1 "${APP_DIR}"/keycloak/realms/*.json 2>/dev/null | head -n1 || true)"
-  if [ -z "$realm_file" ]; then
+  local realm_files=()
+  # EVERY realm JSON, not just the first. ThePlot ships its own realm beside protofast's, and
+  # a realm this loop skips keeps whatever it drifted to — the exact silent gap this function
+  # exists to close. One throwaway admin below serves them all.
+  mapfile -t realm_files < <(ls -1 "${APP_DIR}"/keycloak/realms/*.json 2>/dev/null || true)
+  if [ "${#realm_files[@]}" -eq 0 ]; then
     log "WARNING: no realm JSON under ${APP_DIR}/keycloak/realms; skipping realm reconcile"
     return 0
   fi
-  realm="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("realm",""))' \
-           "$realm_file" 2>/dev/null || true)"
-  if [ -z "$realm" ]; then
-    log "WARNING: $(basename "$realm_file") declares no realm name; skipping realm reconcile"
-    return 0
-  fi
-
-  log "reconciling realm '${realm}' from $(basename "$realm_file") via the Admin API"
 
   # tr -d strips the base64 padding/alphabet chars that would need quoting downstream.
   secret="$(head -c 24 /dev/urandom | base64 | tr -d '\n=+/')"
@@ -508,6 +537,16 @@ reconcile_keycloak_realm() {
   fi
 
   if [ "$rc" -eq 0 ]; then
+   for realm_file in "${realm_files[@]}"; do
+    realm="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("realm",""))' \
+             "$realm_file" 2>/dev/null || true)"
+    if [ -z "$realm" ]; then
+      log "WARNING: $(basename "$realm_file") declares no realm name; skipping it"
+      continue
+    fi
+
+    log "reconciling realm '${realm}' from $(basename "$realm_file") via the Admin API"
+
     # Realm-level flags, as alternating "-s" / "key=value" lines so a value with
     # spaces (passwordPolicy) survives without quoting games.
     local args=()
@@ -585,7 +624,7 @@ for a in json.load(open(sys.argv[1])).get("requiredActions", []):
     ]))
 PY
     )
-    [ "$n" -gt 0 ] && log "realm '${realm}': reconciled ${n} required action(s)"
+    if [ "$n" -gt 0 ]; then log "realm '${realm}': reconciled ${n} required action(s)"; fi
 
     # Client settings (KC_CLIENT_ATTRS + KC_CLIENT_FIELDS). The realm JSON holds
     # the import's ${BACKCHANNEL_LOGOUT_URL:} placeholder, never the resolved
@@ -663,7 +702,8 @@ for client in realm.get("clients", []):
             print("\t".join([client_id, name, text(client[name])]))
 PY
     )
-    [ "$m" -gt 0 ] && log "realm '${realm}': reconciled ${m} client setting(s)"
+    if [ "$m" -gt 0 ]; then log "realm '${realm}': reconciled ${m} client setting(s)"; fi
+   done
   fi
 
   # Drop the throwaway admin LAST — the token above stays valid for the calls that
@@ -681,7 +721,7 @@ PY
   compose exec -T keycloak bash -c "rm -f '${KC_KCADM_CONFIG}'" >/dev/null 2>&1 || true
 
   if [ "$rc" -ne 0 ]; then
-    log "WARNING: realm reconcile finished with errors; the live realm may still differ from $(basename "$realm_file")"
+    log "WARNING: realm reconcile finished with errors; a live realm may still differ from its JSON"
   fi
   return 0
 }
@@ -738,6 +778,35 @@ SCRIPT
   chmod 755 "${APP_DIR}/postgres/initdb/01-auth.sh"
 }
 
+# Same script as deploy/postgres/initdb/02-segmentation.sh, written to the box so an existing
+# pgdata volume (whose first init predates this file) still converges on every apply.
+write_segmentation_initdb() {
+  mkdir -p "${APP_DIR}/postgres/initdb"
+  cat > "${APP_DIR}/postgres/initdb/02-segmentation.sh" << 'SCRIPT'
+#!/bin/sh
+# Creates (or re-asserts) the segmentation service's durable `segmentation` DB + owning role.
+set -eu
+
+SEGMENTATION_PASSWORD="$(tr -d '\n' < /run/secrets/segmentation-db-password)"
+[ -n "$SEGMENTATION_PASSWORD" ] || { echo "02-segmentation.sh: segmentation-db-password is empty" >&2; exit 1; }
+
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+  --set=pw="$SEGMENTATION_PASSWORD" <<'SQL'
+SELECT format('CREATE ROLE segmentation LOGIN PASSWORD %L', :'pw')
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'segmentation')
+UNION ALL
+SELECT format('ALTER ROLE segmentation WITH PASSWORD %L', :'pw')
+WHERE EXISTS (SELECT FROM pg_roles WHERE rolname = 'segmentation');
+\gexec
+
+SELECT format('CREATE DATABASE segmentation OWNER segmentation')
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'segmentation');
+\gexec
+SQL
+SCRIPT
+  chmod 755 "${APP_DIR}/postgres/initdb/02-segmentation.sh"
+}
+
 # Initdb.d scripts run only on an EMPTY PGDATA. The EBS volume persists, so a
 # cluster that already inited (especially one that inited before 01-auth.sh was
 # mounted) never creates the auth role. Exec the same script against the live
@@ -757,6 +826,21 @@ ensure_auth_db() {
   compose exec -T postgres /docker-entrypoint-initdb.d/01-auth.sh
 }
 
+ensure_segmentation_db() {
+  write_segmentation_initdb
+  local i
+  for i in $(seq 1 30); do
+    postgres_ok && break
+    sleep 2
+  done
+  if ! postgres_ok; then
+    log "ensure_segmentation_db: postgres is not accepting connections"
+    return 1
+  fi
+  log "ensuring Postgres role+database 'segmentation' exist"
+  compose exec -T postgres /docker-entrypoint-initdb.d/02-segmentation.sh
+}
+
 # Uppercase a component/client name into its manifest-key form: 'client-admin'
 # stays a name; the caller composes CLIENT_<UPPER>_TAG. '-' -> '_'.
 upper() { printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_'; }
@@ -771,12 +855,16 @@ resolve() {
   local component="$1"
   CLIENT_NAME=""
   case "$component" in
-    auth|payments|api)
+    auth|payments|api|segmentation)
       KEY="$(upper "$component")_TAG"; SVC="$component"; KIND="service" ;;
     auth-migrations)
       # Not a long-running container — applying it only publishes the image + pins the tag; the
       # migration RUN happens as a pre-step of the auth apply (run_auth_migrations).
       KEY="AUTH_MIGRATIONS_TAG"; SVC="auth-migrations"; KIND="migrations" ;;
+    segmentation-migrations)
+      # Same shape as auth-migrations: applying it publishes the image + pins the tag, and the
+      # migration RUN is the segmentation apply's fail-closed pre-step.
+      KEY="SEGMENTATION_MIGRATIONS_TAG"; SVC="segmentation-migrations"; KIND="migrations" ;;
     envoy)
       KEY="ENVOY_TAG"; SVC="envoy"; KIND="envoy" ;;
     otel-collector)
@@ -977,6 +1065,27 @@ run_auth_migrations() {
   log "auth schema migrations applied"
 }
 
+# Segmentation schema migrations: the same fail-closed pre-step as auth's. On failure the worker
+# is NOT recreated, so the old one keeps consuming against the old (expand/contract-compatible)
+# schema rather than a half-migrated one.
+run_segmentation_migrations() {
+  local tag; tag="$(get_env "$VERSIONS_FILE" SEGMENTATION_MIGRATIONS_TAG)"
+  if [ -z "$tag" ]; then
+    log "SEGMENTATION_MIGRATIONS_TAG unset — deploy-segmentation normally applies"
+    log "segmentation-migrations first in this same invocation; run"
+    log "'deploy.sh apply segmentation-migrations=<tag> segmentation=<tag>'. Aborting."
+    return 1
+  fi
+  ensure_segmentation_db || return 1
+  log "running segmentation schema migrations (segmentation-migrations=${tag})"
+  compose pull segmentation-migrations || true
+  if ! compose run --rm segmentation-migrations; then
+    log "migrations FAILED — aborting segmentation apply (worker not recreated)"
+    return 1
+  fi
+  log "segmentation schema migrations applied"
+}
+
 apply_kind() {
   case "$KIND" in
     service|envoy|otel|aspire|edge)
@@ -985,6 +1094,9 @@ apply_kind() {
       # Gate the auth apply on a successful schema migration (rc 4 → manifest restored upstream).
       if [ "$SVC" = auth ]; then
         run_auth_migrations || return 4
+      fi
+      if [ "$SVC" = segmentation ]; then
+        run_segmentation_migrations || return 4
       fi
       log "recreating ${SVC}${RECREATE:+ (forced)}"
       # shellcheck disable=SC2086  # RECREATE is intentionally word-split (flag or empty)
@@ -1033,6 +1145,7 @@ apply_kind() {
       # password rotation (initdb.d does not re-run).
       if [ "$SVC" = postgres ]; then
         ensure_auth_db || return 1
+        ensure_segmentation_db || return 1
       fi ;;
   esac
 }

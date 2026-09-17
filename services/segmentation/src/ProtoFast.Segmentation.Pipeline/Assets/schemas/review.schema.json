@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["findings", "verdict"],
+  "properties": {
+    "verdict": { "enum": ["pass", "pass_with_findings", "fail"] },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "type", "ids", "message"],
+        "properties": {
+          "severity": { "enum": ["low", "medium", "high"] },
+          "type": { "enum": ["boundary", "level", "title", "paragraph", "other"] },
+          "ids": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "message": { "type": "string", "maxLength": 500 }
+        }
+      }
+    }
+  }
+}

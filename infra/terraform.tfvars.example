@@ -16,11 +16,20 @@
 
 assets_bucket = "protofast-assets-<9-hex>"
 
+# Segmentation run artifacts, uploads and frozen output. A separate bucket from the assets one:
+# different lifecycle, browser PUT access, and object lock on frozen output. CI sets
+# TF_VAR_segmentation_bucket from the SEGMENTATION_BUCKET repo variable.
+#
+# Object lock is enabled at creation and CANNOT be turned off afterwards — read the note in
+# infra/segmentation.tf before the first apply.
+segmentation_bucket = "protofast-segmentation-<9-hex>"
+
 # --- Cloudflare (zone already registered + authoritative in Cloudflare) ---
 cloudflare_account_id = "<cloudflare-account-id>"
 cloudflare_zone       = "protofast.dev"        # apex; the zone must already be active
 admin_domain          = "admin.protofast.dev"  # subdomain (covered by Universal SSL)
 protofast_domain      = "protofast.dev"         # apex (proxied CNAME → flattened automatically)
+theplot_domain        = "theplot.protofast.dev" # ThePlot (document segmentation)
 keycloak_domain       = "auth.protofast.dev"    # Keycloak login/OIDC; empty skips the tunnel route
 
 # --- Telemetry dashboard (optional; Phase 4.1) ---
@@ -28,6 +37,11 @@ keycloak_domain       = "auth.protofast.dev"    # Keycloak login/OIDC; empty ski
 # `aws ssm start-session` port-forwarding instead.
 # telemetry_domain        = "telemetry.protofast.dev"
 # telemetry_access_emails = ["you@example.com"]
+
+# --- Segmentation (optional overrides) ---
+# segmentation_artifact_retention_days    = 30   # intermediates under runs/
+# segmentation_frozen_lock_days           = 365  # GOVERNANCE retention on frozen output
+# segmentation_visibility_timeout_seconds = 900  # must match Seg_Queues__VisibilityTimeoutSeconds
 
 # --- Compute (optional overrides) ---
 # aws_region    = "us-east-1"

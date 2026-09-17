@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+/* Make IOS Safari bezel match the page */
+html {
+  color-scheme: dark;
+}
+
+html,
+body {
+  min-height: 100%;
+  background-color: var(--color-bg);
+}
+
+/* Zoom the page on large screens. */
+@media (min-width: 1600px) {
+  .nocturne {
+    zoom: var(--page-zoom);
+    min-height: calc(100vh / var(--page-zoom));
+    --page-zoom: 1.05;
+  }
+}
+@media (min-width: 1800px) {
+  .nocturne {
+    --page-zoom: 1.15;
+  }
+}
+@media (min-width: 2100px) {
+  .nocturne {
+    --page-zoom: 1.25;
+  }
+}
+@media (min-width: 2500px) {
+  .nocturne {
+    --page-zoom: 1.35;
+  }
+}
+@media (min-width: 2900px) {
+  .nocturne {
+    --page-zoom: 1.45;
+  }
+}
+@media (min-width: 3400px) {
+  .nocturne {
+    --page-zoom: 1.6;
+  }
+}

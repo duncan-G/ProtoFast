@@ -12,8 +12,25 @@ public sealed class TenantResolver : ITenantResolver
 
     public TenantResolver(IOptions<TenantOptions> options)
     {
-        // Host comparison is case-insensitive; a stray port or trailing dot shouldn't matter.
-        _byHost = new Dictionary<string, TenantConfig>(options.Value.ByHost, StringComparer.OrdinalIgnoreCase);
+        // Host comparison is case-insensitive and a trailing dot shouldn't matter. The PORT is
+        // kept: in dev every client is on localhost and the port is the only thing telling them
+        // apart, so dropping it here would hand every host the first client that claimed
+        // "localhost". Keys are normalized the same way lookups are, so a map entry may be
+        // written with or without a port.
+        // An entry's host is TenantConfig.Host when set, otherwise the key itself — see the
+        // remarks there for why a key alone cannot carry a port.
+        var byHost = new Dictionary<string, TenantConfig>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, tenant) in options.Value.ByHost)
+        {
+            var host = NormalizeKey(string.IsNullOrWhiteSpace(tenant.Host) ? key : tenant.Host);
+            if (!byHost.TryAdd(host, tenant))
+            {
+                throw new InvalidOperationException(
+                    $"Two tenant entries claim the host '{host}'; a host maps to exactly one realm and client.");
+            }
+        }
+
+        _byHost = byHost;
 
         // Several hosts may share a realm/client pair; the first wins, since callers only need the
         // realm and client back out and every entry for a pair carries the same two.
@@ -35,8 +52,17 @@ public sealed class TenantResolver : ITenantResolver
             return false;
         }
 
-        var normalized = Normalize(host);
-        return _byHost.TryGetValue(normalized, out tenant);
+        // Most specific first: an entry naming the port wins, and a portless entry still serves
+        // every port on that name. That ordering is what lets one map hold dev's
+        // "localhost:20002" beside production's bare "theplot.protofast.dev".
+        var normalized = NormalizeKey(host);
+        if (_byHost.TryGetValue(normalized, out tenant))
+        {
+            return true;
+        }
+
+        var colon = normalized.IndexOf(':');
+        return colon >= 0 && _byHost.TryGetValue(normalized[..colon], out tenant);
     }
 
     public bool TryResolveByClient(string? realm, string? clientId, [NotNullWhen(true)] out TenantConfig? tenant)
@@ -53,17 +79,9 @@ public sealed class TenantResolver : ITenantResolver
     public bool KnowsRealm(string? realm) =>
         !string.IsNullOrWhiteSpace(realm) && _realms.Contains(realm);
 
-    private static string Normalize(string host)
-    {
-        var span = host.AsSpan().Trim();
-
-        // Drop an optional port (Host or :authority can carry one).
-        var colon = span.IndexOf(':');
-        if (colon >= 0)
-        {
-            span = span[..colon];
-        }
-
-        return span.TrimEnd('.').ToString().ToLowerInvariant();
-    }
+    /// <summary>Case- and trailing-dot-insensitive, port preserved. A bare IPv6 literal would
+    /// need brackets to carry a port at all, so splitting on the last colon is not safe and the
+    /// value is left whole — an unbracketed literal simply has to be mapped verbatim.</summary>
+    private static string NormalizeKey(string host) =>
+        host.Trim().TrimEnd('.').ToLowerInvariant();
 }

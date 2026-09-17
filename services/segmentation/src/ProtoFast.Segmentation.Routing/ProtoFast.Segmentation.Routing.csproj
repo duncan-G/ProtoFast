@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>ProtoFast.Segmentation.Routing</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Microsoft.Extensions.AI's chat-client surface is still marked experimental; the whole
+         point of this project is to sit on it, so the diagnostic is acknowledged once here
+         rather than suppressed at fifty call sites. -->
+    <NoWarn>$(NoWarn);MEAI001;OPENAI001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Anthropic.SDK" Version="5.10.0" />
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.10.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.10.0" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.10.0" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+    <PackageReference Include="OpenAI" Version="2.14.0" />
+    <PackageReference Include="StackExchange.Redis" Version="3.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ProtoFast.Segmentation.Core\ProtoFast.Segmentation.Core.csproj" />
+    <ProjectReference Include="..\ProtoFast.Segmentation.Data\ProtoFast.Segmentation.Data.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The contract suite exercises the header parsing and the error classifier directly. They
+         are internal because nothing outside this assembly should call them, not because they are
+         unimportant — they are where four providers' inconsistencies get normalized. -->
+    <InternalsVisibleTo Include="ProtoFast.Segmentation.ContractTests" />
+  </ItemGroup>
+
+</Project>

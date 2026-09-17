@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["paragraphId", "points"],
+  "additionalProperties": false,
+  "properties": {
+    "paragraphId": { "type": "string", "pattern": "^P\\d{5}[a-z]*$" },
+    "points": {
+      "type": "array",
+      "maxItems": 4,
+      "items": { "type": "string", "minLength": 1, "maxLength": 300 }
+    },
+    "terms": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": ["term", "definition"],
+        "additionalProperties": false,
+        "properties": {
+          "term": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "definition": { "type": "string", "minLength": 1, "maxLength": 300 }
+        }
+      }
+    },
+    "question": { "type": "string", "maxLength": 200 }
+  }
+}

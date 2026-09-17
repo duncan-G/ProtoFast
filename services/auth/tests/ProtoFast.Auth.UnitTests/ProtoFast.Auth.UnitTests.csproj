@@ -20,4 +20,11 @@
     <ProjectReference Include="..\..\src\ProtoFast.Auth.Api\ProtoFast.Auth.Api.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The real dev tenant map, so TenantResolverTests binds the file we actually ship rather
+         than a copy of it that can drift. -->
+    <None Include="..\..\src\ProtoFast.Auth.Api\appsettings.Development.json"
+          Link="appsettings.Development.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

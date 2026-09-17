@@ -37,6 +37,34 @@ variable "protofast_domain" {
   type        = string
 }
 
+variable "theplot_domain" {
+  description = "Hostname for the ThePlot client (e.g. theplot.example.com)."
+  type        = string
+}
+
+variable "segmentation_bucket" {
+  description = "S3 bucket for segmentation run artifacts, uploads and frozen output. Separate from the assets bucket: different lifecycle, different access shape, different blast radius."
+  type        = string
+}
+
+variable "segmentation_artifact_retention_days" {
+  description = "Days before intermediate run artifacts under runs/ expire. Frozen output is exempt."
+  type        = number
+  default     = 30
+}
+
+variable "segmentation_frozen_lock_days" {
+  description = "Object-lock (GOVERNANCE) retention applied to frozen artifacts at write time. Read by the worker, not by Terraform — retention is set per object on PutObject."
+  type        = number
+  default     = 365
+}
+
+variable "segmentation_visibility_timeout_seconds" {
+  description = "SQS visibility timeout for the run lanes. The worker's heartbeat renews within this window, so it is a ceiling on how long a dead worker's run stays invisible, not on how long a run may take."
+  type        = number
+  default     = 900
+}
+
 variable "telemetry_domain" {
   description = "Hostname for the Aspire Dashboard, gated by Cloudflare Access (e.g. telemetry.example.com)."
   type        = string
@@ -173,5 +201,7 @@ variable "ecr_repositories" {
     "protofast-payments",
     "protofast-api",
     "protofast-otel-collector",
+    "protofast-segmentation",
+    "protofast-segmentation-migrations",
   ]
 }

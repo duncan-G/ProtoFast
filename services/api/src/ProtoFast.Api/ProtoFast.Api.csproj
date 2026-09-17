@@ -11,14 +11,21 @@
 
   <ItemGroup>
     <Protobuf Include="Protos\greet.proto" GrpcServices="Server" />
+    <Protobuf Include="Protos\segmentation.proto" GrpcServices="Server" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Aspire.Npgsql" Version="13.5.3" />
     <PackageReference Include="Grpc.AspNetCore" Version="2.80.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\shared\ServiceDefaults\ServiceDefaults.csproj" />
+    <!-- api reads run state and presigns uploads. It deliberately does NOT reference
+         ProtoFast.Segmentation.Routing or .Pipeline: without them in the container there is no
+         seam through which api could call a provider or run a phase (plan §17). -->
+    <ProjectReference Include="..\..\..\segmentation\src\ProtoFast.Segmentation.Data\ProtoFast.Segmentation.Data.csproj" />
+    <ProjectReference Include="..\..\..\segmentation\src\ProtoFast.Segmentation.Storage\ProtoFast.Segmentation.Storage.csproj" />
   </ItemGroup>
 
 </Project>

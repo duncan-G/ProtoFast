@@ -16,6 +16,15 @@
   <Folder Name="/services/payments/">
     <Project Path="services/payments/src/ProtoFast.Payments.Api/ProtoFast.Payments.Api.csproj" />
   </Folder>
+  <Folder Name="/services/segmentation/">
+    <Project Path="services/segmentation/src/ProtoFast.Segmentation.Core/ProtoFast.Segmentation.Core.csproj" />
+    <Project Path="services/segmentation/src/ProtoFast.Segmentation.Data/ProtoFast.Segmentation.Data.csproj" />
+    <Project Path="services/segmentation/src/ProtoFast.Segmentation.Pipeline/ProtoFast.Segmentation.Pipeline.csproj" />
+    <Project Path="services/segmentation/src/ProtoFast.Segmentation.Routing/ProtoFast.Segmentation.Routing.csproj" />
+    <Project Path="services/segmentation/src/ProtoFast.Segmentation.SchemaMigrations/ProtoFast.Segmentation.SchemaMigrations.csproj" />
+    <Project Path="services/segmentation/src/ProtoFast.Segmentation.Storage/ProtoFast.Segmentation.Storage.csproj" />
+    <Project Path="services/segmentation/src/ProtoFast.Segmentation.Worker/ProtoFast.Segmentation.Worker.csproj" />
+  </Folder>
   <Folder Name="/services/shared/">
     <Project Path="services/shared/Database.Abstractions/Database.Abstractions.csproj" />
     <Project Path="services/shared/Database/Database.csproj" />

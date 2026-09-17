@@ -57,9 +57,10 @@ locals {
     aws_region       = var.aws_region
     admin_domain     = var.admin_domain
     protofast_domain = var.protofast_domain
+    theplot_domain   = var.theplot_domain
     keycloak_domain  = var.keycloak_domain
     default_client   = "protofast"
-    clients          = "admin,protofast"
+    clients          = "admin,protofast,theplot"
     assets_bucket    = aws_s3_bucket.assets.bucket
     tunnel_token     = local.tunnel_token
     host_b_ip        = local.host_b_private_ip
@@ -73,6 +74,14 @@ locals {
     assets_bucket   = aws_s3_bucket.assets.bucket
     host_a_ip       = local.host_a_private_ip
     app_secret_id   = aws_secretsmanager_secret.app.name
+
+    # Host B runs both halves of the segmentation feature — api submits, the worker consumes — so
+    # it needs the bucket and all three queue URLs. Host A needs only THEPLOT_DOMAIN, for the
+    # Envoy vhost and the clients-host allow-list.
+    segmentation_bucket               = aws_s3_bucket.segmentation.bucket
+    segmentation_runs_queue_url       = aws_sqs_queue.segmentation_runs.url
+    segmentation_bulk_queue_url       = aws_sqs_queue.segmentation_runs_bulk.url
+    segmentation_batch_poll_queue_url = aws_sqs_queue.segmentation_batch_poll.url
   })
 }
 

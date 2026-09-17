@@ -1,0 +1,30 @@
+{
+  "documentId": "archive-survey",
+  "condition": "Partial",
+  "family": "unknown",
+  "markdown": "# Archive Survey\n\n## Background\n\nThe archive holds roughly forty thousand items, catalogued between 1961 and 1987 by three successive archivists whose conventions differed in ways the catalogue does not record.\n\nItems acquired after 1987 were catalogued directly into the electronic system and are therefore described far more consistently than anything before them.\n\n## Findings\n\nRetrieval times for pre-1987 items are roughly four times longer, almost entirely because the shelf marks do not encode location in the way the later scheme does.\n\nA full recatalogue has been costed twice and rejected twice, on the grounds that the items most often requested are already in the later scheme.\n",
+  "paragraphs": [
+    "The archive holds roughly forty thousand items, catalogued between 1961 and 1987 by three successive archivists whose conventions differed in ways the catalogue does not record.",
+    "Items acquired after 1987 were catalogued directly into the electronic system and are therefore described far more consistently than anything before them.",
+    "Retrieval times for pre-1987 items are roughly four times longer, almost entirely because the shelf marks do not encode location in the way the later scheme does.",
+    "A full recatalogue has been costed twice and rejected twice, on the grounds that the items most often requested are already in the later scheme."
+  ],
+  "headings": [
+    {
+      "text": "Archive Survey",
+      "level": 1,
+      "beforeParagraph": 0
+    },
+    {
+      "text": "Background",
+      "level": 2,
+      "beforeParagraph": 0
+    },
+    {
+      "text": "Findings",
+      "level": 2,
+      "beforeParagraph": 2
+    }
+  ],
+  "artifacts": []
+}

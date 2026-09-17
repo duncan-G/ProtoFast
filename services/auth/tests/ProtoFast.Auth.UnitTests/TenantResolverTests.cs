@@ -14,6 +14,14 @@ public class TenantResolverTests
             ["protofast.dev"] = new TenantConfig { Realm = "protofast", ClientId = "protofast-web" },
             ["admin.protofast.dev"] = new TenantConfig { Realm = "protofast", ClientId = "admin" },
             ["localhost"] = new TenantConfig { Realm = "protofast", ClientId = "protofast-web" },
+            ["theplot.protofast.dev"] = new TenantConfig { Realm = "theplot", ClientId = "theplot-web" },
+            // Dev puts every client on localhost, so the port is the only thing separating them.
+            // Keyed by label with an explicit Host, matching the shape configuration can express:
+            // a ":" in the key would bind as a nested section. TenantConfigBindingTests pins that.
+            ["theplot-dev"] = new TenantConfig
+            {
+                Host = "localhost:20002", Realm = "theplot", ClientId = "theplot-web",
+            },
         },
     }));
 
@@ -30,6 +38,35 @@ public class TenantResolverTests
     {
         Assert.True(Resolver().TryResolve("localhost:20001", out var tenant));
         Assert.Equal("protofast-web", tenant!.ClientId);
+    }
+
+    [Fact]
+    public void Port_specific_entry_beats_the_bare_host()
+    {
+        // The bug this guards: with the port dropped before the lookup, ThePlot on :20002
+        // resolved to the "localhost" entry and got protofast-web. Keycloak then rejected the
+        // sign-in, because https://localhost:20002/signin-oidc is not a protofast-web redirect
+        // URI — an invalid_redirect_uri error rather than anything naming the real cause.
+        Assert.True(Resolver().TryResolve("localhost:20002", out var tenant));
+        Assert.Equal("theplot", tenant!.Realm);
+        Assert.Equal("theplot-web", tenant.ClientId);
+    }
+
+    [Fact]
+    public void Port_specific_entry_does_not_leak_to_other_ports()
+    {
+        // :20000 and :20001 have no entry of their own and must still land on the bare host.
+        Assert.True(Resolver().TryResolve("localhost:20000", out var tenant));
+        Assert.Equal("protofast", tenant!.Realm);
+        Assert.Equal("protofast-web", tenant.ClientId);
+    }
+
+    [Fact]
+    public void Resolves_a_second_realm_by_host()
+    {
+        Assert.True(Resolver().TryResolve("theplot.protofast.dev", out var tenant));
+        Assert.Equal("theplot", tenant!.Realm);
+        Assert.Equal("theplot-web", tenant.ClientId);
     }
 
     [Fact]
@@ -70,8 +107,17 @@ public class TenantResolverTests
         Assert.Null(tenant);
     }
 
+    [Fact]
+    public void Resolves_the_second_realm_backwards_too()
+    {
+        // ThePlot's realm has to round-trip as well, or a back-channel logout for it is refused.
+        Assert.True(Resolver().TryResolveByClient("theplot", "theplot-web", out var tenant));
+        Assert.Equal("theplot", tenant!.Realm);
+    }
+
     [Theory]
     [InlineData("protofast", true)]
+    [InlineData("theplot", true)]
     [InlineData("other-realm", false)]
     [InlineData("", false)]
     [InlineData(null, false)]

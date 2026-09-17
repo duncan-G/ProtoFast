@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["levels"],
+  "additionalProperties": false,
+  "properties": {
+    "levels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "level"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^L\\d{6}$" },
+          "level": { "type": "integer", "minimum": 1, "maximum": 6 },
+          "conf": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    }
+  }
+}

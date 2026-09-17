@@ -6,6 +6,11 @@ on:
     paths:
       - "services/api/**"
       - "services/shared/**"
+      # api references Segmentation.Data and .Storage for its gRPC surface, so a change there
+      # changes api's image even though nothing under services/api moved.
+      - "services/segmentation/src/ProtoFast.Segmentation.Core/**"
+      - "services/segmentation/src/ProtoFast.Segmentation.Data/**"
+      - "services/segmentation/src/ProtoFast.Segmentation.Storage/**"
       - ".github/workflows/deploy-api.yml"
       - ".github/workflows/_component-deploy.yml"
   workflow_dispatch:
@@ -32,7 +37,7 @@ jobs:
       build: dotnet
       target: protofast-api
       kind: service
-      hash_paths: "services/api services/shared"
+      hash_paths: "services/api services/shared services/segmentation/src/ProtoFast.Segmentation.Core services/segmentation/src/ProtoFast.Segmentation.Data services/segmentation/src/ProtoFast.Segmentation.Storage"
       project: services/api/src/ProtoFast.Api
       tag: ${{ inputs.tag }}
     secrets: inherit

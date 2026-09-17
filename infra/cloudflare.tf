@@ -14,6 +14,7 @@ locals {
   client_hostnames = {
     admin     = var.admin_domain
     protofast = var.protofast_domain
+    theplot   = var.theplot_domain
   }
 
   telemetry_enabled = var.telemetry_domain != "" && length(var.telemetry_access_emails) > 0

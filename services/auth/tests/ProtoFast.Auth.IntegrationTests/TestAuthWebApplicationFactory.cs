@@ -54,6 +54,11 @@ public sealed class TestAuthWebApplicationFactory : WebApplicationFactory<Progra
                 ["InternalJwt:KeyId"] = "test-1",
                 ["Tenants:ByHost:protofast.dev:Realm"] = "protofast",
                 ["Tenants:ByHost:protofast.dev:ClientId"] = "protofast-web",
+                // ThePlot's own realm, keyed by a label with an explicit Host — the shape dev
+                // uses, because a port cannot live in the key (see TenantConfig.Host).
+                ["Tenants:ByHost:theplot-dev:Host"] = "localhost:20002",
+                ["Tenants:ByHost:theplot-dev:Realm"] = "theplot",
+                ["Tenants:ByHost:theplot-dev:ClientId"] = "theplot-web",
             }));
 
         // Swap the Redis-backed stores for in-memory stubs so the tests need no running Redis.

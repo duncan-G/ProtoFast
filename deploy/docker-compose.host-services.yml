@@ -65,6 +65,11 @@ services:
       Auth_Keycloak__ClientSecretProtofastWeb: "${PROTOFAST_WEB_CLIENT_SECRET}"
       Auth_Keycloak__ClientSecretAdmin: "${ADMIN_CLIENT_SECRET}"
       Auth_Keycloak__AdminClientSecret: "${ACCOUNT_ADMIN_CLIENT_SECRET}"
+      # ThePlot runs in its own realm. A client secret only authenticates in the realm that
+      # issued it, so both of these are distinct credentials from the protofast ones above —
+      # the per-realm map is what account management (passkeys, delete) uses for theplot.
+      Auth_Keycloak__ClientSecretTheplotWeb: "${THEPLOT_WEB_CLIENT_SECRET}"
+      Auth_Keycloak__AdminClientSecretByRealm__theplot: "${THEPLOT_ACCOUNT_ADMIN_CLIENT_SECRET}"
       # The relay auth-svc sends its own mail through — the email-change code, and the heads-up
       # to the address that just lost the account. Same .env values Keycloak's realm import reads
       # for its own SMTP block below: one relay, one verified sender, two services on it.
@@ -85,6 +90,11 @@ services:
       Tenants__ByHost__protofast.dev__ClientId: protofast-web
       Tenants__ByHost__admin.protofast.dev__Realm: protofast
       Tenants__ByHost__admin.protofast.dev__ClientId: admin
+      # ThePlot: its own realm, so it shares no SSO session with the two above — signing in
+      # here is a separate account even for the same person. Without this entry the host is
+      # unmapped and /signin never reaches Keycloak at all.
+      Tenants__ByHost__theplot.protofast.dev__Realm: theplot
+      Tenants__ByHost__theplot.protofast.dev__ClientId: theplot-web
       # Admin-only re-authentication policy. Both clients share the realm's SSO session, so
       # without these a sign-in on the product site walks into the admin console silently.
       # max_age forces *a* re-authentication; acr_values asks the realm for the level whose
@@ -145,11 +155,78 @@ services:
       <<: *dotnet-env
       # Verify the internal JWT with the public key only (auth §6).
       Shared_InternalJwt__PublicKeyPemFile: /run/secrets/internal-jwt-pub
+      # Segmentation's read + submit surface (plan §17, §20.1). api presigns into the bucket,
+      # sends one SQS message per run, and reads run state from Postgres — it never calls a
+      # provider and never reads an artifact's contents.
+      #
+      # No Api_Segmentation__ServiceUrl here: that is LocalStack's endpoint in development, and
+      # setting it in production would point the whole feature at something that is not AWS.
+      AWS_REGION: ${AWS_REGION}
+      AWS_DEFAULT_REGION: ${AWS_REGION}
+      ConnectionStrings__segmentation: "Host=postgres;Port=5432;Database=segmentation;Username=segmentation;Password=${SEGMENTATION_DB_PASSWORD};GSS Encryption Mode=Disable"
+      Api_Segmentation__Bucket: ${SEGMENTATION_BUCKET}
+      Api_Segmentation__Runs: ${SEGMENTATION_RUNS_QUEUE_URL}
+      Api_Segmentation__Bulk: ${SEGMENTATION_BULK_QUEUE_URL}
+      Api_Segmentation__BatchPoll: ${SEGMENTATION_BATCH_POLL_QUEUE_URL}
     volumes:
       - /usr/local/bin/grpc_health_probe:/usr/local/bin/grpc_health_probe:ro
     secrets:
       - internal-jwt-pub
     healthcheck: *grpc-health
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Segmentation worker (plan §23.2). No ports: nothing dials it. It pulls from SQS and writes to
+  # S3 and Postgres, which is what makes a mid-run deploy safe — the container stops, the in-flight
+  # message's visibility expires, and the replacement resumes that run from its last checkpoint.
+  segmentation:
+    image: ${ECR}/protofast-segmentation:${SEGMENTATION_TAG}
+    restart: unless-stopped
+    # High enough that a worker can finish its current superstep and checkpoint rather than being
+    # killed inside a provider call it has already paid for (plan §23.4).
+    stop_grace_period: 60s
+    environment:
+      <<: *dotnet-env
+      # The worker reads the four provider keys from Secrets Manager itself, exactly as auth reads
+      # its own (plan §21). The SDK takes credentials from the instance role over IMDS, which a
+      # container only reaches with metadata hop limit 2 (infra/compute.tf), and resolves no region
+      # on its own — hence the explicit AWS_REGION.
+      AWS_REGION: ${AWS_REGION}
+      AWS_DEFAULT_REGION: ${AWS_REGION}
+      Shared_InternalJwt__PublicKeyPemFile: /run/secrets/internal-jwt-pub
+      ConnectionStrings__redis: "redis:6379"
+      ConnectionStrings__segmentation: "Host=postgres;Port=5432;Database=segmentation;Username=segmentation;Password=${SEGMENTATION_DB_PASSWORD};GSS Encryption Mode=Disable"
+      Seg_Storage__Bucket: ${SEGMENTATION_BUCKET}
+      Seg_Queues__Runs: ${SEGMENTATION_RUNS_QUEUE_URL}
+      Seg_Queues__Bulk: ${SEGMENTATION_BULK_QUEUE_URL}
+      Seg_Queues__BatchPoll: ${SEGMENTATION_BATCH_POLL_QUEUE_URL}
+      Seg_Queues__MaxConcurrentRuns: "${SEGMENTATION_MAX_CONCURRENT_RUNS:-8}"
+    volumes:
+      - /usr/local/bin/grpc_health_probe:/usr/local/bin/grpc_health_probe:ro
+    secrets:
+      - internal-jwt-pub
+    healthcheck: *grpc-health
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # One-shot schema-migrations job for the segmentation DB, mirroring auth-migrations.
+  # profiles:["jobs"] keeps it out of `compose up`; deploy.sh runs it via
+  # `compose run --rm segmentation-migrations` BEFORE recreating the worker, and aborts the
+  # segmentation apply on failure (fail-closed).
+  segmentation-migrations:
+    image: ${ECR}/protofast-segmentation-migrations:${SEGMENTATION_MIGRATIONS_TAG}
+    profiles: ["jobs"]
+    restart: "no"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production          # hard-blocks --rebuild-schema
+      ConnectionStrings__segmentation: "Host=postgres;Port=5432;Database=segmentation;Username=segmentation;Password=${SEGMENTATION_DB_PASSWORD};GSS Encryption Mode=Disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   postgres:
     # Pinned upstream image via POSTGRES_TAG (versions.env). Major-version bumps
@@ -239,10 +316,18 @@ services:
       PROTOFAST_WEB_CLIENT_SECRET: "${PROTOFAST_WEB_CLIENT_SECRET}"
       ADMIN_CLIENT_SECRET: "${ADMIN_CLIENT_SECRET}"
       ACCOUNT_ADMIN_CLIENT_SECRET: "${ACCOUNT_ADMIN_CLIENT_SECRET}"
+      # theplot-realm.json — the second realm in ./keycloak/realms, imported by the same
+      # --import-realm pass (it reads the whole directory).
+      THEPLOT_WEB_CLIENT_SECRET: "${THEPLOT_WEB_CLIENT_SECRET}"
+      THEPLOT_ACCOUNT_ADMIN_CLIENT_SECRET: "${THEPLOT_ACCOUNT_ADMIN_CLIENT_SECRET}"
       # Client "Home URL" (client.baseUrl) — where the login-page brand link returns the
       # user. Overrides the realm import's dev-localhost default with the public app domains.
       PROTOFAST_WEB_BASE_URL: "${PROTOFAST_WEB_BASE_URL:-https://protofast.dev}"
       ADMIN_BASE_URL: "${ADMIN_BASE_URL:-https://admin.protofast.dev}"
+      THEPLOT_WEB_BASE_URL: "${THEPLOT_WEB_BASE_URL:-https://theplot.protofast.dev}"
+      # ThePlot's passkeys are scoped to its own host rather than the apex, so a credential
+      # enrolled here is never offered for a realm that has no record of it.
+      THEPLOT_WEBAUTHN_RP_ID: "${THEPLOT_WEBAUTHN_RP_ID:-theplot.protofast.dev}"
       # Where Keycloak POSTs the logout token when an SSO session ends (both clients share the
       # endpoint; the token's `aud` says which one it is for). Same-host compose DNS, never the
       # public edge — Envoy's vhost routes only the browser OIDC paths to auth, so this URL is
@@ -267,6 +352,16 @@ services:
       APPLE_TEAM_ID: "${APPLE_TEAM_ID:-}"
       APPLE_KEY_ID: "${APPLE_KEY_ID:-}"
       APPLE_PRIVATE_KEY: "${APPLE_PRIVATE_KEY:-}"
+      # ThePlot's realm brokers to its own provider apps. Each realm has a distinct broker
+      # redirect URI (/realms/theplot/broker/<alias>/endpoint), which has to be registered with
+      # Google/Apple before the button can work — so these default to empty rather than to the
+      # protofast values, which would fail on an unregistered redirect URI. Both ship DISABLED.
+      THEPLOT_GOOGLE_CLIENT_ID: "${THEPLOT_GOOGLE_CLIENT_ID:-}"
+      THEPLOT_GOOGLE_CLIENT_SECRET: "${THEPLOT_GOOGLE_CLIENT_SECRET:-}"
+      THEPLOT_APPLE_CLIENT_ID: "${THEPLOT_APPLE_CLIENT_ID:-}"
+      THEPLOT_APPLE_TEAM_ID: "${THEPLOT_APPLE_TEAM_ID:-}"
+      THEPLOT_APPLE_KEY_ID: "${THEPLOT_APPLE_KEY_ID:-}"
+      THEPLOT_APPLE_PRIVATE_KEY: "${THEPLOT_APPLE_PRIVATE_KEY:-}"
     volumes:
       - ./keycloak/realms:/opt/keycloak/data/import:ro
       # Custom "protofast" login theme (realm import sets loginTheme: protofast).
@@ -299,6 +394,8 @@ secrets:
     file: /opt/protofast/kc-db-password       # uid 1000 (Keycloak); seeded by cloud-init / deploy.sh
   auth-db-password:
     file: /opt/protofast/auth-db-password  # root-only, seeded by cloud-init
+  segmentation-db-password:
+    file: /opt/protofast/segmentation-db-password  # root-only, seeded by cloud-init / deploy.sh
   # PUBLIC key only. api/payments read `Shared_` env vars and have NO Secrets Manager
   # provider (auth alone does), so this one still has to reach them as a file. 0644 —
   # it's a public key, and the .NET chiseled images run as uid 1654, not root. The

@@ -1,0 +1,198 @@
+syntax = "proto3";
+
+option csharp_namespace = "ProtoFast.Api";
+
+package segmentation;
+
+// Document segmentation: submit a document, follow the run, read the tree.
+//
+// This is a second gRPC service inside `api`, next to Greeter, so it inherits everything api
+// already has: the InternalJwtAuthInterceptor on every call, AddServiceDefaults() telemetry, the
+// gRPC health service, and the edge's /api/ route with its ext_authz annotation. No Envoy change
+// is required — /api/ already strips its prefix and has no timeout, which is what a long-lived
+// status stream needs.
+//
+// Every RPC is authorized by the internal JWT and every run is scoped to its subject: ownership
+// comes from the token, never from a request field.
+service Segmentation {
+  // Returns a presigned S3 PUT URL. The browser uploads directly to S3, so a large document
+  // never crosses gRPC and api never sees the bytes.
+  rpc CreateUpload (CreateUploadRequest) returns (CreateUploadReply);
+
+  // Validates the upload, writes the run row, sends one SQS message. Idempotent on
+  // idempotency_key: the same key returns the same run rather than a second run and a second bill.
+  rpc SubmitRun (SubmitRunRequest) returns (SubmitRunReply);
+
+  rpc GetRun (GetRunRequest) returns (Run);
+
+  // Server-streaming tail of run_events, so ThePlot shows progress without polling.
+  rpc WatchRun (GetRunRequest) returns (stream RunEvent);
+
+  rpc GetResult (GetRunRequest) returns (Result);
+
+  // One phase artifact as a presigned GET. Owner-only, and only for keys under the caller's run.
+  rpc GetArtifact (GetArtifactRequest) returns (GetArtifactReply);
+
+  rpc CancelRun (GetRunRequest) returns (Run);
+
+  // Re-queues from phase N, invalidating downstream artifacts.
+  rpc RerunFrom (RerunFromRequest) returns (SubmitRunReply);
+
+  // Pending human gates for the caller. Requires the reviewer realm role.
+  rpc ListReviews (ListReviewsRequest) returns (ListReviewsReply);
+
+  rpc SubmitReviewDecision (SubmitReviewDecisionRequest) returns (Run);
+
+  // The model registry with qualification and live headroom. Requires the admin realm role.
+  rpc ListModels (ListModelsRequest) returns (ListModelsReply);
+}
+
+enum Sensitivity { SENSITIVITY_UNSPECIFIED = 0; PUBLIC = 1; INTERNAL = 2; CONFIDENTIAL = 3; RESTRICTED = 4; }
+enum Priority    { PRIORITY_UNSPECIFIED = 0; REALTIME = 1; BULK = 2; }
+enum PhaseState  { PHASE_STATE_UNSPECIFIED = 0; PENDING = 1; RUNNING = 2; DONE = 3; FAILED = 4; SKIPPED = 5; }
+
+message CreateUploadRequest {
+  string file_name = 1;
+  int64 size_bytes = 2;
+  bool with_layout = 3;               // also presign the .layout.json sibling
+}
+
+message CreateUploadReply {
+  string upload_id = 1;
+  string markdown_put_url = 2;
+  string layout_put_url = 3;          // empty when with_layout is false
+  map<string, string> required_headers = 4;
+  int64 expires_unix_seconds = 5;
+}
+
+message SubmitRunRequest {
+  string upload_id = 1;
+  string document_id = 2;             // caller's id; free-form
+  Sensitivity sensitivity = 3;
+  string family_hint = 4;
+  repeated string augmentations = 5;
+  Priority priority = 6;
+  string idempotency_key = 7;         // same key -> same run
+  bool require_review = 8;            // opt in to the human gate regardless of policy
+}
+
+message SubmitRunReply { string run_id = 1; }
+
+message GetRunRequest { string run_id = 1; }
+
+message Phase {
+  int32 index = 1;
+  string name = 2;
+  PhaseState state = 3;
+  string artifact_key = 4;
+  int64 started_unix_seconds = 5;
+  int64 finished_unix_seconds = 6;
+  string error = 7;
+}
+
+message Run {
+  string run_id = 1;
+  string document_id = 2;
+  string family = 3;
+  string condition = 4;               // clean | partial | degraded | conversational
+  Sensitivity sensitivity = 5;
+  Priority priority = 6;
+  repeated Phase phases = 7;
+  map<string, string> pinned_models = 8;
+  bool requires_review = 9;
+  string review_state = 10;           // none | pending | approved | rejected
+  double cost_usd = 11;
+  int64 created_unix_seconds = 12;
+  string error = 13;
+  bool cancelled = 14;
+  string tree_hash = 15;
+}
+
+message RunEvent {
+  string run_id = 1;
+  int64 at_unix_seconds = 2;
+  string phase = 3;
+  PhaseState state = 4;
+  string message = 5;
+  int64 sequence = 6;                 // monotonic; resume a stream from the last one seen
+}
+
+message SectionNode {
+  string section_id = 1;
+  string title = 2;
+  bool title_inferred = 3;
+  int32 level = 4;
+  repeated SectionNode children = 5;
+  repeated string paragraph_ids = 6;
+  string heading_line_id = 7;
+}
+
+message Paragraph {
+  string paragraph_id = 1;
+  string text = 2;
+  int32 word_count = 3;
+  string kind = 4;
+  string content_hash = 5;
+}
+
+message Augmentation {
+  string paragraph_id = 1;
+  string type = 2;
+  string json = 3;                    // type-specific payload, schema-validated server-side
+  string review_verdict = 4;
+}
+
+message Result {
+  string run_id = 1;
+  SectionNode root = 2;
+  repeated Paragraph paragraphs = 3;
+  repeated Augmentation augmentations = 4;
+  string tree_hash = 5;
+  int64 frozen_unix_seconds = 6;
+  repeated Finding findings = 7;
+}
+
+message GetArtifactRequest { string run_id = 1; string artifact_key = 2; }
+message GetArtifactReply   { string get_url = 1; int64 expires_unix_seconds = 2; }
+
+message RerunFromRequest { string run_id = 1; int32 from_phase = 2; }
+
+message ReviewTask {
+  string review_id = 1;
+  string run_id = 2;
+  string document_id = 3;
+  string family = 4;
+  int64 created_unix_seconds = 5;
+  repeated Finding findings = 6;
+}
+
+message Finding {
+  string severity = 1;
+  string type = 2;
+  repeated string ids = 3;
+  string message = 4;
+}
+
+message ListReviewsRequest { string status = 1; int32 page_size = 2; string page_token = 3; }
+message ListReviewsReply   { repeated ReviewTask reviews = 1; string next_page_token = 2; }
+
+message ParagraphEdit { string op = 1; string paragraph_id = 2; string with_paragraph_id = 3; int32 before_sentence = 4; }
+
+message SubmitReviewDecisionRequest {
+  string review_id = 1;
+  string decision = 2;                // approve | approve_with_edits | reject
+  string notes = 3;
+  repeated ParagraphEdit edits = 4;
+}
+
+message ModelInfo {
+  string key = 1;
+  string provider = 2;
+  string tier = 3;
+  repeated string qualified_roles = 4;
+  double headroom_fraction = 5;
+  bool circuit_open = 6;
+}
+
+message ListModelsRequest {}
+message ListModelsReply { repeated ModelInfo models = 1; }

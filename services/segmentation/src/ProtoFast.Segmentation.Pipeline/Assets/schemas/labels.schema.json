@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["window", "labels"],
+  "additionalProperties": false,
+  "properties": {
+    "window": { "type": "integer", "minimum": 0 },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "conf"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^L\\d{6}$" },
+          "label": { "enum": ["CONT", "PARA", "HEAD", "ARTIFACT", "OTHER"] },
+          "conf": { "type": "number", "minimum": 0, "maximum": 1 },
+          "kind": { "enum": ["caption", "footnote", "table", "list_item", "code", "quote", "equation"] }
+        }
+      }
+    }
+  }
+}

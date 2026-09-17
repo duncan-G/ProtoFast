@@ -1,0 +1,16 @@
+{
+  "documentId": "site-interview",
+  "condition": "Conversational",
+  "family": "transcript",
+  "markdown": "INTERVIEWER: Can you describe what you saw when you arrived at the site that morning?\n\nWITNESS: The gate was open, which it never is before seven, and the security light was off.\n\nINTERVIEWER: Was anything else different from a normal morning?\n\nWITNESS: The second van was gone. I assumed it had been taken for servicing and thought no more about it until the afternoon.\n\nINTERVIEWER: When did you first report it?\n\nWITNESS: About four o'clock, once I had checked with the workshop and they said they had not seen it.\n",
+  "paragraphs": [
+    "INTERVIEWER: Can you describe what you saw when you arrived at the site that morning?",
+    "WITNESS: The gate was open, which it never is before seven, and the security light was off.",
+    "INTERVIEWER: Was anything else different from a normal morning?",
+    "WITNESS: The second van was gone. I assumed it had been taken for servicing and thought no more about it until the afternoon.",
+    "INTERVIEWER: When did you first report it?",
+    "WITNESS: About four o'clock, once I had checked with the workshop and they said they had not seen it."
+  ],
+  "headings": [],
+  "artifacts": []
+}

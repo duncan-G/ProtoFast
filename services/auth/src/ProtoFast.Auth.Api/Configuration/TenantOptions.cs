@@ -11,6 +11,16 @@ public sealed class TenantOptions
 
 public sealed class TenantConfig
 {
+    /// <summary>
+    /// The host this entry matches, for a host the dictionary key cannot spell. Configuration
+    /// keys are colon-delimited, so a key carrying a port — <c>"localhost:20002"</c> — is read as
+    /// a nested section (<c>localhost</c> → <c>20002</c>) rather than a literal key, and the entry
+    /// silently disappears at bind time instead of failing loudly. Where that applies, make the
+    /// key a plain label and put the real host here. Empty means the key IS the host, which is
+    /// what every port-less production entry uses.
+    /// </summary>
+    public string Host { get; init; } = "";
+
     public string Realm { get; init; } = "";
     public string ClientId { get; init; } = "";
 

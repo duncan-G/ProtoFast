@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>ProtoFast.Segmentation.Pipeline</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <NoWarn>$(NoWarn);MEAI001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Prompt assets ship inside the image, so PromptVersion is a property of the image and a
+         rollback rolls the prompts back with it (plan §23.5).
+
+         LogicalName is set explicitly because the default resource name is the file's path with
+         separators turned into dots AND any character that is invalid in an identifier replaced —
+         so "skills/layout-labeling/SKILL.md" becomes "…skills.layout_labeling.SKILL.md", with the
+         hyphen silently gone from the directory but kept in the filename. Replicating that rule in
+         the loader would be a second place to get it wrong; pinning the name to the path means the
+         string in PromptAssets.Read IS the file on disk. -->
+    <EmbeddedResource Include="Assets\**\*.md;Assets\**\*.json"
+                      LogicalName="Assets/$([System.String]::Copy('%(RecursiveDir)').Replace('\','/'))%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Agents.AI.Workflows" Version="1.21.0" />
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.10.0" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ProtoFast.Segmentation.Core\ProtoFast.Segmentation.Core.csproj" />
+    <ProjectReference Include="..\ProtoFast.Segmentation.Data\ProtoFast.Segmentation.Data.csproj" />
+    <ProjectReference Include="..\ProtoFast.Segmentation.Routing\ProtoFast.Segmentation.Routing.csproj" />
+    <ProjectReference Include="..\ProtoFast.Segmentation.Storage\ProtoFast.Segmentation.Storage.csproj" />
+  </ItemGroup>
+
+</Project>

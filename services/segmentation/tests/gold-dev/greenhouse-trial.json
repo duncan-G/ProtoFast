@@ -1,0 +1,37 @@
+{
+  "documentId": "greenhouse-trial",
+  "condition": "Clean",
+  "family": "unknown",
+  "markdown": "# Greenhouse Cultivar Trial\n\n## 1 Method\n\nThe greenhouse trial ran for eleven weeks between March and June, with readings taken every second day at the same hour to keep light exposure comparable across plots.\n\nTwo cultivars were grown side by side under identical irrigation, so that any difference in yield could be attributed to the cultivar rather than to the watering regime.\n\n### 1.1 Sowing\n\nEach plot was sown with sixty seeds at a uniform depth of two centimetres, and thinned to forty seedlings after the second week to remove the effect of crowding.\n\nSoil moisture was logged continuously by a probe buried at root depth in the centre of each plot, and the logs were downloaded weekly.\n\n## 2 Results\n\nCultivar A produced a mean yield of four hundred and twelve grams per plot; cultivar B produced three hundred and eighty one grams under the same conditions.\n\nThe difference was consistent across all six plots, which is the result that makes the trial worth repeating at field scale rather than a curiosity of one greenhouse.\n",
+  "paragraphs": [
+    "The greenhouse trial ran for eleven weeks between March and June, with readings taken every second day at the same hour to keep light exposure comparable across plots.",
+    "Two cultivars were grown side by side under identical irrigation, so that any difference in yield could be attributed to the cultivar rather than to the watering regime.",
+    "Each plot was sown with sixty seeds at a uniform depth of two centimetres, and thinned to forty seedlings after the second week to remove the effect of crowding.",
+    "Soil moisture was logged continuously by a probe buried at root depth in the centre of each plot, and the logs were downloaded weekly.",
+    "Cultivar A produced a mean yield of four hundred and twelve grams per plot; cultivar B produced three hundred and eighty one grams under the same conditions.",
+    "The difference was consistent across all six plots, which is the result that makes the trial worth repeating at field scale rather than a curiosity of one greenhouse."
+  ],
+  "headings": [
+    {
+      "text": "Greenhouse Cultivar Trial",
+      "level": 1,
+      "beforeParagraph": 0
+    },
+    {
+      "text": "1 Method",
+      "level": 2,
+      "beforeParagraph": 0
+    },
+    {
+      "text": "1.1 Sowing",
+      "level": 3,
+      "beforeParagraph": 2
+    },
+    {
+      "text": "2 Results",
+      "level": 2,
+      "beforeParagraph": 4
+    }
+  ],
+  "artifacts": []
+}

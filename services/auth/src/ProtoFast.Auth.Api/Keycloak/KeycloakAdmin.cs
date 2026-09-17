@@ -215,7 +215,10 @@ public sealed class KeycloakAdmin(
             return cached.AccessToken;
         }
 
-        if (string.IsNullOrEmpty(_options.AdminClientSecret))
+        // Realm-scoped: a secret minted in one realm does not authenticate in another, so each
+        // realm's account-admin client brings its own (KeycloakOptions.AdminClientSecretByRealm).
+        var adminSecret = _options.GetAdminClientSecret(realm);
+        if (string.IsNullOrEmpty(adminSecret))
         {
             throw new KeycloakException(
                 $"No admin client secret configured for realm '{realm}'; account management is unavailable.");
@@ -226,7 +229,7 @@ public sealed class KeycloakAdmin(
         {
             ["grant_type"] = "client_credentials",
             ["client_id"] = _options.AdminClientId,
-            ["client_secret"] = _options.AdminClientSecret,
+            ["client_secret"] = adminSecret,
         });
 
         using var response = await client.PostAsync(

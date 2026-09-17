@@ -32,6 +32,22 @@
 #   scripts/populate-secrets.sh \
 #       Auth_Apple__PrivateKey="$(grep -v -- ----- AuthKey_ABC123.p8 | tr -d '\n')"
 #
+# Segmentation provider keys and the ThePlot client secret (theplot-segmentation-plan.md §21).
+# The worker reads the four provider keys from Secrets Manager in-process under the Seg_ prefix;
+# they never reach .env, a prompt, a log or an artifact.
+#
+#   scripts/populate-secrets.sh \
+#       Seg_Providers__anthropic__ApiKey=... \
+#       Seg_Providers__gemini__ApiKey=... \
+#       Seg_Providers__deepseek__ApiKey=... \
+#       Seg_Providers__kimi__ApiKey=... \
+#       Auth_Keycloak__ClientSecretTheplotWeb=... \
+#       Auth_Keycloak__AdminClientSecretByRealm__theplot=...
+#
+# ThePlot runs in its own Keycloak realm, so both of those are credentials issued by the
+# `theplot` realm — a secret from the `protofast` realm does not authenticate there. The
+# second one backs account management (passkeys, account deletion) for ThePlot accounts.
+#
 # Env:
 #   SECRET_ID   (default: <project>/dev, or <project>/app with --prod)
 #   AWS_REGION  (default: from your AWS config)
@@ -57,7 +73,10 @@ fi
 # keys (e.g. Payments_StripeKey, third-party API keys) are NOT listed here — pass
 # them as CLI args. The DEV secret is for laptop-only values (test API keys); it
 # does not generate the production DB passwords.
-MANAGED_KEYS="Infra_KcDbPassword Auth_DbPassword"
+# Seg_DbPassword owns the `segmentation` Postgres role. It is generated here rather than typed
+# because the value flows into a connection string, and the alphabet below (A-Za-z0-9) keeps it
+# free of characters Npgsql would need escaped.
+MANAGED_KEYS="Infra_KcDbPassword Auth_DbPassword Seg_DbPassword"
 if [[ "$DEV" -eq 1 ]]; then
   MANAGED_KEYS=""
 fi

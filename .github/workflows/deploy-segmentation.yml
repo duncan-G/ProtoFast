@@ -1,0 +1,50 @@
+name: deploy-segmentation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/segmentation/**"
+      - "services/shared/**"
+      - ".github/workflows/deploy-segmentation.yml"
+      - ".github/workflows/_component-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing artifact tag to (re)deploy or roll back to. Blank = build current source."
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-segmentation
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_component-deploy.yml
+    with:
+      component: segmentation
+      host: services
+      build: dotnet
+      target: protofast-segmentation
+      kind: service
+      hash_paths: "services/segmentation services/shared"
+      project: services/segmentation/src/ProtoFast.Segmentation.Worker
+      tag: ${{ inputs.tag }}
+      # The schema-migrations runner ships WITH the worker: same hash_paths → same content tag,
+      # built in the same job, and applied immediately before the worker in one deploy.sh
+      # invocation. run_segmentation_migrations therefore always reads a
+      # SEGMENTATION_MIGRATIONS_TAG that matches the worker image being deployed.
+      #
+      # A worker deploy is safe mid-run by construction: the container stops, the in-flight SQS
+      # message's visibility expires, and the replacement resumes that run from its last
+      # checkpoint (plan §13.2). stop_grace_period in compose is 60s so the outgoing worker gets
+      # to finish its current superstep first.
+      companion: segmentation-migrations
+      companion_target: protofast-segmentation-migrations
+      companion_project: services/segmentation/src/ProtoFast.Segmentation.SchemaMigrations
+    secrets: inherit

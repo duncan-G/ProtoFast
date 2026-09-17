@@ -1,6 +1,7 @@
 ﻿using ProtoFast.AppHost.Aws;
 using ProtoFast.AppHost.ClientApp;
 using ProtoFast.AppHost.EnvoyProxy;
+using ProtoFast.AppHost.LocalStack;
 using ProtoFast.AppHost.OpenTelemetryCollector;
 using ProtoFast.AppHost.Postgres;
 
@@ -16,6 +17,11 @@ if (!builder.ExecutionContext.IsPublishMode)
 // dev servers — same Envoy listener URLs, no HMR.
 var useSsrHost = builder.ExecutionContext.IsPublishMode
     || bool.TryParse(builder.Configuration["SsrHost:Dev"], out var ssrHostDev) && ssrHostDev;
+
+// LocalStack signs requests against a region the way real AWS does, and the SDK's credential
+// chain finds none in development — so one constant is injected into both consumers rather than
+// left to each of them to guess at.
+const string AwsRegion = "us-east-1";
 
 var otel = builder.AddOpenTelemetryCollector("otel-collector");
 
@@ -35,7 +41,17 @@ var authDb = postgres
     .AddDatabase("auth-db", databaseName: "auth")
     .WithSchemaMigrations<Projects.ProtoFast_Auth_SchemaMigrations>(builder);
 
+// Segmentation's own database on the same instance, created the same way auth's is (plan §8.4).
+var segmentationDb = postgres
+    .AddDatabase("segmentation-db", databaseName: "segmentation")
+    .WithSchemaMigrations<Projects.ProtoFast_Segmentation_SchemaMigrations>(builder);
+
 var redis = builder.AddRedis("redis");
+
+// S3 and SQS for the segmentation feature. `aspire run` has to start the whole thing, or the
+// feature will only ever be tested in prod (plan §22).
+const string segmentationBucket = "protofast-segmentation-dev";
+var localstack = builder.AddLocalStack("localstack", segmentationBucket);
 
 var keycloak = builder.AddKeycloak("keycloak", 8080)
     .WithImageTag("26.7")
@@ -96,7 +112,11 @@ if (!builder.ExecutionContext.IsPublishMode)
         .WithEnvironment("SMTP_FROM", "no-reply@protofast.dev")
         // WebAuthn RP ID must be the origin hostname. protofast.dev is correct in
         // prod (covers auth.protofast.dev); locally the ceremony runs on localhost.
-        .WithEnvironment("WEBAUTHN_RP_ID", "localhost");
+        .WithEnvironment("WEBAUTHN_RP_ID", "localhost")
+        // ThePlot's realm keeps its own RP ID so its passkeys stay scoped to it: sharing
+        // protofast.dev would have the authenticator offer credentials the theplot realm
+        // has no record of. Locally both realms land on the same localhost origin.
+        .WithEnvironment("THEPLOT_WEBAUTHN_RP_ID", "localhost");
 }
 
 // Auth
@@ -148,9 +168,41 @@ var payments = builder.AddProject<Projects.ProtoFast_Payments_Api>("payments")
     .WithOtlpCollectorReference(otel)
     .WithSsoProfile();
 
-// Api
+// Api — Greeter plus the Segmentation surface (plan §17). It presigns, enqueues and reads
+// Postgres; everything model-shaped happens in the worker.
 var api = builder.AddProject<Projects.ProtoFast_Api>("api")
     .WithOtlpCollectorReference(otel)
+    .WithReference(segmentationDb, connectionName: "segmentation")
+    .WaitFor(segmentationDb)
+    .WaitFor(localstack)
+    .WithEnvironment("AWS_REGION", AwsRegion)
+    .WithEnvironment("AWS_DEFAULT_REGION", AwsRegion)
+    .WithEnvironment("Api_Segmentation__ServiceUrl", localstack.GetEndpoint(LocalStackResourceBuilderExtensions.GatewayEndpointName))
+    .WithEnvironment("Api_Segmentation__Bucket", segmentationBucket)
+    .WithEnvironment("Api_Segmentation__Runs", localstack.QueueUrl("protofast-segmentation-runs"))
+    .WithEnvironment("Api_Segmentation__Bulk", localstack.QueueUrl("protofast-segmentation-runs-bulk"))
+    .WithEnvironment("Api_Segmentation__BatchPoll", localstack.QueueUrl("protofast-segmentation-batch-poll"))
+    .WithSsoProfile();
+
+// Segmentation worker. It publishes no port — nothing dials it; it pulls from SQS and writes to
+// S3 and Postgres (plan §7.1). Provider keys are Seg_ entries in protofast/dev, read in-process
+// the same way auth reads Keycloak secrets. A developer with no keys still gets a working stack:
+// every phase up to labelling is deterministic, and the pipeline short-circuits labelling for
+// clean Markdown (plan §9.4), so clean fixtures run end to end with no provider at all.
+var segmentation = builder.AddProject<Projects.ProtoFast_Segmentation_Worker>("segmentation")
+    .WithOtlpCollectorReference(otel)
+    .WithReference(redis)
+    .WithReference(segmentationDb, connectionName: "segmentation")
+    .WaitFor(redis)
+    .WaitFor(segmentationDb)
+    .WaitFor(localstack)
+    .WithEnvironment("AWS_REGION", AwsRegion)
+    .WithEnvironment("AWS_DEFAULT_REGION", AwsRegion)
+    .WithEnvironment("Seg_Storage__ServiceUrl", localstack.GetEndpoint(LocalStackResourceBuilderExtensions.GatewayEndpointName))
+    .WithEnvironment("Seg_Storage__Bucket", segmentationBucket)
+    .WithEnvironment("Seg_Queues__Runs", localstack.QueueUrl("protofast-segmentation-runs"))
+    .WithEnvironment("Seg_Queues__Bulk", localstack.QueueUrl("protofast-segmentation-runs-bulk"))
+    .WithEnvironment("Seg_Queues__BatchPoll", localstack.QueueUrl("protofast-segmentation-batch-poll"))
     .WithSsoProfile();
 
 // Envoy Proxy
@@ -160,11 +212,18 @@ var proxy = builder.AddEnvoyProxy("envoy", useSsrHost)
     .WaitFor(payments)
     .WaitFor(api);
 
+// The worker publishes no port and has no Envoy route, so it is not wired into the proxy at all —
+// it is reached by nothing and pulls from SQS instead (plan §7.1). Aspire starts it because it was
+// added to the builder above; the discard just makes that explicit to a reader of this file.
+_ = segmentation;
+
 var otelHttp = otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName);
 
 // Clients: each gets its own Envoy listener (dev) or domain virtual host (publish).
 var adminWeb = proxy.WithClient(builder, "admin");
 var protofastWeb = proxy.WithClient(builder, "protofast");
+// Third registration, so the listener port follows automatically: 20002 (plan §18.2).
+var theplotWeb = proxy.WithClient(builder, "theplot");
 
 if (useSsrHost)
 {
@@ -181,6 +240,9 @@ else
 
     var protofastDev = builder.AddClientApp("protofast", "../clients/protofast", protofastWeb, otelHttp, otelHttp);
     proxy.WithUpstreamEndpoint("CLIENT_PROTOFAST", protofastDev);
+
+    var theplotDev = builder.AddClientApp("theplot", "../clients/theplot", theplotWeb, otelHttp, otelHttp);
+    proxy.WithUpstreamEndpoint("CLIENT_THEPLOT", theplotDev);
 }
 
 proxy

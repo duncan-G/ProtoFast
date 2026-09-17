@@ -1,6 +1,6 @@
 # How ProtoFast is configured
 
-ProtoFast is a small platform: two Angular clients, three .NET gRPC services, an Envoy edge, Keycloak, Postgres and Redis.
+ProtoFast is a small platform: three Angular clients, three .NET gRPC services, a background worker, an Envoy edge, Keycloak, Postgres and Redis.
 
 ## The one idea that holds it together
 

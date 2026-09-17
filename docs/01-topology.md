@@ -9,12 +9,14 @@
 | ------------------ | -------------------------------------------------------- | ----------------------------------- |
 | `protofast` client | Angular SSR app — the product site                       | `clients/protofast`                 |
 | `admin` client     | Angular SSR app — the admin console                      | `clients/admin`                     |
+| `theplot` client   | Angular SSR app — document segmentation                  | `clients/theplot`                   |
 | clients host       | One Node process that serves *every* client's SSR bundle | `clients/host`                      |
 | `envoy`            | The edge proxy: TLS, routing, CORS, identity annotation  | `proxy/`                            |
 | `auth`             | BFF: sign-in, sessions, account management, ext_authz    | `services/auth`                     |
 | `payments`, `api`  | gRPC services behind the internal JWT                    | `services/payments`, `services/api` |
+| `segmentation`     | Worker: consumes SQS, runs the segmentation pipeline     | `services/segmentation`             |
 | Keycloak           | Identity provider (realm `protofast`)                    | `infra/keycloak`, `deploy/keycloak` |
-| Postgres           | Keycloak's `keycloak` DB + auth's `auth` DB              | upstream image                      |
+| Postgres           | Keycloak's `keycloak` DB, auth's `auth` DB, the `segmentation` DB | upstream image             |
 | Redis              | Session / correlation / replay cache (in-memory only)    | upstream image                      |
 | otel-collector     | OTLP ingest → Aspire dashboard                           | `otel-collector/`                   |
 
@@ -31,8 +33,10 @@ pinned because Keycloak's redirect URIs are exact.
 graph TD
     Browser -->|https://localhost:20000| EnvoyAdmin["Envoy listener · admin"]
     Browser -->|https://localhost:20001| EnvoyPF["Envoy listener · protofast"]
+    Browser -->|https://localhost:20002| EnvoyTP["Envoy listener · theplot"]
     EnvoyAdmin --> NgAdmin["ng serve · admin"]
     EnvoyPF --> NgPF["ng serve · protofast"]
+    EnvoyTP --> NgTP["ng serve · theplot"]
     EnvoyAdmin & EnvoyPF -->|"/signin, /account/*"| Auth["auth (BFF)"]
     EnvoyAdmin & EnvoyPF -->|"/payments/*, /api/*"| Svcs["payments · api"]
     EnvoyAdmin & EnvoyPF -->|"/otlp/*"| Otel["otel-collector"]
@@ -47,7 +51,7 @@ graph TD
 
 Key facts:
 
-- One **listener per client** (`20000` = admin, `20001` = protofast). Pages and
+- One **listener per client** (`20000` = admin, `20001` = protofast, `20002` = theplot). Pages and
 API share an origin, so there is no cross-origin problem to solve.
 - Keycloak is reached **directly** on `:8080` in dev — it is not behind Envoy.
 - Both listeners are `localhost`, so the browser keeps one cookie jar: signing in
@@ -77,15 +81,24 @@ graph TD
         AuthB["auth :8080"]
         PayB["payments :8081"]
         ApiB["api :8082"]
+        SegB["segmentation worker (no port)"]
         KCB["keycloak :8083"]
         PGB["postgres (EBS /mnt/pgdata)"]
         RedisB["redis"]
+    end
+
+    subgraph AWS["AWS"]
+        S3Seg["S3 · segmentation artifacts"]
+        SQS["SQS · runs / runs-bulk / batch-poll (+ DLQ)"]
     end
 
     Envoy --> ClientsHost
     Envoy -->|private IP| AuthB & PayB & ApiB & KCB
     AuthB --> RedisB & PGB & KCB
     KCB --> PGB
+    ApiB -->|SendMessage, presign| SQS & S3Seg
+    SegB -->|Receive| SQS
+    SegB --> S3Seg & PGB & RedisB
     HostB -->|OTLP| OtelA
     OtelA --> Dash
 ```
@@ -94,8 +107,9 @@ graph TD
 
 Key facts:
 
-- **Public hostnames**: `protofast.dev` and `admin.protofast.dev` (the clients),
-`auth.protofast.dev` (Keycloak's login pages), optionally a telemetry hostname
+- **Public hostnames**: `protofast.dev`, `admin.protofast.dev` and
+`theplot.protofast.dev` (the clients), `auth.protofast.dev` (Keycloak's login pages),
+optionally a telemetry hostname
 for the Aspire dashboard behind Cloudflare Access. All are proxied CNAMEs to
 the tunnel; all land on Envoy's single `:8443` listener except telemetry.
 - **Cross-host traffic** uses static private IPs (`HOST_A_IP`, `HOST_B_IP`,

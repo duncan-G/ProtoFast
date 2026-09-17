@@ -43,6 +43,21 @@ output "assets_bucket" {
   value       = aws_s3_bucket.assets.id
 }
 
+output "segmentation_bucket" {
+  description = "S3 bucket holding segmentation uploads, run artifacts and frozen output."
+  value       = aws_s3_bucket.segmentation.id
+}
+
+output "segmentation_queue_urls" {
+  description = "The three segmentation SQS lanes, plus the shared DLQ. Seeded into Host B's .env by cloud-init."
+  value = {
+    runs       = aws_sqs_queue.segmentation_runs.url
+    bulk       = aws_sqs_queue.segmentation_runs_bulk.url
+    batch_poll = aws_sqs_queue.segmentation_batch_poll.url
+    dlq        = aws_sqs_queue.segmentation_dlq.url
+  }
+}
+
 output "hostnames" {
   description = "Public hostnames served through the tunnel."
   value       = values(local.tunnel_hostnames)

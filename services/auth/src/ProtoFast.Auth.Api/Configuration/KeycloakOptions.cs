@@ -21,6 +21,11 @@ public sealed class KeycloakOptions
     public string ClientSecretProtofastWeb { get; init; } = "";
     public string ClientSecretAdmin { get; init; } = "";
 
+    /// <summary>ThePlot's browser client. ThePlot has its own realm, so this secret is issued by
+    /// and only valid in the <c>theplot</c> realm — it is not the protofast one under another
+    /// name.</summary>
+    public string ClientSecretTheplotWeb { get; init; } = "";
+
     /// <summary>
     /// Service-account client used for the Admin API calls account management needs — reading a
     /// user's passkeys, removing one, deleting the account. Its service account holds
@@ -36,6 +41,14 @@ public sealed class KeycloakOptions
     /// </summary>
     public string AdminClientSecret { get; init; } = "";
 
+    /// <summary>
+    /// Per-realm overrides for <see cref="AdminClientSecret"/>, keyed by realm name. A client
+    /// secret only authenticates in the realm that issued it, so every realm carrying an
+    /// <see cref="AdminClientId"/> client needs its own value here; <see cref="AdminClientSecret"/>
+    /// remains the fallback for realms with no entry.
+    /// </summary>
+    public Dictionary<string, string> AdminClientSecretByRealm { get; init; } = new();
+
     public string ResolvePublicAuthority() =>
         string.IsNullOrEmpty(PublicAuthority) ? Authority : PublicAuthority;
 
@@ -43,6 +56,14 @@ public sealed class KeycloakOptions
     {
         "protofast-web" => ClientSecretProtofastWeb,
         "admin" => ClientSecretAdmin,
+        "theplot-web" => ClientSecretTheplotWeb,
         _ => throw new InvalidOperationException($"No client secret configured for client '{clientId}'.")
     };
+
+    /// <summary>The admin service-account secret to use against <paramref name="realm"/>. Falls
+    /// back to <see cref="AdminClientSecret"/> so a single-realm deployment needs no map.</summary>
+    public string GetAdminClientSecret(string realm) =>
+        AdminClientSecretByRealm.TryGetValue(realm, out var secret) && !string.IsNullOrEmpty(secret)
+            ? secret
+            : AdminClientSecret;
 }

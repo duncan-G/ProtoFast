@@ -33,12 +33,13 @@ services:
     restart: unless-stopped
     environment:
       ENVOY_MODE: publish
-      CLIENTS: ${CLIENTS:-admin,protofast}
+      CLIENTS: ${CLIENTS:-admin,protofast,theplot}
       DEFAULT_CLIENT: ${DEFAULT_CLIENT:-protofast}
       PORT: "8443"
       ENVOY_ADMIN_PORT: "9901"
       CLIENT_ADMIN_DOMAIN: ${CLIENT_ADMIN_DOMAIN:-admin.example.com}
       CLIENT_PROTOFAST_DOMAIN: ${CLIENT_PROTOFAST_DOMAIN:-protofast.example.com}
+      CLIENT_THEPLOT_DOMAIN: ${CLIENT_THEPLOT_DOMAIN:-theplot.example.com}
       # Catch-all upstream: the unified SSR host (same host, Docker DNS).
       CLIENTS_HOST_HOST: clients
       CLIENTS_HOST_PORT: "4000"
@@ -78,7 +79,7 @@ services:
       PORT: "4000"
       ASSETS_DIR: /assets
       DEFAULT_CLIENT: ${DEFAULT_CLIENT:-protofast}
-      NG_ALLOWED_HOSTS: "${CLIENT_ADMIN_DOMAIN:-admin.example.com},${CLIENT_PROTOFAST_DOMAIN:-protofast.example.com}"
+      NG_ALLOWED_HOSTS: "${CLIENT_ADMIN_DOMAIN:-admin.example.com},${CLIENT_PROTOFAST_DOMAIN:-protofast.example.com},${CLIENT_THEPLOT_DOMAIN:-theplot.example.com}"
       NG_TRUST_PROXY_HEADERS: "x-forwarded-for,x-forwarded-proto"
       SERVER_OTEL_ENDPOINT: "http://otel-collector:4318"
       BROWSER_OTEL_ENDPOINT: "/otlp"

@@ -1,0 +1,10 @@
+version: v2
+inputs:
+  # ThePlot talks to the Segmentation service on `api`. The payments protos are not included:
+  # this client has no billing surface, and generating stubs it never calls would put dead code
+  # in the bundle.
+  - directory: ../../services/api/src/ProtoFast.Api/Protos
+plugins:
+  - local: protoc-gen-es
+    out: src/lib/gen
+    opt: target=ts
