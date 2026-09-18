@@ -25,6 +25,13 @@ public class PromptAssetTests
     [InlineData("schemas/review.schema.json")]
     [InlineData("prompts/labeler.v1.md")]
     [InlineData("prompts/structurer.v1.md")]
+    [InlineData("skills/structure-orchestration/SKILL.md")]
+    [InlineData("schemas/structure-window.schema.json")]
+    [InlineData("schemas/assembly-plan.schema.json")]
+    [InlineData("schemas/structure-answers.schema.json")]
+    [InlineData("prompts/structure-window.v1.md")]
+    [InlineData("prompts/structure-orchestrator.v1.md")]
+    [InlineData("prompts/structure-followup.v1.md")]
     public void EveryAssetTheAgentsUseIsEmbedded(string path)
     {
         Assert.False(string.IsNullOrWhiteSpace(_assets.Read(path)));
@@ -100,6 +107,9 @@ public class PromptAssetTests
     [InlineData("heading-levels")]
     [InlineData("review")]
     [InlineData("augment-key-points")]
+    [InlineData("structure-window")]
+    [InlineData("assembly-plan")]
+    [InlineData("structure-answers")]
     public void WireSchemasStayInsideTheDecoderSubset(string name)
     {
         // The provider rejects the whole request with a 400 when a structured-output schema uses
@@ -118,6 +128,137 @@ public class PromptAssetTests
         }
 
         AssertObjectsAreClosed(document.RootElement);
+    }
+
+    [Fact]
+    public void TheTreeWireSchemaStaysUnderTheDecodersGrammarBudget()
+    {
+        // Measured against the provider, not guessed. A node's optional properties can arrive in
+        // any subset and any order, so each node costs sum(C(o,k)*k!) shapes for o optional
+        // properties — and because the decoder composes one level into the next, the depth-6
+        // chain multiplies those costs rather than adding them. Where the ceiling falls:
+        //
+        //   optional/node   product    verdict
+        //     3 (depth 6)     5.2M     accepted in 12.5s
+        //     4 (depth 5)     285M     accepted in 34.5s
+        //     5 (depth 4)     2.2B     accepted in 84.5s
+        //     4 (depth 6)    18.6B     "Schema is too complex." after 83.8s
+        //     5 (depth 5)     733B     "Schema is too complex." after 180.5s
+        //
+        // At depth 6 that leaves room for exactly three optional properties per node, which the
+        // schema spends on headingLineId (inferred sections anchor to no line) and the
+        // children/paragraphs pair (their xor needs oneOf, which the decoder rejects outright).
+        // A fourth is the whole request failing for the structurer and tree-repair roles, with
+        // nothing to see locally: adding one costs no test, no compile error, and no warning.
+        // That is what this test is for.
+        using var document = JsonDocument.Parse(_assets.WireSchema("tree"));
+
+        foreach (var definition in document.RootElement.GetProperty("$defs").EnumerateObject())
+        {
+            var optional = definition.Value.GetProperty("properties").EnumerateObject().Count()
+                - definition.Value.GetProperty("required").GetArrayLength();
+
+            Assert.True(
+                optional <= 3,
+                $"'{definition.Name}' has {optional} optional properties; at depth 6 the decoder "
+                + "accepts at most 3. Make one required, drop it, or shorten the node chain.");
+        }
+    }
+
+    [Fact]
+    public void TheWindowWireSchemaIsTheTreeWireSchemaPlusOpenQuestions()
+    {
+        // The window agent returns a tree, so its schema shares the tree's depth-6 node chain. A
+        // copy rather than a reference, because the two roles must version independently — and a
+        // copy drifts unless something says it may not. What it may add is the open-questions
+        // array and nothing else; anything more would be a second, unmeasured grammar.
+        using var tree = JsonDocument.Parse(_assets.WireSchema("tree"));
+        using var window = JsonDocument.Parse(_assets.WireSchema("structure-window"));
+
+        Assert.Equal(
+            tree.RootElement.GetProperty("$defs").GetRawText(),
+            window.RootElement.GetProperty("$defs").GetRawText());
+
+        Assert.Equal(
+            ["title", "headingLineId", "inferred", "children", "paragraphs"],
+            tree.RootElement.GetProperty("$defs").GetProperty("node1").GetProperty("properties")
+                .EnumerateObject().Select(p => p.Name));
+
+        // Required, not optional: an optional property multiplies the decoder's grammar through
+        // the whole node chain, and an agent with nothing to ask returns [].
+        Assert.Contains(
+            "openQuestions",
+            window.RootElement.GetProperty("required").EnumerateArray().Select(e => e.GetString()));
+    }
+
+    [Theory]
+    [InlineData("assembly-plan")]
+    [InlineData("structure-answers")]
+    public void TheOrchestrationSchemasHaveNoOptionalProperties(string name)
+    {
+        // These are flat, so they are not near the grammar ceiling — but every field being
+        // required is also what makes the parse total: the loop never has to ask whether a missing
+        // `followUps` meant "none" or "the model forgot".
+        using var document = JsonDocument.Parse(_assets.WireSchema(name));
+
+        AssertNoOptionalProperties(document.RootElement);
+
+        static void AssertNoOptionalProperties(JsonElement element)
+        {
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                return;
+            }
+
+            if (element.TryGetProperty("properties", out var properties)
+                && element.TryGetProperty("type", out var type)
+                && type.GetString() == "object")
+            {
+                var required = element.TryGetProperty("required", out var list)
+                    ? list.EnumerateArray().Select(e => e.GetString()).ToHashSet(StringComparer.Ordinal)
+                    : [];
+
+                foreach (var property in properties.EnumerateObject())
+                {
+                    Assert.Contains(property.Name, required);
+                }
+            }
+
+            foreach (var child in element.EnumerateObject())
+            {
+                if (child.Value.ValueKind == JsonValueKind.Object)
+                {
+                    AssertNoOptionalProperties(child.Value);
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void TheOrchestrationRolesHaveTheirOwnPromptVersions()
+    {
+        // Two new qualification keys (orchestrator plan §7). If either collided with the
+        // structurer's, a change to one role's prompt would silently invalidate the other's
+        // qualification row — or worse, fail to.
+        var versions = Enum.GetValues<AgentRole>().ToDictionary(r => r, _assets.VersionFor);
+
+        Assert.NotEqual(versions[AgentRole.Structurer], versions[AgentRole.StructureWindower]);
+        Assert.NotEqual(versions[AgentRole.Structurer], versions[AgentRole.StructureOrchestrator]);
+        Assert.NotEqual(versions[AgentRole.StructureWindower], versions[AgentRole.StructureOrchestrator]);
+    }
+
+    [Fact]
+    public void TheOrchestrationSkillForbidsWhatTheMaterializerRejects()
+    {
+        // Each of these is an exact error the materializer can return. The skill text is what
+        // gives the orchestrator a chance to comply before it costs a repair round.
+        var skill = _assets.Skill("structure-orchestration");
+
+        Assert.Contains("exactly one section", skill, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("never both", skill, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("document order", skill, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("do not retitle", skill, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(":n0", skill, StringComparison.Ordinal);
     }
 
     [Theory]

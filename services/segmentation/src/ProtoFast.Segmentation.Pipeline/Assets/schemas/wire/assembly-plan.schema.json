@@ -1,0 +1,110 @@
+{
+  "type": "object",
+  "required": [
+    "outline",
+    "followUps",
+    "gaps"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "outline": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/row"
+      }
+    },
+    "followUps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/followUp"
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/gap"
+      }
+    }
+  },
+  "$defs": {
+    "row": {
+      "type": "object",
+      "required": [
+        "depth",
+        "sources",
+        "title"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "depth": {
+          "type": "integer"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "title": {
+          "type": "string"
+        }
+      }
+    },
+    "followUp": {
+      "type": "object",
+      "required": [
+        "kind",
+        "node",
+        "relatedNode"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "continues_previous",
+            "title_source",
+            "boundary_check",
+            "depth_check"
+          ]
+        },
+        "node": {
+          "type": "string"
+        },
+        "relatedNode": {
+          "type": "string"
+        }
+      }
+    },
+    "gap": {
+      "type": "object",
+      "required": [
+        "kind",
+        "evidence",
+        "observation",
+        "proposal"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "deterministic",
+            "agent",
+            "prompt"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "observation": {
+          "type": "string"
+        },
+        "proposal": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

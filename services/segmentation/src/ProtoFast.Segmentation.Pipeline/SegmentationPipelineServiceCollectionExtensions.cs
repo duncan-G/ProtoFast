@@ -42,6 +42,11 @@ public static class SegmentationPipelineServiceCollectionExtensions
         services.AddSingleton<LabelerAgent>();
         services.AddSingleton<HeadingLevelAgent>();
         services.AddSingleton<StructurerAgent>();
+        services.AddSingleton<StructureWindowerAgent>();
+        services.AddSingleton<StructureOrchestratorAgent>();
+        services.AddSingleton<WindowBench>();
+        services.AddSingleton<StructureOrchestration>();
+        services.AddSingleton<CapabilityGapWriter>();
         services.AddSingleton<StructureReviewerAgent>();
         services.AddSingleton<AugmenterAgent>();
 

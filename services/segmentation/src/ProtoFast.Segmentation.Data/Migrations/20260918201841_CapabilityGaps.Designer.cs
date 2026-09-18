@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ProtoFast.Segmentation.Data;
@@ -11,9 +12,11 @@ using ProtoFast.Segmentation.Data;
 namespace ProtoFast.Segmentation.Data.Migrations
 {
     [DbContext(typeof(SegmentationDbContext))]
-    partial class SegmentationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260918201841_CapabilityGaps")]
+    partial class CapabilityGaps
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

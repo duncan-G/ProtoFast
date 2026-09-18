@@ -24,6 +24,57 @@ public sealed class PipelineOptions
     public AugmentationOptions Augmentation { get; set; } = new();
 
     public CleaningOptions Cleaning { get; set; } = new();
+
+    public StructureOptions Structure { get; set; } = new();
+}
+
+/// <summary>
+/// How phase 5 builds the tree when a model is involved (orchestrator plan §5).
+///
+/// <para>Neither strategy touches the deterministic path: a document with a coherent heading
+/// hierarchy and no suspect regions still costs zero model calls, because the strategy is read
+/// only after that branch has been taken.</para>
+/// </summary>
+public sealed class StructureOptions
+{
+    /// <summary>
+    /// Defaults to <see cref="StructureStrategy.Chunked"/> — the orchestration is an experiment
+    /// until the gold set says otherwise (orchestrator plan §9), and the flag is what lets the
+    /// same document be re-run both ways.
+    /// </summary>
+    public StructureStrategy Strategy { get; set; } = StructureStrategy.Chunked;
+
+    /// <summary>Windows structured concurrently per batch, bounding provider load as in phase 3.</summary>
+    public int FanOutBatchSize { get; set; } = 8;
+
+    /// <summary>
+    /// Orchestrator turns before the run falls back to the chunked splice. The conversation is
+    /// deliberately not checkpointed, so this also bounds what a resumed run has to replay
+    /// (orchestrator plan §6).
+    /// </summary>
+    public int MaxOrchestratorRounds { get; set; } = 4;
+
+    public int MaxFollowUpsPerRound { get; set; } = 6;
+
+    /// <summary>
+    /// Skeleton entries of the previous window shown as read-only context, so a window agent can
+    /// recognise a section that started before it. Mirrors <c>WindowingOptions.OverlapFraction</c>
+    /// for labelling.
+    /// </summary>
+    public int WindowOverlapEntries { get; set; } = 40;
+
+    /// <summary>Writes the orchestrator's capability-gap rows (orchestrator plan §12.3(d)).</summary>
+    public bool EmitCapabilityGaps { get; set; } = true;
+}
+
+/// <summary>Which of the two model paths phase 5 takes (orchestrator plan §9).</summary>
+public enum StructureStrategy
+{
+    /// <summary>Sequential parts joined by a splice — what <c>StructurerAgent</c> has always done.</summary>
+    Chunked,
+
+    /// <summary>Parallel window agents assembled by an orchestrator (orchestrator plan §4).</summary>
+    Orchestrated,
 }
 
 public sealed class WindowingOptions

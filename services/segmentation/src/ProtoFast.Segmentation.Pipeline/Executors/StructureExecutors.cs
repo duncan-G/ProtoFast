@@ -24,15 +24,24 @@ public sealed class StructureExecutor(
     RunJournal journal,
     PhaseGate gate,
     StructurerAgent structurer,
+    StructureOrchestration orchestration,
+    CapabilityGapWriter gapWriter,
     PromptAssets assets,
     FamilyInstincts instincts,
+    IOptions<PipelineOptions> options,
     ILogger<StructureExecutor> logger)
     : Executor<AssembleComplete, StructureComplete>(ExecutorIds.Structure, declareCrossRunShareable: true)
 {
     public override async ValueTask<StructureComplete> HandleAsync(
         AssembleComplete message, IWorkflowContext context, CancellationToken cancellationToken = default)
     {
-        var promptVersion = assets.VersionFor(AgentRole.Structurer);
+        // Both roles, because both produce the tree. Keying the phase on the structurer's version
+        // alone would make an orchestrated run "already done" after the windower or orchestrator
+        // prompt changed — which is precisely when it most needs re-running.
+        var promptVersion = options.Value.Structure.Strategy == StructureStrategy.Orchestrated
+            ? assets.VersionFor(AgentRole.StructureWindower) + "+" + assets.VersionFor(AgentRole.StructureOrchestrator)
+            : assets.VersionFor(AgentRole.Structurer);
+
         var key = IdempotencyKeys.Phase(message.RunId, PipelinePhase.InferStructure, promptVersion);
 
         if (await gate.AlreadyDoneAsync(message.RunId, PipelinePhase.InferStructure, key, null, cancellationToken)
@@ -54,7 +63,11 @@ public sealed class StructureExecutor(
             run.RunId, run.DocumentId, run.DocumentId, run.DocumentFamily, run.Sensitivity,
             await instincts.ForFamilyAsync(run.DocumentFamily, cancellationToken),
             run.PinnedModels.GetValueOrDefault(PipelinePhase.InferStructure.ToString()),
-            run.PinnedModels.GetValueOrDefault(nameof(AgentRole.HeadingLeveler)));
+            run.PinnedModels.GetValueOrDefault(nameof(AgentRole.HeadingLeveler)))
+        {
+            PinnedWindowerKey = run.PinnedModels.GetValueOrDefault(nameof(AgentRole.StructureWindower)),
+            PinnedOrchestratorKey = run.PinnedModels.GetValueOrDefault(nameof(AgentRole.StructureOrchestrator)),
+        };
 
         TreeArtifact tree;
 
@@ -68,6 +81,10 @@ public sealed class StructureExecutor(
                 DeterministicTreeBuilder.Build(assembly.Paragraphs, assembly.Headings, run.DocumentId),
                 [],
                 ModelKey: null);
+        }
+        else if (options.Value.Structure.Strategy == StructureStrategy.Orchestrated)
+        {
+            tree = await OrchestrateAsync(message.RunId, assembly, run, structureContext, key, cancellationToken);
         }
         else
         {
@@ -90,6 +107,104 @@ public sealed class StructureExecutor(
             cancellationToken);
 
         return new StructureComplete(message.RunId, artifact, tree.ModelKey);
+    }
+
+    /// <summary>
+    /// The orchestrated strategy (orchestrator plan §4).
+    ///
+    /// <para>The loop is constructed here rather than injected, and that is not a preference: this
+    /// executor is bound as a cross-run shared instance, which is safe precisely because it holds
+    /// no run state — and a conversation is run state (§6). What is injected is the stateless
+    /// participants; the conversation lives on the stack of this call.</para>
+    ///
+    /// <para>A plan that cannot be materialized after its repair rounds falls back to the chunked
+    /// splice. That is what phase 5 does today, so the fallback is never worse than the status quo
+    /// — and it keeps a single bad orchestrator reply from being able to fail a document that the
+    /// existing path would have structured (§11).</para>
+    /// </summary>
+    private async Task<TreeArtifact> OrchestrateAsync(
+        string runId,
+        AssemblyResult assembly,
+        Data.Entities.Run run,
+        StructureContext structureContext,
+        string auditKey,
+        CancellationToken ct)
+    {
+        var entries = SkeletonBuilder.Build(assembly.Paragraphs, assembly.Headings);
+
+        var result = await orchestration.RunAsync(
+            entries,
+            assembly.Headings,
+            structureContext,
+            progress: (note, token) => journal.NoteAsync(runId, PipelinePhase.InferStructure, note, token),
+            ct);
+
+        await WriteOrchestrationArtifactsAsync(runId, run, result, auditKey, ct);
+
+        if (!result.Success)
+        {
+            logger.LogWarning(
+                "Run {RunId}: the orchestrated strategy did not produce a tree ({Reason}); falling back "
+                + "to the chunked structurer.",
+                runId, result.Failure);
+
+            await journal.NoteAsync(
+                runId, PipelinePhase.InferStructure,
+                "orchestration failed, falling back to the chunked structurer: " + result.Failure, ct);
+
+            var fallback = await structurer.StructureAsync(
+                assembly.Paragraphs, assembly.Headings, structureContext, ct);
+
+            if (fallback.ModelKey is { } fallbackKey)
+            {
+                await journal.PinModelAsync(runId, PipelinePhase.InferStructure, fallbackKey, ct);
+            }
+
+            return new TreeArtifact(fallback.Root, fallback.Edits, fallback.ModelKey);
+        }
+
+        // Both roles pin, so a resumed run does not switch models mid-document and the windows
+        // stay consistent with each other (orchestrator plan §7).
+        if (result.WindowerModelKey is { } windowerKey)
+        {
+            await journal.PinModelAsync(runId, AgentRole.StructureWindower, windowerKey, ct);
+            await journal.PinModelAsync(runId, PipelinePhase.InferStructure, windowerKey, ct);
+        }
+
+        if (result.OrchestratorModelKey is { } orchestratorKey)
+        {
+            await journal.PinModelAsync(runId, AgentRole.StructureOrchestrator, orchestratorKey, ct);
+        }
+
+        return new TreeArtifact(result.Root!, result.Edits, result.OrchestratorModelKey ?? result.WindowerModelKey)
+        {
+            Strategy = StructureStrategy.Orchestrated,
+        };
+    }
+
+    /// <summary>
+    /// Writes the transcript, the plan and the gaps. All three are audit records rather than
+    /// resume state, and they are written even when the orchestration failed — a failed run is
+    /// exactly the one whose transcript is worth reading.
+    /// </summary>
+    private async Task WriteOrchestrationArtifactsAsync(
+        string runId, Data.Entities.Run run, OrchestrationResult result, string auditKey, CancellationToken ct)
+    {
+        if (result.Transcript.Count > 0)
+        {
+            await artifacts.WriteChatTranscriptAsync(runId, result.Transcript, auditKey, ct);
+        }
+
+        if (result.Plan is { } plan)
+        {
+            await artifacts.WriteAssemblyPlanAsync(runId, plan, auditKey, ct);
+        }
+
+        if (result.Gaps.Count > 0 && options.Value.Structure.EmitCapabilityGaps)
+        {
+            await artifacts.WriteCapabilityGapsAsync(runId, result.Gaps, auditKey, ct);
+            await gapWriter.WriteAsync(runId, run.DocumentFamily, result.Gaps, ct);
+        }
     }
 }
 

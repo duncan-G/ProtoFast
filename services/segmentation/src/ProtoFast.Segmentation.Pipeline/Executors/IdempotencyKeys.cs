@@ -18,6 +18,14 @@ public static class IdempotencyKeys
         $"{runId}:label:{windowIndex}:{promptVersion}";
 
     /// <summary>
+    /// One structuring window (orchestrator plan §6). Distinct from <see cref="Window"/> because
+    /// a label window and a structure window with the same index are different units of work over
+    /// different inputs, and one key for both would let a resumed run serve the wrong artifact.
+    /// </summary>
+    public static string StructureWindow(string runId, int windowIndex, string promptVersion) =>
+        $"{runId}:structure-window:{windowIndex}:{promptVersion}";
+
+    /// <summary>
     /// Augmentation is keyed by the paragraph's <em>content</em> hash as well as its id, because a
     /// phase-6 repair can produce a new paragraph with a recycled id lineage. Without the hash, a
     /// re-run would reuse an augmentation written for different text (plan §12.2).

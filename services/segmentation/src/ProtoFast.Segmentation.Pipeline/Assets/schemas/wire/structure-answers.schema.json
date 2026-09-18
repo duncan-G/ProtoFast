@@ -1,0 +1,45 @@
+{
+  "type": "object",
+  "required": [
+    "answers"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "answers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "node",
+          "kind",
+          "verdict",
+          "evidence"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "continues_previous",
+              "title_source",
+              "boundary_check",
+              "depth_check"
+            ]
+          },
+          "verdict": {
+            "enum": [
+              "yes",
+              "no",
+              "unsure"
+            ]
+          },
+          "evidence": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

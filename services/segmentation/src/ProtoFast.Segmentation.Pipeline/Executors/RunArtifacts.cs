@@ -1,6 +1,8 @@
 using ProtoFast.Segmentation.Core.Assembly;
 using ProtoFast.Segmentation.Core.Cleaning;
 using ProtoFast.Segmentation.Core.Model;
+using ProtoFast.Segmentation.Core.Options;
+using ProtoFast.Segmentation.Core.Tree;
 using ProtoFast.Segmentation.Core.Triage;
 using ProtoFast.Segmentation.Core.Validation;
 using ProtoFast.Segmentation.Storage;
@@ -38,8 +40,29 @@ public sealed record CleaningSidecar(
         Edits);
 }
 
-/// <summary>Phase 5's artifact: the tree, the edits it proposed, and which model produced it.</summary>
-public sealed record TreeArtifact(SectionNode Root, IReadOnlyList<ParagraphEdit> Edits, string? ModelKey);
+/// <summary>
+/// Phase 5's artifact: the tree, the edits it proposed, and which model produced it.
+///
+/// <para><see cref="Strategy"/> is recorded so ThePlot — and the A/B run of orchestrator plan §9
+/// — can say which path produced a given tree without re-deriving it from the run's options,
+/// which may have been changed since.</para>
+/// </summary>
+public sealed record TreeArtifact(SectionNode Root, IReadOnlyList<ParagraphEdit> Edits, string? ModelKey)
+{
+    public StructureStrategy Strategy { get; init; } = StructureStrategy.Chunked;
+}
+
+/// <summary>
+/// One window agent's reply, as stored (orchestrator plan §5). The subtree is kept whole rather
+/// than as an outline: the orchestrator only ever sees the outline, but the materializer needs
+/// every node, and a resumed run must not have to re-ask for them.
+/// </summary>
+public sealed record StructureWindowArtifact(
+    int WindowIndex,
+    SectionNode Root,
+    IReadOnlyList<ParagraphEdit> Edits,
+    IReadOnlyList<string> OpenQuestions,
+    string? ModelKey);
 
 /// <summary>Phase 7's artifact.</summary>
 public sealed record ReviewArtifact(IReadOnlyList<Finding> Findings, string Verdict);
@@ -72,6 +95,9 @@ public sealed record ResultArtifact(
     DateTimeOffset PublishedAt);
 
 public sealed record AugmentationRecord(string ParagraphId, string Type, string Json, string ReviewVerdict);
+
+/// <summary>One turn of the orchestration, as written to <c>05_structure/chat.jsonl</c>.</summary>
+public sealed record TranscriptEntry(int Round, string Role, string Text);
 
 /// <summary>
 /// Typed reads and writes of the phase artifacts.
@@ -167,6 +193,31 @@ public sealed class RunArtifacts(IArtifactStore store)
 
     public Task<TreeArtifact?> ReadTreeAsync(string runId, CancellationToken ct) =>
         store.ReadAsync<TreeArtifact>(ArtifactKeys.Phase(runId, PipelinePhase.InferStructure), ct);
+
+    public Task<ArtifactRef> WriteStructureWindowAsync(
+        string runId, StructureWindowArtifact window, string key, CancellationToken ct) =>
+        store.WriteAsync(ArtifactKeys.StructureWindow(runId, window.WindowIndex), window, key, ct);
+
+    public Task<StructureWindowArtifact?> ReadStructureWindowAsync(
+        string runId, int windowIndex, CancellationToken ct) =>
+        store.ReadAsync<StructureWindowArtifact>(ArtifactKeys.StructureWindow(runId, windowIndex), ct);
+
+    public Task<ArtifactRef> WriteAssemblyPlanAsync(
+        string runId, AssemblyPlan plan, string key, CancellationToken ct) =>
+        store.WriteAsync(ArtifactKeys.AssemblyPlan(runId), plan, key, ct);
+
+    /// <summary>
+    /// The orchestration transcript, one message per line. Written for audit rather than for
+    /// resume (orchestrator plan §6), which is why it is appended whole at the end of the phase
+    /// instead of after each round.
+    /// </summary>
+    public Task<ArtifactRef> WriteChatTranscriptAsync(
+        string runId, IReadOnlyList<TranscriptEntry> transcript, string key, CancellationToken ct) =>
+        store.WriteJsonLinesAsync(ArtifactKeys.StructureChat(runId), transcript, key, ct);
+
+    public Task<ArtifactRef> WriteCapabilityGapsAsync(
+        string runId, IReadOnlyList<CapabilityGapProposal> gaps, string key, CancellationToken ct) =>
+        store.WriteAsync(ArtifactKeys.CapabilityGaps(runId), gaps, key, ct);
 
     public Task<ArtifactRef> WriteValidationAsync(string runId, ValidationReport report, string key, CancellationToken ct) =>
         store.WriteAsync(ArtifactKeys.Phase(runId, PipelinePhase.Validate), report, key, ct);

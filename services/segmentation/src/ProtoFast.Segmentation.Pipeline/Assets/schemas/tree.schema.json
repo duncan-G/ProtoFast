@@ -3,13 +3,12 @@
   "$defs": {
     "node": {
       "type": "object",
-      "required": ["title"],
+      "required": ["title", "inferred"],
       "additionalProperties": false,
       "properties": {
         "title": { "type": "string", "minLength": 1, "maxLength": 200 },
         "headingLineId": { "type": "string", "pattern": "^L\\d{6}$" },
-        "level": { "type": "integer", "minimum": 1, "maximum": 6 },
-        "inferred": { "type": "boolean", "default": false },
+        "inferred": { "type": "boolean" },
         "children": { "type": "array", "items": { "$ref": "#/$defs/node" }, "minItems": 1 },
         "paragraphs": { "type": "array", "items": { "type": "string", "pattern": "^P\\d{5}[a-z]*$" }, "minItems": 1 }
       },

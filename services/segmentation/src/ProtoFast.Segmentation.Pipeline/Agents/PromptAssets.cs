@@ -123,6 +123,10 @@ public sealed class PromptAssets
             ["rules/common.md", "skills/heading-levels/SKILL.md", "prompts/heading-levels.v1.md", "schemas/heading-levels.schema.json", "schemas/wire/heading-levels.schema.json"],
         AgentRole.Structurer =>
             ["rules/common.md", "skills/hierarchy-inference/SKILL.md", "prompts/structurer.v1.md", "schemas/tree.schema.json", "schemas/wire/tree.schema.json"],
+        AgentRole.StructureWindower =>
+            ["rules/common.md", "skills/hierarchy-inference/SKILL.md", "prompts/structure-window.v1.md", "prompts/structure-followup.v1.md", "schemas/structure-window.schema.json", "schemas/wire/structure-window.schema.json", "schemas/structure-answers.schema.json", "schemas/wire/structure-answers.schema.json"],
+        AgentRole.StructureOrchestrator =>
+            ["rules/common.md", "skills/structure-orchestration/SKILL.md", "prompts/structure-orchestrator.v1.md", "schemas/assembly-plan.schema.json", "schemas/wire/assembly-plan.schema.json"],
         AgentRole.StructureReviewer =>
             ["rules/common.md", "skills/structure-review/SKILL.md", "prompts/structure-reviewer.v1.md", "schemas/review.schema.json", "schemas/wire/review.schema.json"],
         AgentRole.TreeRepairer =>

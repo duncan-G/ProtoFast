@@ -36,23 +36,79 @@ public sealed class AgentRunner(
     /// The repair prompt carries the previous answer and the exact error — a model asked to "try
     /// again" without being told what was wrong tends to return the same thing.
     /// </summary>
-    public async Task<AgentResult<T>> RunAsync<T>(
+    public Task<AgentResult<T>> RunAsync<T>(
         string prompt,
         RoutingContext context,
         Func<T, ValidationResult> validate,
         int maxRounds,
         Func<string, string, string>? buildRepairPrompt = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default) =>
+        RunCoreAsync(
+            [new ChatMessage(ChatRole.User, prompt)],
+            context,
+            validate,
+            maxRounds,
+            // Replace, not append. A stateless agent's repair prompt is a whole prompt — it
+            // already carries the previous answer and the error — so appending it to the turn it
+            // repairs would send the artifact twice and the skeleton twice with it.
+            (_, reply, errors) =>
+            [
+                new ChatMessage(
+                    ChatRole.User,
+                    buildRepairPrompt is null
+                        ? prompt + "\n\n## What failed\n" + errors
+                        : buildRepairPrompt(reply, errors)),
+            ],
+            ct);
+
+    /// <summary>
+    /// The same loop over a conversation rather than a single prompt, for the one agent that has
+    /// one: the structure orchestrator, whose input is the rounds that came before it
+    /// (orchestrator plan §4.2).
+    ///
+    /// <para>The repair appends a user turn here rather than replacing one, because the
+    /// conversation is the context that makes "here is what was wrong with your last answer"
+    /// actionable for an agent whose answer was about the whole conversation. Every other agent
+    /// keeps the single-prompt form and stays stateless — adding the overload is what stops the
+    /// orchestration from needing its own loop, and with it its own, unenforced, repair budget.</para>
+    /// </summary>
+    public Task<AgentResult<T>> RunAsync<T>(
+        IReadOnlyList<ChatMessage> messages,
+        RoutingContext context,
+        Func<T, ValidationResult> validate,
+        int maxRounds,
+        CancellationToken ct = default) =>
+        RunCoreAsync(
+            messages,
+            context,
+            validate,
+            maxRounds,
+            (conversation, reply, errors) =>
+            [
+                .. conversation,
+                new ChatMessage(ChatRole.Assistant, reply),
+                new ChatMessage(ChatRole.User, "## What failed\n" + errors),
+            ],
+            ct);
+
+    private async Task<AgentResult<T>> RunCoreAsync<T>(
+        IReadOnlyList<ChatMessage> messages,
+        RoutingContext context,
+        Func<T, ValidationResult> validate,
+        int maxRounds,
+        Func<IReadOnlyList<ChatMessage>, string, string, List<ChatMessage>> nextTurn,
+        CancellationToken ct)
     {
-        var currentPrompt = prompt;
+        ArgumentNullException.ThrowIfNull(messages);
+
+        var conversation = new List<ChatMessage>(messages);
         var currentContext = context;
         ValidationResult lastValidation = ValidationResult.Fail("schema", "No attempt was made.");
         RoutedResponse? lastResponse = null;
 
         for (var round = 0; round <= maxRounds; round++)
         {
-            lastResponse = await router.GetResponseAsync(
-                [new ChatMessage(ChatRole.User, currentPrompt)], currentContext, ct);
+            lastResponse = await router.GetResponseAsync(conversation, currentContext, ct);
 
             if (lastResponse.Truncated)
             {
@@ -101,9 +157,7 @@ public sealed class AgentRunner(
                 "Agent {Role} round {Round} failed check '{Check}' for run {RunId}; repairing.",
                 context.Role, round + 1, lastValidation.CheckId, context.RunId);
 
-            currentPrompt = buildRepairPrompt is null
-                ? prompt + "\n\n## What failed\n" + lastValidation.ErrorReport
-                : buildRepairPrompt(lastResponse.Text, lastValidation.ErrorReport);
+            conversation = nextTurn(conversation, lastResponse.Text, lastValidation.ErrorReport);
         }
 
         return new AgentResult<T>(default, lastValidation, lastResponse);

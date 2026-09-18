@@ -74,7 +74,17 @@ public sealed record StructureContext(
     Sensitivity Sensitivity,
     IReadOnlyList<string> Instincts,
     string? PinnedStructurerKey,
-    string? PinnedLevelerKey);
+    string? PinnedLevelerKey)
+{
+    /// <summary>
+    /// The orchestrated strategy's two roles pin separately from the phase (orchestrator plan §7).
+    /// Init-only rather than positional because every existing caller wants them null, and a
+    /// constructor that grew two parameters would say the opposite.
+    /// </summary>
+    public string? PinnedWindowerKey { get; init; }
+
+    public string? PinnedOrchestratorKey { get; init; }
+}
 
 /// <summary>
 /// Phase 3b (plan §10.1): one sequential pass over the detected headings.

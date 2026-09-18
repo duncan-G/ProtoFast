@@ -32,6 +32,7 @@ public static class Cli
                 "segment" => await SegmentCommand.RunAsync(options),
                 "evaluate" => await EvaluateCommand.RunAsync(options),
                 "checks" => await ChecksCommand.RunAsync(options),
+                "compare-structure" => await CompareStructureCommand.RunAsync(options),
                 _ => Unknown(args[0]),
             };
         }
@@ -70,11 +71,20 @@ public static class Cli
               Scores the deterministic pipeline against gold documents and prints the metrics of
               plan §26.2 per condition bucket. Exit code 1 if a document misses its thresholds.
 
+          segctl compare-structure --gold <file.json> [--chunked <05_tree.json>] [--orchestrated <05_tree.json>]
+              Scores two phase-5 trees for the same document against its gold annotation
+              (orchestrator plan §9). Produce the trees with the worker, running the same document
+              twice with Seg_Pipeline__Structure__Strategy set each way; this command needs no
+              provider. Cost and wall clock live in model_calls, keyed by run id.
+
         Options:
           --in <path>        the Markdown document to segment
           --layout <path>    the .layout.json sibling, when one exists
           --out <dir>        where to write artifacts (default: ./segctl-out)
           --gold <path>      a gold document, or a directory of them
+          --chunked <path>   a 05_tree.json produced by the chunked strategy
+          --orchestrated <path>
+                             a 05_tree.json produced by the orchestrated strategy
           --json             machine-readable output
           --quiet            errors only
         """);

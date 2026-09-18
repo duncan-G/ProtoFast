@@ -105,6 +105,18 @@ public enum AgentRole
     Labeler,
     HeadingLeveler,
     Structurer,
+
+    /// <summary>
+    /// Structures one window of the skeleton for the orchestrated strategy (orchestrator plan
+    /// §4.1). Separate from <see cref="Structurer"/> because it is a different job at a different
+    /// tier: a window agent sees a slice and is told so, and qualification for "structure a whole
+    /// document" says nothing about it.
+    /// </summary>
+    StructureWindower,
+
+    /// <summary>Assembles the window agents' subtrees into one tree (orchestrator plan §4.1).</summary>
+    StructureOrchestrator,
+
     StructureReviewer,
     TreeRepairer,
     Augmenter,

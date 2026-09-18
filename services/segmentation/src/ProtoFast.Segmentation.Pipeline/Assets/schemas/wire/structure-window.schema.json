@@ -1,7 +1,8 @@
 {
   "type": "object",
   "required": [
-    "tree"
+    "tree",
+    "openQuestions"
   ],
   "additionalProperties": false,
   "properties": {
@@ -12,6 +13,12 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/edit"
+      }
+    },
+    "openQuestions": {
+      "type": "array",
+      "items": {
+        "type": "string"
       }
     }
   },

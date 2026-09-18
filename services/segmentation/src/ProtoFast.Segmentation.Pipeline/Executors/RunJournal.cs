@@ -147,20 +147,31 @@ public sealed class RunJournal(IServiceScopeFactory scopes)
     }
 
     /// <summary>Records which model a phase was pinned to, so the rest of the run stays consistent.</summary>
-    public async Task PinModelAsync(string runId, PipelinePhase phase, string modelKey, CancellationToken ct)
+    public Task PinModelAsync(string runId, PipelinePhase phase, string modelKey, CancellationToken ct) =>
+        PinModelAsync(runId, phase.ToString(), modelKey, ct);
+
+    /// <summary>
+    /// The same, keyed by role rather than by phase. Phase 5 runs two roles when it orchestrates,
+    /// and both have to pin independently: windows must stay consistent with each other, and a
+    /// resumed run must not switch orchestrator mid-document (orchestrator plan §7).
+    /// </summary>
+    public Task PinModelAsync(string runId, AgentRole role, string modelKey, CancellationToken ct) =>
+        PinModelAsync(runId, role.ToString(), modelKey, ct);
+
+    private async Task PinModelAsync(string runId, string pinKey, string modelKey, CancellationToken ct)
     {
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<SegmentationDbContext>();
 
         var run = await db.Runs.FirstOrDefaultAsync(r => r.RunId == runId, ct);
-        if (run is null || run.PinnedModels.ContainsKey(phase.ToString()))
+        if (run is null || run.PinnedModels.ContainsKey(pinKey))
         {
             return;
         }
 
         // The dictionary is a jsonb column with a value comparer, so it has to be replaced rather
         // than mutated for EF to see the change.
-        run.PinnedModels = new Dictionary<string, string>(run.PinnedModels) { [phase.ToString()] = modelKey };
+        run.PinnedModels = new Dictionary<string, string>(run.PinnedModels) { [pinKey] = modelKey };
         run.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
     }

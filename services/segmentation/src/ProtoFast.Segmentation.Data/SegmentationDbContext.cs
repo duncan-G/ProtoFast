@@ -27,6 +27,8 @@ public sealed class SegmentationDbContext(DbContextOptions<SegmentationDbContext
 
     public DbSet<FamilyInstinct> FamilyInstincts => Set<FamilyInstinct>();
 
+    public DbSet<CapabilityGap> CapabilityGaps => Set<CapabilityGap>();
+
     public DbSet<RunResult> RunResults => Set<RunResult>();
 
     public DbSet<Upload> Uploads => Set<Upload>();
@@ -153,6 +155,26 @@ public sealed class SegmentationDbContext(DbContextOptions<SegmentationDbContext
             entity.Property(i => i.Pattern).IsRequired().HasMaxLength(512);
             entity.Property(i => i.Guidance).IsRequired().HasMaxLength(1024);
             entity.HasIndex(i => new { i.Family, i.Pattern }).IsUnique();
+        });
+
+        modelBuilder.Entity<CapabilityGap>(entity =>
+        {
+            entity.HasKey(g => g.Id);
+            entity.Property(g => g.Kind).IsRequired().HasMaxLength(32);
+            entity.Property(g => g.Role).IsRequired().HasMaxLength(32);
+
+            // Capped to the same lengths the schema asks the model for. A length limit on
+            // model-authored text that is rendered to people is cheap here and awkward to
+            // retrofit once a report exists (orchestrator plan §11).
+            entity.Property(g => g.Observation).IsRequired().HasMaxLength(500);
+            entity.Property(g => g.Proposal).IsRequired().HasMaxLength(500);
+            entity.Property(g => g.RunId).IsRequired().HasMaxLength(32);
+            entity.Property(g => g.Evidence).IsRequired().HasMaxLength(1024);
+            entity.Property(g => g.DocumentFamily).HasMaxLength(64);
+
+            // The reporting query of orchestrator plan §13: cluster by kind, newest first.
+            entity.HasIndex(g => new { g.Kind, g.CreatedAt });
+            entity.HasIndex(g => g.RunId);
         });
 
         modelBuilder.Entity<RunResult>(entity =>

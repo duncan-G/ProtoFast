@@ -26,6 +26,11 @@ public sealed record TreeProposalNode
     [JsonPropertyName("headingLineId")]
     public string? HeadingLineId { get; init; }
 
+    // No longer declared by either schema. The level a model claimed was always advisory —
+    // dropped for the node's depth in TreeMaterializer — so asking for it bought nothing and
+    // cost the decoder an optional field on every node. It stays readable here because a
+    // provider without structured output is guided by the prompt alone and may still
+    // volunteer one; this type's job is to parse whatever arrives.
     [JsonPropertyName("level")]
     public int? Level { get; init; }
 

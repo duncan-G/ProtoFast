@@ -95,6 +95,28 @@ public static class ArtifactKeys
     public static string LabelWindow(string runId, int windowIndex) =>
         RunPrefix(runId) + $"03_labels/window_{windowIndex.ToString("D5", CultureInfo.InvariantCulture)}.json";
 
+    /// <summary>
+    /// One window agent's subtree (orchestrator plan §5). Beside the phase's own artifact rather
+    /// than inside it, so a resumed run re-reads the windows it had finished for free — the same
+    /// mechanism that makes a mid-run deploy cheap for labelling.
+    /// </summary>
+    public static string StructureWindow(string runId, int windowIndex) =>
+        RunPrefix(runId) + $"05_structure/window_{windowIndex.ToString("D5", CultureInfo.InvariantCulture)}.json";
+
+    /// <summary>The orchestrator's assembly plan, kept as the audit record of how the tree was built.</summary>
+    public static string AssemblyPlan(string runId) => RunPrefix(runId) + "05_structure/plan.json";
+
+    /// <summary>
+    /// The orchestration transcript. An audit record for the experiment, deliberately not resume
+    /// state: the loop is one superstep, and a worker that dies mid-conversation replays the
+    /// orchestrator rounds against outlines rather than re-reading the document
+    /// (orchestrator plan §6).
+    /// </summary>
+    public static string StructureChat(string runId) => RunPrefix(runId) + "05_structure/chat.jsonl";
+
+    /// <summary>The capability gaps this run's orchestrator reported (orchestrator plan §12.3(d)).</summary>
+    public static string CapabilityGaps(string runId) => RunPrefix(runId) + "05_structure/gaps.json";
+
     public static string Augmentation(string runId, string augmentationType, string paragraphId) =>
         RunPrefix(runId) + $"10_augmented/{augmentationType}/{paragraphId}.json";
 
