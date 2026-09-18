@@ -37,7 +37,8 @@ which environment it is in.
 - **Dev**: `aspire run` from the repo root. The AppHost starts Postgres, Redis,
 Keycloak, smtp4dev, the OTel collector, three .NET services, two Angular dev
 servers and Envoy. Browsers use `https://localhost:20000` (admin) and
-`https://localhost:20001` (protofast). Everything else is assigned dynamically.
+`https://localhost:20001` (protofast). Client listeners and smtp4dev's web UI
+are pinned; everything else is assigned dynamically.
 - **Prod**: two EC2 instances. **Host A** is the edge (cloudflared → Envoy → the
 unified SSR host + OTel collector + Aspire dashboard). **Host B** is services
 and state (auth / payments / api + Keycloak + Postgres + Redis). There are no

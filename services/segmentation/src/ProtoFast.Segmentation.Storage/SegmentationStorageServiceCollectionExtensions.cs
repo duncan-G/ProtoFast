@@ -31,8 +31,12 @@ public static class SegmentationStorageServiceCollectionExtensions
         var serviceUrl = configuration[$"{storageSection}:ServiceUrl"]
             ?? configuration["Aws:ServiceUrl"];
 
-        services.AddSingleton<IAmazonS3>(_ => CreateS3(serviceUrl));
-        services.AddSingleton<IAmazonSQS>(_ => CreateSqs(serviceUrl));
+        // Only meaningful alongside a ServiceUrl: it has to name the region LocalStack's init
+        // script created the bucket and queues in, which the AppHost supplies to both sides.
+        var region = configuration[$"{storageSection}:Region"] ?? "us-west-2";
+
+        services.AddSingleton<IAmazonS3>(_ => CreateS3(serviceUrl, region));
+        services.AddSingleton<IAmazonSQS>(_ => CreateSqs(serviceUrl, region));
 
         services.AddSingleton<S3ArtifactStore>();
         services.AddSingleton<IArtifactStore>(sp => sp.GetRequiredService<S3ArtifactStore>());
@@ -43,7 +47,7 @@ public static class SegmentationStorageServiceCollectionExtensions
         return services;
     }
 
-    private static AmazonS3Client CreateS3(string? serviceUrl)
+    private static AmazonS3Client CreateS3(string? serviceUrl, string region)
     {
         if (string.IsNullOrWhiteSpace(serviceUrl))
         {
@@ -58,11 +62,11 @@ public static class SegmentationStorageServiceCollectionExtensions
                 // LocalStack serves one host for every bucket, so virtual-host addressing
                 // (bucket.localhost) does not resolve.
                 ForcePathStyle = true,
-                AuthenticationRegion = Environment.GetEnvironmentVariable("AWS_REGION") ?? "us-east-1",
+                AuthenticationRegion = region,
             });
     }
 
-    private static AmazonSQSClient CreateSqs(string? serviceUrl)
+    private static AmazonSQSClient CreateSqs(string? serviceUrl, string region)
     {
         if (string.IsNullOrWhiteSpace(serviceUrl))
         {
@@ -74,7 +78,7 @@ public static class SegmentationStorageServiceCollectionExtensions
             new AmazonSQSConfig
             {
                 ServiceURL = serviceUrl,
-                AuthenticationRegion = Environment.GetEnvironmentVariable("AWS_REGION") ?? "us-east-1",
+                AuthenticationRegion = region,
             });
     }
 }

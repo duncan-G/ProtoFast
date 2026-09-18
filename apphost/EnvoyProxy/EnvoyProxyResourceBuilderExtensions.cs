@@ -141,6 +141,30 @@ public static class EnvoyProxyResourceBuilderExtensions
         return expression.Build();
     }
 
+    /// <summary>
+    /// The origins a browser sends when it calls something directly instead of through the proxy —
+    /// the per-client listener URLs in run mode, empty in publish mode (where the browser's only
+    /// direct call, the presigned PUT, goes to real S3 and the origins live in Terraform).
+    ///
+    /// <para>Derived from the same counter <see cref="WithClient"/> allocates listener ports from,
+    /// so adding a fourth client extends the list rather than leaving a hand-maintained copy of it
+    /// one entry short.</para>
+    /// </summary>
+    public static IReadOnlyList<string> GetClientOrigins(this IResourceBuilder<ContainerResource> envoy)
+    {
+        if (envoy.ApplicationBuilder.ExecutionContext.IsPublishMode)
+        {
+            return [];
+        }
+
+        var clients = envoy.Resource.Annotations
+            .OfType<EnvoyClientsAnnotation>()
+            .Single()
+            .Clients;
+
+        return [.. clients.Select((_, i) => $"https://localhost:{FirstClientListenerPort + i}")];
+    }
+
     public static IResourceBuilder<ContainerResource> WithUpstreamEndpoint(
         this IResourceBuilder<ContainerResource> envoy,
         string name,

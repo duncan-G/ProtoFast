@@ -27,7 +27,7 @@ AWS CLI v2 and an SSO profile named **`developer`** (the Developer permission se
 | `auth-db`                 | database             | runs `ProtoFast.Auth.SchemaMigrations` before `auth` starts                                                      |
 | `redis`                   | container            | session, correlation and replay stores                                                                           |
 | `keycloak`                | container (26.7)     | realm import from `infra/keycloak/realms`, themes and provider JAR bind-mounted, tracing + logs to the collector |
-| `smtp4dev`                | container            | local mail catcher; both Keycloak and `auth` are pointed at it                                                   |
+| `smtp4dev`                | container            | local mail catcher; web UI pinned at host `5000`, SMTP allocated; both Keycloak and `auth` are pointed at it     |
 | `auth`, `payments`, `api` | .NET projects        | OTLP reference, Redis/Postgres connection strings; JWT and Keycloak secrets from `protofast/dev`                 |
 | `envoy`                   | Dockerfile container | one HTTPS listener per client, dev certificate, upstream host/port for every service                             |
 | `admin`, `protofast`      | `ng serve`           | `PORT`, `SSL_CERT`, `SSL_KEY`, `SERVER_URL`, OTel endpoints                                                      |
@@ -61,10 +61,11 @@ SES SMTP and the production DB passwords stay out of this map.
 - **The internal JWT key pair** is generated once by the script (EC P-256) and
   read in-process: private PEM by `auth`, public PEM by `payments` and `api`.
   Restarting the stack keeps the same keys; tokens live five minutes either way.
-- **Mail** goes to smtp4dev. The AppHost injects its allocated SMTP port into
-  both Keycloak (container network) and `auth` (host network) — those are not
-  secrets. The `localhost:1025` in `appsettings.Development.json` is only a
-  fallback for running `auth` outside the AppHost.
+- **Mail** goes to smtp4dev. The web UI is pinned at `http://localhost:5000`; SMTP
+  is allocated. The AppHost injects that SMTP host/port into both Keycloak
+  (container network) and `auth` (host network) — those are not secrets. The
+  `localhost:1025` in `appsettings.Development.json` is only a fallback for
+  running `auth` outside the AppHost.
 
 
 

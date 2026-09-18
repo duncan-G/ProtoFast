@@ -19,9 +19,16 @@ var useSsrHost = builder.ExecutionContext.IsPublishMode
     || bool.TryParse(builder.Configuration["SsrHost:Dev"], out var ssrHostDev) && ssrHostDev;
 
 // LocalStack signs requests against a region the way real AWS does, and the SDK's credential
-// chain finds none in development — so one constant is injected into both consumers rather than
-// left to each of them to guess at.
-const string AwsRegion = "us-east-1";
+// chain finds none in development — so one value is injected into LocalStack's init script and
+// into both consumers rather than left to each of them to guess at.
+//
+// It follows the developer's SSO region because that is the one region already in play locally:
+// WithSsoProfile puts it in AWS_REGION for Secrets Manager, and a LocalStack call signed for a
+// different region looks for queues in a region nothing ever created any in — QueueDoesNotExist
+// against a queue the init script plainly made. Matching them makes that impossible, and it is
+// also the region the workload actually runs in (infra/backend.tf). Publish mode never resolves
+// an SSO region and never runs LocalStack, so it falls back to the same default.
+var awsRegion = string.IsNullOrWhiteSpace(AwsDeveloperSso.Region) ? "us-west-2" : AwsDeveloperSso.Region;
 
 var otel = builder.AddOpenTelemetryCollector("otel-collector");
 
@@ -51,7 +58,7 @@ var redis = builder.AddRedis("redis");
 // S3 and SQS for the segmentation feature. `aspire run` has to start the whole thing, or the
 // feature will only ever be tested in prod (plan §22).
 const string segmentationBucket = "protofast-segmentation-dev";
-var localstack = builder.AddLocalStack("localstack", segmentationBucket);
+var localstack = builder.AddLocalStack("localstack", segmentationBucket, awsRegion);
 
 var keycloak = builder.AddKeycloak("keycloak", 8080)
     .WithImageTag("26.7")
@@ -97,8 +104,11 @@ var keycloak = builder.AddKeycloak("keycloak", 8080)
 IResourceBuilder<ContainerResource>? smtp4dev = null;
 if (!builder.ExecutionContext.IsPublishMode)
 {
+    // Pin only the web UI host port so the inbox stays bookmarkable. SMTP can
+    // float — Keycloak and auth both take the allocated mapping from the
+    // endpoint references below, and nothing a person types needs it.
     smtp4dev = builder.AddContainer("smtp4dev", "rnwood/smtp4dev")
-        .WithHttpEndpoint(targetPort: 80, name: "web")
+        .WithHttpEndpoint(port: 5000, targetPort: 80, name: "web")
         .WithEndpoint(targetPort: 25, name: "smtp");
 
     // Keycloak is a container, so it has to reach smtp4dev by container DNS and the
@@ -175,9 +185,8 @@ var api = builder.AddProject<Projects.ProtoFast_Api>("api")
     .WithReference(segmentationDb, connectionName: "segmentation")
     .WaitFor(segmentationDb)
     .WaitFor(localstack)
-    .WithEnvironment("AWS_REGION", AwsRegion)
-    .WithEnvironment("AWS_DEFAULT_REGION", AwsRegion)
-    .WithEnvironment("Api_Segmentation__ServiceUrl", localstack.GetEndpoint(LocalStackResourceBuilderExtensions.GatewayEndpointName))
+    .WithEnvironment("Api_Segmentation__ServiceUrl", LocalStackResourceBuilderExtensions.GatewayUrl)
+    .WithEnvironment("Api_Segmentation__Region", awsRegion)
     .WithEnvironment("Api_Segmentation__Bucket", segmentationBucket)
     .WithEnvironment("Api_Segmentation__Runs", localstack.QueueUrl("protofast-segmentation-runs"))
     .WithEnvironment("Api_Segmentation__Bulk", localstack.QueueUrl("protofast-segmentation-runs-bulk"))
@@ -196,9 +205,8 @@ var segmentation = builder.AddProject<Projects.ProtoFast_Segmentation_Worker>("s
     .WaitFor(redis)
     .WaitFor(segmentationDb)
     .WaitFor(localstack)
-    .WithEnvironment("AWS_REGION", AwsRegion)
-    .WithEnvironment("AWS_DEFAULT_REGION", AwsRegion)
-    .WithEnvironment("Seg_Storage__ServiceUrl", localstack.GetEndpoint(LocalStackResourceBuilderExtensions.GatewayEndpointName))
+    .WithEnvironment("Seg_Storage__ServiceUrl", LocalStackResourceBuilderExtensions.GatewayUrl)
+    .WithEnvironment("Seg_Storage__Region", awsRegion)
     .WithEnvironment("Seg_Storage__Bucket", segmentationBucket)
     .WithEnvironment("Seg_Queues__Runs", localstack.QueueUrl("protofast-segmentation-runs"))
     .WithEnvironment("Seg_Queues__Bulk", localstack.QueueUrl("protofast-segmentation-runs-bulk"))
@@ -224,6 +232,11 @@ var adminWeb = proxy.WithClient(builder, "admin");
 var protofastWeb = proxy.WithClient(builder, "protofast");
 // Third registration, so the listener port follows automatically: 20002 (plan §18.2).
 var theplotWeb = proxy.WithClient(builder, "theplot");
+
+// The presigned PUT is the one call the browser makes to something other than Envoy, so
+// LocalStack has to recognise the listener origins the pages are served from. Placed after the
+// WithClient calls above because that is where the listener list becomes complete.
+localstack.WithClientOrigins(proxy.GetClientOrigins());
 
 if (useSsrHost)
 {

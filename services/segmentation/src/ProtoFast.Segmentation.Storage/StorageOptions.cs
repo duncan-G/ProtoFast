@@ -13,6 +13,16 @@ public sealed class StorageOptions
     /// </summary>
     public string? ServiceUrl { get; set; }
 
+    /// <summary>
+    /// The region the S3 and SQS clients sign for when <see cref="ServiceUrl"/> is set. LocalStack
+    /// keeps queues per region exactly as AWS does, so a call signed for a region its init script
+    /// did not create in gets a <c>QueueDoesNotExist</c> against a queue that is plainly there —
+    /// which is why the AppHost passes the same region to both sides rather than letting each pick
+    /// one up from the ambient environment. Ignored in production, where <c>ServiceUrl</c> is unset
+    /// and the SDK resolves the region itself.
+    /// </summary>
+    public string Region { get; set; } = "us-west-2";
+
     /// <summary>How long a presigned upload URL stays valid (plan §18.3).</summary>
     public TimeSpan UploadUrlTtl { get; set; } = TimeSpan.FromMinutes(15);
 

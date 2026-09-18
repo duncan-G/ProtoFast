@@ -1,3 +1,4 @@
+using System.Net.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using ProtoFast.Segmentation.Routing.Budgets;
@@ -41,7 +42,7 @@ public static class SegmentationRoutingServiceCollectionExtensions
         services.AddMemoryCache();
         services.TryAddTimeProvider();
 
-        services.AddSingleton<RateLimitHeaderHandler>();
+        services.AddSingleton(_ => new RateLimitHeaderHandler { InnerHandler = new SocketsHttpHandler() });
         services.AddSingleton<IModelRegistry, ModelRegistry>();
         services.AddSingleton<IBudgetLedger, RedisBudgetLedger>();
         services.AddSingleton<IProviderClientCache, ProviderClientCache>();

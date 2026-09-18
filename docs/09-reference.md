@@ -64,6 +64,7 @@ with a different injector.
 |---|---|---|
 | `Seg_Storage__Bucket` | AppHost (LocalStack bucket) | compose ← `.env` `SEGMENTATION_BUCKET` |
 | `Seg_Storage__ServiceUrl` | AppHost → LocalStack | **unset** (real AWS) |
+| `Seg_Storage__Region` | AppHost (the `developer` profile's region, which LocalStack's init script also creates in) | unused (the SDK resolves the region) |
 | `Seg_Storage__ObjectLockEnabled` | `appsettings.Development.json` (`false`) | `appsettings.json` (`true`) |
 | `Seg_Queues__Runs` / `__Bulk` / `__BatchPoll` | AppHost (LocalStack queue URLs) | compose ← `.env` |
 | `Seg_Queues__MaxConcurrentRuns` | `appsettings.Development.json` (`2`) | compose (`8`; tune with Host B sizing) |
@@ -73,9 +74,15 @@ with a different injector.
 | `Seg_Providers__<provider>__BaseUrl` | `appsettings.json` | same |
 | `ConnectionStrings__segmentation`, `ConnectionStrings__redis` | Aspire references | compose |
 | `Secrets:SecretId` / `Secrets:Prefix` | unused (Production only) | `appsettings.json` (`protofast/app`, `Seg_`) |
-| `AWS_REGION` / `AWS_DEFAULT_REGION` | AppHost (`us-east-1`) | compose ← `.env` |
+| `AWS_REGION` / `AWS_DEFAULT_REGION` | AppHost `WithSsoProfile` (the `developer` profile's region, for Secrets Manager) | compose ← `.env` |
 
-`api` additionally reads `Api_Segmentation__Bucket`, `__Runs`, `__Bulk`, `__BatchPoll`,
+`Seg_Storage__Region` / `Api_Segmentation__Region` is what the LocalStack clients sign with, and
+the AppHost hands the same value to the init script's `AWS_DEFAULT_REGION` so both sides agree —
+the emulator keeps queues per region, so a mismatch is a `QueueDoesNotExist` against a queue that
+was created. The value follows the `developer` profile's region (`us-west-2`, the workload's own
+region), so it also matches the `AWS_REGION` that `WithSsoProfile` sets for Secrets Manager.
+
+`api` additionally reads `Api_Segmentation__Bucket`, `__Region`, `__Runs`, `__Bulk`, `__BatchPoll`,
 `__ReviewerRole`, `__AdminRole`, `__MaxUploadBytes`, `__AllowedAugmentations`, and
 `ConnectionStrings__segmentation`. It presigns, enqueues and reads Postgres; it holds no provider
 credentials and references neither the routing nor the pipeline project.
@@ -170,4 +177,5 @@ scripts/                  secrets, dev helpers, Keycloak apply scripts
 | 4317 / 4318 | prod, Host A | OTLP gRPC / HTTP receivers |
 | 5432, 6379 | prod, Host B | Postgres, Redis — **not** published |
 | — | prod, Host B | `segmentation` publishes **no** port; nothing dials it. It pulls from SQS and writes to S3 and Postgres |
-| 4566 | dev, host | LocalStack (S3 + SQS) |
+| 4566 | dev, host | LocalStack (S3 + SQS), plain HTTP and TLS on the same port — clients use `https://localhost.localstack.cloud:4566` (LocalStack's own publicly-trusted certificate) so the browser's presigned `PUT` from an HTTPS client page isn't blocked as mixed content |
+| 5000 | dev, host | smtp4dev web UI |
