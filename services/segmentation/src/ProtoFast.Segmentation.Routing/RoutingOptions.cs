@@ -56,8 +56,6 @@ public sealed class ResilienceOptions
 
     public TimeSpan BaseDelay { get; set; } = TimeSpan.FromSeconds(1);
 
-    public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(5);
-
     /// <summary>Consecutive failures that open a pool's circuit (plan §14.7).</summary>
     public int CircuitConsecutiveFailures { get; set; } = 5;
 

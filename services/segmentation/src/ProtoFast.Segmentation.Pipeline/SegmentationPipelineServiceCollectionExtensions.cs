@@ -4,6 +4,8 @@ using ProtoFast.Segmentation.Core.Options;
 using ProtoFast.Segmentation.Pipeline.Agents;
 using ProtoFast.Segmentation.Pipeline.Augmentation;
 using ProtoFast.Segmentation.Pipeline.Executors;
+using ProtoFast.Segmentation.Pipeline.Ingest;
+using ProtoFast.Segmentation.Storage;
 
 namespace ProtoFast.Segmentation.Pipeline;
 
@@ -20,9 +22,13 @@ public static class SegmentationPipelineServiceCollectionExtensions
     public static IServiceCollection AddSegmentationPipeline(
         this IServiceCollection services,
         IConfiguration configuration,
-        string pipelineSection = PipelineOptions.SectionName)
+        string pipelineSection = PipelineOptions.SectionName,
+        string conversionSection = ConversionOptions.SectionName)
     {
         services.Configure<PipelineOptions>(configuration.GetSection(pipelineSection));
+        services.Configure<ConversionOptions>(configuration.GetSection(conversionSection));
+
+        AddDocumentConverter(services, configuration, conversionSection);
 
         if (services.All(d => d.ServiceType != typeof(TimeProvider)))
         {
@@ -66,5 +72,36 @@ public static class SegmentationPipelineServiceCollectionExtensions
         services.AddSingleton<IAugmentationCatalogue, AugmentationCatalogue>();
 
         return services;
+    }
+
+    /// <summary>
+    /// Registers the conversion sidecar's client (ingest plan §9.1, §17.1).
+    ///
+    /// <para>The timeout is deliberately longer than the converter's own 8-minute budget, so a slow
+    /// conversion ends with the converter's structured error rather than with a client-side
+    /// cancellation that says nothing about why. An unset endpoint is not an error here — a fresh
+    /// clone has no converter and Markdown uploads still run end to end — but a non-Markdown upload
+    /// then fails phase 0 with a message that names the reason.</para>
+    /// </summary>
+    private static void AddDocumentConverter(
+        IServiceCollection services, IConfiguration configuration, string conversionSection)
+    {
+        var endpoint = configuration[$"{conversionSection}:Endpoint"];
+
+        var timeout = TimeSpan.TryParse(configuration[$"{conversionSection}:Timeout"], out var configured)
+            ? configured
+            : TimeSpan.FromMinutes(10);
+
+        services.AddHttpClient<IDocumentConverter, DocumentConverter>(client =>
+        {
+            if (!string.IsNullOrWhiteSpace(endpoint))
+            {
+                // The trailing slash matters: without it a relative "convert" would replace the
+                // last path segment of the base address rather than being appended to it.
+                client.BaseAddress = new Uri(endpoint.TrimEnd('/') + "/");
+            }
+
+            client.Timeout = timeout;
+        });
     }
 }

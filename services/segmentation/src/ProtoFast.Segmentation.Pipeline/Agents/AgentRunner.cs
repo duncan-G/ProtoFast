@@ -45,13 +45,38 @@ public sealed class AgentRunner(
         CancellationToken ct = default)
     {
         var currentPrompt = prompt;
+        var currentContext = context;
         ValidationResult lastValidation = ValidationResult.Fail("schema", "No attempt was made.");
         RoutedResponse? lastResponse = null;
 
         for (var round = 0; round <= maxRounds; round++)
         {
             lastResponse = await router.GetResponseAsync(
-                [new ChatMessage(ChatRole.User, currentPrompt)], context, ct);
+                [new ChatMessage(ChatRole.User, currentPrompt)], currentContext, ct);
+
+            if (lastResponse.Truncated)
+            {
+                // Unfinished, not wrong. The repair path is the wrong tool here: it would show the
+                // model a half-written artifact and ask it to fix the truncation, in a prompt
+                // longer than the one that already did not fit — and the repair reply would stop
+                // in the same place. Raise the ceiling and ask the original question again.
+                lastValidation = ValidationResult.Fail(
+                    Checks.Schema,
+                    $"The reply stopped at the {currentContext.MaxOutputTokens}-token output cap before "
+                    + "the artifact was complete.");
+
+                if (round == maxRounds)
+                {
+                    break;
+                }
+
+                currentContext = currentContext with { MaxOutputTokens = currentContext.MaxOutputTokens * 2 };
+                logger.LogWarning(
+                    "Agent {Role} round {Round} was truncated for run {RunId}; retrying with a "
+                    + "{Cap}-token cap.",
+                    currentContext.Role, round + 1, currentContext.RunId, currentContext.MaxOutputTokens);
+                continue;
+            }
 
             var parsed = ModelJson.Parse<T>(lastResponse.Text);
             if (!parsed.Success)

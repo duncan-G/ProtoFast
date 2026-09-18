@@ -2,6 +2,12 @@
 
 {{skill}}
 
+## Output schema
+
+```json
+{{schema}}
+```
+
 ## What failed
 {{errorReport}}
 
@@ -11,4 +17,4 @@
 ## The IDs in scope
 {{scope}}
 
-Return the complete corrected artifact, in the same schema. JSON only.
+Return the complete corrected artifact, matching the schema above. JSON only.

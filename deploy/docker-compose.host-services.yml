@@ -202,6 +202,14 @@ services:
       Seg_Queues__Bulk: ${SEGMENTATION_BULK_QUEUE_URL}
       Seg_Queues__BatchPoll: ${SEGMENTATION_BATCH_POLL_QUEUE_URL}
       Seg_Queues__MaxConcurrentRuns: "${SEGMENTATION_MAX_CONCURRENT_RUNS:-8}"
+      # Phase 0's conversion step (ingest plan §17.1). Same-host compose DNS; the converter
+      # publishes no port and is reached by nothing else. The timeout is above the converter's own
+      # 8-minute budget so its structured error wins the race and the phase fails with a reason.
+      Seg_Conversion__Endpoint: "http://conversion:8090"
+      Seg_Conversion__Timeout: "${SEGMENTATION_CONVERSION_TIMEOUT:-00:10:00}"
+      Seg_Conversion__OcrEnabled: "${SEGMENTATION_OCR_ENABLED:-true}"
+      Seg_Conversion__OcrLanguages__0: "${SEGMENTATION_OCR_LANGUAGE:-eng}"
+      Seg_Conversion__MaxOcrPages: "${SEGMENTATION_MAX_OCR_PAGES:-200}"
     volumes:
       - /usr/local/bin/grpc_health_probe:/usr/local/bin/grpc_health_probe:ro
     secrets:
@@ -212,6 +220,55 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      # Not a hard requirement — the worker tolerates an absent converter by failing phase 0
+      # transiently — but starting them in order makes the window where PDFs would queue empty.
+      conversion:
+        condition: service_started
+
+  # Document conversion (ingest plan §20). No published port: only the segmentation worker on this
+  # host dials it, by name over this compose network. It owns no database, no queue and no state,
+  # which is what makes it safe to restart mid-run — an unreachable converter fails phase 0
+  # transiently, so runs queue rather than die.
+  conversion:
+    image: ${ECR}/protofast-conversion:${CONVERSION_TAG}
+    restart: unless-stopped
+    environment:
+      # The converter is not a .NET process, so it does not follow the Prefix_Section__Key
+      # convention — the same deviation the Envoy and OTel containers already make.
+      CONVERSION_BUCKET: ${SEGMENTATION_BUCKET}
+      # No CONVERSION_S3_ENDPOINT here: that is LocalStack's gateway in development, and setting
+      # it in production would point conversion at something that is not AWS.
+      #
+      # No credentials either. boto3 takes them from the instance role over IMDS, which a
+      # container only reaches with metadata hop limit 2 (infra/compute.tf), and resolves no
+      # region on its own — hence the explicit AWS_REGION.
+      AWS_REGION: ${AWS_REGION}
+      AWS_DEFAULT_REGION: ${AWS_REGION}
+      CONVERSION_MAX_SOURCE_BYTES: "${CONVERSION_MAX_SOURCE_BYTES:-10485760}"
+      CONVERSION_MAX_OUTPUT_BYTES: "${CONVERSION_MAX_OUTPUT_BYTES:-26214400}"
+      CONVERSION_TIMEOUT_SECONDS: "${CONVERSION_TIMEOUT_SECONDS:-480}"
+      CONVERSION_OCR_LANGUAGES: "${CONVERSION_OCR_LANGUAGES:-eng}"
+      CONVERSION_OCR_MIN_CONFIDENCE: "${CONVERSION_OCR_MIN_CONFIDENCE:-60}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://${HOST_A_IP}:4317"
+    # A runaway conversion is OOM-killed rather than taking the box's page cache with it.
+    mem_limit: 1g
+    # Conversion is file-based, and /tmp is the only path it writes: everything else is read-only,
+    # every capability is dropped, and privilege escalation is forbidden. That sandbox is the
+    # mitigation for the malicious-document surface (XXE, zip-slip via OOXML, PDF JS, font
+    # exploits) that a document parser inevitably has (ingest plan §21).
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      # Not the gRPC probe the .NET services use: this one speaks plain HTTP, and python is the
+      # one interpreter the image is guaranteed to have.
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8090/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
 
   # One-shot schema-migrations job for the segmentation DB, mirroring auth-migrations.
   # profiles:["jobs"] keeps it out of `compose up`; deploy.sh runs it via

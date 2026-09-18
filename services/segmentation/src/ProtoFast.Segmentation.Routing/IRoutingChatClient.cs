@@ -10,7 +10,15 @@ public sealed record RoutedResponse(
     int OutputTokens,
     int CachedInputTokens,
     decimal CostUsd,
-    int LatencyMs);
+    int LatencyMs)
+{
+    /// <summary>
+    /// The provider stopped at the output cap rather than at the end of its answer. The text is
+    /// not wrong, it is unfinished — which is a different failure from a malformed reply, and has
+    /// to be handled differently: a bigger ceiling, not a repair round.
+    /// </summary>
+    public bool Truncated { get; init; }
+}
 
 /// <summary>
 /// The single door to every provider (plan §14.1). Executors hold this and nothing else — there

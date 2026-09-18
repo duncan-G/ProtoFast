@@ -166,12 +166,23 @@ public sealed class ValidateExecutor(
             await journal.NoteAsync(
                 message.RunId, PipelinePhase.Validate,
                 $"repair rounds exhausted after {round - 1}; sending to human review", cancellationToken);
-
-            return new ValidationComplete(message.RunId, artifact, Passed: false);
+        }
+        else
+        {
+            await journal.NoteAsync(
+                message.RunId, PipelinePhase.Validate, $"repair round {round}", cancellationToken);
         }
 
-        await journal.NoteAsync(
-            message.RunId, PipelinePhase.Validate, $"repair round {round}", cancellationToken);
+        // The phase is over either way: a failing report is an outcome, not an unfinished phase.
+        // Without this the row stays Running while the run walks on to review and the human gate,
+        // and ThePlot shows a phase that never ends. The failure itself is carried by Passed, by
+        // the report artifact, and by the message below — not by the phase state, because a run
+        // that needs a person is not a failed run (plan §9.8).
+        await journal.CompleteAsync(
+            message.RunId, PipelinePhase.Validate, artifact.Key,
+            $"{report.Failures.Count} of {report.Results.Count} checks failed "
+            + $"({string.Join(", ", report.Failures.Select(f => f.CheckId))}); sending to review",
+            cancellationToken);
 
         _ = structurer;
         return new ValidationComplete(message.RunId, artifact, Passed: false);

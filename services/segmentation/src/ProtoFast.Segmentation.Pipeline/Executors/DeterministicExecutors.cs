@@ -8,12 +8,20 @@ using ProtoFast.Segmentation.Core.Model;
 using ProtoFast.Segmentation.Core.Options;
 using ProtoFast.Segmentation.Core.Triage;
 using ProtoFast.Segmentation.Pipeline.Agents;
+using ProtoFast.Segmentation.Pipeline.Ingest;
 using ProtoFast.Segmentation.Storage;
+using Upload = ProtoFast.Segmentation.Data.Entities.Upload;
 
 namespace ProtoFast.Segmentation.Pipeline.Executors;
 
 /// <summary>
-/// Phase 0 (plan §9.2): read the upload, parse it into lines, join the layout, compute statistics.
+/// Phase 0 (plan §9.2, ingest plan §8): convert the upload if it needs it, read the Markdown,
+/// parse it into lines, join the layout, compute statistics.
+///
+/// <para>Conversion sits in front of the read rather than beside it, and writes to the <em>same</em>
+/// <c>.md</c> / <c>.layout.json</c> keys a hand-written Markdown upload would have occupied. That
+/// is what keeps the rest of this method — and every phase after it — unaware that conversion
+/// happened at all: a PDF and a Markdown file are the same thing by the time the extractor runs.</para>
 ///
 /// <para>The upload is <em>copied</em> under the run prefix before anything else. That is what
 /// makes a run self-contained: the <c>uploads/</c> prefix expires after seven days while run
@@ -23,6 +31,7 @@ public sealed class IngestExecutor(
     RunArtifacts artifacts,
     RunJournal journal,
     PhaseGate gate,
+    IDocumentConverter converter,
     ILogger<IngestExecutor> logger)
     : Executor<RunStart, IngestComplete>(ExecutorIds.Ingest, declareCrossRunShareable: true)
 {
@@ -46,7 +55,17 @@ public sealed class IngestExecutor(
         var run = await journal.LoadRunAsync(message.RunId, cancellationToken)
             ?? throw new PipelineFailureException(PipelinePhase.Ingest, $"Run '{message.RunId}' is not in the database.");
 
+        var upload = await journal.LoadUploadAsync(run.UploadId, cancellationToken)
+            ?? throw new PipelineFailureException(
+                PipelinePhase.Ingest,
+                $"Upload '{run.UploadId}' is not in the database.",
+                permanent: true);
+
         var markdownKey = ArtifactKeys.Upload(run.OwnerSubject, run.UploadId);
+        var layoutKey = ArtifactKeys.UploadLayout(run.OwnerSubject, run.UploadId);
+
+        var conversion = await ConvertIfNeededAsync(message.RunId, run.OwnerSubject, upload, cancellationToken);
+
         var markdown = await artifacts.Store.ReadTextAsync(markdownKey, cancellationToken)
             ?? throw new PipelineFailureException(
                 PipelinePhase.Ingest,
@@ -54,13 +73,26 @@ public sealed class IngestExecutor(
 
         // Copy under the run prefix so later re-runs do not depend on the upload surviving.
         await artifacts.Store.WriteTextAsync(
-            ArtifactKeys.RunPrefix(message.RunId) + "00_source.md", markdown, key, "text/markdown", cancellationToken);
+            ArtifactKeys.RunSource(message.RunId), markdown, key, "text/markdown", cancellationToken);
 
         LayoutDocument? layout = null;
-        var layoutKey = ArtifactKeys.UploadLayout(run.OwnerSubject, run.UploadId);
         if (await artifacts.Store.ExistsAsync(layoutKey, cancellationToken))
         {
             layout = await artifacts.Store.ReadAsync<LayoutDocument>(layoutKey, cancellationToken);
+
+            // The layout is copied for the same reason the Markdown is: after seven days the
+            // upload prefix is gone, and a re-run from phase 0 that lost its geometry would
+            // silently produce a different tree from the one the user approved.
+            await artifacts.Store.CopyAsync(
+                layoutKey, ArtifactKeys.RunSourceLayout(message.RunId), cancellationToken);
+        }
+
+        if (conversion is not null)
+        {
+            await artifacts.Store.CopyAsync(
+                ArtifactKeys.UploadConversion(run.OwnerSubject, run.UploadId),
+                ArtifactKeys.RunConversion(message.RunId),
+                cancellationToken);
         }
 
         var extraction = MarkdownExtractor.Extract(markdown, layout);
@@ -78,6 +110,63 @@ public sealed class IngestExecutor(
             $"{extraction.Lines.Count} lines, family {extraction.DocumentFamily}", cancellationToken);
 
         return new IngestComplete(message.RunId, lines, statistics);
+    }
+
+    /// <summary>
+    /// Hands a non-Markdown source to the converter, which writes the Markdown, the layout and the
+    /// report to S3 itself. Returns null for a passthrough upload — the source <em>is</em> the
+    /// Markdown, so the converter is never called (ingest plan C7) and an upload of a <c>.md</c>
+    /// file costs exactly what it did before this feature existed.
+    /// </summary>
+    private async Task<ConversionResult?> ConvertIfNeededAsync(
+        string runId, string ownerSubject, Upload upload, CancellationToken ct)
+    {
+        if (!upload.RequiresConversion)
+        {
+            return null;
+        }
+
+        var extension = string.IsNullOrEmpty(upload.SourceExtension) ? ".md" : upload.SourceExtension;
+
+        await journal.NoteAsync(
+            runId, PipelinePhase.Ingest, $"converting {extension.TrimStart('.')}", ct);
+
+        var result = await converter.ConvertAsync(
+            new ConversionRequest
+            {
+                UploadId = upload.UploadId,
+                SourceKey = ArtifactKeys.UploadSource(ownerSubject, upload.UploadId, extension),
+                MarkdownKey = ArtifactKeys.Upload(ownerSubject, upload.UploadId),
+                LayoutKey = ArtifactKeys.UploadLayout(ownerSubject, upload.UploadId),
+                ReportKey = ArtifactKeys.UploadConversion(ownerSubject, upload.UploadId),
+                MediaType = upload.MediaType,
+                FileName = upload.FileName,
+                Ocr = converter.OcrRequest,
+                // The converter joins the run's trace rather than starting one of its own, so a
+                // slow phase 0 is explainable from the same trace as the rest of the run.
+                Traceparent = System.Diagnostics.Activity.Current?.Id,
+            },
+            ct);
+
+        var ocr = result.Ocr is { Applied: true } applied
+            ? $", OCR on {applied.PagesOcred} page(s)"
+            : string.Empty;
+
+        await journal.NoteAsync(
+            runId, PipelinePhase.Ingest, $"converted: {result.Pages} page(s){ocr}", ct);
+
+        foreach (var warning in result.Warnings)
+        {
+            // A warning is not a failure: a thin result on a bad scan is often still what the user
+            // wanted, and the event is what makes it explainable afterwards (ingest plan §12.3).
+            await journal.NoteAsync(runId, PipelinePhase.Ingest, warning, ct);
+        }
+
+        logger.LogInformation(
+            "Run {RunId}: converted {MediaType} in {Duration}ms ({Pages} pages, {Bytes} bytes of markdown, producer {Producer})",
+            runId, upload.MediaType, result.DurationMs, result.Pages, result.MarkdownBytes, result.Producer);
+
+        return result;
     }
 }
 

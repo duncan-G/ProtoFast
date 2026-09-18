@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  computed,
   inject,
   signal,
 } from '@angular/core';
@@ -10,8 +11,16 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AppShell } from '../../shared/app-shell';
 import { PhaseLadder } from '../../shared/phase-ladder';
 import { SegmentationApi } from '../../segmentation/segmentation-api';
-import { isTerminal } from '../../segmentation/phases';
+import {
+  PHASE_LABELS,
+  isTerminal,
+  phaseLabel,
+  suggestedRerunPhase,
+} from '../../segmentation/phases';
 import { PhaseState, type Run, type RunEvent } from '../../../lib/gen/segmentation_pb';
+
+/** Uploads expire seven days after they are taken (the bucket's `expire-uploads` lifecycle rule). */
+const UPLOAD_LIFETIME_SECONDS = 7 * 24 * 60 * 60;
 
 /**
  * Live progress for one run.
@@ -20,6 +29,11 @@ import { PhaseState, type Run, type RunEvent } from '../../../lib/gen/segmentati
  * page shows what the worker is doing without polling, and a run that finishes in three seconds
  * looks like it finished in three seconds. Each event triggers a `GetRun` so the phase ladder
  * reflects the authoritative state rather than one assembled from event messages.
+ *
+ * A run that stopped can be re-queued from a chosen phase. `RerunFrom` keeps the run id and
+ * resets the phase rows at and after that phase, so the page re-watches the same run rather than
+ * navigating anywhere — which is also why the activity list is emptied first: `WatchRun` replays
+ * a run's events from the beginning, and keeping the old ones would show each twice.
  */
 @Component({
   selector: 'app-run',
@@ -53,11 +67,15 @@ import { PhaseState, type Run, type RunEvent } from '../../../lib/gen/segmentati
               <a [routerLink]="['/app/runs', current.runId, 'augmentations']" class="btn btn-secondary">
                 Key points
               </a>
-            } @else if (!current.cancelled && !current.error) {
+            } @else if (!stopped()) {
               <button type="button" class="btn btn-secondary" (click)="cancel()">Cancel</button>
             }
           </div>
         </div>
+
+        @if (actionError(); as message) {
+          <p class="mt-3 text-sm text-[#f0a3a3]" role="alert">{{ message }}</p>
+        }
 
         @if (current.reviewState === 'pending') {
           <div
@@ -70,13 +88,52 @@ import { PhaseState, type Run, type RunEvent } from '../../../lib/gen/segmentati
           </div>
         }
 
-        @if (current.error) {
+        @if (stopped()) {
           <div
             class="mt-6 rounded-[var(--radius-lg)] border border-[#7a3a3a] bg-[#2a1c1c] px-4 py-3"
             role="alert"
           >
-            <p class="text-sm font-medium text-[#f0a3a3]">This run stopped.</p>
-            <p class="mt-1 font-mono text-xs break-words text-[#f0a3a3]/85">{{ current.error }}</p>
+            <p class="text-sm font-medium text-[#f0a3a3]">
+              {{ current.error ? 'This run stopped.' : 'This run was cancelled.' }}
+            </p>
+            @if (current.error) {
+              <p class="mt-1 font-mono text-xs break-words text-[#f0a3a3]/85">{{ current.error }}</p>
+            }
+
+            <div class="mt-4 flex flex-wrap items-center gap-2">
+              <label for="rerun-phase" class="text-sm text-[var(--color-neutral-400)]">
+                Re-run from
+              </label>
+              <select
+                id="rerun-phase"
+                class="field"
+                [disabled]="rerunning()"
+                (change)="choosePhase($event)"
+              >
+                @for (phase of phases; track phase.index) {
+                  <option [value]="phase.index" [selected]="phase.index === rerunPhase()">
+                    {{ phase.index }} — {{ phase.name }}
+                  </option>
+                }
+              </select>
+              <button
+                type="button"
+                class="btn btn-primary"
+                [disabled]="rerunning()"
+                (click)="rerun()"
+              >
+                {{ rerunning() ? 'Re-queueing…' : 'Re-run' }}
+              </button>
+            </div>
+
+            <p class="mt-2 text-xs text-[var(--color-neutral-500)]">{{ rerunBlurb() }}</p>
+
+            @if (rerunPhase() === 0 && uploadExpired()) {
+              <p class="mt-2 text-xs text-[#f0a3a3]/85">
+                This run is more than seven days old, so its original upload has expired. Re-running
+                from Ingest will fail — upload the document again instead.
+              </p>
+            }
           </div>
         }
 
@@ -140,22 +197,58 @@ export class RunPage {
   protected readonly events = signal<RunEvent[]>([]);
   protected readonly error = signal<string | null>(null);
 
+  /** A failed cancel or re-run. Separate from {@link error}, which is the page failing to load. */
+  protected readonly actionError = signal<string | null>(null);
+
+  protected readonly rerunning = signal(false);
+  protected readonly phases = PHASE_LABELS;
+
+  /** The phase the person picked, or null while the suggested one still stands. */
+  private readonly chosenPhase = signal<number | null>(null);
+
   private readonly runId = this.route.snapshot.paramMap.get('runId') ?? '';
 
-  constructor() {
-    const abort = new AbortController();
+  /** The live `WatchRun` stream, aborted on destroy and replaced on a re-run. */
+  private watching: AbortController | null = null;
 
+  constructor() {
     // The stream is a long-lived request through Envoy's /api/ route, which has no timeout — but
     // a user navigating away must not leave it open, hence the explicit abort.
-    inject(DestroyRef).onDestroy(() => abort.abort());
+    inject(DestroyRef).onDestroy(() => this.watching?.abort());
 
-    void this.load(abort.signal);
+    void this.load();
   }
 
   protected done(): boolean {
     const current = this.run();
     return current !== null && isTerminal(current) && !current.cancelled && !current.error;
   }
+
+  /** Stopped short of publishing — the only state a re-run is offered from. */
+  protected stopped(): boolean {
+    const current = this.run();
+    return current !== null && (current.cancelled || current.error !== '');
+  }
+
+  /** The chosen phase, or the one {@link suggestedRerunPhase} points at until someone picks. */
+  protected readonly rerunPhase = computed(
+    () => this.chosenPhase() ?? suggestedRerunPhase(this.run()?.phases ?? []),
+  );
+
+  protected readonly rerunBlurb = computed(() => {
+    const index = this.rerunPhase();
+    const name = phaseLabel(index);
+
+    return index === 0
+      ? 'The whole document is processed again from the original upload.'
+      : `Phases before ${name} keep the output they already produced; ${name} and everything after it run again.`;
+  });
+
+  /** Whether the run predates its upload's seven-day lifetime, which is what phase 0 needs. */
+  protected readonly uploadExpired = computed(() => {
+    const created = Number(this.run()?.createdUnixSeconds ?? 0n);
+    return created > 0 && Date.now() / 1000 - created > UPLOAD_LIFETIME_SECONDS;
+  });
 
   protected pinned(): { phase: string; model: string }[] {
     const models = this.run()?.pinnedModels ?? {};
@@ -170,15 +263,49 @@ export class RunPage {
     });
   }
 
+  protected choosePhase(event: Event): void {
+    this.chosenPhase.set(Number((event.target as HTMLSelectElement).value));
+  }
+
   protected async cancel(): Promise<void> {
     try {
+      this.actionError.set(null);
       this.run.set(await this.api.cancelRun(this.runId));
     } catch (cause) {
-      this.error.set(cause instanceof Error ? cause.message : 'The run could not be cancelled.');
+      this.actionError.set(
+        cause instanceof Error ? cause.message : 'The run could not be cancelled.',
+      );
     }
   }
 
-  private async load(signal: AbortSignal): Promise<void> {
+  protected async rerun(): Promise<void> {
+    if (this.rerunning()) {
+      return;
+    }
+
+    this.rerunning.set(true);
+    this.actionError.set(null);
+
+    try {
+      await this.api.rerunFrom(this.runId, this.rerunPhase());
+
+      // The run keeps its id and its phase rows are reset server-side, so the ladder is re-read
+      // rather than patched here. The activity list starts over because WatchRun replays from the
+      // first event; the re-queue note the server just wrote arrives with the rest.
+      this.events.set([]);
+      this.chosenPhase.set(null);
+      this.run.set(await this.api.getRun(this.runId));
+      this.startWatch();
+    } catch (cause) {
+      this.actionError.set(
+        cause instanceof Error ? cause.message : 'The run could not be re-queued.',
+      );
+    } finally {
+      this.rerunning.set(false);
+    }
+  }
+
+  private async load(): Promise<void> {
     try {
       this.run.set(await this.api.getRun(this.runId));
     } catch (cause) {
@@ -186,6 +313,27 @@ export class RunPage {
       return;
     }
 
+    this.startWatch();
+  }
+
+  /**
+   * Starts tailing the run, replacing any stream already open.
+   *
+   * The old one is aborted rather than left to end on its own: a re-run is submitted the moment
+   * the run reads as stopped, which can be a poll interval before the server closes the stream —
+   * and two loops writing to the same signals would interleave the old run's tail with the new
+   * run's head.
+   */
+  private startWatch(): void {
+    this.watching?.abort();
+
+    const abort = new AbortController();
+    this.watching = abort;
+
+    void this.watch(abort.signal);
+  }
+
+  private async watch(signal: AbortSignal): Promise<void> {
     try {
       for await (const event of this.api.watchRun(this.runId, signal)) {
         this.events.update((events) => [...events.slice(-199), event]);

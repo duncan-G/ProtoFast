@@ -124,9 +124,16 @@ public sealed class RateLimitHeaderHandler : DelegatingHandler
         return ParseDuration(value);
     }
 
-    private static TimeSpan? ReadRetryAfter(HttpResponseMessage response) =>
-        response.Headers.RetryAfter?.Delta
-        ?? (response.Headers.RetryAfter?.Date is { } date ? date - DateTimeOffset.UtcNow : null);
+    private static TimeSpan? ReadRetryAfter(HttpResponseMessage response)
+    {
+        var delta = response.Headers.RetryAfter?.Delta
+            ?? (response.Headers.RetryAfter?.Date is { } date ? date - DateTimeOffset.UtcNow : null);
+
+        // A retry-after date that has already passed reads as negative. Callers treat the value
+        // as a duration — to wait, or to expire a cached limit by — so clamp it to "no wait"
+        // rather than handing back a span that is nonsense in both roles.
+        return delta is { } value && value < TimeSpan.Zero ? TimeSpan.Zero : delta;
+    }
 
     internal static TimeSpan? ParseDuration(string value)
     {

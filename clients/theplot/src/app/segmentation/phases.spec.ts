@@ -1,4 +1,10 @@
-import { isTerminal, phaseLabel, phaseStateLabel, PHASE_LABELS } from './phases';
+import {
+  isTerminal,
+  phaseLabel,
+  phaseStateLabel,
+  suggestedRerunPhase,
+  PHASE_LABELS,
+} from './phases';
 import { PhaseState } from '../../lib/gen/segmentation_pb';
 
 describe('phases', () => {
@@ -39,5 +45,39 @@ describe('phases', () => {
         phases: [{ index: 5, state: PhaseState.RUNNING }],
       }),
     ).toBe(false);
+  });
+
+  it('suggests the failed phase for a run that stopped', () => {
+    expect(
+      suggestedRerunPhase([
+        { index: 0, state: PhaseState.DONE },
+        { index: 1, state: PhaseState.DONE },
+        { index: 2, state: PhaseState.SKIPPED },
+        { index: 3, state: PhaseState.FAILED },
+      ]),
+    ).toBe(3);
+  });
+
+  it('suggests the first unfinished phase for a cancelled run, which has no failed phase', () => {
+    expect(
+      suggestedRerunPhase([
+        { index: 0, state: PhaseState.DONE },
+        { index: 1, state: PhaseState.SKIPPED },
+        { index: 2, state: PhaseState.RUNNING },
+        { index: 3, state: PhaseState.PENDING },
+      ]),
+    ).toBe(2);
+  });
+
+  it('never suggests re-running work that is already done', () => {
+    // Every phase at or after the chosen one bypasses its idempotency gate, so suggesting a done
+    // phase would offer to re-buy output that already exists.
+    const done = [
+      { index: 0, state: PhaseState.DONE },
+      { index: 1, state: PhaseState.DONE },
+    ];
+
+    expect(suggestedRerunPhase(done)).toBe(0);
+    expect(suggestedRerunPhase([])).toBe(0);
   });
 });

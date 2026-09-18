@@ -20,17 +20,89 @@ public class SegmentationServiceTests
         using var fixture = new SegmentationServiceFixture();
 
         var reply = await fixture.Service.CreateUpload(
-            new CreateUploadRequest { FileName = "paper.md", SizeBytes = 4096, WithLayout = true },
+            new CreateUploadRequest { FileName = "paper.md", SizeBytes = 4096, ContentType = "text/markdown" },
             SegmentationServiceFixture.CallerContext(Alice));
 
         Assert.NotEmpty(reply.UploadId);
-        Assert.Contains("method=PUT", reply.MarkdownPutUrl, StringComparison.Ordinal);
-        Assert.NotEmpty(reply.LayoutPutUrl);
-        // The signature covers Content-Type, so the browser has to be told what to send back.
-        Assert.Equal("text/markdown", reply.RequiredHeaders["content-type"]);
+        Assert.NotEmpty(reply.PostUrl);
+
+        // The policy pins the key and the type, which is what stops one user's presigned POST
+        // from being aimed at another user's prefix.
+        Assert.Equal(ArtifactKeys.Upload(Alice, reply.UploadId), reply.Fields["key"]);
+        Assert.Equal("text/markdown", reply.Fields["Content-Type"]);
+        Assert.NotEmpty(reply.Fields["policy"]);
+        Assert.NotEmpty(reply.Fields["x-amz-signature"]);
+
+        // Echoed so the client's "too large" message names exactly the number S3 will enforce.
+        Assert.Equal(10L * 1024 * 1024, reply.MaxBytes);
 
         var upload = Assert.Single(fixture.Db.Uploads);
         Assert.Equal(Alice, upload.OwnerSubject);
+        Assert.Equal(".md", upload.SourceExtension);
+        Assert.False(upload.RequiresConversion);
+    }
+
+    [Fact]
+    public async Task CreateUploadKeysAPdfByItsSourceExtension()
+    {
+        using var fixture = new SegmentationServiceFixture();
+
+        var reply = await fixture.Service.CreateUpload(
+            new CreateUploadRequest { FileName = "annual-report.pdf", SizeBytes = 4096, ContentType = "application/pdf" },
+            SegmentationServiceFixture.CallerContext(Alice));
+
+        // The source lands under .pdf; the .md key is the converter's to write at phase 0.
+        Assert.Equal(
+            ArtifactKeys.UploadSource(Alice, reply.UploadId, ".pdf"), reply.Fields["key"]);
+        Assert.Equal("application/pdf", reply.Fields["Content-Type"]);
+
+        var upload = Assert.Single(fixture.Db.Uploads);
+        Assert.True(upload.RequiresConversion);
+        Assert.True(upload.WithLayout);
+    }
+
+    [Fact]
+    public async Task CreateUploadTakesTheExtensionFromTheAllowlistNotTheFilename()
+    {
+        using var fixture = new SegmentationServiceFixture();
+
+        var reply = await fixture.Service.CreateUpload(
+            new CreateUploadRequest
+            {
+                FileName = "../../../etc/passwd.pdf",
+                SizeBytes = 4096,
+                ContentType = "application/pdf",
+            },
+            SegmentationServiceFixture.CallerContext(Alice));
+
+        // The filename contributes nothing to the key beyond choosing a table row.
+        Assert.Equal(ArtifactKeys.UploadSource(Alice, reply.UploadId, ".pdf"), reply.Fields["key"]);
+        Assert.DoesNotContain("..", reply.Fields["key"], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CreateUploadRefusesAFormatThatIsNotOnTheAllowlist()
+    {
+        using var fixture = new SegmentationServiceFixture();
+
+        var failure = await Assert.ThrowsAsync<RpcException>(() => fixture.Service.CreateUpload(
+            new CreateUploadRequest { FileName = "podcast.mp3", SizeBytes = 4096, ContentType = "audio/mpeg" },
+            SegmentationServiceFixture.CallerContext(Alice)));
+
+        Assert.Equal(StatusCode.InvalidArgument, failure.StatusCode);
+        Assert.Contains(".mp3", failure.Status.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CreateUploadRefusesAMediaTypeThatContradictsTheExtension()
+    {
+        using var fixture = new SegmentationServiceFixture();
+
+        var failure = await Assert.ThrowsAsync<RpcException>(() => fixture.Service.CreateUpload(
+            new CreateUploadRequest { FileName = "report.pdf", SizeBytes = 4096, ContentType = "audio/mpeg" },
+            SegmentationServiceFixture.CallerContext(Alice)));
+
+        Assert.Equal(StatusCode.InvalidArgument, failure.StatusCode);
     }
 
     [Fact]
@@ -43,6 +115,36 @@ public class SegmentationServiceTests
             SegmentationServiceFixture.CallerContext(Alice)));
 
         Assert.Equal(StatusCode.InvalidArgument, failure.StatusCode);
+    }
+
+    [Fact]
+    public async Task ListSourceFormatsAgreesWithWhatCreateUploadWillSign()
+    {
+        using var fixture = new SegmentationServiceFixture();
+
+        var reply = await fixture.Service.ListSourceFormats(
+            new ListSourceFormatsRequest(), SegmentationServiceFixture.CallerContext(Alice));
+
+        Assert.Equal(10L * 1024 * 1024, reply.MaxBytes);
+        Assert.Contains(reply.Formats, f => f.Extension == ".pdf" && f.ProducesLayout && f.OcrCapable);
+        Assert.Contains(reply.Formats, f => f.Extension == ".md" && !f.ProducesLayout);
+        Assert.DoesNotContain(reply.Formats, f => f.Extension == ".zip");
+
+        // Every advertised format has to be one CreateUpload actually mints a URL for, or the
+        // accept attribute is a promise the server does not keep.
+        foreach (var format in reply.Formats)
+        {
+            var created = await fixture.Service.CreateUpload(
+                new CreateUploadRequest
+                {
+                    FileName = $"sample{format.Extension}",
+                    SizeBytes = 1024,
+                    ContentType = format.MediaType,
+                },
+                SegmentationServiceFixture.CallerContext(Alice));
+
+            Assert.NotEmpty(created.PostUrl);
+        }
     }
 
     [Fact]
@@ -108,9 +210,9 @@ public class SegmentationServiceTests
     {
         using var fixture = new SegmentationServiceFixture();
 
-        // The slot is recorded but the browser never PUT the file.
+        // The slot is recorded but the browser never posted the file.
         var created = await fixture.Service.CreateUpload(
-            new CreateUploadRequest { FileName = "paper.md", SizeBytes = 100 },
+            new CreateUploadRequest { FileName = "paper.md", SizeBytes = 100, ContentType = "text/markdown" },
             SegmentationServiceFixture.CallerContext(Alice));
 
         var failure = await Assert.ThrowsAsync<RpcException>(() => fixture.Service.SubmitRun(
@@ -291,10 +393,11 @@ public class SegmentationServiceTests
     private static async Task<string> UploadAsync(SegmentationServiceFixture fixture, string subject)
     {
         var created = await fixture.Service.CreateUpload(
-            new CreateUploadRequest { FileName = "paper.md", SizeBytes = 4096 },
+            new CreateUploadRequest { FileName = "paper.md", SizeBytes = 4096, ContentType = "text/markdown" },
             SegmentationServiceFixture.CallerContext(subject));
 
-        // Stand in for the browser's presigned PUT.
+        // Stand in for the browser's presigned POST. A .md upload is a passthrough, so the source
+        // key and the markdown key are the same object.
         await fixture.Artifacts.WriteTextAsync(
             ArtifactKeys.Upload(subject, created.UploadId), "# Title\n\nBody.\n", "upload");
 

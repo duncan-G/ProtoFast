@@ -29,6 +29,7 @@ AWS CLI v2 and an SSO profile named **`developer`** (the Developer permission se
 | `keycloak`                | container (26.7)     | realm import from `infra/keycloak/realms`, themes and provider JAR bind-mounted, tracing + logs to the collector |
 | `smtp4dev`                | container            | local mail catcher; web UI pinned at host `5000`, SMTP allocated; both Keycloak and `auth` are pointed at it     |
 | `auth`, `payments`, `api` | .NET projects        | OTLP reference, Redis/Postgres connection strings; JWT and Keycloak secrets from `protofast/dev`                 |
+| `conversion`              | Dockerfile container | the document converter (MarkItDown + Tesseract + Ghostscript); LocalStack endpoint by container DNS, throwaway credentials |
 | `envoy`                   | Dockerfile container | one HTTPS listener per client, dev certificate, upstream host/port for every service                             |
 | `admin`, `protofast`      | `ng serve`           | `PORT`, `SSL_CERT`, `SSL_KEY`, `SERVER_URL`, OTel endpoints                                                      |
 
@@ -43,6 +44,23 @@ randomly-assigned port would fail with `invalid_redirect_uri`.
 Keycloak are started with `--add-host=host.docker.internal:host-gateway`, which
 is how Envoy dials the .NET services and how Keycloak posts back-channel logout
 tokens to `auth`.
+- **The first `aspire run` after the conversion sidecar landed builds a large
+image** (roughly 700 MB — Tesseract's language data and Ghostscript dominate).
+It is a container rather than an `AddPythonApp` precisely so nobody has to
+install Tesseract, Ghostscript and ExifTool on their own machine; the cost is
+paid once, and rebuilds are cached unless `services/conversion` changes.
+- **Uploads go to S3 by presigned `POST`, not `PUT`.** Only a POST carries a
+signed policy, and only a policy can carry the `content-length-range` condition
+that makes the 10 MiB limit S3's to enforce rather than the browser's to
+respect. `scripts/localstack-init.sh` lists `POST` in the bucket's CORS rule; a
+rule missing it fails the browser preflight with a 403 that is reported as a
+bare CORS error.
+LocalStack **does** enforce `content-length-range` (verified against
+`localstack/localstack:4`): an oversized POST comes back `400` with
+`<Code>EntityTooLarge</Code>` and leaves no object, and a POST aimed at another
+key or declaring another content type comes back `403`. So dev refuses exactly
+what production refuses. If a future LocalStack regresses on that, the
+converter's `ContentLength` check is the backstop that still catches it.
 
 
 
@@ -107,6 +125,7 @@ this is for UI work only.
 | Edit the Keycloak login theme     | edit under `deploy/keycloak/themes/protofast`; `start-dev` disables theme caching, so a refresh is enough                                     |
 | Change the realm                  | edit `infra/keycloak/realms/protofast-realm.json` **and** delete the Keycloak container's data — the import skips a realm that already exists |
 | See traces / logs / metrics       | the Aspire dashboard URL printed by `aspire run`                                                                                              |
+| See the prompts a run sent        | the same dashboard — the worker's `gen_ai.*` spans carry the messages in dev (see `09-reference.md`)                                          |
 | Run the auth tests                | `dotnet test services/auth/tests/ProtoFast.Auth.UnitTests` (and `…IntegrationTests`)                                                          |
 
 

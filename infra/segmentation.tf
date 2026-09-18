@@ -48,14 +48,22 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "segmentation" {
   }
 }
 
-# Browser uploads go straight to S3 with a presigned PUT (plan §18.3), so the bucket needs CORS
-# for exactly the client origins — never "*", which would let any page replay a leaked URL from a
-# browser context. The localhost entries are the Envoy per-client listeners in development.
+# Browser uploads go straight to S3 with a presigned POST (plan §18.3, ingest plan §7), so the
+# bucket needs CORS for exactly the client origins — never "*", which would let any page replay a
+# leaked URL from a browser context. The localhost entries are the Envoy per-client listeners in
+# development.
+#
+# POST is the upload verb: only a POST carries a signed policy document, and only a policy can
+# carry the content-length-range condition that makes the 10 MiB limit S3's to enforce rather than
+# the browser's to respect. PUT stays listed until nothing mints one any more, then can be dropped.
+#
+# allowed_headers is unchanged: a multipart POST sends its fields in the body, and content-type is
+# already listed for the part the browser generates a boundary for.
 resource "aws_s3_bucket_cors_configuration" "segmentation" {
   bucket = aws_s3_bucket.segmentation.id
 
   cors_rule {
-    allowed_methods = ["PUT"]
+    allowed_methods = ["POST", "PUT"]
     allowed_origins = [
       "https://${var.theplot_domain}",
       "https://localhost:20002",
@@ -177,9 +185,14 @@ resource "aws_sqs_queue" "segmentation_batch_poll" {
 # IAM
 # ---------------------------------------------------------------------------
 
-# Both api and the worker run on Host B and share the existing instance profile, so this is one
-# more inline policy on the same role. The permissions boundary from infra/bootstrap already
-# applies to it; nothing here grants IAM or secret-value APIs, so it stays inside the boundary.
+# api, the worker and the conversion sidecar all run on Host B and share the existing instance
+# profile, so this is one more inline policy on the same role. The permissions boundary from
+# infra/bootstrap already applies to it; nothing here grants IAM or secret-value APIs, so it stays
+# inside the boundary.
+#
+# The converter needs no statement of its own: its GetObject and PutObject are under uploads/,
+# which SegmentationObjects already covers (that statement carries no prefix condition), and the
+# ListBucket condition below already lists uploads/*.
 data "aws_iam_policy_document" "instance_segmentation" {
   statement {
     sid       = "SegmentationBucketList"

@@ -24,6 +24,22 @@ public static class ArtifactKeys
     public static string UploadLayout(string ownerSubject, string uploadId) =>
         $"{UploadsPrefix}{ownerSubject}/{uploadId}.layout.json";
 
+    /// <summary>
+    /// The original the browser uploaded (ingest plan §13). For a <c>.md</c> upload this IS
+    /// <see cref="Upload"/> — the passthrough case is literally "the source is already the
+    /// markdown", which is what lets phase 0 skip the converter without a second code path.
+    ///
+    /// <para><paramref name="extension"/> comes from <c>SourceFormats</c>, never from the
+    /// uploaded filename: a filename is attacker-controlled and this string ends up both in the
+    /// key and in the signed POST policy.</para>
+    /// </summary>
+    public static string UploadSource(string ownerSubject, string uploadId, string extension) =>
+        $"{UploadsPrefix}{ownerSubject}/{uploadId}{extension}";
+
+    /// <summary>The converter's report for this upload (ingest plan appendix B).</summary>
+    public static string UploadConversion(string ownerSubject, string uploadId) =>
+        $"{UploadsPrefix}{ownerSubject}/{uploadId}.conversion.json";
+
     public static string RunPrefix(string runId) => $"{RunsPrefix}{runId}/";
 
     public static string Checkpoints(string runId) => $"{RunPrefix(runId)}_checkpoints/";
@@ -55,7 +71,26 @@ public static class ArtifactKeys
 
     public static string IngestStats(string runId) => RunPrefix(runId) + "00_stats.json";
 
+    /// <summary>Phase 0's copy of the Markdown it read, so a re-run does not depend on the upload.</summary>
+    public static string RunSource(string runId) => RunPrefix(runId) + "00_source.md";
+
+    /// <summary>Phase 0's copy of the layout, kept for the same reason as <see cref="RunSource"/>.</summary>
+    public static string RunSourceLayout(string runId) => RunPrefix(runId) + "00_source_layout.json";
+
+    /// <summary>Phase 0's copy of the conversion report; absent for a passthrough upload.</summary>
+    public static string RunConversion(string runId) => RunPrefix(runId) + "00_conversion.json";
+
     public static string CleanBoundaries(string runId) => RunPrefix(runId) + "01_boundaries.json";
+
+    /// <summary>Phase 4's headings, beside the paragraphs JSONL.</summary>
+    public static string AssemblyHeadings(string runId) => RunPrefix(runId) + "04_headings.json";
+
+    /// <summary>
+    /// Phase 4's size outliers. These travel with the assembly rather than being recomputed at
+    /// read time: <c>size-bounds</c> waives the paragraphs assembly flagged, so a paragraph a
+    /// later phase made oversized still fails the check (plan §9.6, §9.8).
+    /// </summary>
+    public static string AssemblySizeOutliers(string runId) => RunPrefix(runId) + "04_size_outliers.json";
 
     public static string LabelWindow(string runId, int windowIndex) =>
         RunPrefix(runId) + $"03_labels/window_{windowIndex.ToString("D5", CultureInfo.InvariantCulture)}.json";

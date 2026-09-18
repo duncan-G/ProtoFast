@@ -63,7 +63,37 @@ public interface IPresignedUrlFactory
     string PresignPut(string key, string contentType, TimeSpan? ttl = null);
 
     string PresignGet(string key, TimeSpan? ttl = null);
+
+    /// <summary>
+    /// Mints a presigned <em>POST</em> for a browser upload (ingest plan §7.2).
+    ///
+    /// <para>POST rather than PUT because only a POST signs a <em>policy document</em>, and a
+    /// policy can carry a <c>content-length-range</c> condition that S3 evaluates against the
+    /// actual bytes. A PUT signature covers the key, the verb, the content type and the expiry —
+    /// never the body length — so with a PUT the size limit is something the browser is asked to
+    /// respect rather than something storage enforces.</para>
+    /// </summary>
+    /// <param name="key">Pinned exactly by the policy, so one user's URL cannot be aimed at another's prefix.</param>
+    /// <param name="contentType">Pinned exactly; the browser must post back what was signed.</param>
+    /// <param name="maxBytes">The upper bound S3 itself refuses above, with <c>EntityTooLarge</c>.</param>
+    PresignedPost PresignPost(string key, string contentType, long maxBytes, TimeSpan? ttl = null);
 }
+
+/// <summary>
+/// A signed POST policy, ready for a browser to replay as <c>multipart/form-data</c>.
+/// </summary>
+/// <param name="PostUrl">Where the form is posted.</param>
+/// <param name="Fields">
+/// Posted verbatim, in this order, <strong>with the file part last</strong> — S3 stops reading at
+/// the file part, so a field written after it is never seen and the upload fails the policy.
+/// </param>
+/// <param name="ExpiresAt">When the policy stops being accepted.</param>
+/// <param name="MaxBytes">Echoed so the client's own message can name the same number the policy enforces.</param>
+public sealed record PresignedPost(
+    string PostUrl,
+    IReadOnlyDictionary<string, string> Fields,
+    DateTimeOffset ExpiresAt,
+    long MaxBytes);
 
 /// <summary>The SQS message body for a run. It carries a run id and nothing else (plan §24.1).</summary>
 public sealed record RunMessage(string RunId, RunPriority Priority)

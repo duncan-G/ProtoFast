@@ -1,5 +1,6 @@
 ﻿using ProtoFast.AppHost.Aws;
 using ProtoFast.AppHost.ClientApp;
+using ProtoFast.AppHost.Conversion;
 using ProtoFast.AppHost.EnvoyProxy;
 using ProtoFast.AppHost.LocalStack;
 using ProtoFast.AppHost.OpenTelemetryCollector;
@@ -193,6 +194,13 @@ var api = builder.AddProject<Projects.ProtoFast_Api>("api")
     .WithEnvironment("Api_Segmentation__BatchPoll", localstack.QueueUrl("protofast-segmentation-batch-poll"))
     .WithSsoProfile();
 
+// The document-conversion sidecar (ingest plan §19). It reads the uploaded source from S3 and
+// writes the Markdown, the layout and the report back to S3 itself, so the bytes never cross the
+// wire between it and the worker. It owns no database, no queue and no state.
+var conversion = builder
+    .AddConversionService("conversion", segmentationBucket, awsRegion)
+    .WithLocalStack(localstack);
+
 // Segmentation worker. It publishes no port — nothing dials it; it pulls from SQS and writes to
 // S3 and Postgres (plan §7.1). Provider keys are Seg_ entries in protofast/dev, read in-process
 // the same way auth reads Keycloak secrets. A developer with no keys still gets a working stack:
@@ -205,6 +213,10 @@ var segmentation = builder.AddProject<Projects.ProtoFast_Segmentation_Worker>("s
     .WaitFor(redis)
     .WaitFor(segmentationDb)
     .WaitFor(localstack)
+    // The worker fails phase 0 for any non-Markdown upload while the converter is down, so it
+    // waits for it rather than starting into a window where PDFs would fail for no visible reason.
+    .WaitFor(conversion)
+    .WithEnvironment("Seg_Conversion__Endpoint", conversion.GetEndpoint("http"))
     .WithEnvironment("Seg_Storage__ServiceUrl", LocalStackResourceBuilderExtensions.GatewayUrl)
     .WithEnvironment("Seg_Storage__Region", awsRegion)
     .WithEnvironment("Seg_Storage__Bucket", segmentationBucket)
@@ -212,6 +224,16 @@ var segmentation = builder.AddProject<Projects.ProtoFast_Segmentation_Worker>("s
     .WithEnvironment("Seg_Queues__Bulk", localstack.QueueUrl("protofast-segmentation-runs-bulk"))
     .WithEnvironment("Seg_Queues__BatchPoll", localstack.QueueUrl("protofast-segmentation-batch-poll"))
     .WithSsoProfile();
+
+// Prompts and completions as attributes on the gen_ai.* spans, so a run can be read in the
+// dashboard as the conversation it actually was rather than as token counts. Run mode only: the
+// variable is the OpenTelemetry semantic-convention switch that Microsoft.Extensions.AI reads
+// directly, and the messages it attaches are document text — which is exactly what the routing
+// layer's sensitivity rules exist to keep out of places it was not approved for (plan §14.1).
+if (!builder.ExecutionContext.IsPublishMode)
+{
+    segmentation.WithEnvironment("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "true");
+}
 
 // Envoy Proxy
 var proxy = builder.AddEnvoyProxy("envoy", useSsrHost)

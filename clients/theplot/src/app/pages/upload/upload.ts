@@ -1,17 +1,23 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AppShell } from '../../shared/app-shell';
-import { SegmentationApi } from '../../segmentation/segmentation-api';
+import { SegmentationApi, type SourceFormat } from '../../segmentation/segmentation-api';
 import { RunHistory } from '../library/library';
 import { Priority, Sensitivity } from '../../../lib/gen/segmentation_pb';
 
 /**
- * Drag-and-drop → presigned PUT → SubmitRun (plan §18.3).
+ * Drag-and-drop → presigned POST → SubmitRun (plan §18.3, ingest plan §15).
  *
  * The file goes straight from the browser to S3; `api` only ever sees an upload id. That is why
- * the progress bar here reports the S3 PUT rather than an RPC: the upload is the slow part, and
+ * the progress bar here reports the S3 POST rather than an RPC: the upload is the slow part, and
  * it does not touch the platform at all.
+ *
+ * The accepted formats and the size cap both come from `ListSourceFormats` rather than being
+ * written here, so this page cannot offer a format the server would refuse or quote a limit the
+ * bucket would not enforce. Until that reply arrives the input accepts nothing — an empty
+ * `accept` is a worse first impression than a brief one, but it is better than promising a format
+ * and failing on submit.
  */
 @Component({
   selector: 'app-upload',
@@ -21,9 +27,9 @@ import { Priority, Sensitivity } from '../../../lib/gen/segmentation_pb';
     <app-shell>
       <h1 class="text-2xl font-semibold tracking-tight">Upload a document</h1>
       <p class="mt-1 max-w-2xl text-sm text-[var(--color-neutral-400)]">
-        Markdown in any condition — clean, converted from a PDF, or a flat transcript. If your
-        converter also produced per-line layout metadata, add it: ThePlot uses font sizes, spacing
-        and line widths to tell headings from body text.
+        ThePlot converts the document itself and reads its layout — for a PDF or a scan that means
+        font sizes, spacing and line widths, which is what tells a heading from body text. Nothing
+        leaves our own hardware to do it.
       </p>
 
       <div class="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -39,12 +45,7 @@ import { Priority, Sensitivity } from '../../../lib/gen/segmentation_pb';
             (dragleave)="dragging.set(false)"
             (drop)="onDrop($event)"
           >
-            <input
-              type="file"
-              class="sr-only"
-              accept=".md,.markdown,.txt,text/markdown,text/plain"
-              (change)="onFileChosen($event)"
-            />
+            <input type="file" class="sr-only" [accept]="accept()" (change)="onFileChosen($event)" />
 
             @if (file(); as chosen) {
               <span class="text-base font-medium">{{ chosen.name }}</span>
@@ -52,22 +53,9 @@ import { Priority, Sensitivity } from '../../../lib/gen/segmentation_pb';
                 {{ formatSize(chosen.size) }}
               </span>
             } @else {
-              <span class="text-base font-medium">Drop a Markdown file here</span>
-              <span class="mt-1 text-sm text-[var(--color-neutral-500)]">or click to choose one</span>
+              <span class="text-base font-medium">Drop a document here</span>
+              <span class="mt-1 text-sm text-[var(--color-neutral-500)]">{{ families() }}</span>
             }
-          </label>
-
-          <label class="mt-4 flex items-center gap-3 text-sm">
-            <input
-              type="file"
-              class="sr-only"
-              accept=".json,application/json"
-              (change)="onLayoutChosen($event)"
-            />
-            <span class="btn btn-secondary cursor-pointer">Add layout metadata</span>
-            <span class="text-[var(--color-neutral-500)]">
-              {{ layout()?.name ?? 'optional — a .layout.json from your converter' }}
-            </span>
           </label>
 
           @if (progress() !== null) {
@@ -188,7 +176,7 @@ import { Priority, Sensitivity } from '../../../lib/gen/segmentation_pb';
     }
   `,
 })
-export class Upload {
+export class Upload implements OnInit {
   private readonly api = inject(SegmentationApi);
   private readonly router = inject(Router);
 
@@ -196,11 +184,18 @@ export class Upload {
   protected readonly Priority = Priority;
 
   protected readonly file = signal<File | null>(null);
-  protected readonly layout = signal<File | null>(null);
   protected readonly dragging = signal(false);
   protected readonly busy = signal(false);
   protected readonly progress = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+
+  /** Server-supplied, so the two can never disagree (ingest plan C9). */
+  protected readonly formats = signal<readonly SourceFormat[]>([]);
+  protected readonly maxBytes = signal(0n);
+
+  protected readonly accept = computed(() => acceptAttribute(this.formats()));
+
+  protected readonly families = computed(() => familiesLabel(this.formats(), this.maxBytes()));
 
   protected documentId = '';
   protected sensitivity: Sensitivity = Sensitivity.INTERNAL;
@@ -208,6 +203,24 @@ export class Upload {
   protected priority: Priority = Priority.REALTIME;
   protected keyPoints = true;
   protected requireReview = false;
+
+  /**
+   * Fetched after hydration, like every other call on this page: the identity that authorizes it
+   * is the browser's own session, and a server-side render has none to present.
+   *
+   * A failure is deliberately not surfaced as an error banner. The page is still usable — the
+   * file picker just stops filtering — and an error about an accept attribute would be noise in
+   * front of a form that works.
+   */
+  async ngOnInit(): Promise<void> {
+    try {
+      const reply = await this.api.listSourceFormats();
+      this.formats.set(reply.formats);
+      this.maxBytes.set(reply.maxBytes);
+    } catch {
+      this.formats.set([]);
+    }
+  }
 
   protected onDragOver(event: DragEvent): void {
     event.preventDefault();
@@ -231,10 +244,6 @@ export class Upload {
     }
   }
 
-  protected onLayoutChosen(event: Event): void {
-    this.layout.set((event.target as HTMLInputElement).files?.[0] ?? null);
-  }
-
   protected formatSize(bytes: number): string {
     return bytes < 1024 * 1024
       ? `${(bytes / 1024).toFixed(0)} KB`
@@ -252,9 +261,7 @@ export class Upload {
     this.progress.set(0);
 
     try {
-      const uploadId = await this.api.upload(chosen, this.layout(), (fraction) =>
-        this.progress.set(fraction),
-      );
+      const uploadId = await this.api.upload(chosen, (fraction) => this.progress.set(fraction));
 
       const runId = await this.api.submitRun({
         uploadId,
@@ -280,8 +287,71 @@ export class Upload {
     this.file.set(file);
     this.error.set(null);
 
+    // Refused here as well as by S3, so the common case is instant and the wording is identical
+    // either way — the number comes from the same reply the policy was signed with.
+    const cap = this.maxBytes();
+    if (cap > 0n && BigInt(file.size) > cap) {
+      this.error.set(
+        `That file is larger than ${this.megabytes()} MB. ` +
+          'Try splitting it or exporting a smaller version.',
+      );
+      return;
+    }
+
     if (!this.documentId) {
-      this.documentId = file.name.replace(/\.(md|markdown|txt)$/i, '');
+      this.documentId = stripExtension(file.name, this.formats());
     }
   }
+
+  private megabytes(): number {
+    return Number(this.maxBytes() / 1024n / 1024n);
+  }
+}
+
+/**
+ * The `accept` attribute, built from the reply rather than written here (ingest plan C9).
+ *
+ * Both halves of each row go in: a browser matches an `accept` entry by extension or by media
+ * type, and some platforms report a type for a file whose extension they do not recognise — so
+ * offering only one of the two silently hides files the server would happily accept.
+ */
+export function acceptAttribute(formats: readonly SourceFormat[]): string {
+  return formats
+    .flatMap((format) => [format.extension, format.mediaType])
+    .filter((value, index, all) => value !== '' && all.indexOf(value) === index)
+    .join(',');
+}
+
+/**
+ * The families named for a person, rather than twenty extensions they have to read. Labels repeat
+ * across rows on purpose (".jpg" and ".jpeg" are both "JPEG image"), so they are de-duplicated
+ * here rather than in the table the server serves.
+ */
+export function familiesLabel(formats: readonly SourceFormat[], maxBytes: bigint): string {
+  if (formats.length === 0) {
+    return 'or click to choose one';
+  }
+
+  const labels = formats
+    .map((format) => format.label)
+    .filter((label, index, all) => label !== '' && all.indexOf(label) === index);
+
+  return `${labels.join(', ')} — up to ${Number(maxBytes / 1024n / 1024n)} MB`;
+}
+
+/**
+ * The filename without its extension, using the server's list rather than a hardcoded pattern —
+ * the same list the upload was validated against, so "report.pdf" and "notes.markdown" both lose
+ * exactly their extension and nothing else.
+ */
+export function stripExtension(fileName: string, formats: readonly SourceFormat[]): string {
+  const lowered = fileName.toLowerCase();
+
+  const match = formats
+    .map((format) => format.extension)
+    .filter((extension) => extension !== '' && lowered.endsWith(extension))
+    // Longest first, so ".markdown" wins over a hypothetical ".md" suffix match.
+    .sort((left, right) => right.length - left.length)[0];
+
+  return match ? fileName.slice(0, -match.length) : fileName;
 }

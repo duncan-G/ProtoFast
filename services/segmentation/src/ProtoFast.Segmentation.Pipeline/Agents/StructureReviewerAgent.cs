@@ -30,6 +30,7 @@ public sealed class StructureReviewerAgent(AgentRunner runner, ILogger<Structure
         var prompt = new PromptTemplate(runner.Assets.Template("structure-reviewer.v1"))
             .Set("rules", runner.Assets.Rules)
             .Set("skill", runner.Assets.Skill("structure-review"))
+            .Set("schema", runner.Assets.Schema("review"))
             .Set("outline", RenderOutline(root))
             .Set("boundaries", RenderBoundaries(root, byId))
             .Set("inferredTitles", RenderInferredTitles(root, byId))
@@ -50,6 +51,8 @@ public sealed class StructureReviewerAgent(AgentRunner runner, ILogger<Structure
                 AvoidProvider = producerProvider,
                 PromptVersion = runner.Assets.VersionFor(AgentRole.StructureReviewer),
                 Unit = "tree",
+                OutputSchema = runner.Assets.WireSchemaElement("review"),
+                OutputSchemaName = "review",
             },
             reply => Validate(reply, root, byId),
             maxRounds: 1, buildRepairPrompt: null, ct);

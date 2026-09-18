@@ -8,7 +8,7 @@ import { PhaseState } from '../../lib/gen/segmentation_pb';
  * re-run the wrong phase.
  */
 export const PHASE_LABELS: readonly { index: number; name: string; blurb: string }[] = [
-  { index: 0, name: 'Ingest', blurb: 'Reading the document and its layout' },
+  { index: 0, name: 'Ingest', blurb: 'Converting the document and reading its layout' },
   { index: 1, name: 'Clean', blurb: 'Removing running heads, page numbers and hyphenation' },
   { index: 2, name: 'Triage', blurb: 'Deciding which regions need a model' },
   { index: 3, name: 'Label', blurb: 'Labelling every line' },
@@ -64,4 +64,29 @@ export function isTerminal(run: { cancelled: boolean; error: string; phases: { i
   }
 
   return run.phases.some((p) => p.index === 12 && p.state === PhaseState.DONE);
+}
+
+/**
+ * Where a re-run should start by default: the phase that failed, or — for a cancelled run, which
+ * has no failed phase — the first one that never finished.
+ *
+ * Re-running a phase that is already done is the expensive answer (every phase at or after the
+ * chosen one bypasses its idempotency gate and calls a provider again), so it is never the one
+ * offered. A run with nothing left to point at falls back to phase 0, which is the honest reading
+ * of "this never got anywhere".
+ */
+export function suggestedRerunPhase(
+  phases: readonly { index: number; state: PhaseState }[],
+): number {
+  const failed = phases.find((p) => p.state === PhaseState.FAILED);
+  if (failed) {
+    return failed.index;
+  }
+
+  const unfinished = phases
+    .filter((p) => p.state !== PhaseState.DONE && p.state !== PhaseState.SKIPPED)
+    .map((p) => p.index)
+    .sort((a, b) => a - b);
+
+  return unfinished[0] ?? 0;
 }

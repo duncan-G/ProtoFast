@@ -1,0 +1,241 @@
+{
+  "type": "object",
+  "required": [
+    "tree"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "tree": {
+      "$ref": "#/$defs/node1"
+    },
+    "paragraphEdits": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edit"
+      }
+    }
+  },
+  "$defs": {
+    "node1": {
+      "type": "object",
+      "required": [
+        "title"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "headingLineId": {
+          "type": "string"
+        },
+        "level": {
+          "type": "integer"
+        },
+        "inferred": {
+          "type": "boolean"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node2"
+          }
+        },
+        "paragraphs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "node2": {
+      "type": "object",
+      "required": [
+        "title"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "headingLineId": {
+          "type": "string"
+        },
+        "level": {
+          "type": "integer"
+        },
+        "inferred": {
+          "type": "boolean"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node3"
+          }
+        },
+        "paragraphs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "node3": {
+      "type": "object",
+      "required": [
+        "title"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "headingLineId": {
+          "type": "string"
+        },
+        "level": {
+          "type": "integer"
+        },
+        "inferred": {
+          "type": "boolean"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node4"
+          }
+        },
+        "paragraphs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "node4": {
+      "type": "object",
+      "required": [
+        "title"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "headingLineId": {
+          "type": "string"
+        },
+        "level": {
+          "type": "integer"
+        },
+        "inferred": {
+          "type": "boolean"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node5"
+          }
+        },
+        "paragraphs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "node5": {
+      "type": "object",
+      "required": [
+        "title"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "headingLineId": {
+          "type": "string"
+        },
+        "level": {
+          "type": "integer"
+        },
+        "inferred": {
+          "type": "boolean"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node6"
+          }
+        },
+        "paragraphs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "node6": {
+      "type": "object",
+      "required": [
+        "title"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "headingLineId": {
+          "type": "string"
+        },
+        "level": {
+          "type": "integer"
+        },
+        "inferred": {
+          "type": "boolean"
+        },
+        "paragraphs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "edit": {
+      "type": "object",
+      "required": [
+        "op",
+        "paragraphId",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "enum": [
+            "split",
+            "merge"
+          ]
+        },
+        "paragraphId": {
+          "type": "string"
+        },
+        "withParagraphId": {
+          "type": "string"
+        },
+        "beforeSentence": {
+          "type": "integer"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

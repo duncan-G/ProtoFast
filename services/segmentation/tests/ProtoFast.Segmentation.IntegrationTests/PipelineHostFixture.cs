@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using ProtoFast.Segmentation.Data;
 using ProtoFast.Segmentation.Data.Entities;
 using ProtoFast.Segmentation.Pipeline;
+using ProtoFast.Segmentation.Pipeline.Ingest;
 using ProtoFast.Segmentation.Routing;
 using ProtoFast.Segmentation.Storage;
 
@@ -24,9 +25,20 @@ public sealed class PipelineHostFixture : IAsyncDisposable
 
     public InMemoryArtifactStore Artifacts { get; } = new();
 
+    /// <summary>
+    /// The converter phase 0 calls. Its call count is the assertion behind "a Markdown upload
+    /// never touches the converter" (ingest plan §24).
+    /// </summary>
+    public StubDocumentConverter Converter { get; } = new();
+
     public IWorkflowHost Host => _services.GetRequiredService<IWorkflowHost>();
 
-    public PipelineHostFixture()
+    /// <summary>
+    /// <paramref name="minWords"/> and <paramref name="maxWords"/> default to bounds no fixture
+    /// can fall outside, so a test about phase wiring is not also a test about paragraph size.
+    /// A test that is about the size bounds passes its own.
+    /// </summary>
+    public PipelineHostFixture(int minWords = 1, int maxWords = 1000)
     {
         var databaseName = $"segmentation-{Guid.NewGuid():N}";
 
@@ -34,8 +46,8 @@ public sealed class PipelineHostFixture : IAsyncDisposable
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Storage:Bucket"] = "test-bucket",
-                ["Pipeline:Paragraphs:MinWords"] = "1",
-                ["Pipeline:Paragraphs:MaxWords"] = "1000",
+                ["Pipeline:Paragraphs:MinWords"] = minWords.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["Pipeline:Paragraphs:MaxWords"] = maxWords.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 // No Routing:Models — the registry is empty, so any attempt to call a provider
                 // fails loudly rather than silently degrading.
             })
@@ -61,6 +73,10 @@ public sealed class PipelineHostFixture : IAsyncDisposable
         services.AddSegmentationRouting(configuration);
         services.AddSegmentationPipeline(configuration);
 
+        // Registered after AddSegmentationPipeline so it replaces the HTTP-backed converter: these
+        // tests are about what phase 0 does with a conversion, not about the sidecar itself.
+        services.AddSingleton<IDocumentConverter>(Converter);
+
         // The routing stack is registered so the executors resolve, but the Redis-backed ledger is
         // replaced with one that refuses every reservation — no container, and a hard guarantee
         // that the deterministic path reaches no provider. The last registration wins.
@@ -69,7 +85,12 @@ public sealed class PipelineHostFixture : IAsyncDisposable
         _services = services.BuildServiceProvider();
     }
 
-    /// <summary>Creates the run row and its upload, exactly as <c>SubmitRun</c> would.</summary>
+    /// <summary>
+    /// Creates the run row and its upload, exactly as <c>SubmitRun</c> would.
+    ///
+    /// <para>The default is a Markdown passthrough, where the source key and the markdown key are
+    /// one object. <see cref="SubmitConvertibleAsync"/> is the other case.</para>
+    /// </summary>
     public async Task<string> SubmitAsync(string markdown, string documentId = "test.md")
     {
         const string owner = "test-subject";
@@ -80,6 +101,77 @@ public sealed class PipelineHostFixture : IAsyncDisposable
 
         using var scope = _services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SegmentationDbContext>();
+
+        db.Uploads.Add(new Upload
+        {
+            UploadId = uploadId,
+            OwnerSubject = owner,
+            FileName = documentId,
+            SizeBytes = markdown.Length,
+            MediaType = "text/markdown",
+            SourceExtension = ".md",
+            RequiresConversion = false,
+            CreatedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(7),
+        });
+
+        db.Runs.Add(new Run
+        {
+            RunId = runId,
+            OwnerSubject = owner,
+            DocumentId = documentId,
+            UploadId = uploadId,
+            IdempotencyKey = runId,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        });
+
+        foreach (var phase in Enum.GetValues<Core.Model.PipelinePhase>())
+        {
+            db.RunPhases.Add(new RunPhase { RunId = runId, Phase = phase });
+        }
+
+        await db.SaveChangesAsync();
+        return runId;
+    }
+
+    /// <summary>
+    /// A run over a source that needs converting — the shape <c>CreateUpload</c> records for a
+    /// PDF. Only the source object exists; the Markdown is the converter's to write, which is
+    /// exactly the sequencing phase 0 has to get right.
+    /// </summary>
+    public async Task<string> SubmitConvertibleAsync(
+        string markdownTheConverterWillProduce,
+        string extension = ".pdf",
+        string mediaType = "application/pdf",
+        string documentId = "test.pdf")
+    {
+        const string owner = "test-subject";
+        var runId = Core.Model.Ids.NewRunId();
+        var uploadId = Core.Model.Ids.NewRunId();
+
+        await Artifacts.WriteTextAsync(
+            ArtifactKeys.UploadSource(owner, uploadId, extension), "%PDF-1.7 not really", "upload");
+
+        Converter.Produce(
+            ArtifactKeys.Upload(owner, uploadId), markdownTheConverterWillProduce, Artifacts);
+
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SegmentationDbContext>();
+
+        db.Uploads.Add(new Upload
+        {
+            UploadId = uploadId,
+            OwnerSubject = owner,
+            FileName = documentId,
+            SizeBytes = 1024,
+            MediaType = mediaType,
+            SourceExtension = extension,
+            RequiresConversion = true,
+            WithLayout = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(7),
+        });
 
         db.Runs.Add(new Run
         {

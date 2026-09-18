@@ -1,0 +1,53 @@
+{
+  "type": "object",
+  "required": [
+    "window",
+    "labels"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "window": {
+      "type": "integer"
+    },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "conf"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "enum": [
+              "CONT",
+              "PARA",
+              "HEAD",
+              "ARTIFACT",
+              "OTHER"
+            ]
+          },
+          "conf": {
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "caption",
+              "footnote",
+              "table",
+              "list_item",
+              "code",
+              "quote",
+              "equation"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

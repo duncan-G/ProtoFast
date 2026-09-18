@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ProtoFast.Segmentation.Core.Model;
 
 namespace ProtoFast.Segmentation.Routing;
@@ -33,6 +34,21 @@ public sealed record RoutingContext(
 
     /// <summary>Window index or paragraph id — whatever names this unit of work in the ledger.</summary>
     public string? Unit { get; init; }
+
+    /// <summary>
+    /// The JSON Schema the reply has to satisfy. Sent as the provider's structured-output
+    /// parameter where the chosen model declares <see cref="ModelCapabilities.StructuredOutput"/>,
+    /// so the shape is enforced by the decoder rather than requested in prose — the prompt also
+    /// renders it, which is what a model without the capability has to work from.
+    ///
+    /// <para>It is the agent that supplies this, for the same reason the agent supplies a tier:
+    /// the artifact it needs back is a property of the job, not of whichever model the router
+    /// happens to pick.</para>
+    /// </summary>
+    public JsonElement? OutputSchema { get; init; }
+
+    /// <summary>Names the schema for providers that want one (<c>tree</c>, <c>review</c>, …).</summary>
+    public string? OutputSchemaName { get; init; }
 }
 
 /// <summary>What the router chose, and what the call then cost.</summary>

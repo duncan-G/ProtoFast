@@ -9,6 +9,7 @@ using ProtoFast.Segmentation.Storage;
 // several proto messages share a name with the domain type they carry — Run, RunEvent, Paragraph,
 // SectionNode, Finding. Aliasing the domain side keeps every line below unambiguous about which
 // of the two it means, which matters most in the mapping methods where both appear at once.
+using CoreFormats = ProtoFast.Segmentation.Core.Ingest.SourceFormats;
 using CoreModel = ProtoFast.Segmentation.Core.Model;
 using DbReviewTask = ProtoFast.Segmentation.Data.Entities.ReviewTask;
 using DbRun = ProtoFast.Segmentation.Data.Entities.Run;
@@ -39,10 +40,26 @@ public sealed class SegmentationService(
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    /// <summary>
+    /// Mints the presigned POST the browser uploads through (ingest plan §7, §14).
+    ///
+    /// <para>Two things are validated before anything is signed, and both end up <em>in</em> the
+    /// signature. The format has to be on the allowlist, and the canonical extension that comes
+    /// back from it — not the caller's filename — is what the key is built from. The size cap
+    /// becomes the policy's <c>content-length-range</c>, so a client that ignores it is refused by
+    /// S3 rather than believed.</para>
+    /// </summary>
     public override async Task<CreateUploadReply> CreateUpload(
         CreateUploadRequest request, ServerCallContext context)
     {
         var caller = CallerIdentity.From(context);
+
+        if (!CoreFormats.TryResolve(request.FileName, request.ContentType, out var format))
+        {
+            throw new RpcException(new Status(
+                StatusCode.InvalidArgument,
+                $"ThePlot cannot read {CoreFormats.DescribeRejected(request.FileName)} files yet."));
+        }
 
         if (request.SizeBytes <= 0 || request.SizeBytes > _options.MaxUploadBytes)
         {
@@ -52,19 +69,28 @@ public sealed class SegmentationService(
         }
 
         var uploadId = CoreModel.Ids.NewRunId();
-        var expires = DateTimeOffset.UtcNow.Add(storage.Value.UploadUrlTtl);
+
+        // The key the policy pins. The extension is the allowlist's, so a filename of
+        // "../../../etc/passwd" cannot reach outside this caller's own prefix.
+        var sourceKey = ArtifactKeys.UploadSource(caller.Subject, uploadId, format.Extension);
+
+        var post = urls.PresignPost(sourceKey, format.MediaType, _options.MaxUploadBytes);
 
         // Recorded before the URL is handed out, so SubmitRun can check that an upload belongs to
-        // its caller without trusting a key from the request.
+        // its caller without trusting a key from the request, and phase 0 can rebuild the source
+        // key without re-parsing a filename.
         db.Uploads.Add(new DbUpload
         {
             UploadId = uploadId,
             OwnerSubject = caller.Subject,
             FileName = request.FileName,
             SizeBytes = request.SizeBytes,
-            WithLayout = request.WithLayout,
+            MediaType = format.MediaType,
+            SourceExtension = format.Extension,
+            RequiresConversion = format.RequiresConversion,
+            WithLayout = format.ProducesLayout,
             CreatedAt = DateTimeOffset.UtcNow,
-            ExpiresAt = expires,
+            ExpiresAt = post.ExpiresAt,
         });
 
         await db.SaveChangesAsync(context.CancellationToken);
@@ -72,18 +98,41 @@ public sealed class SegmentationService(
         var reply = new CreateUploadReply
         {
             UploadId = uploadId,
-            MarkdownPutUrl = urls.PresignPut(ArtifactKeys.Upload(caller.Subject, uploadId), "text/markdown"),
-            LayoutPutUrl = request.WithLayout
-                ? urls.PresignPut(ArtifactKeys.UploadLayout(caller.Subject, uploadId), "application/json")
-                : string.Empty,
-            ExpiresUnixSeconds = expires.ToUnixTimeSeconds(),
+            PostUrl = post.PostUrl,
+            MaxBytes = post.MaxBytes,
+            ExpiresUnixSeconds = post.ExpiresAt.ToUnixTimeSeconds(),
         };
 
-        // The signature covers Content-Type, so the browser has to send back exactly what was
-        // signed. Returning it explicitly is what stops a PUT from failing with an opaque 403.
-        reply.RequiredHeaders.Add("content-type", "text/markdown");
+        // Posted back verbatim, with the file part last: S3 stops reading at the file, so a field
+        // after it is never seen and the upload fails the policy it was signed against.
+        foreach (var (name, value) in post.Fields)
+        {
+            reply.Fields.Add(name, value);
+        }
 
         return reply;
+    }
+
+    /// <summary>
+    /// The allowlist and the cap, served from the same table <c>CreateUpload</c> validates against
+    /// (ingest plan C9) — so the upload page's <c>accept</c> attribute cannot drift from what the
+    /// server will actually sign for.
+    /// </summary>
+    public override Task<ListSourceFormatsReply> ListSourceFormats(
+        ListSourceFormatsRequest request, ServerCallContext context)
+    {
+        var reply = new ListSourceFormatsReply { MaxBytes = _options.MaxUploadBytes };
+
+        reply.Formats.AddRange(CoreFormats.All.Select(f => new SourceFormat
+        {
+            Extension = f.Extension,
+            MediaType = f.MediaType,
+            Label = f.Label,
+            ProducesLayout = f.ProducesLayout,
+            OcrCapable = f.OcrCapable,
+        }));
+
+        return Task.FromResult(reply);
     }
 
     public override async Task<SubmitRunReply> SubmitRun(SubmitRunRequest request, ServerCallContext context)
@@ -122,12 +171,17 @@ public sealed class SegmentationService(
             throw new RpcException(new Status(StatusCode.NotFound, "That upload does not exist."));
         }
 
-        var markdownKey = ArtifactKeys.Upload(caller.Subject, upload.UploadId);
-        if (!await artifacts.ExistsAsync(markdownKey, context.CancellationToken))
+        // The SOURCE key, not the Markdown one. For a PDF the Markdown genuinely does not exist
+        // yet — the converter writes it at phase 0 — so checking the Markdown here would fail
+        // every non-Markdown submission with "has not finished uploading".
+        var sourceKey = ArtifactKeys.UploadSource(
+            caller.Subject, upload.UploadId, SourceExtensionOf(upload));
+
+        if (!await artifacts.ExistsAsync(sourceKey, context.CancellationToken))
         {
             throw new RpcException(new Status(
                 StatusCode.FailedPrecondition,
-                "The document has not finished uploading. PUT it to the presigned URL first."));
+                "The document has not finished uploading. Post it to the presigned URL first."));
         }
 
         var augmentations = ValidateAugmentations(request.Augmentations);
@@ -589,6 +643,13 @@ public sealed class SegmentationService(
 
         return run ?? throw new RpcException(new Status(StatusCode.NotFound, "That run does not exist."));
     }
+
+    /// <summary>
+    /// The upload's canonical extension, falling back to <c>.md</c> for rows written before the
+    /// conversion feature — those were always Markdown, and their key really is the Markdown one.
+    /// </summary>
+    private static string SourceExtensionOf(DbUpload upload) =>
+        string.IsNullOrEmpty(upload.SourceExtension) ? ".md" : upload.SourceExtension;
 
     private async Task<string?> IsIdempotencyConflictAsync(string subject, string key, CancellationToken ct) =>
         await db.Runs

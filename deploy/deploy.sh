@@ -7,8 +7,8 @@
 #
 # Usage:  deploy.sh apply <component>=<tag> [<component>=<tag> ...]
 #
-#   component ∈ auth | payments | api | segmentation | envoy | otel-collector
-#               | clients-host | aspire-dashboard
+#   component ∈ auth | payments | api | segmentation | conversion | envoy
+#               | otel-collector | clients-host | aspire-dashboard
 #               | auth-migrations | segmentation-migrations
 #               | client-<name>            (e.g. client-admin, client-protofast, client-theplot)
 #
@@ -847,7 +847,7 @@ upper() { printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_'; }
 
 # Resolve a component id to its manifest key, compose service, and kind. Sets the
 # globals KEY, SVC, KIND (and CLIENT_NAME for client kinds). Unknown → exit 2.
-#   KIND ∈ service | envoy | otel | host | client | aspire | edge | stateful
+#   KIND ∈ service | conversion | envoy | otel | host | client | aspire | edge | stateful
 # stateful (keycloak/postgres/redis — two-instance restructure §5.3) gets its OWN
 # apply path, kept separate from the recreate+health+rollback service flow:
 # Postgres never auto-rolls-back its tag; Redis is a disposable cache.
@@ -857,6 +857,10 @@ resolve() {
   case "$component" in
     auth|payments|api|segmentation)
       KEY="$(upper "$component")_TAG"; SVC="$component"; KIND="service" ;;
+    conversion)
+      # Its own kind rather than `service`: the converter is a Python container with no gRPC
+      # surface, so the shared grpc_health_probe check would fail a perfectly healthy one.
+      KEY="CONVERSION_TAG"; SVC="conversion"; KIND="conversion" ;;
     auth-migrations)
       # Not a long-running container — applying it only publishes the image + pins the tag; the
       # migration RUN happens as a pre-step of the auth apply (run_auth_migrations).
@@ -938,6 +942,14 @@ grpc_ok() {
   compose exec -T "$1" /usr/local/bin/grpc_health_probe -addr=localhost:8080
 }
 
+# The conversion sidecar's own /health, from inside the compose network — it publishes no port,
+# so this is the only way to reach it. python is the one interpreter its image is guaranteed to
+# have, which is also why the container healthcheck is written the same way.
+conversion_ok() {
+  compose exec -T conversion python -c \
+    "import urllib.request;urllib.request.urlopen('http://localhost:8090/health')" >/dev/null 2>&1
+}
+
 # otel-collector readiness extension (config.yaml: health_check on :13133).
 otel_ok() {
   docker run --rm --network "$NETWORK" curlimages/curl:latest \
@@ -997,6 +1009,8 @@ health_once() {
     client)
       # Only this client's vhost (exercises its freshly pulled assets).
       vhost_ok "$(domain_for "$CLIENT_NAME")" || { rc=1; log "vhost not ready: $(domain_for "$CLIENT_NAME")"; } ;;
+    conversion)
+      conversion_ok || { rc=1; log "conversion sidecar not ready"; } ;;
     otel)
       otel_ok || { rc=1; log "otel-collector not ready"; } ;;
     aspire)
@@ -1088,7 +1102,7 @@ run_segmentation_migrations() {
 
 apply_kind() {
   case "$KIND" in
-    service|envoy|otel|aspire|edge)
+    service|conversion|envoy|otel|aspire|edge)
       log "pulling ${SVC}"
       compose pull "$SVC"
       # Gate the auth apply on a successful schema migration (rc 4 → manifest restored upstream).

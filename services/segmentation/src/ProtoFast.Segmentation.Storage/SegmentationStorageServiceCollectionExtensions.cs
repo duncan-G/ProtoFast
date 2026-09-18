@@ -38,6 +38,14 @@ public static class SegmentationStorageServiceCollectionExtensions
         services.AddSingleton<IAmazonS3>(_ => CreateS3(serviceUrl, region));
         services.AddSingleton<IAmazonSQS>(_ => CreateSqs(serviceUrl, region));
 
+        // A presigned POST signs its policy directly rather than through the client's signer, so
+        // the credentials have to be resolvable on their own. In production this is the instance
+        // role over IMDS and the object refreshes itself, which is what keeps a signed policy
+        // valid across a credential rotation.
+        services.AddSingleton<AWSCredentials>(_ => string.IsNullOrWhiteSpace(serviceUrl)
+            ? Amazon.Runtime.Credentials.DefaultAWSCredentialsIdentityResolver.GetCredentials(new AmazonS3Config())
+            : new BasicAWSCredentials("localstack", "localstack"));
+
         services.AddSingleton<S3ArtifactStore>();
         services.AddSingleton<IArtifactStore>(sp => sp.GetRequiredService<S3ArtifactStore>());
         services.AddSingleton<IPresignedUrlFactory>(sp => sp.GetRequiredService<S3ArtifactStore>());

@@ -45,10 +45,14 @@ if ! create_error="$(awslocal s3api create-bucket --bucket "$BUCKET" --region "$
   esac
 fi
 
-# CORS for the browser's presigned PUT and GET. The origins come from the AppHost, which derives
+# CORS for the browser's presigned POST and GET. The origins come from the AppHost, which derives
 # them from the Envoy per-client listener ports (WithClientOrigins) — a rule that does not list
 # the origin the page was served from fails the preflight with a 403 and shows up in the browser
 # as a bare CORS error. Production allows only the ThePlot domain (infra/segmentation.tf).
+#
+# POST is the upload verb since the ingest plan: only a POST carries a signed policy, and only a
+# policy can carry the content-length-range condition that makes the 10 MiB limit S3's to enforce.
+# PUT stays listed until nothing mints one any more.
 #
 # GET is here and not in the Terraform rules because only dev reads artifacts cross-origin: in
 # production the browser downloads them through the api origin.
@@ -60,7 +64,7 @@ echo "localstack-init: allowing browser origins ${ORIGINS}"
 awslocal s3api put-bucket-cors --bucket "$BUCKET" --cors-configuration "{
   \"CORSRules\": [
     {
-      \"AllowedMethods\": [\"PUT\", \"GET\", \"HEAD\"],
+      \"AllowedMethods\": [\"POST\", \"PUT\", \"GET\", \"HEAD\"],
       \"AllowedOrigins\": [${ORIGINS_JSON}],
       \"AllowedHeaders\": [\"*\"],
       \"ExposeHeaders\": [\"etag\"],

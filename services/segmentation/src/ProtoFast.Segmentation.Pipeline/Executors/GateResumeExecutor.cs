@@ -69,7 +69,7 @@ public sealed class GateResumeExecutor(
                 new AssembleComplete(
                     runId,
                     new ArtifactRef(runId, ArtifactKeys.Phase(runId, PipelinePhase.Assemble), string.Empty, 0),
-                    new ArtifactRef(runId, ArtifactKeys.RunPrefix(runId) + "04_headings.json", string.Empty, 0)),
+                    new ArtifactRef(runId, ArtifactKeys.AssemblyHeadings(runId), string.Empty, 0)),
                 cancellationToken: cancellationToken);
 
             return;

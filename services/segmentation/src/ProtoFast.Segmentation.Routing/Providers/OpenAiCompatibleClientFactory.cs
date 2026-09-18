@@ -35,8 +35,11 @@ public sealed class OpenAiCompatibleClientFactory(
             new OpenAIClientOptions
             {
                 Endpoint = new Uri(settings.BaseUrl),
+                // The pipeline's default NetworkTimeout is 100s — the same trap as HttpClient.
+                // InfiniteTimeSpan is valid here (unlike Anthropic, nothing serializes it).
+                NetworkTimeout = Timeout.InfiniteTimeSpan,
                 Transport = new System.ClientModel.Primitives.HttpClientPipelineTransport(
-                    new HttpClient(headerHandler, disposeHandler: false)),
+                    ProviderHttp.Create(headerHandler)),
             });
 
         return client.GetChatClient(model.ModelName).AsIChatClient();

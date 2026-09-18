@@ -8,10 +8,16 @@ it. Report only what is actually wrong.
 - Does it evaluate, recommend, or add what the paragraph does not say?
 - Does it use the paragraph's own terminology?
 
+## Output schema (review.schema.json)
+
+```json
+{{schema}}
+```
+
 ## Paragraph {{paragraphId}}
 {{paragraphText}}
 
 ## The augmentation
 {{augmentation}}
 
-Return JSON matching review.schema.json. Use "other" as the finding type.
+Return JSON matching the schema above. Use "other" as the finding type.

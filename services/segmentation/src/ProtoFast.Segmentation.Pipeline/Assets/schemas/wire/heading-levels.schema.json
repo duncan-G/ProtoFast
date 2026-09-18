@@ -1,0 +1,31 @@
+{
+  "type": "object",
+  "required": [
+    "levels"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "levels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "level"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "level": {
+            "type": "integer"
+          },
+          "conf": {
+            "type": "number"
+          }
+        }
+      }
+    }
+  }
+}

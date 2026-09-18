@@ -1,4 +1,5 @@
 using System.Net;
+using Anthropic.Exceptions;
 using Microsoft.Extensions.AI;
 
 namespace ProtoFast.Segmentation.Routing.Providers;
@@ -99,6 +100,10 @@ public sealed class ProviderException(
     private static HttpStatusCode? StatusOf(Exception exception) => exception switch
     {
         HttpRequestException http => http.StatusCode,
+        // Anthropic's SDK carries the status on its own exception type rather than on an
+        // HttpRequestException, and its InnerException getter throws instead of returning null
+        // when nothing is underneath — so it has to be matched before the recursion below.
+        AnthropicApiException api => api.StatusCode,
         _ when exception.Data["StatusCode"] is int code => (HttpStatusCode)code,
         { InnerException: { } inner } => StatusOf(inner),
         _ => null,
@@ -110,6 +115,9 @@ public sealed class ProviderException(
             TimeSpan span => span,
             int seconds => TimeSpan.FromSeconds(seconds),
             string text when double.TryParse(text, out var seconds) => TimeSpan.FromSeconds(seconds),
+            // Same caveat as StatusOf: this exception's InnerException getter throws, and the
+            // retry-after header reaches the router through the capture scope anyway.
+            _ when exception is AnthropicApiException => null,
             _ => exception.InnerException is { } inner ? RetryAfterOf(inner) : null,
         };
 }

@@ -2,6 +2,12 @@
 
 {{skill}}
 
+## Output schema ({{schemaName}})
+
+```json
+{{schema}}
+```
+
 ## Document
 {{documentTitle}}
 
@@ -17,4 +23,4 @@
 ## Following paragraph (context only — do not summarise)
 {{nextParagraph}}
 
-Return JSON matching {{schemaName}}. The "paragraphId" field must be exactly "{{paragraphId}}".
+Return JSON matching the schema above. The "paragraphId" field must be exactly "{{paragraphId}}".

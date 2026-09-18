@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Agents.AI.Workflows.Checkpointing;
@@ -5,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ProtoFast.Segmentation.Core.Model;
+using ProtoFast.Segmentation.Core.Observability;
 using ProtoFast.Segmentation.Data;
 using ProtoFast.Segmentation.Pipeline.Agents;
 using ProtoFast.Segmentation.Pipeline.Executors;
@@ -70,8 +72,9 @@ public sealed class WorkflowHost(
         catch (PipelineFailureException ex)
         {
             await journal.FailAsync(runId, ex.Phase, ex.Message, CancellationToken.None);
+            Activity.Current.Fail(ex, $"{ex.Phase}: {ex.Message}");
             logger.LogError(ex, "Run {RunId} failed in phase {Phase}", runId, ex.Phase);
-            return RunOutcome.Failed;
+            return ex.Permanent ? RunOutcome.FailedPermanently : RunOutcome.Failed;
         }
     }
 
@@ -142,15 +145,25 @@ public sealed class WorkflowHost(
                     // than propagating it, so this — not a catch block around the run — is where
                     // a phase failure has to be recorded. Without it the run would stop with a
                     // null error and ThePlot would show a document that simply stalled.
+                    //
+                    // The event carries the exception itself, so the log gets the exception and
+                    // not just its message: MAF has already unwound the stack by the time this
+                    // arrives, and this object is the only remaining copy of the trace.
                     await RecordFailureAsync(runId, failure.ExecutorId, Describe(failure.Data));
-                    logger.LogError(
+                    Report(
+                        failure.Data as Exception,
+                        Describe(failure.Data),
                         "Run {RunId}: executor {Executor} failed: {Message}",
                         runId, failure.ExecutorId, Describe(failure.Data));
-                    return RunOutcome.Failed;
+                    return IsPermanent(failure.Data) ? RunOutcome.FailedPermanently : RunOutcome.Failed;
 
                 case WorkflowErrorEvent error:
-                    await RecordFailureAsync(runId, executorId: null, Describe(error.Data));
-                    logger.LogError("Run {RunId}: workflow error: {Error}", runId, Describe(error.Data));
+                    await RecordFailureAsync(runId, executorId: null, Describe(error.Exception));
+                    Report(
+                        error.Exception,
+                        Describe(error.Exception),
+                        "Run {RunId}: workflow error: {Error}",
+                        runId, Describe(error.Exception));
                     return RunOutcome.Failed;
 
                 case SuperStepCompletedEvent when await IsCancelledAsync(runId, ct):
@@ -184,10 +197,45 @@ public sealed class WorkflowHost(
     }
 
     /// <summary>
+    /// Logs the failure and marks the surrounding span, so the trace shows the run red instead of
+    /// green with an error buried in a sibling log stream.
+    ///
+    /// <para>The span marked is the ambient one — the consumer's <c>segmentation.run</c>, since
+    /// MAF's per-executor activity has already ended by the time its failure event is observed.
+    /// Marking it here rather than from the outcome enum at the call site is what gets the
+    /// exception, and its stack, onto the span.</para>
+    /// </summary>
+    private void Report(Exception? exception, string message, string template, params object?[] arguments)
+    {
+        if (exception is not null)
+        {
+            Activity.Current.Fail(exception, message);
+            logger.LogError(exception, template, arguments);
+            return;
+        }
+
+        // MAF documents both failure events as carrying an exception that may be null. When it is,
+        // the span still has to be coloured; there is simply no stack to attach.
+        Activity.Current.Fail("workflow.failed", message);
+        logger.LogError(template, arguments);
+    }
+
+    /// <summary>
     /// The message a person should see. An exception's own message is the useful part — the phase
     /// failures this pipeline raises are written for a reader — so the stack trace is left to the
     /// log rather than stored on the run.
     /// </summary>
+    /// <summary>
+    /// Whether the failure this event carries is one a redelivery could not fix. MAF may wrap the
+    /// executor's exception, so the inner one is checked too.
+    /// </summary>
+    private static bool IsPermanent(object? data) => data switch
+    {
+        PipelineFailureException failure => failure.Permanent,
+        Exception { InnerException: PipelineFailureException inner } => inner.Permanent,
+        _ => false,
+    };
+
     private static string Describe(object? data) => data switch
     {
         PipelineFailureException failure => failure.Message,

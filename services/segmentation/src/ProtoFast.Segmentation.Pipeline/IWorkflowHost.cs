@@ -39,4 +39,11 @@ public enum RunOutcome
 
     /// <summary>Failed in a way a retry might fix. The message returns to the queue.</summary>
     Failed,
+
+    /// <summary>
+    /// Failed in a way no retry can fix — an unreadable document, a format the converter refuses.
+    /// The message is deleted: redelivering it would spend four more attempts reaching the same
+    /// answer, and the run already carries the reason a person needs (ingest plan §23).
+    /// </summary>
+    FailedPermanently,
 }

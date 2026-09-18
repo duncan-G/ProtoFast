@@ -124,6 +124,8 @@ public sealed class HeadingLevelAgent(AgentRunner runner, IOptions<PipelineOptio
                     PinnedModelKey = context.PinnedLevelerKey,
                     PromptVersion = runner.Assets.VersionFor(AgentRole.HeadingLeveler),
                     Unit = $"headings:{batch.Length}",
+                    OutputSchema = runner.Assets.WireSchemaElement("heading-levels"),
+                    OutputSchemaName = "heading-levels",
                 },
                 reply => Checks.CheckIdCoverage(ids, [.. reply.Levels.Select(l => l.Id)], requireOrder: false),
                 _repair.MaxRoundsPerArtifact, buildRepairPrompt: null, ct);

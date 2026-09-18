@@ -59,3 +59,34 @@ public sealed class QueueOptions
     /// <summary>Long-poll wait. 20s is the SQS maximum and cuts empty receives to near zero.</summary>
     public int WaitTimeSeconds { get; set; } = 20;
 }
+
+/// <summary>
+/// Bound from <c>Seg_Conversion__*</c> (ingest plan §17.1). The worker's half of the conversion
+/// contract: where the converter is, how long to wait for it, and what OCR policy to ask for.
+/// </summary>
+public sealed class ConversionOptions
+{
+    public const string SectionName = "Conversion";
+
+    /// <summary>
+    /// The converter's base address. Empty disables conversion entirely — every non-passthrough
+    /// upload then fails phase 0 with a message saying so, rather than silently ingesting an
+    /// unconverted PDF as if it were Markdown.
+    /// </summary>
+    public string Endpoint { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The HTTP timeout, deliberately above the converter's own 8-minute budget so the converter's
+    /// structured error wins the race and the phase fails with a reason rather than a cancellation.
+    /// </summary>
+    public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(10);
+
+    public bool OcrEnabled { get; set; } = true;
+
+    public List<string> OcrLanguages { get; set; } = ["eng"];
+
+    /// <summary>Pages above this are not OCR'd; a 300-page scan would hold a worker slot for a quarter of an hour.</summary>
+    public int MaxOcrPages { get; set; } = 200;
+
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(Endpoint);
+}

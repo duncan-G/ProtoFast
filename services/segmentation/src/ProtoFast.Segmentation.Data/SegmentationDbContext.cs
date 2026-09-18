@@ -174,6 +174,8 @@ public sealed class SegmentationDbContext(DbContextOptions<SegmentationDbContext
             entity.Property(u => u.UploadId).HasMaxLength(64);
             entity.Property(u => u.OwnerSubject).IsRequired().HasMaxLength(255);
             entity.Property(u => u.FileName).IsRequired().HasMaxLength(512);
+            entity.Property(u => u.MediaType).IsRequired().HasMaxLength(128);
+            entity.Property(u => u.SourceExtension).IsRequired().HasMaxLength(16);
             entity.HasIndex(u => new { u.OwnerSubject, u.CreatedAt });
         });
     }

@@ -138,7 +138,15 @@ public sealed class RunArtifacts(IArtifactStore store)
         var paragraphs = await store.WriteJsonLinesAsync(
             ArtifactKeys.Phase(runId, PipelinePhase.Assemble), assembly.Paragraphs, key, ct);
         var headings = await store.WriteAsync(
-            ArtifactKeys.RunPrefix(runId) + "04_headings.json", assembly.Headings, key, ct);
+            ArtifactKeys.AssemblyHeadings(runId), assembly.Headings, key, ct);
+
+        // The outliers are part of the phase's output, not a detail of the object that produced
+        // them: phases 6 and 9 waive exactly these ids, and every one of them reads the assembly
+        // back from storage. Dropping the list here made the waiver empty and turned every
+        // flagged paragraph into a freeze failure (plan §9.6).
+        await store.WriteAsync(
+            ArtifactKeys.AssemblySizeOutliers(runId), assembly.SizeOutlierParagraphIds, key, ct);
+
         return (paragraphs, headings);
     }
 
@@ -147,9 +155,11 @@ public sealed class RunArtifacts(IArtifactStore store)
         var paragraphs = await store.ReadJsonLinesAsync<Paragraph>(
             ArtifactKeys.Phase(runId, PipelinePhase.Assemble), ct);
         var headings = await store.ReadAsync<IReadOnlyList<HeadingRecord>>(
-            ArtifactKeys.RunPrefix(runId) + "04_headings.json", ct);
+            ArtifactKeys.AssemblyHeadings(runId), ct);
+        var outliers = await store.ReadAsync<IReadOnlyList<string>>(
+            ArtifactKeys.AssemblySizeOutliers(runId), ct);
 
-        return paragraphs.Count == 0 ? null : new AssemblyResult(paragraphs, headings ?? [], []);
+        return paragraphs.Count == 0 ? null : new AssemblyResult(paragraphs, headings ?? [], outliers ?? []);
     }
 
     public Task<ArtifactRef> WriteTreeAsync(string runId, TreeArtifact tree, string key, CancellationToken ct) =>

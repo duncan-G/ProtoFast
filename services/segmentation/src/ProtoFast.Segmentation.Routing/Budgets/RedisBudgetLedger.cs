@@ -158,6 +158,15 @@ public sealed class RedisBudgetLedger(
     private static readonly TimeSpan Window = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan ReservationTtl = TimeSpan.FromMinutes(10);
 
+    /// <summary>
+    /// Redis rejects a non-positive expiry outright ("invalid expire time"), so any TTL derived
+    /// from a provider header or from configuration is floored to the shortest life it accepts.
+    /// </summary>
+    private static readonly TimeSpan MinTtl = TimeSpan.FromSeconds(1);
+
+    /// <summary>How long a learned limit is trusted when the provider sends no reset header.</summary>
+    private static readonly TimeSpan LearnedTtlFallback = TimeSpan.FromMinutes(5);
+
     private readonly RoutingOptions _options = options.Value;
 
     public async Task<BudgetReservation?> TryReserveAsync(BudgetRequest request, CancellationToken ct = default)
@@ -276,7 +285,7 @@ public sealed class RedisBudgetLedger(
         }
 
         var database = Database();
-        var ttl = resetAfter ?? TimeSpan.FromMinutes(5);
+        var ttl = LearnedTtl(resetAfter);
 
         if (remainingRequests is { } requests)
         {
@@ -288,6 +297,17 @@ public sealed class RedisBudgetLedger(
             await database.StringSetAsync($"{Prefix}{pool}:learned:tpm", tokens, ttl);
         }
     }
+
+    /// <summary>
+    /// How long to keep a learned limit. A reset header can name a moment that has already
+    /// passed — clock skew between us and the provider, or the window rolling over while the
+    /// call was in flight — and handing that to Redis as an expiry fails the whole call. The
+    /// value is stale the moment the window resets anyway, so the floor is the honest answer.
+    /// </summary>
+    internal static TimeSpan LearnedTtl(TimeSpan? resetAfter) =>
+        resetAfter is not { } reset ? LearnedTtlFallback
+        : reset > MinTtl ? reset
+        : MinTtl;
 
     public async Task RecordOutcomeAsync(
         string pool, bool success, bool rateLimited, int latencyMs, CancellationToken ct = default)
@@ -323,7 +343,10 @@ public sealed class RedisBudgetLedger(
 
         if (consecutive >= resilience.CircuitConsecutiveFailures || failureRatio >= resilience.CircuitFailureRatio)
         {
-            await database.StringSetAsync($"{Prefix}{pool}:circuit", "open", resilience.CircuitBreakDuration);
+            // Configuration can name a break shorter than Redis will express; the floor keeps a
+            // misconfigured duration from turning every failure into a second, louder failure.
+            var breakDuration = resilience.CircuitBreakDuration > MinTtl ? resilience.CircuitBreakDuration : MinTtl;
+            await database.StringSetAsync($"{Prefix}{pool}:circuit", "open", breakDuration);
             logger.LogWarning(
                 "Circuit opened for pool '{Pool}' ({Consecutive} consecutive failures, {Ratio:P0} of the last {Count})",
                 pool, consecutive, failureRatio, recent.Count);

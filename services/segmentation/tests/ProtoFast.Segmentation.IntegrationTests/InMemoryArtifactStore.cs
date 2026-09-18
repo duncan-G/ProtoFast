@@ -119,6 +119,31 @@ public sealed class InMemoryArtifactStore : IArtifactStore, IPresignedUrlFactory
     public string PresignGet(string key, TimeSpan? ttl = null) =>
         $"https://s3.test/{key}?method=GET";
 
+    /// <summary>
+    /// The same field set the S3 signer returns, with a stand-in signature. The tests assert the
+    /// shape — that the key and the type are pinned and that the cap is echoed — because that is
+    /// what the browser replays; the signature itself is AWS's to validate.
+    /// </summary>
+    public PresignedPost PresignPost(string key, string contentType, long maxBytes, TimeSpan? ttl = null)
+    {
+        var expires = DateTimeOffset.UtcNow.Add(ttl ?? TimeSpan.FromMinutes(15));
+
+        var fields = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["key"] = key,
+            ["Content-Type"] = contentType,
+            ["success_action_status"] = "201",
+            ["x-amz-algorithm"] = "AWS4-HMAC-SHA256",
+            ["x-amz-credential"] = "test/20260101/us-west-2/s3/aws4_request",
+            ["x-amz-date"] = "20260101T000000Z",
+            ["policy"] = Convert.ToBase64String(Encoding.UTF8.GetBytes(
+                $$"""{"conditions":[{"key":"{{key}}"},["content-length-range",1,{{maxBytes}}]]}""")),
+            ["x-amz-signature"] = "test-signature",
+        };
+
+        return new PresignedPost("https://s3.test/test-bucket", fields, expires, maxBytes);
+    }
+
     private Task<ArtifactRef> Put(string key, byte[] content, string idempotencyKey, bool locked)
     {
         var hash = Ids.Sha256Hex(content);

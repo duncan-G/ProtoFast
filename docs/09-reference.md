@@ -68,6 +68,9 @@ with a different injector.
 | `Seg_Storage__ObjectLockEnabled` | `appsettings.Development.json` (`false`) | `appsettings.json` (`true`) |
 | `Seg_Queues__Runs` / `__Bulk` / `__BatchPoll` | AppHost (LocalStack queue URLs) | compose ← `.env` |
 | `Seg_Queues__MaxConcurrentRuns` | `appsettings.Development.json` (`2`) | compose (`8`; tune with Host B sizing) |
+| `Seg_Conversion__Endpoint` | AppHost (the `conversion` resource's endpoint) | compose (`http://conversion:8090`) |
+| `Seg_Conversion__Timeout` | `appsettings.json` (`00:10:00`) | compose ← `.env` `SEGMENTATION_CONVERSION_TIMEOUT` |
+| `Seg_Conversion__OcrEnabled` / `__OcrLanguages__0` / `__MaxOcrPages` | `appsettings.json` (`true`, `eng`, `200`) | compose ← `.env` |
 | `Seg_Pipeline__*` | `appsettings.json` | same, overridable per environment |
 | `Seg_Routing__*` | `appsettings.json` | same |
 | `Seg_Providers__<provider>__ApiKey` | Aspire parameter ← user secrets | Secrets Manager, read in-process |
@@ -75,6 +78,15 @@ with a different injector.
 | `ConnectionStrings__segmentation`, `ConnectionStrings__redis` | Aspire references | compose |
 | `Secrets:SecretId` / `Secrets:Prefix` | unused (Production only) | `appsettings.json` (`protofast/app`, `Seg_`) |
 | `AWS_REGION` / `AWS_DEFAULT_REGION` | AppHost `WithSsoProfile` (the `developer` profile's region, for Secrets Manager) | compose ← `.env` |
+| `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` | AppHost (`true`, run mode only) | **unset** — the prompts are document text |
+
+`OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` is the OpenTelemetry semantic-convention
+switch for prompt and completion bodies. Set to `true` (the only value either layer accepts), every
+model call's messages appear as `gen_ai.input.messages` / `gen_ai.output.messages` on its span, and
+the workflow's executor spans carry the payloads on their edges. Microsoft.Extensions.AI reads the
+variable itself; `GenAiTelemetry` re-reads it for the workflow instrumentation, which has no
+default of its own. Left unset, both layers still emit spans — model, provider, tokens, latency,
+graph — just without the text.
 
 `Seg_Storage__Region` / `Api_Segmentation__Region` is what the LocalStack clients sign with, and
 the AppHost hands the same value to the init script's `AWS_DEFAULT_REGION` so both sides agree —
@@ -82,10 +94,48 @@ the emulator keeps queues per region, so a mismatch is a `QueueDoesNotExist` aga
 was created. The value follows the `developer` profile's region (`us-west-2`, the workload's own
 region), so it also matches the `AWS_REGION` that `WithSsoProfile` sets for Secrets Manager.
 
+`Seg_Conversion__Endpoint` left empty disables conversion: Markdown and plain-text uploads still
+run end to end, and anything else fails phase 0 with a message saying so rather than being ingested
+as if it were already Markdown. That is the state a fresh clone is in only if the `conversion`
+resource failed to start — the AppHost sets the variable and the worker waits for it.
+
 `api` additionally reads `Api_Segmentation__Bucket`, `__Region`, `__Runs`, `__Bulk`, `__BatchPoll`,
 `__ReviewerRole`, `__AdminRole`, `__MaxUploadBytes`, `__AllowedAugmentations`, and
 `ConnectionStrings__segmentation`. It presigns, enqueues and reads Postgres; it holds no provider
 credentials and references neither the routing nor the pipeline project.
+
+`Api_Segmentation__MaxUploadBytes` is **10 MiB** (`10485760`) and is not only a check: it becomes
+the `content-length-range` condition of the signed POST policy, which S3 evaluates against the
+bytes that actually arrive. Raising it here raises what the bucket accepts; a client that ignores
+it is refused with `EntityTooLarge` (ingest plan §7).
+
+### `conversion`
+
+The document-conversion sidecar (ingest plan §17.3). It is not a .NET process, so it does not
+follow the `Prefix_Section__Key` convention — the same deviation the Envoy and OTel containers
+already make. It holds **no secrets and no credentials**: S3 access comes from the instance role
+over IMDS in production and from LocalStack's throwaway pair in development.
+
+| Variable | Dev source | Prod source |
+|---|---|---|
+| `CONVERSION_BUCKET` | AppHost (LocalStack bucket) | compose ← `.env` `SEGMENTATION_BUCKET` |
+| `CONVERSION_S3_ENDPOINT` | AppHost → LocalStack, by container DNS | **unset** (real AWS) |
+| `AWS_REGION` / `AWS_DEFAULT_REGION` | AppHost | compose ← `.env` |
+| `CONVERSION_MAX_SOURCE_BYTES` | default (`10485760`) | compose (same) |
+| `CONVERSION_MAX_OUTPUT_BYTES` | default (`26214400`) | compose (same) |
+| `CONVERSION_TIMEOUT_SECONDS` | default (`480`) | compose (same) |
+| `CONVERSION_OCR_LANGUAGES` | default (`eng`) | compose ← `.env` |
+| `CONVERSION_OCR_MIN_CONFIDENCE` | default (`60`) | compose ← `.env` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | AppHost | compose (Host A's collector) |
+
+`CONVERSION_S3_ENDPOINT` points at LocalStack by **container DNS**, not at
+`https://localhost.localstack.cloud:4566` — that hostname resolves to 127.0.0.1, which inside the
+converter's container is the converter. Plain HTTP for the same reason it is HTTPS elsewhere:
+nothing here is a browser on an HTTPS page, so there is no mixed content to avoid.
+
+`CONVERSION_MAX_SOURCE_BYTES` is a backstop, not the limit. The POST policy already refused
+anything larger at the edge of the platform; this catches an object written before the limit was
+lowered, and it is checked against S3's `ContentLength` before any bytes are loaded.
 
 ### `envoy`
 
@@ -152,6 +202,7 @@ services/auth/            BFF: sign-in, sessions, accounts, ext_authz
 services/payments|api/    gRPC services behind the internal JWT
 services/segmentation/    document segmentation: pure core, MAF pipeline, provider routing,
                           S3/SQS storage, EF Core data, the SQS worker, and segctl
+services/conversion/      Python conversion sidecar: MarkItDown, CPU OCR, layout extraction
 services/shared/          ServiceDefaults (telemetry, health, secrets, internal JWT)
 infra/                    Terraform: AWS + Cloudflare (run in CI)
 infra/bootstrap/          one-time local Terraform: state bucket + OIDC roles
@@ -177,5 +228,6 @@ scripts/                  secrets, dev helpers, Keycloak apply scripts
 | 4317 / 4318 | prod, Host A | OTLP gRPC / HTTP receivers |
 | 5432, 6379 | prod, Host B | Postgres, Redis — **not** published |
 | — | prod, Host B | `segmentation` publishes **no** port; nothing dials it. It pulls from SQS and writes to S3 and Postgres |
-| 4566 | dev, host | LocalStack (S3 + SQS), plain HTTP and TLS on the same port — clients use `https://localhost.localstack.cloud:4566` (LocalStack's own publicly-trusted certificate) so the browser's presigned `PUT` from an HTTPS client page isn't blocked as mixed content |
+| 8090 | dev + prod, Host B | `conversion`, **unpublished** in prod: only the segmentation worker on the same host dials it, by compose DNS. In dev Aspire allocates a host port so the worker (a host process) can reach it |
+| 4566 | dev, host | LocalStack (S3 + SQS), plain HTTP and TLS on the same port — clients use `https://localhost.localstack.cloud:4566` (LocalStack's own publicly-trusted certificate) so the browser's presigned `POST` from an HTTPS client page isn't blocked as mixed content |
 | 5000 | dev, host | smtp4dev web UI |

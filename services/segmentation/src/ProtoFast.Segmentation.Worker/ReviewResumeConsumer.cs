@@ -114,25 +114,42 @@ public sealed class ReviewResumeConsumer(
 
     private async Task ProcessAsync(Message message, CancellationToken ct)
     {
-        var resume = JsonSerializer.Deserialize<ResumeMessage>(message.Body, Json);
+        // The envelope on this queue is BatchPollMessage — what SubmitReviewDecision sends and what
+        // provider batch polls will send when they land (plan §14.8). A review resume carries the
+        // review id in BatchId and is marked by Provider "review"; deserializing into a shape of
+        // this consumer's own instead read a field the producer never writes, so every resume
+        // arrived with a null id, matched no row and went round the queue again forever.
+        var resume = JsonSerializer.Deserialize<BatchPollMessage>(message.Body, Json);
         if (resume is null)
         {
             await sqs.DeleteMessageAsync(_options.BatchPoll, message.ReceiptHandle, CancellationToken.None);
             return;
         }
 
+        var reviewId = resume.BatchId;
+
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<SegmentationDbContext>();
 
         var review = await db.ReviewTasks
             .AsNoTracking()
-            .FirstOrDefaultAsync(r => r.ReviewId == resume.ReviewId, ct);
+            .FirstOrDefaultAsync(r => r.ReviewId == reviewId, ct);
 
-        if (review is null or { Status: not "complete" } or { Decision: null })
+        if (review is null)
+        {
+            // Distinguished from the wait below because it is not a wait: api commits the review
+            // row before it enqueues, so no row means no row is coming, and logging it as "not
+            // decided yet" is what hid a message that could never be handled.
+            logger.LogWarning(
+                "Review {ReviewId} is not in the database; leaving it queued for redelivery.", reviewId);
+            return;
+        }
+
+        if (review is { Status: not "complete" } or { Decision: null })
         {
             // The decision has not landed yet. Leaving the message invisible and letting it come
             // back is cheaper than polling the database on a timer.
-            logger.LogDebug("Review {ReviewId} is not decided yet; leaving it queued.", resume.ReviewId);
+            logger.LogDebug("Review {ReviewId} is not decided yet; leaving it queued.", reviewId);
             return;
         }
 
@@ -154,11 +171,5 @@ public sealed class ReviewResumeConsumer(
         {
             await sqs.DeleteMessageAsync(_options.BatchPoll, message.ReceiptHandle, CancellationToken.None);
         }
-    }
-
-    /// <summary>The message <c>api</c> sends after a decision is recorded.</summary>
-    public sealed record ResumeMessage(string RunId, string ReviewId)
-    {
-        public string? TraceParent { get; init; }
     }
 }

@@ -27,6 +27,20 @@ public static class Extensions
     private const string OidcCallbackPath = "/signin-oidc";
     private const string ActivitySourceName = "ProtoFast.*";
 
+    // Microsoft.Extensions.AI and the Agent Framework emit their gen_ai.* spans on sources of their
+    // own, which the ProtoFast.* filter above does not match — without these the LLM and workflow
+    // spans are created and then dropped before the exporter ever sees them. Subscribing costs
+    // nothing in a service that calls no model: a source nobody starts activities on produces none.
+    private static readonly string[] GenAiActivitySourceNames =
+    [
+        // Microsoft.Extensions.AI's OpenTelemetryChatClient (and its embedding/audio siblings).
+        "Experimental.Microsoft.Extensions.AI",
+        // Microsoft.Agents.AI's OpenTelemetryAgent, for when an executor is built as an AIAgent.
+        "Experimental.Microsoft.Agents.AI",
+        // Microsoft.Agents.AI.Workflows' build/run/superstep/executor spans.
+        "Microsoft.Agents.AI.Workflows",
+    ];
+
     public static IHostApplicationBuilder AddServiceDefaults(this IHostApplicationBuilder builder)
     {
         builder.ConfigureOpenTelemetry();
@@ -73,6 +87,7 @@ public static class Extensions
                     // processor sees these activities already marked un-recorded.
                     .AddProcessor(new HealthPingTraceFilter())
                     .AddSource(ActivitySourceName)
+                    .AddSource(GenAiActivitySourceNames)
                     .AddAspNetCoreInstrumentation(tracing =>
                         // Don't trace requests to the health endpoint to avoid filling the dashboard with noise
                         tracing.Filter = httpContext =>

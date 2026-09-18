@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ProtoFast.Segmentation.Core.Model;
 using ProtoFast.Segmentation.Pipeline.Agents;
 
@@ -91,6 +92,134 @@ public class PromptAssetTests
 
         Assert.Contains("A filled B", rendered, StringComparison.Ordinal);
         Assert.DoesNotContain("{{", rendered, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("tree")]
+    [InlineData("labels")]
+    [InlineData("heading-levels")]
+    [InlineData("review")]
+    [InlineData("augment-key-points")]
+    public void WireSchemasStayInsideTheDecoderSubset(string name)
+    {
+        // The provider rejects the whole request with a 400 when a structured-output schema uses
+        // one of these, so a keyword slipping in here fails every call of that role rather than
+        // degrading. Recursion is the one that will be tempting to re-add: a section tree is
+        // naturally recursive, and the wire form spells the depth out instead.
+        using var document = JsonDocument.Parse(_assets.WireSchema(name));
+
+        foreach (var keyword in new[]
+                 {
+                     "oneOf", "not", "minimum", "maximum", "multipleOf",
+                     "minLength", "maxLength", "maxItems", "pattern", "$schema",
+                 })
+        {
+            Assert.DoesNotContain($"\"{keyword}\"", _assets.WireSchema(name), StringComparison.Ordinal);
+        }
+
+        AssertObjectsAreClosed(document.RootElement);
+    }
+
+    [Theory]
+    [InlineData("tree")]
+    [InlineData("labels")]
+    [InlineData("heading-levels")]
+    [InlineData("review")]
+    [InlineData("augment-key-points")]
+    public void WireSchemasNameTheSamePropertiesAsTheOnesThePromptShows(string name)
+    {
+        // Two files describing one artifact is the cost of the split: the prompt renders the
+        // expressive schema and the decoder enforces the wire one, so a field added to either and
+        // forgotten in the other is a model told one thing and constrained to another.
+        using var authored = JsonDocument.Parse(_assets.Schema(name));
+        using var wire = JsonDocument.Parse(_assets.WireSchema(name));
+
+        Assert.Equal(PropertyNames(authored.RootElement), PropertyNames(wire.RootElement));
+    }
+
+    private static SortedSet<string> PropertyNames(JsonElement element)
+    {
+        var names = new SortedSet<string>(StringComparer.Ordinal);
+        Walk(element);
+        return names;
+
+        void Walk(JsonElement node)
+        {
+            switch (node.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    foreach (var property in node.EnumerateObject())
+                    {
+                        // "properties" is the only place a field name is declared; every other
+                        // object is schema vocabulary, which the two forms are allowed to differ on.
+                        if (property.NameEquals("properties") && property.Value.ValueKind == JsonValueKind.Object)
+                        {
+                            foreach (var field in property.Value.EnumerateObject())
+                            {
+                                names.Add(field.Name);
+                            }
+                        }
+
+                        Walk(property.Value);
+                    }
+
+                    break;
+
+                case JsonValueKind.Array:
+                    foreach (var item in node.EnumerateArray())
+                    {
+                        Walk(item);
+                    }
+
+                    break;
+            }
+        }
+    }
+
+    private static void AssertObjectsAreClosed(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            if (element.TryGetProperty("type", out var type)
+                && type.ValueKind == JsonValueKind.String
+                && type.GetString() == "object")
+            {
+                Assert.True(
+                    element.TryGetProperty("additionalProperties", out var additional)
+                    && additional.ValueKind == JsonValueKind.False,
+                    "every object needs additionalProperties: false");
+            }
+
+            foreach (var property in element.EnumerateObject())
+            {
+                AssertObjectsAreClosed(property.Value);
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                AssertObjectsAreClosed(item);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("structurer.v1")]
+    [InlineData("tree-repair.v1")]
+    [InlineData("structure-reviewer.v1")]
+    [InlineData("augmenter.v1")]
+    [InlineData("augment-reviewer.v1")]
+    public void EveryPromptThatDemandsASchemaCarriesIt(string template)
+    {
+        // Naming a schema file in the prompt tells the model nothing: it has no filesystem. A
+        // template that asks for "JSON matching the schema" has to render the schema itself.
+        var text = _assets.Template(template);
+
+        Assert.Contains("{{schema}}", text, StringComparison.Ordinal);
+        Assert.True(
+            text.IndexOf("{{schema}}", StringComparison.Ordinal) < text.LastIndexOf("schema", StringComparison.Ordinal),
+            "the instruction to match the schema must come after the schema itself");
     }
 
     [Fact]

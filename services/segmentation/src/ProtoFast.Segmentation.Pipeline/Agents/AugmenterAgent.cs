@@ -44,6 +44,7 @@ public sealed class AugmenterAgent(AgentRunner runner, ILogger<AugmenterAgent> l
             .Set("paragraphId", context.ParagraphId)
             .Set("paragraphText", context.ParagraphText)
             .Set("schemaName", type.SchemaName + ".schema.json")
+            .Set("schema", runner.Assets.Schema(type.SchemaName))
             .Render();
 
         var result = await runner.RunAsync<JsonElement>(
@@ -56,6 +57,8 @@ public sealed class AugmenterAgent(AgentRunner runner, ILogger<AugmenterAgent> l
             {
                 PromptVersion = runner.Assets.VersionFor(AgentRole.Augmenter),
                 Unit = paragraph.ParagraphId,
+                OutputSchema = runner.Assets.WireSchemaElement(type.SchemaName),
+                OutputSchemaName = type.SchemaName,
             },
             output => Combine(type.Validate(paragraph, output)),
             maxRounds: 1, buildRepairPrompt: null, ct);
@@ -95,6 +98,7 @@ public sealed class AugmenterAgent(AgentRunner runner, ILogger<AugmenterAgent> l
             .Set("rules", runner.Assets.Rules)
             .Set("paragraphId", paragraph.ParagraphId)
             .Set("paragraphText", paragraph.Text)
+            .Set("schema", runner.Assets.Schema("review"))
             .Set("augmentation", output.Json)
             .Render();
 

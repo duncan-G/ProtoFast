@@ -1,5 +1,7 @@
 using System.Net;
+using Anthropic.Exceptions;
 using Microsoft.Extensions.AI;
+using ProtoFast.Segmentation.Routing.Budgets;
 using ProtoFast.Segmentation.Routing.Providers;
 
 namespace ProtoFast.Segmentation.ContractTests;
@@ -123,6 +125,36 @@ public class ProviderContractTests
     }
 
     [Fact]
+    public void AnthropicSdkFailuresAreClassifiedFromTheSdksOwnException()
+    {
+        // The Anthropic SDK throws its own type rather than an HttpRequestException, and its
+        // InnerException getter throws instead of returning null — so a classifier that only
+        // knows HttpRequestException would call every Anthropic failure Unknown, i.e. not
+        // retryable, and a classifier that walked InnerException would fault outright.
+        var rateLimited = ProviderException.From(
+            new AnthropicRateLimitException(new HttpRequestException("rate limited"))
+            {
+                StatusCode = HttpStatusCode.TooManyRequests,
+                ResponseBody = /*lang=json,strict*/ """{"type":"error","error":{"type":"rate_limit_error"}}""",
+            },
+            "anthropic");
+
+        Assert.Equal(ProviderErrorKind.RateLimited, rateLimited.Kind);
+        Assert.True(rateLimited.IsRetryable);
+
+        var overloadedSdk = ProviderException.From(
+            new Anthropic5xxException(new HttpRequestException("overloaded"))
+            {
+                StatusCode = (HttpStatusCode)529,
+                ResponseBody = /*lang=json,strict*/ """{"type":"error","error":{"type":"overloaded_error"}}""",
+            },
+            "anthropic");
+
+        Assert.Equal(ProviderErrorKind.Overloaded, overloadedSdk.Kind);
+        Assert.True(overloadedSdk.IsRetryable);
+    }
+
+    [Fact]
     public void ACancelledCallIsATimeoutRatherThanAnUnknownFailure()
     {
         var timeout = ProviderException.From(new OperationCanceledException(), "gemini");
@@ -142,5 +174,30 @@ public class ProviderContractTests
 
         Assert.NotNull(parsed);
         Assert.Equal(expectedSeconds, parsed!.Value.TotalSeconds, 3);
+    }
+
+    /// <summary>
+    /// A reset header naming a moment that has already passed arrives as zero (or, from a stale
+    /// retry-after date, as a negative span). Redis rejects either as an expiry — "ERR invalid
+    /// expire time in 'setex' command" — which failed the agent <em>after</em> its model call
+    /// had already succeeded.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-30)]
+    [InlineData(0.25)]
+    public void AnAlreadyElapsedResetStillYieldsAnExpiryRedisAccepts(double resetSeconds)
+    {
+        var ttl = RedisBudgetLedger.LearnedTtl(TimeSpan.FromSeconds(resetSeconds));
+
+        Assert.True(ttl > TimeSpan.Zero);
+        Assert.True(ttl.TotalMilliseconds >= 1000);
+    }
+
+    [Fact]
+    public void AResetHeaderFurtherOutThanTheFloorIsKeptAsSent()
+    {
+        Assert.Equal(TimeSpan.FromMinutes(6), RedisBudgetLedger.LearnedTtl(TimeSpan.FromMinutes(6)));
+        Assert.Equal(TimeSpan.FromMinutes(5), RedisBudgetLedger.LearnedTtl(null));
     }
 }

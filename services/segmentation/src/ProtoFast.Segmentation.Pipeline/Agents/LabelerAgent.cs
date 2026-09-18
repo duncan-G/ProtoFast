@@ -228,11 +228,21 @@ public sealed class LabelerAgent(
             PinnedModelKey = context.PinnedModelKey,
             PromptVersion = runner.Assets.VersionFor(AgentRole.Labeler),
             Unit = $"window:{ids.Count}",
+            OutputSchema = runner.Assets.WireSchemaElement("labels"),
+            OutputSchemaName = "labels",
         };
 }
 
 /// <summary>A phase could not complete. Carries the phase so the run's error names where it stopped.</summary>
-public sealed class PipelineFailureException(PipelinePhase phase, string message) : Exception(message)
+public sealed class PipelineFailureException(PipelinePhase phase, string message, bool permanent = false)
+    : Exception(message)
 {
     public PipelinePhase Phase { get; } = phase;
+
+    /// <summary>
+    /// True when a retry cannot help — an unconvertible document, a format the converter refuses.
+    /// The consumer deletes the message instead of leaving it for redelivery, so one malformed
+    /// file does not spend five delivery attempts on its way to the DLQ (ingest plan §9).
+    /// </summary>
+    public bool Permanent { get; } = permanent;
 }

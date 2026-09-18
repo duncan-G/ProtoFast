@@ -43,6 +43,18 @@ public class DeterministicPipelineTests
         calibration over the season.
         """;
 
+    /// <summary>A document whose first body paragraph is far below any sane minimum.</summary>
+    private const string ShortParagraphDocument = """
+        # Site Visit Notes
+
+        ## 1 Access
+
+        Not applicable.
+
+        The gate code was reissued before the visit and the previous code no longer works, so the
+        crew collected the new one from the site office on arrival.
+        """;
+
     [Fact]
     public async Task ACleanDocumentReachesPublishWithNoProvider()
     {
@@ -189,6 +201,33 @@ public class DeterministicPipelineTests
         Assert.Equal(RunOutcome.Failed, outcome);
         var run = await fixture.LoadRunAsync(runId);
         Assert.Contains("re-upload", run!.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AParagraphOutsideTheSizeBoundsIsWaivedRatherThanBlockingTheFreeze()
+    {
+        // The plan flags size outliers at assembly and waives them downstream: a paragraph the
+        // author wrote short is not a reason to refuse a document whose text is otherwise perfect
+        // (plan §9.6). The waiver only holds if the flagged ids survive the trip through storage,
+        // which is what this test is really about — phases 6 and 9 both read the assembly back.
+        await using var fixture = new PipelineHostFixture(minWords: 15, maxWords: 300);
+        await fixture.ApproveFamilyAsync("unknown");
+        var runId = await fixture.SubmitAsync(ShortParagraphDocument);
+
+        var outcome = await fixture.Host.RunOrResumeAsync(runId, null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(RunOutcome.Completed, outcome);
+
+        var run = await fixture.LoadRunAsync(runId);
+        Assert.Null(run!.Error);
+        Assert.Equal(
+            PhaseState.Done,
+            run.Phases.Single(p => p.Phase == PipelinePhase.Freeze).State);
+
+        var outliers = await fixture.Artifacts.ReadAsync<IReadOnlyList<string>>(
+            ArtifactKeys.AssemblySizeOutliers(runId), TestContext.Current.CancellationToken);
+        Assert.NotNull(outliers);
+        Assert.NotEmpty(outliers!);
     }
 }
 

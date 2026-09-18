@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "required": [
+    "paragraphId",
+    "points"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "paragraphId": {
+      "type": "string"
+    },
+    "points": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "terms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "term",
+          "definition"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "term": {
+            "type": "string"
+          },
+          "definition": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "question": {
+      "type": "string"
+    }
+  }
+}

@@ -3,6 +3,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ProtoFast.Segmentation.Core.Model;
+using ProtoFast.Segmentation.Core.Observability;
 using ProtoFast.Segmentation.Routing.Budgets;
 using ProtoFast.Segmentation.Routing.Providers;
 
@@ -45,10 +46,13 @@ public sealed class RoutingChatClient(
 
         if (candidates.Count == 0)
         {
-            throw new NoEligibleModelException(
+            var unqualified = new NoEligibleModelException(
                 $"No model is qualified for {context.Role} at tier {context.Tier} and sensitivity " +
                 $"{context.Sensitivity} with prompt version {context.PromptVersion}. " +
                 "The tier is never downgraded to work around this — qualify a model instead.");
+
+            activity.Fail(unqualified);
+            throw unqualified;
         }
 
         var attempt = 0;
@@ -103,9 +107,12 @@ public sealed class RoutingChatClient(
             await DelayAsync(TimeSpan.FromSeconds(2), ct);
         }
 
-        throw new NoEligibleModelException(
+        var exhausted = new NoEligibleModelException(
             $"No eligible model had headroom for {context.Role} within {_options.MaxRoutingWait}. " +
             $"Last failure: {lastFailure?.Message ?? "none"}. The run returns to the queue.");
+
+        activity.Fail(exhausted);
+        throw exhausted;
     }
 
     public async Task<IReadOnlyList<ModelStatus>> GetStatusAsync(CancellationToken ct = default)
@@ -165,8 +172,9 @@ public sealed class RoutingChatClient(
                 continue;
             }
 
-            // 4. The window has to fit, with room for the answer.
-            if (context.EstimatedInputTokens + context.MaxOutputTokens > model.ContextTokens)
+            // 4. The window has to fit, with room for the answer — and for the thinking that
+            //    precedes it, which is why the ceiling is the model's, not the agent's.
+            if (context.EstimatedInputTokens + Ceiling(model, context) > model.ContextTokens)
             {
                 continue;
             }
@@ -221,13 +229,14 @@ public sealed class RoutingChatClient(
 
     private async Task<BudgetReservation?> ReserveAsync(Candidate candidate, RoutingContext context, CancellationToken ct)
     {
-        var estimatedCost = EstimateCost(candidate.Model, context.EstimatedInputTokens, context.MaxOutputTokens);
+        var ceiling = Ceiling(candidate.Model, context);
+        var estimatedCost = EstimateCost(candidate.Model, context.EstimatedInputTokens, ceiling);
 
         return await budgets.TryReserveAsync(
             new BudgetRequest(
                 candidate.Model.LimitPool,
                 context.EstimatedInputTokens,
-                Math.Min(context.MaxOutputTokens, candidate.Model.MaxOutputTokens),
+                ceiling,
                 estimatedCost),
             ct);
     }
@@ -252,7 +261,7 @@ public sealed class RoutingChatClient(
         var stopwatch = Stopwatch.StartNew();
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(_options.Resilience.Timeout);
+        timeout.CancelAfter(candidate.Model.RequestTimeout);
 
         // The scope has to be open BEFORE the call so it flows into the SDK's HTTP continuation;
         // opening it afterwards would capture nothing.
@@ -266,13 +275,27 @@ public sealed class RoutingChatClient(
                 new ChatOptions
                 {
                     ModelId = candidate.Model.ModelName,
-                    MaxOutputTokens = Math.Min(context.MaxOutputTokens, candidate.Model.MaxOutputTokens),
+                    MaxOutputTokens = Ceiling(candidate.Model, context),
                     // Zero for labeling and structure; the augmentation types that want variety
-                    // override it when they build their own options (plan §10.4).
-                    Temperature = 0,
-                    ResponseFormat = candidate.Model.ParsedCapabilities.HasFlag(ModelCapabilities.JsonMode)
-                        ? ChatResponseFormat.Json
-                        : null,
+                    // override it when they build their own options (plan §10.4). Left unset for a
+                    // model that declares NoTemperature — an always-reasoning model that rejects
+                    // the parameter outright (400) rather than ignoring it, so "send 0 anyway" is
+                    // not a safe default the way it is for ResponseFormat below.
+                    Temperature =
+                        candidate.Model.ParsedCapabilities.HasFlag(ModelCapabilities.NoTemperature)
+                            ? null
+                            : 0,
+                    // Gated on the capability rather than sent everywhere: a provider that does
+                    // not support the parameter either ignores it or rejects the call, and a
+                    // schema this one rejects is a 400 on every call of that role. Declaring the
+                    // capability per model is how a schema gets turned on once it is known to be
+                    // accepted. ChatResponseFormat.Json is deliberately not the fallback — the
+                    // Anthropic adapter drops it silently, so it only ever looked like a setting.
+                    ResponseFormat =
+                        context.OutputSchema is { } schema
+                        && candidate.Model.ParsedCapabilities.HasFlag(ModelCapabilities.StructuredOutput)
+                            ? ChatResponseFormat.ForJsonSchema(schema, context.OutputSchemaName)
+                            : null,
                 },
                 timeout.Token);
         }
@@ -289,10 +312,29 @@ public sealed class RoutingChatClient(
                 0, 0, 0, 0m, (int)stopwatch.ElapsedMilliseconds,
                 provider.Kind.ToString(), attempt, Batched: false), CancellationToken.None);
 
+            // The span the caller opened is this call's own. A provider failure that leaves it
+            // unset shows the trace as a successful LLM call that happened to return nothing.
+            activity.Fail(provider);
             throw provider;
         }
 
         stopwatch.Stop();
+
+        var truncated = response.FinishReason == ChatFinishReason.Length;
+        if (truncated)
+        {
+            // Worth a warning rather than a silent pass-through: a truncated reply that reaches an
+            // agent looks exactly like a malformed one, and the two have opposite fixes. If this
+            // appears for a role repeatedly, the role's request is sized wrong or the model's
+            // reasoning reserve is too small — not the prompt.
+            logger.LogWarning(
+                "Run {RunId} phase {Phase}: {Model} stopped at the output cap of {Cap} tokens after "
+                + "{Output} output tokens; the reply is incomplete.",
+                context.RunId, context.Phase, candidate.Model.Key,
+                Ceiling(candidate.Model, context), response.Usage?.OutputTokenCount ?? 0);
+        }
+
+        activity?.SetTag("llm.truncated", truncated);
 
         if (context.PinnedModelKey is { } pinned && !candidate.IsPinned)
         {
@@ -336,8 +378,25 @@ public sealed class RoutingChatClient(
             usage.OutputTokens,
             usage.CachedInputTokens,
             cost,
-            (int)stopwatch.ElapsedMilliseconds);
+            (int)stopwatch.ElapsedMilliseconds)
+        {
+            Truncated = truncated,
+        };
     }
+
+    /// <summary>
+    /// The output cap actually sent to the provider: what the agent asked for, plus the model's
+    /// reasoning reserve, clamped to what the model accepts.
+    ///
+    /// <para>The reserve is the whole point. An agent sizes its request from the artifact it
+    /// expects back, and has no way to know that the model it happens to be routed to spends
+    /// thousands of tokens thinking first — thinking that providers count against the same cap.
+    /// Without it, a request sized correctly for the answer is spent before the answer starts,
+    /// and the reply arrives cut off mid-token. Budget reservation and the context-fit filter use
+    /// this same number, so what is reserved is what is billed.</para>
+    /// </summary>
+    internal static int Ceiling(ModelDescriptor model, RoutingContext context) =>
+        Math.Min(context.MaxOutputTokens + model.ReservedReasoningTokens, model.MaxOutputTokens);
 
     internal static decimal EstimateCost(ModelDescriptor model, int inputTokens, int maxOutputTokens) =>
         (inputTokens * model.InputCostPerMTok + maxOutputTokens * model.OutputCostPerMTok) / 1_000_000m;

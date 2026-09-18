@@ -2,6 +2,12 @@
 
 {{skill}}
 
+## Output schema (review.schema.json)
+
+```json
+{{schema}}
+```
+
 You did not create this structure. Check it skeptically.
 
 ## Outline
@@ -14,4 +20,4 @@ You did not create this structure. Check it skeptically.
 {{inferredTitles}}
 
 Report wrong boundaries, wrong levels, and poor inferred titles.
-Return JSON matching review.schema.json.
+Return JSON matching the schema above.

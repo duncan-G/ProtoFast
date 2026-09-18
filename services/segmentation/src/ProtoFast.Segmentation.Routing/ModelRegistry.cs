@@ -2,7 +2,17 @@ using ProtoFast.Segmentation.Core.Model;
 
 namespace ProtoFast.Segmentation.Routing;
 
-/// <summary>Capabilities a model declares; the router filters on them (plan §14.2).</summary>
+/// <summary>
+/// Capabilities a model declares (plan §14.2). <c>StructuredOutput</c> shapes the request — it is
+/// what decides whether an agent's schema is sent as the provider's structured-output parameter.
+/// <c>PromptCaching</c> and <c>Batch</c> are declarations only until the M9 work reads them, and
+/// <c>JsonMode</c> has no meaning on any provider configured here: Anthropic has no such
+/// parameter, and the adapter drops it silently rather than failing. <c>NoTemperature</c> is the
+/// same kind of gate as <c>StructuredOutput</c> but in the opposite direction: a model that always
+/// reasons adaptively (no zero <see cref="ModelDescriptor.ReservedReasoningTokens"/>) rejects a
+/// caller-supplied temperature outright rather than ignoring it, so the parameter has to be left
+/// off the request entirely rather than sent as 0.
+/// </summary>
 [Flags]
 public enum ModelCapabilities
 {
@@ -11,6 +21,7 @@ public enum ModelCapabilities
     StructuredOutput = 2,
     PromptCaching = 4,
     Batch = 8,
+    NoTemperature = 16,
 }
 
 /// <summary>One model the router may choose. Bound from <c>Seg_Routing__Models</c>.</summary>
@@ -34,6 +45,27 @@ public sealed class ModelDescriptor
     public int ContextTokens { get; set; } = 128_000;
 
     public int MaxOutputTokens { get; set; } = 8_192;
+
+    /// <summary>
+    /// Per-call wall-clock limit. The only deadline the router uses — the provider HttpClient
+    /// is unbounded so this is the one that actually fires. Thinking models set this well
+    /// above 100 seconds; Haiku does not need to.
+    /// </summary>
+    public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Tokens this model spends thinking before it writes anything. Providers that bill reasoning
+    /// as output also count it against the output cap, so a cap sized for the answer alone leaves
+    /// the model no room to finish — it stops mid-token and the reply arrives truncated. The
+    /// router adds this to whatever the agent asked for.
+    ///
+    /// <para>Sending no thinking parameter is not the same as getting no thinking. Current Claude
+    /// and Gemini models reason adaptively by default and decide the depth themselves, so a model
+    /// only earns a zero here if it is documented not to think unless asked — which, among the
+    /// models configured today, means Haiku 4.5 alone. Over-reserving is cheap: the reserve caps
+    /// the call and sizes the budget hold, but billing follows the tokens actually produced.</para>
+    /// </summary>
+    public int ReservedReasoningTokens { get; set; }
 
     public List<string> Capabilities { get; set; } = [];
 

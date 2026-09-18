@@ -12,11 +12,13 @@ public sealed class SegmentationApiOptions
     public string AdminRole { get; set; } = "segmentation-admin";
 
     /// <summary>
-    /// Refused above this. The presigned URL itself cannot enforce a size, so the limit is
-    /// asserted here and again at ingest — a browser that ignores it wastes its own bandwidth and
-    /// the object expires in seven days.
+    /// Refused above this, and refused <em>by S3</em>: the number becomes the
+    /// <c>content-length-range</c> condition of the signed POST policy, which S3 evaluates against
+    /// the bytes that actually arrive and answers with <c>EntityTooLarge</c>. The check here only
+    /// avoids minting a doomed URL for a caller that already declared too large a size — it is the
+    /// policy, not this property, that a client cannot skip (ingest plan §7).
     /// </summary>
-    public long MaxUploadBytes { get; set; } = 64 * 1024 * 1024;
+    public long MaxUploadBytes { get; set; } = ProtoFast.Segmentation.Core.Ingest.SourceFormats.DefaultMaxBytes;
 
     /// <summary>How often <c>WatchRun</c> polls <c>run_events</c> for new rows.</summary>
     public TimeSpan WatchPollInterval { get; set; } = TimeSpan.FromSeconds(1);

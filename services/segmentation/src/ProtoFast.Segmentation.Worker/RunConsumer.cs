@@ -4,6 +4,7 @@ using Amazon.SQS;
 using Amazon.SQS.Model;
 using Microsoft.Extensions.Options;
 using ProtoFast.Segmentation.Core.Model;
+using ProtoFast.Segmentation.Core.Observability;
 using ProtoFast.Segmentation.Pipeline;
 using ProtoFast.Segmentation.Storage;
 
@@ -150,7 +151,25 @@ public sealed class RunConsumer(
             {
                 // Leave the message for redelivery. maxReceiveCount on the redrive policy sends a
                 // repeatedly-failing run to the DLQ rather than looping forever on provider spend.
+                //
+                // The span is coloured here as a backstop. WorkflowHost has usually already marked
+                // it with the exception that caused this, and Fail leaves that richer record
+                // alone — but an outcome that arrives with nothing recorded must still not leave
+                // the trace green.
+                activity.Fail("run.failed", "The run failed and will be redelivered.");
                 logger.LogWarning("Run {RunId} failed; leaving the message for redelivery.", run.RunId);
+                return;
+            }
+
+            if (outcome == RunOutcome.FailedPermanently)
+            {
+                // A document that cannot be read will not become readable on the fourth attempt.
+                // The run row already carries the reason, so the message is deleted rather than
+                // cycled to the DLQ — a DLQ entry is meant to be an alert, not a bad upload.
+                activity.Fail("run.failed_permanently", "The run failed in a way redelivery cannot fix.");
+                logger.LogWarning(
+                    "Run {RunId} failed permanently; deleting the message rather than redelivering.", run.RunId);
+                await sqs.DeleteMessageAsync(queueUrl, message.ReceiptHandle, CancellationToken.None);
                 return;
             }
 
@@ -165,6 +184,7 @@ public sealed class RunConsumer(
         }
         catch (Exception ex)
         {
+            activity.Fail(ex);
             logger.LogError(ex, "Run {RunId} threw; leaving the message for redelivery.", run.RunId);
         }
     }

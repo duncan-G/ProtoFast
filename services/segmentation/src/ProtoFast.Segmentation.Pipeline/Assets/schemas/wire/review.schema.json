@@ -1,0 +1,58 @@
+{
+  "type": "object",
+  "required": [
+    "findings",
+    "verdict"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "verdict": {
+      "enum": [
+        "pass",
+        "pass_with_findings",
+        "fail"
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "severity",
+          "type",
+          "ids",
+          "message"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "severity": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "type": {
+            "enum": [
+              "boundary",
+              "level",
+              "title",
+              "paragraph",
+              "other"
+            ]
+          },
+          "ids": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

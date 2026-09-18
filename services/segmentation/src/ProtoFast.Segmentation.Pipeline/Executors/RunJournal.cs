@@ -134,6 +134,18 @@ public sealed class RunJournal(IServiceScopeFactory scopes)
         return await db.Runs.AsNoTracking().FirstOrDefaultAsync(r => r.RunId == runId, ct);
     }
 
+    /// <summary>
+    /// The upload row behind a run. Phase 0 needs it for the source key's extension and for the
+    /// media type the converter dispatches on — both of which are validated table values recorded
+    /// at <c>CreateUpload</c>, not anything re-derived from the caller's filename.
+    /// </summary>
+    public async Task<Upload?> LoadUploadAsync(string uploadId, CancellationToken ct)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<SegmentationDbContext>();
+        return await db.Uploads.AsNoTracking().FirstOrDefaultAsync(u => u.UploadId == uploadId, ct);
+    }
+
     /// <summary>Records which model a phase was pinned to, so the rest of the run stays consistent.</summary>
     public async Task PinModelAsync(string runId, PipelinePhase phase, string modelKey, CancellationToken ct)
     {

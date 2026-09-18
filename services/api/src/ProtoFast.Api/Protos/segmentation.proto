@@ -15,9 +15,15 @@ package segmentation;
 // Every RPC is authorized by the internal JWT and every run is scoped to its subject: ownership
 // comes from the token, never from a request field.
 service Segmentation {
-  // Returns a presigned S3 PUT URL. The browser uploads directly to S3, so a large document
-  // never crosses gRPC and api never sees the bytes.
+  // Returns a presigned S3 POST (url + form fields). The browser uploads directly to S3, so a
+  // large document never crosses gRPC and api never sees the bytes. POST rather than PUT because
+  // only a POST policy can carry a content-length-range condition — which is what makes the size
+  // limit S3's to enforce rather than the browser's to respect.
   rpc CreateUpload (CreateUploadRequest) returns (CreateUploadReply);
+
+  // The formats ThePlot can read and the size cap, so the upload page's accept list and its error
+  // messages come from the same place the validation does.
+  rpc ListSourceFormats (ListSourceFormatsRequest) returns (ListSourceFormatsReply);
 
   // Validates the upload, writes the run row, sends one SQS message. Idempotent on
   // idempotency_key: the same key returns the same run rather than a second run and a second bill.
@@ -54,15 +60,34 @@ enum PhaseState  { PHASE_STATE_UNSPECIFIED = 0; PENDING = 1; RUNNING = 2; DONE =
 message CreateUploadRequest {
   string file_name = 1;
   int64 size_bytes = 2;
-  bool with_layout = 3;               // also presign the .layout.json sibling
+  reserved 3;                         // was with_layout; the format decides now, not the caller
+  string content_type = 4;            // validated against the allowlist, and pinned by the policy
 }
 
+// Field numbers are reserved rather than reused: the feature is unreleased, but a reused number
+// is the kind of thing that silently mis-decodes a stale client during a partial deploy.
 message CreateUploadReply {
   string upload_id = 1;
-  string markdown_put_url = 2;
-  string layout_put_url = 3;          // empty when with_layout is false
-  map<string, string> required_headers = 4;
+  reserved 2, 3;                      // were markdown_put_url / layout_put_url
+  map<string, string> fields = 4;     // post verbatim as multipart fields, with the file LAST
   int64 expires_unix_seconds = 5;
+  string post_url = 6;
+  int64 max_bytes = 7;                // the same number the policy enforces
+}
+
+message ListSourceFormatsRequest {}
+
+message SourceFormat {
+  string extension = 1;               // ".pdf"
+  string media_type = 2;              // "application/pdf"
+  string label = 3;                   // "PDF"
+  bool produces_layout = 4;
+  bool ocr_capable = 5;
+}
+
+message ListSourceFormatsReply {
+  repeated SourceFormat formats = 1;
+  int64 max_bytes = 2;
 }
 
 message SubmitRunRequest {

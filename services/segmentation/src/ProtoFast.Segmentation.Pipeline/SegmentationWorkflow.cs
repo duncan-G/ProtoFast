@@ -1,5 +1,6 @@
 using Microsoft.Agents.AI.Workflows;
 using ProtoFast.Segmentation.Pipeline.Executors;
+using ProtoFast.Segmentation.Routing;
 
 namespace ProtoFast.Segmentation.Pipeline;
 
@@ -37,7 +38,13 @@ public sealed class SegmentationWorkflowFactory(
     {
         var builder = new WorkflowBuilder(ingest)
             .WithName("segmentation")
-            .WithDescription("Hierarchical document segmentation (docs/theplot-segmentation-plan.md)");
+            .WithDescription("Hierarchical document segmentation (docs/theplot-segmentation-plan.md)")
+            // Spans for the build, the run, each superstep and each executor, on the
+            // Microsoft.Agents.AI.Workflows source. Unlike the chat-client instrumentation this one
+            // has no environment default of its own, so the same variable is applied by hand — see
+            // GenAiTelemetry. With it off the spans still describe the graph; what they omit is the
+            // message payloads moving along the edges.
+            .WithOpenTelemetry(o => o.EnableSensitiveData = GenAiTelemetry.CaptureMessageContent);
 
         builder
             .AddEdge(ingest, clean)

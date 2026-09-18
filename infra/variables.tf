@@ -203,5 +203,6 @@ variable "ecr_repositories" {
     "protofast-otel-collector",
     "protofast-segmentation",
     "protofast-segmentation-migrations",
+    "protofast-conversion",
   ]
 }

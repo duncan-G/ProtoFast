@@ -70,6 +70,7 @@ public sealed class StructurerAgent(
         var prompt = new PromptTemplate(runner.Assets.Template("structurer.v1"))
             .Set("rules", runner.Assets.Rules)
             .Set("skill", runner.Assets.Skill("hierarchy-inference"))
+            .Set("schema", runner.Assets.Schema("tree"))
             .Set("familySkill", runner.Assets.FamilySkill(context.Family))
             .Set("instincts", RenderInstincts(context.Instincts))
             .Set("skeleton", skeleton)
@@ -223,6 +224,7 @@ public sealed class StructurerAgent(
         new PromptTemplate(runner.Assets.Template("tree-repair.v1"))
             .Set("rules", runner.Assets.Rules)
             .Set("skill", runner.Assets.Skill("tree-repair"))
+            .Set("schema", runner.Assets.Schema("tree"))
             .Set("errorReport", errorReport)
             .Set("artifact", ModelJson.Extract(previousReply))
             .Set("scope", string.Join(", ", scope))
@@ -234,12 +236,18 @@ public sealed class StructurerAgent(
             ModelTier.Large, context.Sensitivity,
             EstimatedInputTokens: 2_000 + skeletonChars / 4,
             // The tree is several times the skeleton's size: every paragraph id reappears, wrapped
-            // in JSON, plus the titles the model invents.
-            MaxOutputTokens: Math.Max(2_048, entryCount * 24))
+            // in JSON, plus the titles the model invents. A heading entry costs more than a
+            // paragraph one — it becomes a whole section node — so the per-entry figure is an
+            // average with slack in it. Thinking tokens are NOT counted here: the router adds the
+            // chosen model's reasoning reserve on top, because how much a model thinks is a
+            // property of the model, not of the artifact this agent is asking for.
+            MaxOutputTokens: Math.Max(4_096, entryCount * 32))
         {
             PinnedModelKey = context.PinnedStructurerKey,
             PromptVersion = runner.Assets.VersionFor(AgentRole.Structurer),
             Unit = $"skeleton:{entryCount}",
+            OutputSchema = runner.Assets.WireSchemaElement("tree"),
+            OutputSchemaName = "tree",
         };
 
     private static string RenderInstincts(IReadOnlyList<string> instincts) =>
