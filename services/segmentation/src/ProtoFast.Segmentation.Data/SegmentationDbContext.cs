@@ -44,6 +44,7 @@ public sealed class SegmentationDbContext(DbContextOptions<SegmentationDbContext
             entity.Property(r => r.OwnerSubject).IsRequired().HasMaxLength(255);
             entity.Property(r => r.DocumentId).IsRequired().HasMaxLength(255);
             entity.Property(r => r.DocumentFamily).IsRequired().HasMaxLength(64);
+            entity.Property(r => r.CompositionFamily).IsRequired().HasMaxLength(64);
             entity.Property(r => r.UploadId).IsRequired().HasMaxLength(64);
             entity.Property(r => r.IdempotencyKey).IsRequired().HasMaxLength(128);
             entity.Property(r => r.ReviewState).IsRequired().HasMaxLength(16);
@@ -154,7 +155,13 @@ public sealed class SegmentationDbContext(DbContextOptions<SegmentationDbContext
             entity.Property(i => i.Family).IsRequired().HasMaxLength(64);
             entity.Property(i => i.Pattern).IsRequired().HasMaxLength(512);
             entity.Property(i => i.Guidance).IsRequired().HasMaxLength(1024);
-            entity.HasIndex(i => new { i.Family, i.Pattern }).IsUnique();
+            entity.Property(i => i.Axis).HasConversion<string>().HasMaxLength(16);
+            entity.Property(i => i.Scope).HasConversion<string>().HasMaxLength(16);
+
+            // Keyed by all four, not by (family, pattern): the same words can be a true production
+            // instinct and a false composition one, and one row for both would let a correction about
+            // a publisher's template reach an agent reasoning about the kind of work (scene plan §7.1).
+            entity.HasIndex(i => new { i.Family, i.Axis, i.Scope, i.Pattern }).IsUnique();
         });
 
         modelBuilder.Entity<CapabilityGap>(entity =>
@@ -187,6 +194,13 @@ public sealed class SegmentationDbContext(DbContextOptions<SegmentationDbContext
             entity.Property(r => r.TreeJson).HasColumnType("jsonb");
             entity.Property(r => r.ParagraphsJson).HasColumnType("jsonb");
             entity.Property(r => r.AugmentationsJson).HasColumnType("jsonb");
+            // The scene layers carry a SQL default as well as a CLR one, because the column is
+            // added to a table that already has rows: a run published before the scene phases
+            // existed has no scenes, and "[]" is the answer to what it has rather than a null to
+            // be checked for at every read.
+            entity.Property(r => r.ScenesJson).HasColumnType("jsonb").HasDefaultValue("[]");
+            entity.Property(r => r.ItemsJson).HasColumnType("jsonb").HasDefaultValue("[]");
+            entity.Property(r => r.RegistriesJson).HasColumnType("jsonb").HasDefaultValue("{}");
             entity.HasIndex(r => new { r.OwnerSubject, r.DocumentId });
         });
 

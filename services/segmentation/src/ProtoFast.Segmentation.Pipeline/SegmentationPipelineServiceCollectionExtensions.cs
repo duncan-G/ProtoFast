@@ -50,6 +50,22 @@ public static class SegmentationPipelineServiceCollectionExtensions
         services.AddSingleton<StructureReviewerAgent>();
         services.AddSingleton<AugmenterAgent>();
 
+        // The five scene phases (scene plan §8.1). Two of them are orchestrations — phase 9 because
+        // coreference cannot be made local, phase 11 because a link's two endpoints cannot be forced
+        // into one window — and the other three are fan-outs whose joins a window planner guarantees.
+        services.AddSingleton<SceneContextFactory>();
+        services.AddSingleton<PresentationClassifierAgent>();
+        services.AddSingleton<ItemTyperAgent>();
+        services.AddSingleton<PersonaWindowerAgent>();
+        services.AddSingleton<PersonaOrchestratorAgent>();
+        services.AddSingleton<PersonaBench>();
+        services.AddSingleton<PersonaOrchestration>();
+        services.AddSingleton<SceneCutterAgent>();
+        services.AddSingleton<SceneLinkWindowerAgent>();
+        services.AddSingleton<SceneLinkOrchestratorAgent>();
+        services.AddSingleton<SceneLinkBench>();
+        services.AddSingleton<SceneLinkOrchestration>();
+
         services.AddSingleton<RunArtifacts>();
         services.AddSingleton<RunJournal>();
         services.AddSingleton<PhaseGate>();
@@ -60,8 +76,13 @@ public static class SegmentationPipelineServiceCollectionExtensions
         services.AddSingleton<TriageExecutor>();
         services.AddSingleton<LabelExecutor>();
         services.AddSingleton<AssembleExecutor>();
+        services.AddSingleton<PresentationExecutor>();
         services.AddSingleton<StructureExecutor>();
         services.AddSingleton<ValidateExecutor>();
+        services.AddSingleton<ItemExecutor>();
+        services.AddSingleton<PersonaExecutor>();
+        services.AddSingleton<SceneCutExecutor>();
+        services.AddSingleton<SceneLinkExecutor>();
         services.AddSingleton<StructureReviewExecutor>();
         services.AddSingleton<HumanGateExecutor>();
         services.AddSingleton<GateResumeExecutor>();
@@ -74,6 +95,11 @@ public static class SegmentationPipelineServiceCollectionExtensions
         // Augmentation types are registered as a set so a new type is one AddSingleton away and
         // the catalogue needs no edit (plan §12.1).
         services.AddSingleton<IAugmentationType, KeyPointsAugmentation>();
+
+        // The re-writer is a TYPE, not a phase and not a role (scene plan §3.6). It runs under
+        // AgentRole.Augmenter and is reviewed by AugmentReviewer, so adding it costs one line here
+        // and nothing in the router, the qualification table or the model registry.
+        services.AddSingleton<IAugmentationType, RenderTextAugmentation>();
         services.AddSingleton<IAugmentationCatalogue, AugmentationCatalogue>();
 
         return services;

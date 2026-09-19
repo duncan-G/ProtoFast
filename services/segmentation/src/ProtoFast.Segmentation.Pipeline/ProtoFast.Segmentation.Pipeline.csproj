@@ -17,8 +17,16 @@
          so "skills/layout-labeling/SKILL.md" becomes "…skills.layout_labeling.SKILL.md", with the
          hyphen silently gone from the directory but kept in the filename. Replicating that rule in
          the loader would be a second place to get it wrong; pinning the name to the path means the
-         string in PromptAssets.Read IS the file on disk. -->
-    <EmbeddedResource Include="Assets\**\*.md;Assets\**\*.json"
+         string in PromptAssets.Read IS the file on disk.
+
+         WithCulture="false" is load-bearing for one file and will be for every one added beside it.
+         MSBuild infers a culture from a dotted infix, so "rules/closed-class.en.txt" is read as a
+         SATELLITE resource for English and compiled into en/…resources.dll rather than into this
+         assembly — where PromptAssets cannot see it, with no error anywhere. The closed-class
+         allowlist is named per language by design (scene plan §3.7), so every language added would
+         vanish the same way. -->
+    <EmbeddedResource Include="Assets\**\*.md;Assets\**\*.json;Assets\**\*.txt"
+                      WithCulture="false"
                       LogicalName="Assets/$([System.String]::Copy('%(RecursiveDir)').Replace('\','/'))%(Filename)%(Extension)" />
   </ItemGroup>
 

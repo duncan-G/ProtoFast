@@ -17,6 +17,21 @@ public sealed record AugmentationContext(
     string ParagraphText);
 
 /// <summary>
+/// What one <b>item-scoped</b> augmentation call sees (scene plan §10).
+///
+/// <para><see cref="ParagraphText"/> is the frozen paragraph, so the item's offsets resolve;
+/// <see cref="ResolvedPersonas"/> is exactly those the item's <em>own</em> tags bind, which is what
+/// row two of the grounding rule admits (§3.7). Together with the item's span that is the
+/// re-writer's entire input — which is why placing it after the freeze costs nothing: a frozen item
+/// already carries all of it, so reading it later is a read rather than a re-derivation.</para>
+/// </summary>
+public sealed record ItemAugmentationContext(
+    SceneItem Item,
+    string ParagraphText,
+    IReadOnlyList<Persona> ResolvedPersonas,
+    string SceneId);
+
+/// <summary>
 /// The pluggable augmentation contract (plan §12.1). A type supplies a skill, a schema and its
 /// own acceptance checks; everything else — fan-out, batching, idempotency, review sampling — is
 /// the pipeline's and is identical for every type.
@@ -27,6 +42,14 @@ public interface IAugmentationType
     string Name { get; }
 
     ModelTier Tier { get; }
+
+    /// <summary>
+    /// What one call covers (scene plan §10). <b>Granularity is a property of the type, not of the
+    /// pipeline</b>: the contract was already pluggable, so admitting item, scene, section and
+    /// persona scope costs a property rather than an architecture, and no single granularity is
+    /// imposed on every type.
+    /// </summary>
+    AugmentationScope Scope => AugmentationScope.Paragraph;
 
     /// <summary>Path under <c>Assets/</c>, e.g. <c>skills/augment/key-points/SKILL.md</c>.</summary>
     string SkillPath { get; }
@@ -59,6 +82,25 @@ public interface IAugmentationType
         paragraph.Kind is not (ParagraphKind.Table or ParagraphKind.Code or ParagraphKind.Equation)
         && paragraph.WordCount >= MinParagraphWords
         && paragraph.WordCount <= MaxParagraphWords;
+}
+
+/// <summary>
+/// An augmentation type whose unit is the <see cref="SceneItem"/> rather than the paragraph
+/// (scene plan §10). <c>aug-grounding</c> reads "its own target id" where it read "its own
+/// paragraph id", and the rest of the contract is unchanged.
+/// </summary>
+public interface IItemAugmentationType : IAugmentationType
+{
+    AugmentationScope IAugmentationType.Scope => AugmentationScope.Item;
+
+    /// <summary>True when this item should be augmented at all — the type's own selector.</summary>
+    bool Applies(SceneItem item);
+
+    ItemAugmentationContext BuildContext(
+        SceneItem item, string paragraphText, IReadOnlyList<Persona> personas, string sceneId);
+
+    /// <summary>The type's acceptance criteria over an item's output.</summary>
+    IEnumerable<ValidationResult> Validate(ItemAugmentationContext context, JsonElement output);
 }
 
 /// <summary>Resolves a configured augmentation name to its implementation.</summary>

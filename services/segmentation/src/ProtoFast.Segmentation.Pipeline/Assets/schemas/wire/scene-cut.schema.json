@@ -1,0 +1,90 @@
+{
+  "type": "object",
+  "required": [
+    "boundaries",
+    "scenes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "boundaries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/boundary"
+      }
+    },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/scene"
+      }
+    }
+  },
+  "$defs": {
+    "boundary": {
+      "type": "object",
+      "required": [
+        "beforeItemId",
+        "keep",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "beforeItemId": {
+          "type": "string"
+        },
+        "keep": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "scene": {
+      "type": "object",
+      "required": [
+        "firstItemId",
+        "placeId",
+        "subject",
+        "timeRelation",
+        "timeAnchor",
+        "title",
+        "evidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "firstItemId": {
+          "type": "string"
+        },
+        "placeId": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "timeRelation": {
+          "enum": [
+            "continuous",
+            "gap",
+            "earlier",
+            "later",
+            "simultaneous",
+            "unanchored"
+          ]
+        },
+        "timeAnchor": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

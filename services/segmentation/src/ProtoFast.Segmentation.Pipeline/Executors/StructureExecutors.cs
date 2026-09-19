@@ -2,6 +2,8 @@ using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ProtoFast.Segmentation.Core.Assembly;
+using ProtoFast.Segmentation.Core.Classification;
+using ProtoFast.Segmentation.Core.Families;
 using ProtoFast.Segmentation.Core.Model;
 using ProtoFast.Segmentation.Core.Options;
 using ProtoFast.Segmentation.Core.Tree;
@@ -12,7 +14,7 @@ using ProtoFast.Segmentation.Storage;
 namespace ProtoFast.Segmentation.Pipeline.Executors;
 
 /// <summary>
-/// Phase 5 (plan §9.7): build the section tree.
+/// Phase 6 (plan §9.7): build the section tree.
 ///
 /// <para>Where the source already has a coherent heading hierarchy and triage found nothing
 /// suspect, the tree is built deterministically and no model is called at all. That is the plan's
@@ -30,10 +32,10 @@ public sealed class StructureExecutor(
     FamilyInstincts instincts,
     IOptions<PipelineOptions> options,
     ILogger<StructureExecutor> logger)
-    : Executor<AssembleComplete, StructureComplete>(ExecutorIds.Structure, declareCrossRunShareable: true)
+    : Executor<PresentationComplete, StructureComplete>(ExecutorIds.Structure, declareCrossRunShareable: true)
 {
     public override async ValueTask<StructureComplete> HandleAsync(
-        AssembleComplete message, IWorkflowContext context, CancellationToken cancellationToken = default)
+        PresentationComplete message, IWorkflowContext context, CancellationToken cancellationToken = default)
     {
         // Both roles, because both produce the tree. Keying the phase on the structurer's version
         // alone would make an orchestrated run "already done" after the windower or orchestrator
@@ -209,7 +211,9 @@ public sealed class StructureExecutor(
 }
 
 /// <summary>
-/// Phase 6 (plan §9.8): run every check, and repair what fails.
+/// Phase 7 (plan §9.8, scene plan §8.1): run every check, repair what fails, and derive the family
+/// scopes from phase 5's evidence — in code, with no second detector and no extra model call
+/// (scene plan §6.1).
 ///
 /// <para>The repair loop is bounded by a counter in the database rather than in memory, so a
 /// resumed run does not get a fresh budget of provider calls. When the rounds are exhausted the
@@ -246,6 +250,30 @@ public sealed class ValidateExecutor(
         var report = Checks.CheckAll(
             cleaning, labels, assembly.Paragraphs, assembly.Headings, tree.Root,
             options.Value.Paragraphs, waived);
+
+        // Family scopes, derived here and in code (scene plan §6.1). A scope root is a claim about a
+        // SECTION, so it cannot be made before the tree exists — but phase 5 already emitted the
+        // evidence for it, and this is the phase that holds both the tree and the validation
+        // machinery. No second detector, no extra model call.
+        var scopes = await DeriveFamilyScopesAsync(message.RunId, tree.Root, key, cancellationToken);
+
+        var scopeReport = new ValidationReport(
+        [
+            .. report.Results,
+            SceneChecks.CheckFamilyScope(
+                tree.Root, scopes.Scopes, scopes.RunFamily, options.Value.FamilyScopes),
+        ]);
+
+        var homogeneity = SceneChecks.CheckFamilyHomogeneity(
+            tree.Root, scopes.Evidence, scopes.Scopes, scopes.RunFamily, options.Value.FamilyScopes);
+
+        if (!homogeneity.Passed)
+        {
+            await journal.NoteAsync(
+                message.RunId, PipelinePhase.Validate, homogeneity.ErrorReport, cancellationToken);
+        }
+
+        report = scopeReport;
 
         var artifact = await artifacts.WriteValidationAsync(message.RunId, report, key, cancellationToken);
 
@@ -302,19 +330,51 @@ public sealed class ValidateExecutor(
         _ = structurer;
         return new ValidationComplete(message.RunId, artifact, Passed: false);
     }
+
+    /// <summary>
+    /// Attributes phase 5's per-paragraph evidence to the tree and writes the scopes (scene plan
+    /// §6.1). A single-family document produces none, and the resolution then terminates at the root
+    /// for every consumer.
+    /// </summary>
+    private async Task<(IReadOnlyList<FamilyScope> Scopes, IReadOnlyList<FamilyEvidence> Evidence, string RunFamily)>
+        DeriveFamilyScopesAsync(string runId, SectionNode root, string key, CancellationToken ct)
+    {
+        var evidence = await artifacts.ReadFamilyEvidenceAsync(runId, ct);
+        var presentation = await artifacts.ReadPresentationAsync(runId, ct);
+        var runFamily = presentation?.CompositionFamily ?? CompositionFamily.Unknown;
+
+        if (evidence.Count == 0)
+        {
+            return ([], [], runFamily);
+        }
+
+        var scopes = FamilyScopeDeriver.Derive(root, evidence, runFamily, options.Value.FamilyScopes);
+
+        await artifacts.WriteFamilyScopesAsync(runId, scopes, key, ct);
+
+        if (scopes.Count > 0)
+        {
+            logger.LogInformation(
+                "Run {RunId}: {Scopes} family scopes derived from paragraph evidence; "
+                + "personas will not merge across them.",
+                runId, scopes.Count);
+        }
+
+        return (scopes, evidence, runFamily);
+    }
 }
 
-/// <summary>Phase 7 (plan §9.9): a second opinion on the tree, and the decision to gate or not.</summary>
+/// <summary>Phase 12 (plan §9.9): a second opinion on the tree, and the decision to gate or not.</summary>
 public sealed class StructureReviewExecutor(
     RunArtifacts artifacts,
     RunJournal journal,
     StructureReviewerAgent reviewer,
     HumanGatePolicy gatePolicy,
     ILogger<StructureReviewExecutor> logger)
-    : Executor<ValidationComplete, ReviewComplete>(ExecutorIds.StructureReview, declareCrossRunShareable: true)
+    : Executor<LinksComplete, ReviewComplete>(ExecutorIds.StructureReview, declareCrossRunShareable: true)
 {
     public override async ValueTask<ReviewComplete> HandleAsync(
-        ValidationComplete message, IWorkflowContext context, CancellationToken cancellationToken = default)
+        LinksComplete message, IWorkflowContext context, CancellationToken cancellationToken = default)
     {
         var key = IdempotencyKeys.Phase(message.RunId, PipelinePhase.ReviewStructure);
         await journal.StartAsync(message.RunId, PipelinePhase.ReviewStructure, key, cancellationToken);
@@ -360,7 +420,8 @@ public sealed class StructureReviewExecutor(
         var highSeverity = findings.Count(f => f.Severity == FindingSeverity.High);
 
         var requiresHuman = await gatePolicy.RequiresHumanAsync(
-            run, validationPassed: message.Passed, unresolvedHighFindings: highSeverity, cancellationToken);
+            run, validationPassed: message.ValidationPassed, unresolvedHighFindings: highSeverity,
+            cancellationToken);
 
         logger.LogInformation(
             "Run {RunId}: review verdict {Verdict} with {Findings} findings ({High} high); human gate: {Gate}",

@@ -56,10 +56,42 @@ var segmentationDb = postgres
 
 var redis = builder.AddRedis("redis");
 
+if (!builder.ExecutionContext.IsPublishMode)
+{
+    // Redis is not only a cache here: sessions, sign-in correlation, the replay guard and pending
+    // email changes all live in it and nowhere else (RedisSessionStore, RedisCorrelationStore,
+    // RedisReplayGuard, RedisEmailChangeStore). The container is rebuilt from the image on every
+    // `aspire run`, so without a volume every restart signs out every browser holding a
+    // pf_session cookie and strands any half-finished sign-in or email change. WithDataVolume
+    // mounts /data and turns on RDB snapshots, so the last snapshot is reloaded on start instead.
+    //
+    // Production deliberately runs Redis in-memory only (deploy/docker-compose.host-services.yml,
+    // decision D3) — restarts there are deploys, not the dozen-a-day they are here.
+    redis.WithDataVolume();
+}
+
 // S3 and SQS for the segmentation feature. `aspire run` has to start the whole thing, or the
 // feature will only ever be tested in prod (plan §22).
 const string segmentationBucket = "protofast-segmentation-dev";
 var localstack = builder.AddLocalStack("localstack", segmentationBucket, awsRegion);
+
+if (!builder.ExecutionContext.IsPublishMode)
+{
+    // A volume would not help here: LocalStack's community edition keeps every bucket and queue in
+    // memory, and reloading them on start is a Pro feature. So the container itself is what has to
+    // survive — Persistent makes Aspire reuse the running one instead of tearing it down at Ctrl+C
+    // and creating a fresh, empty one on the next `aspire run`.
+    //
+    // What it saves is not incidental: segmentation runs are rows in Postgres that point at S3
+    // keys, and Postgres does persist. An emptied LocalStack leaves every earlier run in the list
+    // with its source document and artifacts 404ing — a torn state that reads as a bug in the app
+    // rather than as the restart it actually is.
+    //
+    // scripts/localstack-init.sh stays as it was, and is written to be re-runnable: Aspire skips
+    // it on a reused container, and LocalStack runs it again whenever the container really does
+    // start from scratch.
+    localstack.WithLifetime(ContainerLifetime.Persistent);
+}
 
 var keycloak = builder.AddKeycloak("keycloak", 8080)
     .WithImageTag("26.7")
@@ -101,6 +133,22 @@ var keycloak = builder.AddKeycloak("keycloak", 8080)
     // session-persistence tasks not tied to an incoming request, so they're just
     // noise. Keeps the request-scoped auth/sign-in spans intact.
     .WithEnvironment("KC_TRACING_INFINISPAN_ENABLED", "false");
+
+if (!builder.ExecutionContext.IsPublishMode)
+{
+    // Every account, passkey and active session Keycloak holds lives in its dev-file H2 database
+    // under /opt/keycloak/data — inside the container, which Aspire rebuilds from the image on
+    // every `aspire run`. Without this volume the whole identity store is a fresh one each time:
+    // the passkey the browser still offers has no credential behind it, and the account it was
+    // registered against no longer exists. Production keeps the same state in Postgres
+    // (deploy/docker-compose.host-services.yml); this is the local equivalent of that durability,
+    // not a second copy of it.
+    //
+    // The realm import is unaffected in the ordinary case and skips a realm that already exists,
+    // which is the one workflow this costs: an edit to infra/keycloak/realms/*.json now needs the
+    // volume removed before it is picked up. See docs/02-local-development.md.
+    keycloak.WithDataVolume();
+}
 
 IResourceBuilder<ContainerResource>? smtp4dev = null;
 if (!builder.ExecutionContext.IsPublishMode)

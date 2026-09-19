@@ -1,0 +1,128 @@
+{
+  "type": "object",
+  "required": [
+    "registry",
+    "followUps",
+    "gaps"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "registry": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/row"
+      }
+    },
+    "followUps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/followUp"
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/gap"
+      }
+    }
+  },
+  "$defs": {
+    "row": {
+      "type": "object",
+      "required": [
+        "candidates",
+        "canonicalName",
+        "kind",
+        "scope",
+        "formation"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "canonicalName": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "individual",
+            "group"
+          ]
+        },
+        "scope": {
+          "enum": [
+            "persistent",
+            "scene-local"
+          ]
+        },
+        "formation": {
+          "enum": [
+            "",
+            "enumerated",
+            "named"
+          ]
+        }
+      }
+    },
+    "followUp": {
+      "type": "object",
+      "required": [
+        "kind",
+        "node",
+        "relatedNode"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "introduced_earlier",
+            "canonical_form",
+            "group_check",
+            "scope_check"
+          ]
+        },
+        "node": {
+          "type": "string"
+        },
+        "relatedNode": {
+          "type": "string"
+        }
+      }
+    },
+    "gap": {
+      "type": "object",
+      "required": [
+        "kind",
+        "evidence",
+        "observation",
+        "proposal"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "deterministic",
+            "agent",
+            "prompt"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "observation": {
+          "type": "string"
+        },
+        "proposal": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

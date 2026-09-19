@@ -16,6 +16,12 @@ public static partial class Ids
     public const string LinePrefix = "L";
     public const string ParagraphPrefix = "P";
     public const string SectionPrefix = "S";
+    public const string ItemPrefix = "I";
+    public const string TagPrefix = "T";
+    public const string PersonaPrefix = "PR";
+    public const string PlacePrefix = "PL";
+    public const string ExhibitPrefix = "EX";
+    public const string ScenePrefix = "SC";
 
     /// <summary>Zero-padded and monotonic: <c>L000412</c>.</summary>
     public static string Line(int index) => LinePrefix + index.ToString("D6", CultureInfo.InvariantCulture);
@@ -37,7 +43,44 @@ public static partial class Ids
         return parentParagraphId + (char)('a' + ordinal);
     }
 
+    /// <summary><c>I000431</c> (scene plan §10).</summary>
+    public static string Item(int index) => ItemPrefix + index.ToString("D6", CultureInfo.InvariantCulture);
+
+    /// <summary><c>T000431</c>.</summary>
+    public static string Tag(int index) => TagPrefix + index.ToString("D6", CultureInfo.InvariantCulture);
+
+    /// <summary><c>PR003</c>.</summary>
+    public static string Persona(int index) => PersonaPrefix + index.ToString("D3", CultureInfo.InvariantCulture);
+
+    /// <summary><c>PL003</c>.</summary>
+    public static string Place(int index) => PlacePrefix + index.ToString("D3", CultureInfo.InvariantCulture);
+
+    /// <summary><c>EX003</c>.</summary>
+    public static string Exhibit(int index) => ExhibitPrefix + index.ToString("D3", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// <c>SC0012</c> — but derived from the first item's <c>(ParagraphId, StartOffset)</c> rather
+    /// than from a counter (C10). Two scenes may begin in one paragraph, which a bare paragraph id
+    /// cannot distinguish, and anchoring the id to the hashed artifact is what makes it survive a
+    /// re-run that re-cut the items and left the text alone (K2).
+    ///
+    /// <para>The ordinal is kept as the readable part and the anchor as the discriminator, so the
+    /// id sorts in document order <em>and</em> two scenes starting in one paragraph differ.</para>
+    /// </summary>
+    public static string Scene(int ordinal, string firstParagraphId, int startOffset)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(firstParagraphId);
+        ArgumentOutOfRangeException.ThrowIfNegative(startOffset);
+
+        var anchor = Sha256Hex($"{firstParagraphId}:{startOffset.ToString(CultureInfo.InvariantCulture)}")[..6];
+        return ScenePrefix + ordinal.ToString("D4", CultureInfo.InvariantCulture) + "-" + anchor;
+    }
+
     public static bool IsLineId(string value) => LineIdPattern().IsMatch(value);
+
+    public static bool IsItemId(string value) => ItemIdPattern().IsMatch(value);
+
+    public static bool IsSceneId(string value) => SceneIdPattern().IsMatch(value);
 
     public static bool IsParagraphId(string value) => ParagraphIdPattern().IsMatch(value);
 
@@ -87,4 +130,10 @@ public static partial class Ids
 
     [GeneratedRegex(@"^S\d{4}[a-z]*$")]
     private static partial Regex SectionIdPattern();
+
+    [GeneratedRegex(@"^I\d{6}$")]
+    private static partial Regex ItemIdPattern();
+
+    [GeneratedRegex(@"^SC\d{4}-[0-9a-f]{6}$")]
+    private static partial Regex SceneIdPattern();
 }

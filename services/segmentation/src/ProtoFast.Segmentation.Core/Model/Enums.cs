@@ -122,6 +122,34 @@ public enum AgentRole
     Augmenter,
     AugmentReviewer,
     ParagraphSummarizer,
+
+    /// <summary>Separates displayable text from metadata, over candidates only (scene plan §8.5).</summary>
+    PresentationClassifier,
+
+    /// <summary>
+    /// Partitions displayable paragraphs into typed items with candidate tags (scene plan §8.6).
+    /// It never resolves a referent — that is phase 9's job, and splitting the work is what breaks
+    /// the circularity between cast and speech attribution (§8.4).
+    /// </summary>
+    ItemTyper,
+
+    /// <summary>Clusters surface forms inside one window of paragraphs (scene plan §8.7).</summary>
+    PersonaWindower,
+
+    /// <summary>
+    /// Decides whether window 3's "the professor" is window 1's "Dr. Vance" — the join no window
+    /// planner can guarantee, which is exactly the test that makes phase 9 an orchestration (§8.2).
+    /// </summary>
+    PersonaOrchestrator,
+
+    /// <summary>Assigns Setting and Subject and confirms the deterministic boundaries (scene plan §8.8).</summary>
+    SceneCutter,
+
+    /// <summary>Proposes links inside a window of scene digests (scene plan §8.9).</summary>
+    SceneLinkWindower,
+
+    /// <summary>Settles the links whose two endpoints cannot be forced into one window (§8.9).</summary>
+    SceneLinkOrchestrator,
 }
 
 public enum PhaseState
@@ -134,8 +162,13 @@ public enum PhaseState
 }
 
 /// <summary>
-/// The twelve pipeline phases of plan §9.1, in order. The numeric values are the artifact
+/// The eighteen pipeline phases of scene plan §8.1, in order. The numeric values are the artifact
 /// prefixes (<c>00_lines.jsonl</c>…) and the <c>RerunFrom</c> argument, so they are pinned.
+///
+/// <para>The five scene phases are inserted rather than appended, which renumbers everything from
+/// <see cref="ClassifyPresentation"/> onwards. That is safe in storage — <c>RunPhase.Phase</c> is
+/// persisted by name, not by value — and it is what keeps the artifact prefixes in reading order,
+/// which is the whole reason the numbers are the prefixes.</para>
 /// </summary>
 public enum PipelinePhase
 {
@@ -144,14 +177,36 @@ public enum PipelinePhase
     Triage = 2,
     Label = 3,
     Assemble = 4,
-    InferStructure = 5,
-    Validate = 6,
-    ReviewStructure = 7,
-    HumanGate = 8,
-    Freeze = 9,
-    Augment = 10,
-    ReviewAugmentation = 11,
-    Publish = 12,
+
+    /// <summary>
+    /// Separate displayable text from metadata, and emit the per-paragraph family evidence
+    /// (scene plan §8.5). Before structure inference deliberately: front matter inferred <em>as
+    /// sections</em> is noise in the tree, and withholding it first makes the tree both smaller
+    /// and better.
+    /// </summary>
+    ClassifyPresentation = 5,
+
+    InferStructure = 6,
+    Validate = 7,
+
+    /// <summary>Partition displayable paragraphs into typed items with candidate tags (§8.6).</summary>
+    TypeItems = 8,
+
+    /// <summary>Cluster surface forms into personas and bind every tag to a registry id (§8.7).</summary>
+    ResolveReferents = 9,
+
+    /// <summary>Assign situations and cut scene boundaries (§8.8).</summary>
+    CutScenes = 10,
+
+    /// <summary>Infer the scene links a coordinate cannot derive (§8.9). Skippable, usually skipped.</summary>
+    LinkScenes = 11,
+
+    ReviewStructure = 12,
+    HumanGate = 13,
+    Freeze = 14,
+    Augment = 15,
+    ReviewAugmentation = 16,
+    Publish = 17,
 }
 
 public enum ReviewDecisionKind

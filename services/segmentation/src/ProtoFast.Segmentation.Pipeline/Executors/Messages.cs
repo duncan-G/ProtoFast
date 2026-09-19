@@ -39,9 +39,36 @@ public sealed record LabelsMerged(string RunId, ArtifactRef Labels);
 
 public sealed record AssembleComplete(string RunId, ArtifactRef Paragraphs, ArtifactRef Headings);
 
+/// <summary>Phase 5's outcome; the composition family travels with it, re-confirmed from paragraphs (§6).</summary>
+public sealed record PresentationComplete(
+    string RunId, ArtifactRef Presentation, string CompositionFamily, int MetadataParagraphs);
+
 public sealed record StructureComplete(string RunId, ArtifactRef Tree, string? ModelKey);
 
 public sealed record ValidationComplete(string RunId, ArtifactRef Report, bool Passed);
+
+/// <summary>Phase 8's outcome (scene plan §8.6).</summary>
+public sealed record ItemsComplete(string RunId, ArtifactRef Items, int ItemCount, bool ValidationPassed);
+
+/// <summary>Phase 9's outcome (scene plan §8.7).</summary>
+public sealed record ReferentsComplete(
+    string RunId, ArtifactRef Registries, int PersonaCount, bool ValidationPassed);
+
+/// <summary>
+/// Phase 10's outcome (scene plan §8.8). <see cref="SuppressedByFloor"/> is
+/// <c>scene-cuts-suppressed-by-floor</c> — the entire tuning signal for <c>MinSceneSpan</c>, and
+/// the measurement S4 sweeps against.
+/// </summary>
+public sealed record ScenesComplete(
+    string RunId, ArtifactRef Scenes, int SceneCount, int SuppressedByFloor, bool ValidationPassed);
+
+/// <summary>
+/// Phase 11's outcome (scene plan §8.9). <see cref="ModelCalls"/> is zero on a document whose
+/// deterministic pass found no candidates, which is most textbooks and most transcripts — and the
+/// tripwire §13 watches.
+/// </summary>
+public sealed record LinksComplete(
+    string RunId, ArtifactRef Links, int LinkCount, int ModelCalls, bool ValidationPassed);
 
 public sealed record ReviewComplete(string RunId, ArtifactRef Review, bool RequiresHuman);
 

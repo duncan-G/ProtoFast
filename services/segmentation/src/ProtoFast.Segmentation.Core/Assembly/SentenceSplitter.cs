@@ -65,6 +65,70 @@ public static partial class SentenceSplitter
         return sentences;
     }
 
+    /// <summary>
+    /// The same scan as <see cref="Split"/>, reported as half-open character ranges that
+    /// <b>partition</b> the text — each range runs to the start of the next, so inter-sentence
+    /// whitespace belongs to the sentence before it and no character is unaccounted for.
+    ///
+    /// <para>Item cutting needs the offsets rather than the strings (scene plan §3.3), and a
+    /// partition rather than a set of trimmed spans: <c>item-coverage</c> requires every character
+    /// of a displayable paragraph to lie in exactly one item, so a splitter that dropped the
+    /// spaces would make the gate unsatisfiable.</para>
+    /// </summary>
+    public static IReadOnlyList<(int Start, int End)> Spans(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return [];
+        }
+
+        var spans = new List<(int Start, int End)>();
+        var start = 0;
+
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (text[i] is not ('.' or '!' or '?'))
+            {
+                continue;
+            }
+
+            var end = i + 1;
+            while (end < text.Length && text[end] is '"' or '\'' or '”' or '’' or ')' or ']')
+            {
+                end++;
+            }
+
+            if (end < text.Length && !char.IsWhiteSpace(text[end]))
+            {
+                continue;
+            }
+
+            if (text[i] == '.' && IsAbbreviationOrNumber(text, i))
+            {
+                continue;
+            }
+
+            // Trailing whitespace joins the sentence it follows, which is what makes the result a
+            // partition. The alternative — a gap between sentences — would have to be assigned to
+            // one of them by every caller, in the same way, forever.
+            while (end < text.Length && char.IsWhiteSpace(text[end]))
+            {
+                end++;
+            }
+
+            spans.Add((start, end));
+            start = end;
+            i = end - 1;
+        }
+
+        if (start < text.Length)
+        {
+            spans.Add((start, text.Length));
+        }
+
+        return spans;
+    }
+
     /// <summary>Numbered sentences exactly as a prompt shows them, 1-based (plan §10.2).</summary>
     public static string Numbered(string text) =>
         string.Join('\n', Split(text).Select((sentence, i) => $"{i + 1}. {sentence}"));

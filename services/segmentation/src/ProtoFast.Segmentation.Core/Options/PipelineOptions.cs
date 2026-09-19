@@ -26,6 +26,109 @@ public sealed class PipelineOptions
     public CleaningOptions Cleaning { get; set; } = new();
 
     public StructureOptions Structure { get; set; } = new();
+
+    public PresentationOptions Presentation { get; set; } = new();
+
+    public ItemOptions Items { get; set; } = new();
+
+    public FamilyScopeOptions FamilyScopes { get; set; } = new();
+
+    public SceneCutOptions Scenes { get; set; } = new();
+
+    public SceneLinkOptions SceneLinks { get; set; } = new();
+}
+
+/// <summary>Phase 5 (scene plan §8.5).</summary>
+public sealed class PresentationOptions
+{
+    /// <summary>
+    /// Leading and trailing paragraphs offered to the classifier as candidates. Front matter is a
+    /// prefix and back matter a suffix — that is the invariant the window planner can guarantee,
+    /// and it is why the phase is a fan-out rather than an orchestration (§8.2).
+    /// </summary>
+    public int EdgeParagraphs { get; set; } = 40;
+
+    /// <summary>Below this the classifier's answer is kept but the paragraph is flagged (§5.2).</summary>
+    public double UncertainConfidence { get; set; } = 0.6;
+
+    /// <summary>The <c>metadata-recall</c> band a family's metadata rate is expected to fall in.</summary>
+    public double MinMetadataRate { get; set; } = 0.0;
+
+    public double MaxMetadataRate { get; set; } = 0.35;
+
+    public int FanOutBatchSize { get; set; } = 8;
+}
+
+/// <summary>Phase 8 (scene plan §8.6).</summary>
+public sealed class ItemOptions
+{
+    /// <summary>Displayable paragraphs per typing window; items never cross a paragraph (§8.2).</summary>
+    public int ParagraphsPerWindow { get; set; } = 12;
+
+    /// <summary>Paragraphs of read-only context on each side, as phase 3 does for lines.</summary>
+    public int WindowOverlapParagraphs { get; set; } = 2;
+
+    public int FanOutBatchSize { get; set; } = 8;
+}
+
+/// <summary>Phase 7's derivation of family scopes (scene plan §6.1).</summary>
+public sealed class FamilyScopeOptions
+{
+    /// <summary>Anthology stories and course-pack units sit at the top of the tree.</summary>
+    public int MaxFamilyScopeDepth { get; set; } = 2;
+
+    /// <summary>A three-paragraph vignette inside a textbook is an Enacted island, not a family.</summary>
+    public int MinFamilyScopeParagraphs { get; set; } = 60;
+
+    /// <summary>A volume holds tens of works; hundreds means the detector is chasing sections.</summary>
+    public int MaxFamilyScopes { get; set; } = 32;
+
+    /// <summary>
+    /// How far a subtree's evidence must sit from its parent's before the disagreement is a family
+    /// rather than noise. The learned band of <c>family-homogeneity</c> (§9).
+    /// </summary>
+    public double DisagreementBand { get; set; } = 0.35;
+}
+
+/// <summary>Phase 10 (scene plan §8.8).</summary>
+public sealed class SceneCutOptions
+{
+    /// <summary>Sentences (§3.5). The floor an unmarked mode change must clear to become a cut.</summary>
+    public int DefaultMinSceneSpan { get; set; } = 2;
+
+    /// <summary>
+    /// Priors for the S4 sweep rather than constants. The transcript is highest because the
+    /// passing aside is its characteristic failure [unit §7 case 2]; the textbook is low because
+    /// its short Enacted islands are precisely the spans a renderer wants; the screenplay is 1
+    /// because its mode changes are marked, so the floor never runs there anyway.
+    /// </summary>
+    public IDictionary<string, int> MinSceneSpanByFamily { get; set; }
+        = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+          { ["novel"] = 2, ["textbook"] = 2, ["transcript"] = 3, ["screenplay"] = 1 };
+
+    /// <summary>C14, advisory: paragraphs touched, kept as the human-legible measure.</summary>
+    public int OversizedSceneParagraphs { get; set; } = 40;
+
+    /// <summary>Beyond this, <c>deep-setting-inheritance</c> is raised for review [unit §3.1.1].</summary>
+    public int MaxInheritanceDepth { get; set; } = 3;
+
+    public int FanOutBatchSize { get; set; } = 8;
+}
+
+/// <summary>Phase 11 (scene plan §8.9).</summary>
+public sealed class SceneLinkOptions
+{
+    /// <summary>Caps the fan one scene can accumulate.</summary>
+    public int MaxLinksPerScene { get; set; } = 4;
+
+    public int FanOutBatchSize { get; set; } = 8;
+
+    public int MaxOrchestratorRounds { get; set; } = 3;
+
+    /// <summary>Consecutive scenes per link window, with overlap so a near frame stays in-window.</summary>
+    public int ScenesPerWindow { get; set; } = 40;
+
+    public int WindowOverlapScenes { get; set; } = 8;
 }
 
 /// <summary>

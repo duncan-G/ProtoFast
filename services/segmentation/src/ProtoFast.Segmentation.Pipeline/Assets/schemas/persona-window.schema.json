@@ -1,0 +1,82 @@
+{
+  "type": "object",
+  "required": [
+    "candidates",
+    "openQuestions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "candidates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/candidate"
+      }
+    },
+    "openQuestions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "candidate": {
+      "type": "object",
+      "required": [
+        "kind",
+        "surfaceForm",
+        "surfaceForms",
+        "tagIds",
+        "formation",
+        "members",
+        "membershipComplete",
+        "confidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "persona",
+            "group",
+            "place",
+            "exhibit-ref"
+          ]
+        },
+        "surfaceForm": {
+          "type": "string"
+        },
+        "surfaceForms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tagIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "formation": {
+          "enum": [
+            "",
+            "enumerated",
+            "named"
+          ]
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "membershipComplete": {
+          "type": "boolean"
+        },
+        "confidence": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}

@@ -64,8 +64,44 @@ public sealed record StructureWindowArtifact(
     IReadOnlyList<string> OpenQuestions,
     string? ModelKey);
 
-/// <summary>Phase 7's artifact.</summary>
+/// <summary>Phase 12's artifact.</summary>
 public sealed record ReviewArtifact(IReadOnlyList<Finding> Findings, string Verdict);
+
+/// <summary>
+/// Phase 5's artifact (scene plan §8.5). <see cref="CompositionFamily"/> is carried here rather
+/// than only on the run row because it is what this phase <em>re-confirmed</em> from paragraph-level
+/// evidence, and a reader of the artifact should not have to trust that the row still says the same.
+/// </summary>
+public sealed record PresentationArtifact(
+    IReadOnlyList<ParagraphPresentation> Presentations,
+    string CompositionFamily,
+    string? ModelKey);
+
+/// <summary>Phase 9's artifact: the three registries and which models produced them.</summary>
+public sealed record RegistriesArtifact(
+    Registries Registries,
+    string? WindowerModelKey,
+    string? OrchestratorModelKey);
+
+/// <summary>
+/// Phase 10's artifact. The two counters are measurements the plan asks for rather than decoration:
+/// <see cref="SuppressedByFloor"/> is <c>scene-cuts-suppressed-by-floor</c> (§8.8 rule 3), and the
+/// <c>Continues</c> pair is split by boundary provenance because a link across a trusted heading is
+/// expected while one across an inferred boundary is evidence the inference was wrong [unit §9].
+/// </summary>
+public sealed record ScenesArtifact(
+    IReadOnlyList<Scene> Scenes,
+    int SuppressedByFloor,
+    int ContinuesAcrossTrustedHeadings,
+    int ContinuesAcrossInferredBoundaries,
+    string? ModelKey);
+
+/// <summary>Phase 11's artifact. <see cref="ModelCalls"/> is zero on a skipped run (§8.9).</summary>
+public sealed record SceneLinksArtifact(
+    IReadOnlyList<SceneLink> Links,
+    int ModelCalls,
+    string? WindowerModelKey,
+    string? OrchestratorModelKey);
 
 /// <summary>
 /// Phase 9's artifact — the frozen document (plan §9.11). Written with an object-lock retention,
@@ -80,7 +116,45 @@ public sealed record FrozenDocument(
     IReadOnlyList<HeadingRecord> Headings,
     string TreeHash,
     string ParagraphsHash,
-    DateTimeOffset FrozenAt);
+    DateTimeOffset FrozenAt)
+{
+    /// <summary>
+    /// The scene layers, frozen under the same hash as the paragraphs and the tree (C10).
+    ///
+    /// <para>Init-only rather than positional because a run that predates the scene phases — or one
+    /// whose document yielded no displayable text — freezes with all of them empty, and a
+    /// constructor that required them would say that case is an error. It is not: a frozen document
+    /// with no scenes is a frozen document.</para>
+    /// </summary>
+    public IReadOnlyList<ParagraphPresentation> Presentations { get; init; } = [];
+
+    public IReadOnlyList<FamilyScope> FamilyScopes { get; init; } = [];
+
+    public IReadOnlyList<SceneItem> Items { get; init; } = [];
+
+    public Registries Registries { get; init; } = Registries.Empty;
+
+    public IReadOnlyList<Scene> Scenes { get; init; } = [];
+
+    /// <summary>Displayable paragraphs, the only ones items exist over (§2, C1).</summary>
+    public IReadOnlyList<Paragraph> DisplayableParagraphs
+    {
+        get
+        {
+            if (Presentations.Count == 0)
+            {
+                return Paragraphs;
+            }
+
+            var displayable = Presentations
+                .Where(p => p.IsDisplayable)
+                .Select(p => p.ParagraphId)
+                .ToHashSet(StringComparer.Ordinal);
+
+            return [.. Paragraphs.Where(p => displayable.Contains(p.ParagraphId))];
+        }
+    }
+}
 
 /// <summary>Phase 12's artifact: everything a reader of the finished run needs.</summary>
 public sealed record ResultArtifact(
@@ -92,7 +166,19 @@ public sealed record ResultArtifact(
     IReadOnlyList<Finding> Findings,
     string TreeHash,
     DateTimeOffset FrozenAt,
-    DateTimeOffset PublishedAt);
+    DateTimeOffset PublishedAt)
+{
+    /// <summary>
+    /// The scene layers, carried so this artifact and <c>run_results</c> say the same thing.
+    /// Init-only for the reason <see cref="FrozenDocument"/>'s are: a run that published before
+    /// the scene phases existed is a valid artifact with none of them.
+    /// </summary>
+    public IReadOnlyList<Scene> Scenes { get; init; } = [];
+
+    public IReadOnlyList<SceneItem> Items { get; init; } = [];
+
+    public Registries Registries { get; init; } = Registries.Empty;
+}
 
 public sealed record AugmentationRecord(string ParagraphId, string Type, string Json, string ReviewVerdict);
 
@@ -218,6 +304,110 @@ public sealed class RunArtifacts(IArtifactStore store)
     public Task<ArtifactRef> WriteCapabilityGapsAsync(
         string runId, IReadOnlyList<CapabilityGapProposal> gaps, string key, CancellationToken ct) =>
         store.WriteAsync(ArtifactKeys.CapabilityGaps(runId), gaps, key, ct);
+
+    // ---- The five scene phases (scene plan §8.1) ----------------------------------------------
+
+    public Task<ArtifactRef> WritePresentationAsync(
+        string runId, PresentationArtifact presentation, string key, CancellationToken ct) =>
+        store.WriteAsync(ArtifactKeys.Phase(runId, PipelinePhase.ClassifyPresentation), presentation, key, ct);
+
+    public Task<PresentationArtifact?> ReadPresentationAsync(string runId, CancellationToken ct) =>
+        store.ReadAsync<PresentationArtifact>(
+            ArtifactKeys.Phase(runId, PipelinePhase.ClassifyPresentation), ct);
+
+    public Task<ArtifactRef> WriteFamilyEvidenceAsync(
+        string runId, IReadOnlyList<FamilyEvidence> evidence, string key, CancellationToken ct) =>
+        store.WriteAsync(ArtifactKeys.FamilyEvidence(runId), evidence, key, ct);
+
+    public async Task<IReadOnlyList<FamilyEvidence>> ReadFamilyEvidenceAsync(string runId, CancellationToken ct) =>
+        await store.ReadAsync<IReadOnlyList<FamilyEvidence>>(ArtifactKeys.FamilyEvidence(runId), ct) ?? [];
+
+    public Task<ArtifactRef> WriteFamilyScopesAsync(
+        string runId, IReadOnlyList<FamilyScope> scopes, string key, CancellationToken ct) =>
+        store.WriteAsync(ArtifactKeys.FamilyScopes(runId), scopes, key, ct);
+
+    public async Task<IReadOnlyList<FamilyScope>> ReadFamilyScopesAsync(string runId, CancellationToken ct) =>
+        await store.ReadAsync<IReadOnlyList<FamilyScope>>(ArtifactKeys.FamilyScopes(runId), ct) ?? [];
+
+    public Task<ArtifactRef> WriteItemWindowAsync(
+        string runId, Agents.ItemWindowResult window, string key, CancellationToken ct) =>
+        store.WriteAsync(ArtifactKeys.ItemWindow(runId, window.WindowIndex), window, key, ct);
+
+    public Task<Agents.ItemWindowResult?> ReadItemWindowAsync(string runId, int windowIndex, CancellationToken ct) =>
+        store.ReadAsync<Agents.ItemWindowResult>(ArtifactKeys.ItemWindow(runId, windowIndex), ct);
+
+    public Task<ArtifactRef> WriteItemsAsync(
+        string runId, IReadOnlyList<SceneItem> items, string key, CancellationToken ct) =>
+        store.WriteJsonLinesAsync(ArtifactKeys.Phase(runId, PipelinePhase.TypeItems), items, key, ct);
+
+    public Task<IReadOnlyList<SceneItem>> ReadItemsAsync(string runId, CancellationToken ct) =>
+        store.ReadJsonLinesAsync<SceneItem>(ArtifactKeys.Phase(runId, PipelinePhase.TypeItems), ct);
+
+    /// <summary>
+    /// The items with every tag bound. A second artifact rather than an overwrite of the phase-8
+    /// one, so "what did typing produce" and "what did resolution produce" stay separately
+    /// inspectable — which is the pipeline's rule that every phase leaves its own artifact.
+    /// </summary>
+    public Task<ArtifactRef> WriteBoundItemsAsync(
+        string runId, IReadOnlyList<SceneItem> items, string key, CancellationToken ct) =>
+        store.WriteJsonLinesAsync(ArtifactKeys.BoundItems(runId), items, key, ct);
+
+    public Task<IReadOnlyList<SceneItem>> ReadBoundItemsAsync(string runId, CancellationToken ct) =>
+        store.ReadJsonLinesAsync<SceneItem>(ArtifactKeys.BoundItems(runId), ct);
+
+    public Task<ArtifactRef> WritePersonaWindowAsync(
+        string runId, Core.Personas.CandidateWindow window, string key, CancellationToken ct) =>
+        store.WriteAsync(ArtifactKeys.PersonaWindow(runId, window.WindowIndex), window, key, ct);
+
+    public Task<Core.Personas.CandidateWindow?> ReadPersonaWindowAsync(
+        string runId, int windowIndex, CancellationToken ct) =>
+        store.ReadAsync<Core.Personas.CandidateWindow>(ArtifactKeys.PersonaWindow(runId, windowIndex), ct);
+
+    public Task<ArtifactRef> WriteRegistriesAsync(
+        string runId, RegistriesArtifact registries, string key, CancellationToken ct) =>
+        store.WriteAsync(ArtifactKeys.Phase(runId, PipelinePhase.ResolveReferents), registries, key, ct);
+
+    public Task<RegistriesArtifact?> ReadRegistriesAsync(string runId, CancellationToken ct) =>
+        store.ReadAsync<RegistriesArtifact>(ArtifactKeys.Phase(runId, PipelinePhase.ResolveReferents), ct);
+
+    public Task<ArtifactRef> WriteRegistryPlanAsync(
+        string runId, Core.Personas.RegistryPlan plan, string key, CancellationToken ct) =>
+        store.WriteAsync(ArtifactKeys.RegistryPlan(runId), plan, key, ct);
+
+    public Task<ArtifactRef> WritePersonaChatAsync(
+        string runId, IReadOnlyList<TranscriptEntry> transcript, string key, CancellationToken ct) =>
+        store.WriteJsonLinesAsync(ArtifactKeys.PersonaChat(runId), transcript, key, ct);
+
+    public Task<ArtifactRef> WriteScenesAsync(
+        string runId, ScenesArtifact scenes, string key, CancellationToken ct) =>
+        store.WriteAsync(ArtifactKeys.Phase(runId, PipelinePhase.CutScenes), scenes, key, ct);
+
+    public Task<ScenesArtifact?> ReadScenesAsync(string runId, CancellationToken ct) =>
+        store.ReadAsync<ScenesArtifact>(ArtifactKeys.Phase(runId, PipelinePhase.CutScenes), ct);
+
+    public Task<ArtifactRef> WriteSceneLinkWindowAsync(
+        string runId, Core.Scenes.SceneLinkWindowResult window, string key, CancellationToken ct) =>
+        store.WriteAsync(ArtifactKeys.SceneLinkWindow(runId, window.WindowIndex), window, key, ct);
+
+    public Task<Core.Scenes.SceneLinkWindowResult?> ReadSceneLinkWindowAsync(
+        string runId, int windowIndex, CancellationToken ct) =>
+        store.ReadAsync<Core.Scenes.SceneLinkWindowResult>(
+            ArtifactKeys.SceneLinkWindow(runId, windowIndex), ct);
+
+    public Task<ArtifactRef> WriteSceneLinksAsync(
+        string runId, SceneLinksArtifact links, string key, CancellationToken ct) =>
+        store.WriteAsync(ArtifactKeys.Phase(runId, PipelinePhase.LinkScenes), links, key, ct);
+
+    public Task<SceneLinksArtifact?> ReadSceneLinksAsync(string runId, CancellationToken ct) =>
+        store.ReadAsync<SceneLinksArtifact>(ArtifactKeys.Phase(runId, PipelinePhase.LinkScenes), ct);
+
+    public Task<ArtifactRef> WriteSceneLinkPlanAsync(
+        string runId, Core.Scenes.SceneLinkPlan plan, string key, CancellationToken ct) =>
+        store.WriteAsync(ArtifactKeys.SceneLinkPlan(runId), plan, key, ct);
+
+    public Task<ArtifactRef> WriteSceneLinkChatAsync(
+        string runId, IReadOnlyList<TranscriptEntry> transcript, string key, CancellationToken ct) =>
+        store.WriteJsonLinesAsync(ArtifactKeys.SceneLinkChat(runId), transcript, key, ct);
 
     public Task<ArtifactRef> WriteValidationAsync(string runId, ValidationReport report, string key, CancellationToken ct) =>
         store.WriteAsync(ArtifactKeys.Phase(runId, PipelinePhase.Validate), report, key, ct);

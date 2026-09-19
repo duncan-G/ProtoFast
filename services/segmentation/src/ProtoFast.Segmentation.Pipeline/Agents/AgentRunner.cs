@@ -91,6 +91,45 @@ public sealed class AgentRunner(
             ],
             ct);
 
+    /// <summary>
+    /// The same loop, but a phase with no eligible model <b>degrades</b> instead of failing.
+    ///
+    /// <para>This is K7 made operational for the five scene phases. Each of them has a complete
+    /// deterministic answer — a partition, a cut, an empty link set — and "there is always a legal
+    /// answer" is a capacity of the unit rather than a hope: the pipeline can be uncertain about a
+    /// scene without failing the run, and the uncertainty surfaces as poorer coordinates rather than
+    /// as missing data.</para>
+    ///
+    /// <para>It is deliberately <em>not</em> offered to the structure roles. A tree is the product,
+    /// so a document that cannot be structured is a document that did not segment; a document whose
+    /// scenes are unassigned still segmented. The difference is which artifact the run exists to
+    /// produce.</para>
+    /// </summary>
+    public async Task<AgentResult<T>> RunOrDegradeAsync<T>(
+        string prompt,
+        RoutingContext context,
+        Func<T, ValidationResult> validate,
+        int maxRounds,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            return await RunAsync(prompt, context, validate, maxRounds, buildRepairPrompt: null, ct);
+        }
+        catch (NoEligibleModelException exception)
+        {
+            logger.LogInformation(
+                "Run {RunId}: no model is qualified for {Role}; {Phase} falls back to its deterministic "
+                + "answer. {Reason}",
+                context.RunId, context.Role, context.Phase, exception.Message);
+
+            return new AgentResult<T>(
+                default,
+                ValidationResult.Fail(Checks.NoEligibleModel, exception.Message),
+                Response: null);
+        }
+    }
+
     private async Task<AgentResult<T>> RunCoreAsync<T>(
         IReadOnlyList<ChatMessage> messages,
         RoutingContext context,

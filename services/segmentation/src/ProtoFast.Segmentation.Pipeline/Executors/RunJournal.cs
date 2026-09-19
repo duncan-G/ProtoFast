@@ -158,6 +158,31 @@ public sealed class RunJournal(IServiceScopeFactory scopes)
     public Task PinModelAsync(string runId, AgentRole role, string modelKey, CancellationToken ct) =>
         PinModelAsync(runId, role.ToString(), modelKey, ct);
 
+    /// <summary>
+    /// Records the composition family phase 5 re-confirmed from paragraph-level evidence
+    /// (scene plan §6, §8.5 step 5).
+    ///
+    /// <para>Phase 0's guess was made from converter metadata and line shapes, which is the most
+    /// that is knowable before paragraphs exist. This one is made from dialogue ratio, speaker-label
+    /// density, tense and person — and it is the fallback every later phase resolves against, so it
+    /// belongs on the run row rather than only in the artifact.</para>
+    /// </summary>
+    public async Task RecordCompositionFamilyAsync(string runId, string family, CancellationToken ct)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<SegmentationDbContext>();
+
+        var run = await db.Runs.FirstOrDefaultAsync(r => r.RunId == runId, ct);
+        if (run is null || string.Equals(run.CompositionFamily, family, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        run.CompositionFamily = family;
+        run.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
     private async Task PinModelAsync(string runId, string pinKey, string modelKey, CancellationToken ct)
     {
         await using var scope = scopes.CreateAsyncScope();

@@ -26,6 +26,13 @@ public static class Checks
     public const string AugGrounding = "aug-grounding";
 
     /// <summary>
+    /// Not a check at all: the id a degradable phase reports when no model is qualified for its role
+    /// (K7). It is a <see cref="ValidationResult"/> so the fallback path is the same one a rejected
+    /// answer takes — a phase should not need two ways to say "I did not get an answer".
+    /// </summary>
+    public const string NoEligibleModel = "no-eligible-model";
+
+    /// <summary>
     /// Every expected id appears exactly once, no unknown ids, order preserved. Run against label
     /// output (expected = the window's committed lines) and against the tree (expected = every
     /// paragraph).

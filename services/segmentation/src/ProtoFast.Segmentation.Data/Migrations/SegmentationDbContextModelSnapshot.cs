@@ -97,6 +97,12 @@ namespace ProtoFast.Segmentation.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
+                    b.Property<string>("Axis")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("axis");
+
                     b.Property<double>("Confidence")
                         .HasColumnType("double precision")
                         .HasColumnName("confidence");
@@ -135,12 +141,18 @@ namespace ProtoFast.Segmentation.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("promoted_at");
 
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("scope");
+
                     b.HasKey("Id")
                         .HasName("pk_family_instincts");
 
-                    b.HasIndex("Family", "Pattern")
+                    b.HasIndex("Family", "Axis", "Scope", "Pattern")
                         .IsUnique()
-                        .HasDatabaseName("ix_family_instincts_family_pattern");
+                        .HasDatabaseName("ix_family_instincts_family_axis_scope_pattern");
 
                     b.ToTable("family_instincts", (string)null);
                 });
@@ -416,6 +428,12 @@ namespace ProtoFast.Segmentation.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("cancelled");
 
+                    b.Property<string>("CompositionFamily")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("composition_family");
+
                     b.Property<string>("Condition")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -653,6 +671,13 @@ namespace ProtoFast.Segmentation.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("frozen_at");
 
+                    b.Property<string>("ItemsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[]")
+                        .HasColumnName("items_json");
+
                     b.Property<string>("OwnerSubject")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -667,6 +692,20 @@ namespace ProtoFast.Segmentation.Data.Migrations
                     b.Property<DateTimeOffset>("PublishedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("published_at");
+
+                    b.Property<string>("RegistriesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("{}")
+                        .HasColumnName("registries_json");
+
+                    b.Property<string>("ScenesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[]")
+                        .HasColumnName("scenes_json");
 
                     b.Property<string>("TreeHash")
                         .IsRequired()

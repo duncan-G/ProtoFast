@@ -26,6 +26,7 @@ public sealed class AugmentExecutor(
     AugmenterAgent augmenter,
     IAugmentationCatalogue catalogue,
     PromptAssets assets,
+    SceneContextFactory sceneContexts,
     IServiceScopeFactory scopes,
     IOptions<PipelineOptions> options,
     ILogger<AugmentExecutor> logger)
@@ -65,7 +66,12 @@ public sealed class AugmentExecutor(
 
             foreach (var type in requested)
             {
-                records.AddRange(await AugmentAllAsync(type, frozen, run, cancellationToken));
+                // Granularity is a property of the TYPE, not of the pipeline (scene plan §10). The
+                // fan-out, the idempotency key and the artifact layout are the same either way; what
+                // differs is what one call covers, which is the type's own declaration.
+                records.AddRange(type is IItemAugmentationType item
+                    ? await AugmentAllItemsAsync(item, frozen, run, cancellationToken)
+                    : await AugmentAllAsync(type, frozen, run, cancellationToken));
             }
 
             await journal.CompleteAsync(
@@ -142,6 +148,115 @@ public sealed class AugmentExecutor(
 
         return records;
     }
+
+    /// <summary>
+    /// Fans out an item-scoped type over the frozen items (scene plan §3.6).
+    ///
+    /// <para>The selector is the type's own, and for the re-writer it is <c>IsStandalone == false</c>
+    /// — so an item whose span already stands alone, which is the large majority, costs nothing.
+    /// That is what makes the re-writer's cost scale with what is rendered rather than with the
+    /// corpus: a document nobody stages pays for no rewrites at all.</para>
+    ///
+    /// <para>The idempotency key is the <em>item's</em> hash, so regenerating render text re-derives
+    /// a key rather than invalidating an artifact — which is why running this after the freeze
+    /// cannot disturb it.</para>
+    /// </summary>
+    private async Task<List<AugmentationRecord>> AugmentAllItemsAsync(
+        IItemAugmentationType type,
+        FrozenDocument frozen,
+        SegmentationRun run,
+        CancellationToken ct)
+    {
+        var promptVersion = assets.VersionFor(AgentRole.Augmenter);
+        var eligible = frozen.Items.Where(type.Applies).ToList();
+
+        if (eligible.Count == 0)
+        {
+            logger.LogInformation(
+                "Run {RunId}: no item needs '{Type}' — every span stands alone.", run.RunId, type.Name);
+
+            return [];
+        }
+
+        var paragraphText = frozen.Paragraphs.ToDictionary(p => p.ParagraphId, p => p.Text, StringComparer.Ordinal);
+        var personas = frozen.Registries.Personas.ToDictionary(p => p.PersonaId, StringComparer.Ordinal);
+        var sceneOfItem = frozen.Scenes
+            .SelectMany(scene => scene.ItemIds.Select(id => (Item: id, scene.SceneId)))
+            .ToDictionary(x => x.Item, x => x.SceneId, StringComparer.Ordinal);
+
+        var sceneContext = await sceneContexts.CreateAsync(run.RunId, ct);
+        var records = new List<AugmentationRecord>(eligible.Count);
+
+        logger.LogInformation(
+            "Run {RunId}: augmenting {Eligible} of {Total} items with '{Type}' ({Rate:P1} not standalone)",
+            run.RunId, eligible.Count, frozen.Items.Count, type.Name,
+            frozen.Items.Count == 0 ? 0 : (double)eligible.Count / frozen.Items.Count);
+
+        foreach (var batch in eligible.Chunk(_augmentation.FanOutBatchSize))
+        {
+            var tasks = batch.Select(async item =>
+            {
+                if (!paragraphText.TryGetValue(item.ParagraphId, out var text))
+                {
+                    return null;
+                }
+
+                var key = IdempotencyKeys.ItemAugmentation(
+                    run.RunId, type.Name, item.ItemId, ItemHash(item), promptVersion);
+
+                var artifactKey = Storage.ArtifactKeys.Augmentation(run.RunId, type.Name, item.ItemId);
+
+                if (await gate.AlreadyDoneAsync(artifactKey, key, ct) is not null
+                    && await artifacts.ReadAugmentationAsync(run.RunId, type.Name, item.ItemId, ct) is { } cached)
+                {
+                    return cached;
+                }
+
+                // Exactly the personas the item's OWN tags bind (§3.7 row two) — not the scene's
+                // cast, and not the registry. A name the item never referred to is an invention even
+                // when the person is standing in the room.
+                var resolved = item.Tags
+                    .Where(t => t.Kind is TagKind.Persona or TagKind.Group && t.ReferentId is not null)
+                    .Select(t => personas.GetValueOrDefault(t.ReferentId!))
+                    .OfType<Persona>()
+                    .DistinctBy(p => p.PersonaId)
+                    .ToList();
+
+                var context = type.BuildContext(
+                    item, text, resolved, sceneOfItem.GetValueOrDefault(item.ItemId, string.Empty));
+
+                var rendered = await augmenter.AugmentItemAsync(type, context, sceneContext, ct);
+                if (rendered is null)
+                {
+                    return null;
+                }
+
+                var record = new AugmentationRecord(
+                    item.ItemId, type.Name,
+                    System.Text.Json.JsonSerializer.Serialize(new { renderText = rendered }),
+                    "unreviewed");
+
+                await artifacts.WriteAugmentationAsync(run.RunId, type.Name, record, key, ct);
+                return record;
+            });
+
+            records.AddRange((await Task.WhenAll(tasks)).Where(r => r is not null).Select(r => r!));
+        }
+
+        await journal.NoteAsync(
+            run.RunId, PipelinePhase.Augment,
+            $"{records.Count} of {eligible.Count} items augmented with '{type.Name}'", ct);
+
+        return records;
+    }
+
+    /// <summary>
+    /// The item's identity for idempotency: its span and its kind, never its render text. Render
+    /// text is generated metadata and is not part of what the item IS (§3.6), so regenerating it
+    /// must not change the key it is stored under.
+    /// </summary>
+    private static string ItemHash(SceneItem item) =>
+        Ids.Sha256Hex($"{item.ParagraphId}:{item.StartOffset}:{item.EndOffset}:{item.Kind}")[..16];
 
     /// <summary>
     /// Reviews a sample (plan §12.3). Restricted documents and unfamiliar families get every
@@ -234,7 +349,12 @@ public sealed class AugmentExecutor(
 
         var result = new ResultArtifact(
             run.RunId, run.DocumentId, frozen.Root, frozen.Paragraphs, records,
-            review?.Findings ?? [], frozen.TreeHash, frozen.FrozenAt, publishedAt);
+            review?.Findings ?? [], frozen.TreeHash, frozen.FrozenAt, publishedAt)
+        {
+            Scenes = frozen.Scenes,
+            Items = frozen.Items,
+            Registries = frozen.Registries,
+        };
 
         var artifact = await artifacts.WriteResultAsync(message.RunId, result, key, ct);
 
@@ -245,6 +365,27 @@ public sealed class AugmentExecutor(
         var existing = await db.RunResults.FirstOrDefaultAsync(r => r.RunId == run.RunId, ct);
         var json = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
 
+        // The scene columns write their enums as text, for the reason the Run entity gives for
+        // doing the same: an integer that shifts when an enum member is inserted is a migration
+        // hazard, and the scene enumerations are the ones this design expects to grow. The three
+        // older columns keep their numeric spelling — rows already published are written that way,
+        // and re-spelling them is a migration rather than a side effect of this change.
+        var sceneJson = new System.Text.Json.JsonSerializerOptions(json)
+        {
+            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+        };
+
+        // The scene layers are published from the frozen document rather than re-read from their
+        // own phase artifacts: the freeze is what bound them to this tree hash, so publishing
+        // anything else would put a scene stream and a tree in one row that were never frozen
+        // together (C10).
+        var treeJson = System.Text.Json.JsonSerializer.Serialize(frozen.Root, json);
+        var paragraphsJson = System.Text.Json.JsonSerializer.Serialize(frozen.Paragraphs, json);
+        var augmentationsJson = System.Text.Json.JsonSerializer.Serialize(records, json);
+        var scenesJson = System.Text.Json.JsonSerializer.Serialize(frozen.Scenes, sceneJson);
+        var itemsJson = System.Text.Json.JsonSerializer.Serialize(frozen.Items, sceneJson);
+        var registriesJson = System.Text.Json.JsonSerializer.Serialize(frozen.Registries, sceneJson);
+
         if (existing is null)
         {
             db.RunResults.Add(new RunResult
@@ -252,9 +393,12 @@ public sealed class AugmentExecutor(
                 RunId = run.RunId,
                 OwnerSubject = run.OwnerSubject,
                 DocumentId = run.DocumentId,
-                TreeJson = System.Text.Json.JsonSerializer.Serialize(frozen.Root, json),
-                ParagraphsJson = System.Text.Json.JsonSerializer.Serialize(frozen.Paragraphs, json),
-                AugmentationsJson = System.Text.Json.JsonSerializer.Serialize(records, json),
+                TreeJson = treeJson,
+                ParagraphsJson = paragraphsJson,
+                AugmentationsJson = augmentationsJson,
+                ScenesJson = scenesJson,
+                ItemsJson = itemsJson,
+                RegistriesJson = registriesJson,
                 TreeHash = frozen.TreeHash,
                 FrozenAt = frozen.FrozenAt,
                 PublishedAt = publishedAt,
@@ -262,9 +406,12 @@ public sealed class AugmentExecutor(
         }
         else
         {
-            existing.TreeJson = System.Text.Json.JsonSerializer.Serialize(frozen.Root, json);
-            existing.ParagraphsJson = System.Text.Json.JsonSerializer.Serialize(frozen.Paragraphs, json);
-            existing.AugmentationsJson = System.Text.Json.JsonSerializer.Serialize(records, json);
+            existing.TreeJson = treeJson;
+            existing.ParagraphsJson = paragraphsJson;
+            existing.AugmentationsJson = augmentationsJson;
+            existing.ScenesJson = scenesJson;
+            existing.ItemsJson = itemsJson;
+            existing.RegistriesJson = registriesJson;
             existing.TreeHash = frozen.TreeHash;
             existing.FrozenAt = frozen.FrozenAt;
             existing.PublishedAt = publishedAt;
@@ -281,7 +428,8 @@ public sealed class AugmentExecutor(
 
         await journal.CompleteAsync(
             message.RunId, PipelinePhase.Publish, artifact.Key,
-            $"published: {frozen.Paragraphs.Count} paragraphs, {records.Count} augmentations", ct);
+            $"published: {frozen.Paragraphs.Count} paragraphs, {frozen.Scenes.Count} scenes, "
+            + $"{frozen.Items.Count} items, {records.Count} augmentations", ct);
 
         logger.LogInformation(
             "Run {RunId}: published {Paragraphs} paragraphs and {Augmentations} augmentations",

@@ -12,7 +12,7 @@ using ProtoFast.Segmentation.Storage;
 namespace ProtoFast.Segmentation.Pipeline.Executors;
 
 /// <summary>
-/// Phase 8 (plan §9.10): the human gate.
+/// Phase 13 (plan §9.10): the human gate.
 ///
 /// <para>Two things happen here, and both are necessary. The workflow emits an external request
 /// through MAF's request port and checkpoints — that is what suspends the run without holding a
@@ -86,7 +86,7 @@ public sealed class HumanGateExecutor(
 }
 
 /// <summary>
-/// Phase 9 (plan §9.11): freeze.
+/// Phase 14 (plan §9.11, scene plan §8.1): freeze.
 ///
 /// <para>Every check is re-run first — not because they passed a moment ago, but because a human
 /// gate may have applied edits since, and the freeze is the last point at which anything can be
@@ -125,6 +125,16 @@ public sealed class FreezeExecutor(
         var run = await journal.LoadRunAsync(message.RunId, cancellationToken)
             ?? throw new PipelineFailureException(PipelinePhase.Freeze, "The run row is missing.");
 
+        // The scene layers. Each is optional because a document can legitimately produce none of
+        // them — an empty upload, a run that predates the scene phases — and a freeze that demanded
+        // them would call that an error rather than a fact.
+        var presentation = await artifacts.ReadPresentationAsync(message.RunId, cancellationToken);
+        var familyScopes = await artifacts.ReadFamilyScopesAsync(message.RunId, cancellationToken);
+        var items = await artifacts.ReadBoundItemsAsync(message.RunId, cancellationToken);
+        var registries = (await artifacts.ReadRegistriesAsync(message.RunId, cancellationToken))?.Registries
+            ?? Core.Model.Registries.Empty;
+        var scenes = (await artifacts.ReadScenesAsync(message.RunId, cancellationToken))?.Scenes ?? [];
+
         var report = Core.Validation.Checks.CheckAll(
             cleaning, labels, assembly.Paragraphs, assembly.Headings, tree.Root,
             options.Value.Paragraphs, assembly.SizeOutlierParagraphIds.ToHashSet(StringComparer.Ordinal));
@@ -138,6 +148,26 @@ public sealed class FreezeExecutor(
             throw new PipelineFailureException(PipelinePhase.Freeze, report.ErrorReport);
         }
 
+        // The scene half of the freeze gate (scene plan §9). Five of these checks are asserted by
+        // their materializers in the phase that owns them; here an artifact is being CHECKED rather
+        // than CONSTRUCTED, so a failure can only mean storage was corrupted between the two — which
+        // is exactly what a freeze gate should be for.
+        if (presentation is not null)
+        {
+            var sceneReport = Core.Validation.SceneChecks.CheckAll(
+                tree.Root, assembly.Paragraphs, presentation.Presentations, familyScopes, items, registries,
+                scenes, presentation.CompositionFamily, options.Value);
+
+            if (!sceneReport.Passed)
+            {
+                await journal.FailAsync(
+                    message.RunId, PipelinePhase.Freeze,
+                    "Freeze blocked by the scene checks: " + sceneReport.ErrorReport, cancellationToken);
+
+                throw new PipelineFailureException(PipelinePhase.Freeze, sceneReport.ErrorReport);
+            }
+        }
+
         var treeHash = TreeCanonicalizer.Hash(tree.Root);
         var frozen = new FrozenDocument(
             RunId: run.RunId,
@@ -148,7 +178,14 @@ public sealed class FreezeExecutor(
             Headings: assembly.Headings,
             TreeHash: treeHash,
             ParagraphsHash: TreeCanonicalizer.HashParagraphs(assembly.Paragraphs),
-            FrozenAt: DateTimeOffset.UtcNow);
+            FrozenAt: DateTimeOffset.UtcNow)
+        {
+            Presentations = presentation?.Presentations ?? [],
+            FamilyScopes = familyScopes,
+            Items = items,
+            Registries = registries,
+            Scenes = scenes,
+        };
 
         var artifact = await artifacts.WriteFrozenAsync(message.RunId, frozen, key, cancellationToken);
 
@@ -165,12 +202,14 @@ public sealed class FreezeExecutor(
         }
 
         logger.LogInformation(
-            "Run {RunId}: frozen at tree hash {TreeHash} ({Paragraphs} paragraphs)",
-            message.RunId, treeHash, assembly.Paragraphs.Count);
+            "Run {RunId}: frozen at tree hash {TreeHash} ({Paragraphs} paragraphs, {Items} items, "
+            + "{Scenes} scenes)",
+            message.RunId, treeHash, assembly.Paragraphs.Count, items.Count, scenes.Count);
 
         await journal.CompleteAsync(
             message.RunId, PipelinePhase.Freeze, artifact.Key,
-            $"frozen: {assembly.Paragraphs.Count} paragraphs, tree {treeHash[..12]}", cancellationToken);
+            $"frozen: {assembly.Paragraphs.Count} paragraphs, {items.Count} items, {scenes.Count} scenes, "
+            + $"tree {treeHash[..12]}", cancellationToken);
 
         return new FrozenComplete(message.RunId, artifact, treeHash);
     }

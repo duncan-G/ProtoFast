@@ -4,6 +4,7 @@ import {
   phaseStateLabel,
   suggestedRerunPhase,
   PHASE_LABELS,
+  PUBLISH_PHASE,
 } from './phases';
 import { PhaseState } from '../../lib/gen/segmentation_pb';
 
@@ -11,8 +12,15 @@ describe('phases', () => {
   it('numbers the phases exactly as the pipeline does', () => {
     // The indices are the artifact prefixes and the RerunFrom argument, so a renumber here would
     // silently re-run the wrong phase (plan §9.1).
-    expect(PHASE_LABELS.map((p) => p.index)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
-    expect(phaseLabel(9)).toBe('Freeze');
+    expect(PHASE_LABELS.map((p) => p.index)).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+    ]);
+
+    // The five scene phases were inserted, not appended (scene plan §8.1), so the phases after
+    // them moved. A stale ladder here mislabels every run in the UI.
+    expect(phaseLabel(5)).toBe('Presentation');
+    expect(phaseLabel(10)).toBe('Scenes');
+    expect(phaseLabel(14)).toBe('Freeze');
     expect(phaseLabel(99)).toBe('Phase 99');
   });
 
@@ -26,7 +34,7 @@ describe('phases', () => {
       isTerminal({
         cancelled: false,
         error: '',
-        phases: [{ index: 12, state: PhaseState.DONE }],
+        phases: [{ index: PUBLISH_PHASE, state: PhaseState.DONE }],
       }),
     ).toBe(true);
   });

@@ -41,6 +41,15 @@ public sealed class SegmentationService(
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     /// <summary>
+    /// How the scene columns are spelled: enums as text, matching what the publish phase writes.
+    /// The converter reads numbers too, so a row written by an older worker still deserializes.
+    /// </summary>
+    private static readonly JsonSerializerOptions SceneJson = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    /// <summary>
     /// Mints the presigned POST the browser uploads through (ingest plan §7, §14).
     ///
     /// <para>Two things are validated before anything is signed, and both end up <em>in</em> the
@@ -362,6 +371,104 @@ public sealed class SegmentationService(
             Type = a.Type,
             Json = a.Json,
             ReviewVerdict = a.ReviewVerdict,
+        }));
+
+        return reply;
+    }
+
+    /// <summary>
+    /// The scene stream of a published run (scene plan §10, milestone S7).
+    ///
+    /// <para>Everything a renderer needs is resolved here rather than sent as ids to be joined:
+    /// each item carries the text of its span, each cast entry and speaker carries its persona's
+    /// canonical name, and a situation carries its place's name. That is K1 — a scene renders from
+    /// its own record with no document access — and doing it here means it is done once rather than
+    /// reimplemented by every client.</para>
+    ///
+    /// <para>A run published before the scene phases existed answers with an empty scene list
+    /// rather than an error: it has a tree and no scenes, and that is a fact about the run rather
+    /// than a failure of this call.</para>
+    /// </summary>
+    public override async Task<SceneResult> GetScenes(GetScenesRequest request, ServerCallContext context)
+    {
+        var caller = CallerIdentity.From(context);
+        await LoadOwnedRunAsync(caller, request.RunId, context.CancellationToken);
+
+        var result = await db.RunResults
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.RunId == request.RunId, context.CancellationToken);
+
+        if (result is null)
+        {
+            throw new RpcException(new Status(
+                StatusCode.FailedPrecondition, "This run has not published a result yet."));
+        }
+
+        var root = JsonSerializer.Deserialize<CoreModel.SectionNode>(result.TreeJson, Json);
+        var paragraphs = JsonSerializer.Deserialize<List<CoreModel.Paragraph>>(result.ParagraphsJson, Json) ?? [];
+        var scenes = JsonSerializer.Deserialize<List<CoreModel.Scene>>(result.ScenesJson, SceneJson) ?? [];
+        var items = JsonSerializer.Deserialize<List<CoreModel.SceneItem>>(result.ItemsJson, SceneJson) ?? [];
+        // The column's default is "{}", which deserializes to a Registries whose three lists are
+        // null rather than empty — a positional record cannot distinguish "absent" from "empty" on
+        // its own. Normalising here rather than null-checking at each use keeps the rest of this
+        // call honest about what it is holding.
+        var stored = JsonSerializer.Deserialize<CoreModel.Registries>(result.RegistriesJson, SceneJson);
+        var registries = stored is null
+            ? CoreModel.Registries.Empty
+            : new CoreModel.Registries(stored.Personas ?? [], stored.Places ?? [], stored.Exhibits ?? []);
+
+        var reply = new SceneResult
+        {
+            RunId = result.RunId,
+            Root = root is null ? new SectionNode() : ToProto(root),
+            TreeHash = result.TreeHash,
+            FrozenUnixSeconds = result.FrozenAt.ToUnixTimeSeconds(),
+            TotalScenes = scenes.Count,
+        };
+
+        var text = paragraphs.ToDictionary(p => p.ParagraphId, p => p.Text, StringComparer.Ordinal);
+        var itemsById = items.ToDictionary(i => i.ItemId, StringComparer.Ordinal);
+        var personaNames = registries.Personas.ToDictionary(
+            p => p.PersonaId, p => p.CanonicalName, StringComparer.Ordinal);
+        var placeNames = registries.Places.ToDictionary(
+            p => p.PlaceId, p => p.CanonicalName, StringComparer.Ordinal);
+
+        var wanted = SectionFilter(root, request.SectionId);
+
+        // The ordinal is the scene's position in the whole document and is assigned before the
+        // filter, so "scene 412" means the same thing whether the caller asked for one chapter or
+        // for the novel.
+        for (var ordinal = 0; ordinal < scenes.Count; ordinal++)
+        {
+            var scene = scenes[ordinal];
+
+            if (wanted is null || wanted.Contains(scene.SectionId))
+            {
+                reply.Scenes.Add(ToProto(scene, ordinal, itemsById, text, personaNames, placeNames));
+            }
+        }
+
+        // The registries go whole rather than narrowed to the scenes returned: a persona's identity
+        // is a property of the run, and a client reading section by section would otherwise rebuild
+        // a different cast list on every page.
+        foreach (var persona in registries.Personas)
+        {
+            var proto = new Persona
+            {
+                PersonaId = persona.PersonaId,
+                CanonicalName = persona.CanonicalName,
+                Kind = Wire(persona.Kind),
+                Scope = Wire(persona.Scope),
+            };
+
+            proto.SurfaceForms.AddRange(persona.SurfaceForms);
+            reply.Personas.Add(proto);
+        }
+
+        reply.Places.AddRange(registries.Places.Select(place => new Place
+        {
+            PlaceId = place.PlaceId,
+            CanonicalName = place.CanonicalName,
         }));
 
         return reply;
@@ -740,6 +847,192 @@ public sealed class SegmentationService(
         proto.ParagraphIds.AddRange(node.ParagraphIds);
         proto.Children.AddRange(node.Children.Select(ToProto));
         return proto;
+    }
+
+    /// <summary>
+    /// The section ids a <c>section_id</c> filter admits: the named section and its whole subtree,
+    /// because asking for a chapter means asking for the scenes of its subsections too. Null when
+    /// no filter was given — the common case, which skips the walk entirely.
+    /// </summary>
+    private static HashSet<string>? SectionFilter(CoreModel.SectionNode? root, string sectionId)
+    {
+        if (root is null || string.IsNullOrEmpty(sectionId))
+        {
+            return null;
+        }
+
+        var node = root.Descend().FirstOrDefault(n => n.SectionId == sectionId)
+            ?? throw new RpcException(new Status(
+                StatusCode.NotFound, $"This run's tree has no section '{sectionId}'."));
+
+        return node.Descend().Select(n => n.SectionId).ToHashSet(StringComparer.Ordinal);
+    }
+
+    private static Scene ToProto(
+        CoreModel.Scene scene,
+        int ordinal,
+        IReadOnlyDictionary<string, CoreModel.SceneItem> itemsById,
+        IReadOnlyDictionary<string, string> paragraphText,
+        IReadOnlyDictionary<string, string> personaNames,
+        IReadOnlyDictionary<string, string> placeNames)
+    {
+        var proto = new Scene
+        {
+            SceneId = scene.SceneId,
+            SectionId = scene.SectionId,
+            Ordinal = ordinal,
+            Title = scene.Title ?? string.Empty,
+            TitleInferred = scene.TitleInferred,
+            Situation = ToProto(scene.Situation, personaNames, placeNames),
+            InheritanceDepth = scene.InheritanceDepth,
+            ContentHash = scene.ContentHash,
+        };
+
+        // Items in the order the scene names them, which is reading order. An id the item table
+        // does not have is skipped rather than filled in: the freeze gate's item-coverage check
+        // means it cannot happen on a healthy run, and an invented empty span would hide it if it did.
+        foreach (var itemId in scene.ItemIds)
+        {
+            if (itemsById.TryGetValue(itemId, out var item))
+            {
+                proto.Items.Add(ToProto(item, paragraphText, personaNames));
+            }
+        }
+
+        proto.Links.AddRange(scene.Links.Select(link => new SceneLink
+        {
+            FromSceneId = link.FromSceneId,
+            ToSceneId = link.ToSceneId,
+            Kind = Wire(link.Kind),
+            Confidence = link.Confidence,
+        }));
+
+        proto.Flags.AddRange(scene.Flags.Select(flag => new Flag
+        {
+            Kind = flag.Kind,
+            Message = flag.Message,
+        }));
+
+        proto.ParagraphIds.AddRange(scene.ParagraphIds);
+        return proto;
+    }
+
+    private static Situation ToProto(
+        CoreModel.Situation situation,
+        IReadOnlyDictionary<string, string> personaNames,
+        IReadOnlyDictionary<string, string> placeNames)
+    {
+        var proto = new Situation
+        {
+            PlaceId = situation.PlaceId ?? string.Empty,
+            PlaceName = situation.PlaceId is { } placeId && placeNames.TryGetValue(placeId, out var place)
+                ? place
+                : string.Empty,
+            SettingSource = situation.SettingProvenance is { } source ? Wire(source.Source) : string.Empty,
+            InheritedFromSceneId = situation.SettingProvenance?.InheritedFromSceneId ?? string.Empty,
+            TimeAnchor = situation.Time.Anchor ?? string.Empty,
+            TimeRelation = Wire(situation.Time.Relation),
+            Mode = Wire(situation.Mode),
+            Subject = situation.Subject.Text,
+        };
+
+        proto.Cast.AddRange(situation.Cast.Select(entry => new CastMember
+        {
+            PersonaId = entry.PersonaId,
+            // Falling back to the id rather than to the empty string: an unresolvable persona is a
+            // registry bug, and a reader who can see which id it was can report it.
+            Name = personaNames.TryGetValue(entry.PersonaId, out var name) ? name : entry.PersonaId,
+            Role = Wire(entry.Role),
+        }));
+
+        return proto;
+    }
+
+    private static SceneItem ToProto(
+        CoreModel.SceneItem item,
+        IReadOnlyDictionary<string, string> paragraphText,
+        IReadOnlyDictionary<string, string> personaNames)
+    {
+        var proto = new SceneItem
+        {
+            ItemId = item.ItemId,
+            ParagraphId = item.ParagraphId,
+            StartOffset = item.StartOffset,
+            EndOffset = item.EndOffset,
+            Kind = Wire(item.Kind),
+            // SpanOf answers with the empty string for offsets outside the paragraph, so a
+            // paragraph this row is missing costs one item's text rather than the whole stream.
+            Text = paragraphText.TryGetValue(item.ParagraphId, out var text) ? item.SpanOf(text) : string.Empty,
+            RenderText = item.RenderText ?? string.Empty,
+            IsStandalone = item.IsStandalone,
+            ExhibitId = item.ExhibitId ?? string.Empty,
+        };
+
+        if (item.Speech is { } speech)
+        {
+            proto.Speech = new Speech
+            {
+                SurfaceForm = speech.SurfaceForm,
+                SpeakerPersonaId = speech.SpeakerPersonaId ?? string.Empty,
+                SpeakerName = speech.SpeakerPersonaId is { } speaker
+                    && personaNames.TryGetValue(speaker, out var name)
+                        ? name
+                        : string.Empty,
+                Embodiment = Wire(speech.Embodiment),
+                Addressee = Wire(speech.Addressee),
+                Voiced = speech.Voiced,
+            };
+        }
+
+        foreach (var tag in item.Tags)
+        {
+            var tagProto = new Tag
+            {
+                TagId = tag.TagId,
+                Kind = Wire(tag.Kind),
+                StartOffset = tag.StartOffset,
+                EndOffset = tag.EndOffset,
+                SurfaceForm = tag.SurfaceForm,
+                ReferentId = tag.ReferentId ?? string.Empty,
+                MembershipComplete = tag.Membership?.IsComplete ?? false,
+            };
+
+            if (tag.Membership is { } membership)
+            {
+                tagProto.MemberPersonaIds.AddRange(membership.MemberPersonaIds);
+            }
+
+            proto.Tags.Add(tagProto);
+        }
+
+        return proto;
+    }
+
+    /// <summary>
+    /// A scene enum as the wire spells it: <c>ExhibitRef</c> → <c>exhibit_ref</c>.
+    ///
+    /// <para>The scene model's enumerations cross as strings rather than as proto enums — the
+    /// reason is in the proto — and this is the one place that spelling is decided, so a client
+    /// switching on <c>"flashback_of"</c> is switching on something a rename cannot silently
+    /// change the meaning of.</para>
+    /// </summary>
+    private static string Wire<TEnum>(TEnum value)
+        where TEnum : struct, Enum
+    {
+        var name = value.ToString() ?? string.Empty;
+        var wire = new System.Text.StringBuilder(name.Length + 4);
+
+        for (var i = 0; i < name.Length; i++)
+        {
+            if (i > 0 && char.IsUpper(name[i]))
+            {
+                wire.Append('_');
+            }
+
+            wire.Append(char.ToLowerInvariant(name[i]));
+        }
+
+        return wire.ToString();
     }
 
     private static CoreModel.Sensitivity ToSensitivity(Sensitivity sensitivity) => sensitivity switch

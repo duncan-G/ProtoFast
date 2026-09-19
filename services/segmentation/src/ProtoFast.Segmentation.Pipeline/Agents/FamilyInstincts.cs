@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using ProtoFast.Segmentation.Core.Model;
 using ProtoFast.Segmentation.Data;
 using ProtoFast.Segmentation.Data.Entities;
 
@@ -25,15 +26,46 @@ public sealed class FamilyInstincts(IServiceScopeFactory scopes, TimeProvider cl
     /// <summary>Confidence lost per 30 days without a confirmation.</summary>
     public const double DecayPer30Days = 0.05;
 
-    public async Task<IReadOnlyList<string>> ForFamilyAsync(string family, CancellationToken ct = default)
-    {
-        await using var scope = scopes.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<SegmentationDbContext>();
+    public Task<IReadOnlyList<string>> ForFamilyAsync(string family, CancellationToken ct = default) =>
+        ForScopeAsync(family, axis: null, scope: null, ct);
 
-        var rows = await db.FamilyInstincts
+    /// <summary>
+    /// The guidance one agent may see (scene plan §7.1).
+    ///
+    /// <para><see cref="InstinctScope"/> is what keeps the six-per-prompt budget spent on relevant
+    /// guidance: without it every consumer would draw from one pool and see instincts meant for
+    /// another agent. <see cref="FamilyAxis"/> keeps a production instinct — "pages 1–4 are front
+    /// matter in this publisher's template" — from being offered as if it were a fact about the kind
+    /// of work.</para>
+    ///
+    /// <para>Null on either parameter means "any", which is what <see cref="ForFamilyAsync"/> asks
+    /// for: an instinct captured before the axis existed still applies to the agent it was captured
+    /// from.</para>
+    /// </summary>
+    public async Task<IReadOnlyList<string>> ForScopeAsync(
+        string family,
+        FamilyAxis? axis,
+        InstinctScope? scope,
+        CancellationToken ct = default)
+    {
+        await using var dbScope = scopes.CreateAsyncScope();
+        var db = dbScope.ServiceProvider.GetRequiredService<SegmentationDbContext>();
+
+        var query = db.FamilyInstincts
             .AsNoTracking()
-            .Where(i => i.Family == family && i.PromotedAt == null)
-            .ToListAsync(ct);
+            .Where(i => i.Family == family && i.PromotedAt == null);
+
+        if (axis is { } requiredAxis)
+        {
+            query = query.Where(i => i.Axis == requiredAxis);
+        }
+
+        if (scope is { } requiredScope)
+        {
+            query = query.Where(i => i.Scope == requiredScope);
+        }
+
+        var rows = await query.ToListAsync(ct);
 
         var now = clock.GetUtcNow();
 
@@ -53,20 +85,38 @@ public sealed class FamilyInstincts(IServiceScopeFactory scopes, TimeProvider cl
     /// raise its confidence; the first sighting is stored well below the injection threshold, so
     /// one reviewer's one-off opinion never reaches a prompt.
     /// </summary>
-    public async Task ConfirmAsync(string family, string pattern, string guidance, CancellationToken ct = default)
+    public Task ConfirmAsync(string family, string pattern, string guidance, CancellationToken ct = default) =>
+        ConfirmAsync(family, FamilyAxis.Composition, InstinctScope.Structure, pattern, guidance, ct);
+
+    /// <inheritdoc cref="ConfirmAsync(string, string, string, CancellationToken)"/>
+    public async Task ConfirmAsync(
+        string family,
+        FamilyAxis axis,
+        InstinctScope instinctScope,
+        string pattern,
+        string guidance,
+        CancellationToken ct = default)
     {
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<SegmentationDbContext>();
 
         var now = clock.GetUtcNow();
+
+        // Keyed by (family, axis, scope, pattern): the same words can be a true production instinct
+        // and a false composition one, and collapsing them would let one reviewer's correction about
+        // a publisher's template reach an agent reasoning about the kind of work.
         var row = await db.FamilyInstincts
-            .FirstOrDefaultAsync(i => i.Family == family && i.Pattern == pattern, ct);
+            .FirstOrDefaultAsync(
+                i => i.Family == family && i.Axis == axis && i.Scope == instinctScope && i.Pattern == pattern,
+                ct);
 
         if (row is null)
         {
             db.FamilyInstincts.Add(new FamilyInstinct
             {
                 Family = family,
+                Axis = axis,
+                Scope = instinctScope,
                 Pattern = pattern,
                 Guidance = guidance,
                 Confidence = 0.3,

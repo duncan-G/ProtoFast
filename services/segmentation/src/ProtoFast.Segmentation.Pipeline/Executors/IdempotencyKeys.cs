@@ -25,6 +25,28 @@ public static class IdempotencyKeys
     public static string StructureWindow(string runId, int windowIndex, string promptVersion) =>
         $"{runId}:structure-window:{windowIndex}:{promptVersion}";
 
+    /// <summary>One phase-8 typing window (scene plan §8.6).</summary>
+    public static string ItemWindow(string runId, int windowIndex, string promptVersion) =>
+        $"{runId}:item-window:{windowIndex}:{promptVersion}";
+
+    /// <summary>One phase-9 persona window (scene plan §8.7).</summary>
+    public static string PersonaWindow(string runId, int windowIndex, string promptVersion) =>
+        $"{runId}:persona-window:{windowIndex}:{promptVersion}";
+
+    /// <summary>One phase-11 scene-link window (scene plan §8.9).</summary>
+    public static string SceneLinkWindow(string runId, int windowIndex, string promptVersion) =>
+        $"{runId}:scene-link-window:{windowIndex}:{promptVersion}";
+
+    /// <summary>
+    /// An item-scoped augmentation (scene plan §3.6). Keyed by the <em>item's</em> hash rather than
+    /// a paragraph's, which is what makes re-running the re-writer free: render text is produced
+    /// against a frozen item and keyed by it, so regenerating re-derives a key rather than
+    /// invalidating an artifact.
+    /// </summary>
+    public static string ItemAugmentation(
+        string runId, string augmentationType, string itemId, string itemHash, string promptVersion) =>
+        $"{runId}:{augmentationType}:{itemId}:{itemHash}:{promptVersion}";
+
     /// <summary>
     /// Augmentation is keyed by the paragraph's <em>content</em> hash as well as its id, because a
     /// phase-6 repair can produce a new paragraph with a recycled id lineage. Without the hash, a

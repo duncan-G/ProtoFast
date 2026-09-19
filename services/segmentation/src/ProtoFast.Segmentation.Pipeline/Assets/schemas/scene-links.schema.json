@@ -1,0 +1,61 @@
+{
+  "type": "object",
+  "required": [
+    "links",
+    "openQuestions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "links": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/link"
+      }
+    },
+    "openQuestions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "link": {
+      "type": "object",
+      "required": [
+        "from",
+        "to",
+        "kind",
+        "evidence",
+        "confidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "ReturnsTo",
+            "FlashbackOf",
+            "ConcurrentWith",
+            "Frames",
+            "FramedBy"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "confidence": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}

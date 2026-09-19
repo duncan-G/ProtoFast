@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "required": [
+    "renderText"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "renderText": {
+      "type": "string"
+    }
+  }
+}

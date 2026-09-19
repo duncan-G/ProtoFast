@@ -77,7 +77,9 @@ import { PhaseState, type Run } from '../../../lib/gen/segmentation_pb';
                     <a [routerLink]="['/app/reviews']" class="chip chip-accent">Needs review</a>
                   }
                   @if (finished(run)) {
-                    <a [routerLink]="['/app/runs', run.runId, 'tree']" class="btn btn-secondary">Tree</a>
+                    <a [routerLink]="['/app/runs', run.runId, 'scenes']" class="btn btn-secondary">
+                      Scenes
+                    </a>
                   }
                 </div>
               </div>

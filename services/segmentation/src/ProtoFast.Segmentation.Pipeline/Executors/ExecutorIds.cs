@@ -14,8 +14,13 @@ public static class ExecutorIds
     public const string Triage = "triage";
     public const string Label = "label";
     public const string Assemble = "assemble";
+    public const string Presentation = "presentation";
     public const string Structure = "structure";
     public const string Validate = "validate";
+    public const string Items = "items";
+    public const string Referents = "referents";
+    public const string Scenes = "scenes";
+    public const string SceneLinks = "scene-links";
     public const string StructureReview = "structure-review";
     public const string HumanGate = "human-gate";
 
@@ -43,8 +48,13 @@ public static class ExecutorIds
         Triage => Core.Model.PipelinePhase.Triage,
         Label => Core.Model.PipelinePhase.Label,
         Assemble => Core.Model.PipelinePhase.Assemble,
+        Presentation => Core.Model.PipelinePhase.ClassifyPresentation,
         Structure => Core.Model.PipelinePhase.InferStructure,
         Validate => Core.Model.PipelinePhase.Validate,
+        Items => Core.Model.PipelinePhase.TypeItems,
+        Referents => Core.Model.PipelinePhase.ResolveReferents,
+        Scenes => Core.Model.PipelinePhase.CutScenes,
+        SceneLinks => Core.Model.PipelinePhase.LinkScenes,
         StructureReview => Core.Model.PipelinePhase.ReviewStructure,
         HumanGate or HumanGatePort or GateResume => Core.Model.PipelinePhase.HumanGate,
         Freeze => Core.Model.PipelinePhase.Freeze,

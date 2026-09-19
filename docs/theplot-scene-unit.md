@@ -1,16 +1,16 @@
 # ThePlot — The Scene: definition, constraints, capacities
 
-Status: **definition / for review**. Prerequisite to any scene-building work in
+Status: **definition / complete**. Prerequisite to any scene-building work in
 `theplot-segmentation-plan.md` (§9 phase 5) and `theplot-segmentation-groupchat-plan.md`.
 This document defines the unit only. It does not specify the segmenter, the prompts, or the
-renderer — see `theplot-scene-plan.md`, which introduces **scene items** as the scene's leaf and
-**metadata exclusion**, and amends C1, C2 and C3 accordingly (marked below).
+renderer — see `theplot-scene-plan.md`, which specifies the **item** this document takes as the
+scene's leaf, the **tag layer** its coordinates cite, and **metadata exclusion**.
 
 ---
 
 ## 1. The definition
 
-> A **scene** is the maximal contiguous run of paragraphs over which one **situation** holds.
+> A **scene** is the maximal contiguous run of **items** over which one **situation** holds.
 
 A situation is a five-coordinate tuple:
 
@@ -22,12 +22,18 @@ Everything else follows from two words in that sentence:
 
 - **maximal** — a scene is extended until a coordinate changes. You never cut a scene for
   length, tidiness, or topic drift that the coordinates don't register.
-- **contiguous** — a scene is a span of the frozen paragraph sequence, not a set gathered
-  from across the document.
+- **contiguous** — a scene is a span of the item sequence, not a set gathered from across the
+  document.
 
-The tuple is what makes a boundary *decidable* rather than a matter of taste. Two adjacent
-paragraphs are in the same scene iff their situations are equal; a boundary exists exactly
-where one coordinate changes discontinuously (§4).
+The **item** is the third word doing work, and `theplot-scene-plan.md` §3 defines it: a typed,
+contiguous character span inside one paragraph. Two things follow. A scene may begin and end
+**inside** a paragraph, so a paragraph mixing dialogue, action and description can carry a
+boundary. And items exist only over *displayable* paragraphs, so metadata never enters the run at
+all, which is what lets C1 partition without an escape clause.
+
+The tuple is what makes a boundary *decidable* rather than a matter of taste. Two adjacent items
+are in the same scene iff their situations are equal; a boundary exists exactly where one
+coordinate changes discontinuously (§4).
 
 A scene is the unit that can be **staged**. The test for whether the definition is doing its
 job: hand one scene record to something that has never seen the document, and it should be
@@ -38,7 +44,7 @@ backwards, the unit is broken.
 
 | Not | Why |
 |---|---|
-| A **paragraph** | A paragraph is a text-integrity unit. A scene owns paragraphs; it is not one. |
+| A **paragraph** | A paragraph is the text-integrity unit; the item is the composition unit. A scene owns items, and through them character spans of paragraphs. It is not a paragraph, and it need not begin at one. |
 | A **section** | A section is a *structural* claim about the document (headings, hierarchy). A scene is a *staging* claim about the world the document depicts. They coincide often and disagree meaningfully (§7.6). |
 | A **topic** | Topic is one coordinate (`Subject`) and only cut-bearing in some modes (§4.2). |
 | A **shot / panel / frame** | Those are rendering decisions *below* the scene. One scene may render as many shots. The document does not determine them. |
@@ -115,7 +121,7 @@ A set of persona references, each with a role **in this scene**:
 **Mention is not presence.** A persona discussed but not present is not in the cast; it is a
 `Subject` reference. This single rule removes most cast ambiguity in expository text.
 
-The **tag layer** (scene-plan §2.5) makes it mechanical rather than a judgment: every reference
+The **tag layer** (scene-plan §4) makes it mechanical rather than a judgment: every reference
 in an item's text — "the professor", "she", "Dr. Vance" — is tagged to a persona id, so mentions
 are enumerable. Cast membership is then derived from *role*, not from tag count: a persona enters
 the cast by speaking, being addressed, or being tagged `Present`. A persona tagged only inside
@@ -136,7 +142,9 @@ Only the text promoting them to a collective does that.
 
 Group membership may be partial or unknown, which is a fact about the group, not a defect: "the
 gang" is often never enumerated. Whether membership is complete is the switch that decides
-whether the group renders as its members or as a crowd (scene-plan §2.5).
+whether the group renders as its members or as a crowd. Membership is recorded **per reference**,
+on the `Group` tag rather than on the registry entry, because a group's identity persists across
+a document while its roster does not (scene-plan §4.3).
 
 The narrator is a persona. The lecturer is a persona. An unattributed voice is the explicit
 `Unattributed` persona, not an empty cast.
@@ -160,15 +168,20 @@ always determinable: when nothing else about a span can be established, it is `E
 One per scene — **one coordinate, not two**. In `Enacted`/`Narrated` mode it is the event. In
 `Expounded`/`Addressed` mode it is the topic under treatment. In `Exhibited` it is what the
 apparatus shows. Expository material that seems to want "topic" and "claim" separately gets that
-resolution from the `Topic` tag layer inside its items (scene-plan §2.5), not from a second
-coordinate: tags are many per scene, coordinates are one.
+resolution from paragraph-id evidence under C13, not from a second coordinate: evidence is many
+per scene, coordinates are one. There is no `Topic` tag kind; the tag kinds are the four in §9,
+and Subject is evidenced the ordinary way.
 
 ## 4. The cut rule
 
 ### 4.1 The test
 
-A boundary falls between paragraphs *p* and *p+1* iff at least one **live** coordinate
-changes **discontinuously** there.
+A boundary falls between items *i* and *i+1* iff at least one **live** coordinate changes
+**discontinuously** there.
+
+Items are finer than a sentence, but **scene boundaries are not**: a cut falls at a sentence
+edge and never inside one, because a situation does not change halfway through a sentence and a
+cut there would strand a clause (scene-plan §3.5).
 
 Operationally: *could a stage crew keep the same set, the same people on it, and the same
 thing going on, and just continue?* If yes, no cut — regardless of length or topic drift. If
@@ -194,10 +207,10 @@ A **mode change is always a cut.** Mode is live in every mode.
 
 ### 4.3 Precedence
 
-When coordinates disagree about where the boundary sits (a speaker leaves one paragraph
-before the location changes), the boundary goes at the **earliest** paragraph at which the new
-situation is fully in effect, and the paragraphs in between belong to the *outgoing* scene.
-Scenes are maximal backwards, not forwards.
+When coordinates disagree about where the boundary sits (a speaker leaves several items before
+the location changes), the boundary goes at the **earliest** item at which the new situation is
+fully in effect, and the items in between belong to the *outgoing* scene. Scenes are maximal
+backwards, not forwards.
 
 ### 4.4 Granularity — treated vs. listed
 
@@ -216,12 +229,12 @@ and it takes most of the pressure off the montage case (§7.5).
 
 ## 5. Constraints
 
-Hard invariants. Each is deterministically checkable in C# against the frozen paragraph list;
-none requires a model.
+Hard invariants. Each is deterministically checkable in C# against the frozen paragraph list and
+the item partition over it; none requires a model.
 
 | ID | Constraint |
 |---|---|
-| **C1** | **Partition.** Every **displayable** item belongs to exactly one scene. No gaps, no overlaps. Metadata — page numbers, running heads, front and back matter — is not a scene; it is classified and excluded, and covered by an explicit exclusion set so nothing is dropped silently (scene-plan §3). Apparatus that *is* part of the work — tables, figures, theorem boxes, problem sets — does not float; it becomes an `Exhibited` scene. |
+| **C1** | **Partition.** Every **displayable** item belongs to exactly one scene. No gaps, no overlaps. Metadata — page numbers, running heads, front and back matter — is not a scene; it is classified and excluded, and covered by an explicit exclusion set so nothing is dropped silently (scene-plan §5). Apparatus that *is* part of the work — tables, figures, theorem boxes, problem sets — does not float; it becomes an `Exhibited` scene. |
 | **C2** | **Contiguity and order.** A scene is a contiguous run of items; scene order is item order. |
 | **C3** | **Non-empty.** A scene owns at least one item. A mode change spanning fewer than `MinSceneSpan` sentences (default 2) is an item attribute, not a cut — the floor that stops sub-sentence flicker from becoming scenes. |
 | **C4** | **Leaf.** Scenes never nest — scenes are the **leaves of the section tree**, which is where all nesting lives. A leaf section contains scenes; a non-leaf section contains sections. Story-within-story is a *link*, not containment (§7.4). |
@@ -229,12 +242,12 @@ none requires a model.
 | **C6** | **Total situation.** No coordinate may be omitted. Each carries a value, and every coordinate has a legal "nothing here" value — Setting `Void`, Time `Unanchored`, Cast empty, Mode `Exhibited` — so absence is always expressible without a null. |
 | **C7** | **Resolved inheritance.** Inherited values are copied in with the source scene id. A scene never says "as before"; a reader of one scene record never has to look elsewhere. Setting inheritance is **bounded** — §3.1.1. |
 | **C8** | **Cast closure.** Every cast entry resolves to a persona id in the run's registry, individual or group alike. No anonymous speakers; `Unattributed` is a real persona. |
-| **C9** | **No new source text.** A scene references paragraph ids. Title, summary, and place names are metadata, clearly marked as generated, and never re-enter the content stream. Inherits "models label, never rewrite" from §3 of the segmentation plan. |
-| **C10** | **Downstream of freeze.** Scene assignment consumes frozen paragraphs and the frozen tree, and freezes itself with its own content hash. Scene ids derive from the first paragraph id, so they are stable across re-runs that do not change that paragraph. |
+| **C9** | **No new source text.** A scene references item ids, and an item references a character span of a frozen paragraph — so a scene still names text rather than carrying it. Title, summary, and place names are metadata, clearly marked as generated, and never re-enter the content stream. Inherits "models label, never rewrite" from §3 of the segmentation plan. |
+| **C10** | **Downstream of freeze.** Scene assignment consumes frozen paragraphs and the frozen tree, and freezes itself with its own content hash. Scene ids derive from **`(FirstParagraphId, StartOffset)`** — the paragraph id and start offset of the scene's first item. The offset is part of the id because two scenes may begin in the same paragraph, which a bare paragraph id cannot distinguish. The id is anchored to the hashed artifact, so it survives any re-run that leaves that paragraph's text alone, including one that re-cuts its items. |
 | **C11** | **No guessing.** Where the text does not supply a coordinate, the scene takes that coordinate's nothing-value (C6) and any suspicion is raised by a derived flag (§3.1). Fabricating a coordinate — inventing a place, a time, or a persona the text does not support — is a validation failure, not a fallback. |
-| **C12** | **Sections are respected.** A scene may not straddle a section boundary — structurally impossible now that scenes are tree leaves (C4), rather than a rule to police. Where staging continues across a section break, the scene splits and the halves carry a `Continues` link (§7.6). |
-| **C13** | **Evidence.** Every non-inherited coordinate cites the paragraph or line ids that justify it. Uncitable equals unknown. |
-| **C14** | **Bounds are advisory.** Minimum one paragraph, no hard maximum. Exceeding the configured ceiling (default 40 paragraphs) raises `oversized-scene` for review; it is never an automatic cut. |
+| **C12** | **Sections are respected.** A scene may not straddle a section boundary — structurally impossible, since scenes are tree leaves (C4). Where staging continues across a section break, the scene splits and the halves carry a `Continues` link (§7.6). |
+| **C13** | **Evidence.** Every non-inherited coordinate cites the line, paragraph or item ids that justify it. Uncitable equals unknown. |
+| **C14** | **Bounds are advisory.** Minimum one item (C3), no hard maximum. Exceeding the configured ceiling — default 40 **paragraphs touched**, kept as the human-legible measure rather than restated as an item count — raises `oversized-scene` for review; it is never an automatic cut. |
 
 ## 6. Capacities
 
@@ -243,7 +256,7 @@ these is a regression.
 
 | ID | Capacity |
 |---|---|
-| **K1** | **Stageable in isolation.** Given one scene record and its paragraphs, a renderer can stage it without reading the document. This is the point of C6 and C7, and the single capacity the whole design is for. |
+| **K1** | **Stageable in isolation.** Given one scene record and its items' spans, a renderer can stage it without reading the document. This is the point of C6 and C7, and the single capacity the whole design is for. |
 | **K2** | **Addressable.** A stable id that anchors comments, review decisions, edits, renders, and versions across re-runs. |
 | **K3** | **Castable.** Personas persist across scenes, so voice, appearance, and manner can be assigned once and held consistent document-wide. |
 | **K4** | **Sequenceable.** Scenes carry typed links — `Continues`, `ReturnsTo`, `FlashbackOf`, `ConcurrentWith`, `Frames`/`FramedBy` — so a plot is a graph over scenes without violating C4. |
@@ -326,10 +339,10 @@ The definition earns its keep here.
    `Narrated`. **In expository material, mode identifies exactly which spans are depictable** —
    the `Expounded` majority stages as a voice in the void, while the `Enacted`/`Narrated` islands
    are the only spans with a world to build. Granularity is settled by §4.4. Textbooks are also
-   the worst case for C12 (dense, deeply nested sections) and for persona scope (§9.2), and are
-   the right corpus to instrument both against.
+   the worst case for C12 (dense, deeply nested sections) and for persona scope — two hundred
+   throwaway worked-example Alices — and are the right corpus to instrument both against.
 8. **Front matter, running headers, page numbers.** Not scenes at all — **metadata** (C1,
-   scene-plan §3). Classified and excluded from the scene stream, retained in the frozen record
+   scene-plan §5). Classified and excluded from the scene stream, retained in the frozen record
    so `text-integrity` still accounts for every character. What counts as metadata is
    family-dependent: a dedication is apparatus in a textbook and may be the work in a poetry
    collection, so the boundary is learned rather than hardcoded. Footnote *text* is usually
@@ -338,17 +351,20 @@ The definition earns its keep here.
 ## 8. Shape
 
 Sketch only; the record lives in `ProtoFast.Segmentation.Core/Scenes/` and follows §8 of the
-segmentation plan for id conventions.
+segmentation plan for id conventions. The leaf is the **item**, per §1 — a scene names items and
+an item names a character span of a frozen paragraph, so no layer of this record carries text.
 
 ```csharp
 public sealed record Scene(
-    string SceneId,                      // "SC0012"; derived from FirstParagraphId
+    string SceneId,                      // "SC0012"; derived from (FirstParagraphId, StartOffset)
+                                         // of the first item — two scenes may start in one
+                                         // paragraph, so the offset is part of the id (C10)
     string SectionId,                    // owning section (C12)
-    string FirstParagraphId,
-    string LastParagraphId,
-    IReadOnlyList<string> ParagraphIds,  // contiguous, ordered (C2)
+    string FirstItemId,
+    string LastItemId,
+    IReadOnlyList<string> ItemIds,       // contiguous, ordered (C2)
     Situation Situation,
-    IReadOnlyList<SceneLink> Links,      // K4
+    IReadOnlyList<SceneLink> Links,      // K4; populated by scene-plan phase 11
     string? Title,                       // generated metadata, never content (C9)
     bool TitleInferred,
     IReadOnlyList<Flag> Flags,           // oversized-scene, unlocated-enactment, ... (derived)
@@ -366,28 +382,18 @@ public sealed record Situation(
 public sealed record Provenance(
     CoordinateSource Source,             // Stated, Inferred, Inherited
     string? InheritedFromSceneId,
-    IReadOnlyList<string> EvidenceIds,   // paragraph or line ids
+    IReadOnlyList<string> EvidenceIds,   // line, paragraph or item ids (C13)
     string? Reason);
 ```
 
-## 9. Decisions and what is still open
-
-### 9.1 Decided
+## 9. Decisions
 
 | Question | Decision |
 |---|---|
-| Is `Subject` one coordinate or two? | **One** (§3.5). Finer resolution comes from `Topic` evidence, not a second coordinate. |
-| Persona identity | The **tag layer** resolves every referring expression to a persona id; scope (persistent vs. scene-local) is a registry field (scene-plan §2.5). |
+| Is `Subject` one coordinate or two? | **One** (§3.5). Finer resolution comes from paragraph-id evidence under C13, not from a second coordinate. |
+| Persona identity | The **tag layer** resolves every referring expression to a persona id; scope (persistent vs. scene-local) is a registry field (scene-plan §4). In a document holding several composition families, a persistent persona is persistent *within its family scope* and never merges out of it (scene-plan §6.1). |
 | A unit between scene and document | **The section.** Scenes are the tree's leaves (C4); groupings the headings do not mark are inferred sections. No fourth layer. |
-| Tag kinds | `Persona`, `Group`, `Place`, `Exhibit` (scene-plan §2.5.1). |
-| **C12's residual cost** | **Split the metric by boundary provenance.** A `Continues` link across a *trusted* heading is expected and needs no action — chapters interrupt scenes constantly. A `Continues` link across an *inferred* boundary is evidence the inference was wrong, and above a per-family threshold becomes a review finding routed back to structure repair. The section tree yields to staging only where the tree was itself inferred; trusted boundaries are never overridden, per the platform's existing posture. |
-| **Setting inheritance vs. Void** | **Bounded on four sides** — mode, section, evidence, depth (§3.1.1). Unbounded inheritance was the hazard, not the choice between inheriting and not. |
-
-### 9.2 Still open
-
-1. **Group membership drift.** "The brothers" may mean two people in chapter 1 and three in
-   chapter 20. Membership is currently a registry-level fact, which cannot express that. Either
-   membership becomes scene-local (costly, precise) or a group is re-registered when it changes
-   (cheap, lossy). Undecided until a corpus shows how often it matters.
-2. **Tagging *things*.** Props and objects a character handles are the obvious next tag kind and
-   the first step toward world state, which §6.3 rules out. Deferred until a renderer asks.
+| Tag kinds | **Four, and the list is closed for v1**: `Persona`, `Group`, `Place`, `ExhibitRef` (scene-plan §4.2). `ExhibitRef` is named apart from the `Exhibit` item kind because the item is the artifact and the tag is a pointer to one. There is no `Prop` kind: tagging objects is the first step toward the world state §6.3 rules out, and it fires per concrete noun, which is the cost profile scene-plan §4.5 exists to avoid. |
+| **C12's residual cost** | **Split the metric by boundary provenance.** A `Continues` link across a *trusted* heading is expected and needs no action — chapters interrupt scenes constantly. A `Continues` link across an *inferred* boundary is evidence the inference was wrong, and above a per-family threshold becomes a review finding routed back to structure repair. The section tree yields to staging only where the tree was itself inferred; trusted boundaries are never overridden. |
+| **Setting inheritance vs. Void** | **Bounded on four sides** — mode, section, evidence, depth (§3.1.1). Unbounded inheritance is the hazard, not the choice between inheriting and not. |
+| **Group membership drift** | **Membership hangs off each `Group` tag, not off the registry entry** (scene-plan §4.3). The registry keeps the group's identity; each reference keeps the roster it resolved at that point in the document, so "the brothers" is two in chapter 1 and three in chapter 20 without either being wrong. |

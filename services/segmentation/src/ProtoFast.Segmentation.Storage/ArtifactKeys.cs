@@ -58,14 +58,19 @@ public static class ArtifactKeys
             PipelinePhase.Triage => "02_triage.json",
             PipelinePhase.Label => "03_labels_merged.json",
             PipelinePhase.Assemble => "04_paragraphs.jsonl",
-            PipelinePhase.InferStructure => "05_tree.json",
-            PipelinePhase.Validate => "06_validation.json",
-            PipelinePhase.ReviewStructure => "07_review.json",
-            PipelinePhase.HumanGate => "08_decision.json",
-            PipelinePhase.Freeze => "09_frozen.json",
-            PipelinePhase.Augment => "10_augmented/index.json",
-            PipelinePhase.ReviewAugmentation => "11_aug_review.json",
-            PipelinePhase.Publish => "12_result.json",
+            PipelinePhase.ClassifyPresentation => "05_presentation.json",
+            PipelinePhase.InferStructure => "06_tree.json",
+            PipelinePhase.Validate => "07_validation.json",
+            PipelinePhase.TypeItems => "08_items.jsonl",
+            PipelinePhase.ResolveReferents => "09_registries.json",
+            PipelinePhase.CutScenes => "10_scenes.json",
+            PipelinePhase.LinkScenes => "11_links.json",
+            PipelinePhase.ReviewStructure => "12_review.json",
+            PipelinePhase.HumanGate => "13_decision.json",
+            PipelinePhase.Freeze => "14_frozen.json",
+            PipelinePhase.Augment => "15_augmented/index.json",
+            PipelinePhase.ReviewAugmentation => "16_aug_review.json",
+            PipelinePhase.Publish => "17_result.json",
             _ => throw new ArgumentOutOfRangeException(nameof(phase), phase, "unknown phase"),
         };
 
@@ -101,10 +106,43 @@ public static class ArtifactKeys
     /// mechanism that makes a mid-run deploy cheap for labelling.
     /// </summary>
     public static string StructureWindow(string runId, int windowIndex) =>
-        RunPrefix(runId) + $"05_structure/window_{windowIndex.ToString("D5", CultureInfo.InvariantCulture)}.json";
+        RunPrefix(runId) + $"06_structure/window_{windowIndex.ToString("D5", CultureInfo.InvariantCulture)}.json";
+
+    /// <summary>Phase 5's per-paragraph composition-family evidence, which phase 7 reads (scene plan §6.1).</summary>
+    public static string FamilyEvidence(string runId) => RunPrefix(runId) + "05_family_evidence.json";
+
+    /// <summary>
+    /// The family scopes phase 7 derived (scene plan §6.1). Beside the validation report rather than
+    /// inside it because it is an artifact phases 8, 9 and 10 read, not a verdict.
+    /// </summary>
+    public static string FamilyScopes(string runId) => RunPrefix(runId) + "07_family_scopes.json";
+
+    /// <summary>One phase-8 window's typed items (scene plan §8.6).</summary>
+    public static string ItemWindow(string runId, int windowIndex) =>
+        RunPrefix(runId) + $"08_items/window_{windowIndex.ToString("D5", CultureInfo.InvariantCulture)}.json";
+
+    /// <summary>One phase-9 windower's local referent candidates (scene plan §8.7).</summary>
+    public static string PersonaWindow(string runId, int windowIndex) =>
+        RunPrefix(runId) + $"09_personas/window_{windowIndex.ToString("D5", CultureInfo.InvariantCulture)}.json";
+
+    /// <summary>The persona orchestrator's registry plan, kept as the audit record of how ids were issued.</summary>
+    public static string RegistryPlan(string runId) => RunPrefix(runId) + "09_personas/plan.json";
+
+    public static string PersonaChat(string runId) => RunPrefix(runId) + "09_personas/chat.jsonl";
+
+    /// <summary>The bound items, rewritten by phase 9 — the artifact phases 10 and 15 actually read.</summary>
+    public static string BoundItems(string runId) => RunPrefix(runId) + "09_items_bound.jsonl";
+
+    /// <summary>One phase-11 windower's proposed links (scene plan §8.9).</summary>
+    public static string SceneLinkWindow(string runId, int windowIndex) =>
+        RunPrefix(runId) + $"11_links/window_{windowIndex.ToString("D5", CultureInfo.InvariantCulture)}.json";
+
+    public static string SceneLinkPlan(string runId) => RunPrefix(runId) + "11_links/plan.json";
+
+    public static string SceneLinkChat(string runId) => RunPrefix(runId) + "11_links/chat.jsonl";
 
     /// <summary>The orchestrator's assembly plan, kept as the audit record of how the tree was built.</summary>
-    public static string AssemblyPlan(string runId) => RunPrefix(runId) + "05_structure/plan.json";
+    public static string AssemblyPlan(string runId) => RunPrefix(runId) + "06_structure/plan.json";
 
     /// <summary>
     /// The orchestration transcript. An audit record for the experiment, deliberately not resume
@@ -112,13 +150,18 @@ public static class ArtifactKeys
     /// orchestrator rounds against outlines rather than re-reading the document
     /// (orchestrator plan §6).
     /// </summary>
-    public static string StructureChat(string runId) => RunPrefix(runId) + "05_structure/chat.jsonl";
+    public static string StructureChat(string runId) => RunPrefix(runId) + "06_structure/chat.jsonl";
 
     /// <summary>The capability gaps this run's orchestrator reported (orchestrator plan §12.3(d)).</summary>
-    public static string CapabilityGaps(string runId) => RunPrefix(runId) + "05_structure/gaps.json";
+    public static string CapabilityGaps(string runId) => RunPrefix(runId) + "06_structure/gaps.json";
 
-    public static string Augmentation(string runId, string augmentationType, string paragraphId) =>
-        RunPrefix(runId) + $"10_augmented/{augmentationType}/{paragraphId}.json";
+    /// <summary>
+    /// One augmentation output, keyed by its <em>target</em> id rather than by a paragraph id —
+    /// augmentation granularity is a property of the type (scene plan §10), so the key has to admit
+    /// an item id or a scene id as readily as a paragraph id.
+    /// </summary>
+    public static string Augmentation(string runId, string augmentationType, string targetId) =>
+        RunPrefix(runId) + $"15_augmented/{augmentationType}/{targetId}.json";
 
     /// <summary>
     /// The stable read path for frozen output. Named by tree hash, so the same structure written

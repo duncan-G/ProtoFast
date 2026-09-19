@@ -160,8 +160,11 @@ public class SegmentationServiceTests
         var message = Assert.Single(fixture.Queue.Runs);
         Assert.Equal(reply.RunId, message.RunId);
 
-        // The ladder is seeded so ThePlot can draw all thirteen phases immediately.
-        Assert.Equal(13, fixture.Db.RunPhases.Count());
+        // The ladder is seeded so ThePlot can draw every phase immediately — all eighteen of them
+        // since the scene plan inserted the five that produce scenes (scene plan §8.1).
+        Assert.Equal(
+            Enum.GetValues<ProtoFast.Segmentation.Core.Model.PipelinePhase>().Length,
+            fixture.Db.RunPhases.Count());
     }
 
     [Fact]

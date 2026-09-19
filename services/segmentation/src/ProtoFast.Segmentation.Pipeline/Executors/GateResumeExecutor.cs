@@ -23,7 +23,7 @@ namespace ProtoFast.Segmentation.Pipeline.Executors;
 /// the graph carries a typed edge for each.</para>
 /// </summary>
 [SendsMessage(typeof(ReviewComplete))]
-[SendsMessage(typeof(AssembleComplete))]
+[SendsMessage(typeof(PresentationComplete))]
 public sealed class GateResumeExecutor(
     RunArtifacts artifacts,
     RunJournal journal,
@@ -58,18 +58,24 @@ public sealed class GateResumeExecutor(
             logger.LogInformation(
                 "Run {RunId}: rejected at the gate; re-running structure inference with the notes.", runId);
 
-            // Back to phase 5. The notes reach the structurer through the review artifact, which
+            // Back to phase 6. The notes reach the structurer through the review artifact, which
             // the structure executor reads — so a rejection is a second attempt with information,
-            // not a retry of the same prompt.
+            // not a retry of the same prompt. Presentation is not re-run: what a reviewer rejected
+            // is the tree, and re-classifying the front matter would spend a phase to reproduce it.
             await journal.NoteAsync(
                 runId, PipelinePhase.InferStructure,
                 $"re-running after rejection: {message.Notes ?? "(no notes)"}", cancellationToken);
 
+            var presentation = await artifacts.ReadPresentationAsync(runId, cancellationToken);
+
             await context.SendMessageAsync(
-                new AssembleComplete(
+                new PresentationComplete(
                     runId,
-                    new ArtifactRef(runId, ArtifactKeys.Phase(runId, PipelinePhase.Assemble), string.Empty, 0),
-                    new ArtifactRef(runId, ArtifactKeys.AssemblyHeadings(runId), string.Empty, 0)),
+                    new ArtifactRef(
+                        runId, ArtifactKeys.Phase(runId, PipelinePhase.ClassifyPresentation), string.Empty, 0),
+                    presentation?.CompositionFamily
+                        ?? Core.Classification.CompositionFamily.Unknown,
+                    presentation?.Presentations.Count(p => !p.IsDisplayable) ?? 0),
                 cancellationToken: cancellationToken);
 
             return;

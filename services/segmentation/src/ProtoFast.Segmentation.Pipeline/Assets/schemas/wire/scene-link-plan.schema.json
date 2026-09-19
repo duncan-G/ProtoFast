@@ -1,0 +1,127 @@
+{
+  "type": "object",
+  "required": [
+    "links",
+    "followUps",
+    "gaps",
+    "complete"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "links": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/link"
+      }
+    },
+    "followUps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/followUp"
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/gap"
+      }
+    },
+    "complete": {
+      "type": "boolean"
+    }
+  },
+  "$defs": {
+    "link": {
+      "type": "object",
+      "required": [
+        "from",
+        "to",
+        "kind",
+        "evidence",
+        "confidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "ReturnsTo",
+            "FlashbackOf",
+            "ConcurrentWith",
+            "Frames",
+            "FramedBy"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "confidence": {
+          "type": "number"
+        }
+      }
+    },
+    "followUp": {
+      "type": "object",
+      "required": [
+        "kind",
+        "node",
+        "relatedNode"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "resumes_earlier",
+            "time_direction",
+            "frame_check"
+          ]
+        },
+        "node": {
+          "type": "string"
+        },
+        "relatedNode": {
+          "type": "string"
+        }
+      }
+    },
+    "gap": {
+      "type": "object",
+      "required": [
+        "kind",
+        "evidence",
+        "observation",
+        "proposal"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "deterministic",
+            "agent",
+            "prompt"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "observation": {
+          "type": "string"
+        },
+        "proposal": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

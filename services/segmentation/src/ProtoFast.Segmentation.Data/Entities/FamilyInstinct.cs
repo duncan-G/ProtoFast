@@ -1,3 +1,5 @@
+using ProtoFast.Segmentation.Core.Model;
+
 namespace ProtoFast.Segmentation.Data.Entities;
 
 /// <summary>
@@ -13,6 +15,20 @@ public sealed class FamilyInstinct
     public long Id { get; set; }
 
     public required string Family { get; set; }
+
+    /// <summary>
+    /// Which of the two family axes this instinct belongs to (scene plan §6, §7.1). A production
+    /// instinct is about how the file was made; a composition instinct is about what kind of work it
+    /// is. One field cannot carry both, and an instinct offered on the wrong axis is guidance about
+    /// the wrong thing.
+    /// </summary>
+    public FamilyAxis Axis { get; set; } = FamilyAxis.Composition;
+
+    /// <summary>
+    /// Which agent may see it (scene plan §7.1). This is what keeps the six-per-prompt budget spent
+    /// on relevant guidance: without it every consumer would draw from one pool.
+    /// </summary>
+    public InstinctScope Scope { get; set; } = InstinctScope.Structure;
 
     /// <summary>The situation this applies to, in the words a prompt can use.</summary>
     public required string Pattern { get; set; }

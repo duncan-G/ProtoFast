@@ -18,7 +18,24 @@ public sealed class Run
     /// <summary>The caller's own document identifier; free-form, not interpreted here.</summary>
     public required string DocumentId { get; set; }
 
+    /// <summary>
+    /// The <b>production</b> family: how the file was made (scene plan §6). It governs cleaning,
+    /// running apparatus, OCR repair and layout trust. The name is unchanged because every existing
+    /// consumer means this one.
+    /// </summary>
     public string DocumentFamily { get; set; } = Core.Ingest.FamilyDetector.Unknown;
+
+    /// <summary>
+    /// The <b>composition</b> family: what kind of work it is (scene plan §6). It governs metadata
+    /// policy, item typing, scene cutting and persona scope, and is the single strongest predictor of
+    /// everything in the scene plan — which is why it is a field with a detector rather than a prompt
+    /// hint.
+    ///
+    /// <para>A scanned PDF of a novel and a scanned PDF of a textbook share every production instinct
+    /// and almost no composition instinct, so one field cannot carry both. It is the <em>fallback</em>
+    /// of the §6.1 resolution: a section carrying its own family scope overrides it for its subtree.</para>
+    /// </summary>
+    public string CompositionFamily { get; set; } = Core.Classification.CompositionFamily.Unknown;
 
     public Sensitivity Sensitivity { get; set; } = Sensitivity.Internal;
 

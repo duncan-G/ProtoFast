@@ -82,6 +82,77 @@ public sealed class AugmenterAgent(AgentRunner runner, ILogger<AugmenterAgent> l
     }
 
     /// <summary>
+    /// One <b>item-scoped</b> augmentation call (scene plan §3.6, §10).
+    ///
+    /// <para>The same loop as the paragraph form, with the type's own <c>Validate</c> in the same
+    /// place — which is the point: the re-writer's grounding gate sits exactly where
+    /// <c>aug-grounding</c> sits, reading "its own target id" where that read "its own paragraph
+    /// id". Nothing about fan-out, batching, idempotency or review sampling is different for an
+    /// item.</para>
+    ///
+    /// <para>A rejected output returns null and the item keeps <c>RenderText = null</c>, so the
+    /// renderer falls back to the span. That is K7, not a blocked run — which is what lets the
+    /// grounding gate be hard without ever being able to fail a document.</para>
+    /// </summary>
+    public async Task<string?> AugmentItemAsync(
+        IItemAugmentationType type,
+        ItemAugmentationContext context,
+        SceneContext scene,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(scene);
+
+        var span = context.Item.SpanOf(context.ParagraphText);
+
+        var prompt = new PromptTemplate(runner.Assets.Template("augment-item.v1"))
+            .Set("rules", runner.Assets.Rules)
+            .Set("skill", runner.Assets.Read(type.SkillPath))
+            .Set("itemId", context.Item.ItemId)
+            .Set("itemKind", context.Item.Kind.ToString())
+            .Set("span", span)
+            // Exactly the personas the item's OWN tags bind — which is what row two of the
+            // grounding rule admits, so the prompt shows the model precisely what it may use.
+            .Set("personas", context.ResolvedPersonas.Count == 0
+                ? "(none — the span refers to nobody the tag layer resolved)"
+                : string.Join(", ", context.ResolvedPersonas.Select(p => p.CanonicalName)))
+            .Set("schemaName", type.SchemaName + ".schema.json")
+            .Set("schema", runner.Assets.Schema(type.SchemaName))
+            .Render();
+
+        var result = await runner.RunOrDegradeAsync<JsonElement>(
+            prompt,
+            new RoutingContext(
+                scene.RunId, scene.DocumentId, PipelinePhase.Augment, AgentRole.Augmenter,
+                type.Tier, scene.Sensitivity,
+                EstimatedInputTokens: 600 + prompt.Length / 4,
+                MaxOutputTokens: 512)
+            {
+                PromptVersion = runner.Assets.VersionFor(AgentRole.Augmenter),
+                Unit = context.Item.ItemId,
+                OutputSchema = runner.Assets.WireSchemaElement(type.SchemaName),
+                OutputSchemaName = type.SchemaName,
+            },
+            output => Combine(type.Validate(context, output)),
+            // One regeneration, then the item keeps its span: "rejected, regenerated once, then
+            // flagged" is the path the plan specifies behind the grounding gate (§3.7).
+            maxRounds: 1,
+            ct);
+
+        if (!result.Success)
+        {
+            logger.LogDebug(
+                "Augmentation '{Type}' was rejected for {ItemId} in run {RunId}: {Check}",
+                type.Name, context.Item.ItemId, scene.RunId, result.Validation.CheckId);
+
+            return null;
+        }
+
+        return result.Value.TryGetProperty("renderText", out var property) ? property.GetString() : null;
+    }
+
+    /// <summary>
     /// The reviewer pass of plan §12.3, run on a sample. A failed review regenerates once with the
     /// reviewer's own notes as feedback, then gives up and flags — a second regeneration of
     /// something two models disagree about is spend, not signal.

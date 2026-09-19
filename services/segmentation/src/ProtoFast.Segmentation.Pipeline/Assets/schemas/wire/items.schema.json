@@ -1,0 +1,125 @@
+{
+  "type": "object",
+  "required": [
+    "paragraphs"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "paragraphs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/paragraph"
+      }
+    }
+  },
+  "$defs": {
+    "paragraph": {
+      "type": "object",
+      "required": [
+        "paragraphId",
+        "cuts",
+        "tags"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "paragraphId": {
+          "type": "string"
+        },
+        "cuts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/cut"
+          }
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/tag"
+          }
+        }
+      }
+    },
+    "cut": {
+      "type": "object",
+      "required": [
+        "start",
+        "kind",
+        "speaker",
+        "embodiment",
+        "addressee",
+        "voiced",
+        "standalone"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "start": {
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "speech",
+            "action",
+            "description",
+            "exhibit",
+            "transition"
+          ]
+        },
+        "speaker": {
+          "type": "string"
+        },
+        "embodiment": {
+          "enum": [
+            "embodied",
+            "disembodied"
+          ]
+        },
+        "addressee": {
+          "enum": [
+            "in-scene",
+            "audience",
+            "self"
+          ]
+        },
+        "voiced": {
+          "type": "boolean"
+        },
+        "standalone": {
+          "type": "boolean"
+        }
+      }
+    },
+    "tag": {
+      "type": "object",
+      "required": [
+        "kind",
+        "start",
+        "end",
+        "surfaceForm",
+        "confidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "persona",
+            "group",
+            "place",
+            "exhibit-ref"
+          ]
+        },
+        "start": {
+          "type": "integer"
+        },
+        "end": {
+          "type": "integer"
+        },
+        "surfaceForm": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}

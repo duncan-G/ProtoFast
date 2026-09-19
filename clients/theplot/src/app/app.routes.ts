@@ -32,6 +32,13 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/tree/tree').then((m) => m.TreePage),
   },
   {
+    // The scene stream (scene plan §2): the same frozen record as the tree, read as what the
+    // document is rather than as how it is filed.
+    path: 'app/runs/:runId/scenes',
+    canActivate: [authGuard],
+    loadComponent: () => import('./pages/scenes/scenes').then((m) => m.ScenesPage),
+  },
+  {
     path: 'app/runs/:runId/augmentations',
     canActivate: [authGuard],
     loadComponent: () =>

@@ -25,8 +25,9 @@ AWS CLI v2 and an SSO profile named **`developer`** (the Developer permission se
 | `otel-collector`          | container            | OTLP gRPC + HTTP receivers; every other resource points at it                                                    |
 | `postgres`                | container            | plus pgAdmin and a data volume (publish mode gets neither); hosts `keycloak` and `auth` databases                |
 | `auth-db`                 | database             | runs `ProtoFast.Auth.SchemaMigrations` before `auth` starts                                                      |
-| `redis`                   | container            | session, correlation and replay stores                                                                           |
-| `keycloak`                | container (26.7)     | realm import from `infra/keycloak/realms`, themes and provider JAR bind-mounted, tracing + logs to the collector |
+| `redis`                   | container            | session, correlation and replay stores; data volume so a restart does not sign everyone out                      |
+| `keycloak`                | container (26.7)     | realm import from `infra/keycloak/realms`, themes and provider JAR bind-mounted, tracing + logs to the collector; data volume for accounts and passkeys |
+| `localstack`              | container            | S3 + SQS for segmentation, created by `scripts/localstack-init.sh`; persistent container lifetime (see below)    |
 | `smtp4dev`                | container            | local mail catcher; web UI pinned at host `5000`, SMTP allocated; both Keycloak and `auth` are pointed at it     |
 | `auth`, `payments`, `api` | .NET projects        | OTLP reference, Redis/Postgres connection strings; JWT and Keycloak secrets from `protofast/dev`                 |
 | `conversion`              | Dockerfile container | the document converter (MarkItDown + Tesseract + Ghostscript); LocalStack endpoint by container DNS, throwaway credentials |
@@ -63,6 +64,57 @@ what production refuses. If a future LocalStack regresses on that, the
 converter's `ContentLength` check is the backstop that still catches it.
 
 
+
+## What survives a restart
+
+`aspire run` builds every container from its image again, so anything a
+container keeps to itself is gone the moment you press `Ctrl+C`. The resources
+holding state you accumulate while working are configured so that it isn't:
+
+
+| State                                                              | What keeps it                                             | Caveat                                                                                             |
+| ------------------------------------------------------------------ | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `auth` and `segmentation` databases                                | `postgres` data volume                                    | —                                                                                                  |
+| Keycloak accounts, passkeys, SSO sessions                          | `keycloak` data volume (its dev-file H2 database)         | the realm import skips a realm that already exists — see the realm row under *Common tasks*        |
+| Browser sessions, sign-in correlation, pending email changes       | `redis` data volume (RDB snapshots)                       | production runs Redis in-memory only on purpose (decision D3); dev keeps it so restarts don't sign you out |
+| Uploaded documents, artifacts, queued run messages (S3 + SQS)      | `localstack` runs with `ContainerLifetime.Persistent`     | it is the *container* that survives, not a volume — see below                                      |
+| The smtp4dev inbox                                                 | nothing                                                   | deliberately — it is test mail                                                                     |
+
+**LocalStack is the one that is different.** Its community edition keeps every
+bucket and queue in memory and reloading them from disk is a Pro feature, so
+there is nothing a volume could hold. Instead the container is marked
+persistent: Aspire reuses the running one rather than replacing it, and it keeps
+running after `Ctrl+C`. That covers restarting the stack, which is the case that
+matters day to day; `docker rm -f` on it, a Docker Engine restart or a reboot
+still empties S3 and SQS.
+
+That matters because segmentation runs are Postgres rows pointing at S3 keys,
+and Postgres *does* persist. Empty LocalStack on its own and every earlier run
+stays in the list with its source document and artifacts 404ing — which reads as
+a bug in the app rather than as the restart it is. If you clear one, clear both.
+
+**To wipe state deliberately** — a corrupted database, a realm edit that needs
+re-importing, a Keycloak admin password that stopped matching because the
+AppHost's user secrets were regenerated (the bootstrap admin is only created
+when the store has none), or just a clean slate — list the volumes first
+(Aspire names them after the AppHost, so they are prefixed
+`protofast.apphost-`):
+
+```bash
+docker volume ls | grep protofast
+```
+
+Then stop the stack and remove the ones you want gone, e.g. Keycloak's:
+
+```bash
+docker volume rm $(docker volume ls -q | grep 'protofast.*keycloak-data')
+```
+
+LocalStack has no volume; remove its container instead:
+
+```bash
+docker rm -f $(docker ps -aq --filter name=localstack)
+```
 
 ## Dev credentials and keys
 
@@ -123,7 +175,7 @@ this is for UI work only.
 | Apply migrations                  | automatic — `auth-db` runs the migrations project before `auth` starts                                                                        |
 | Rebuild the Keycloak provider JAR | `infra/keycloak/providers/build.sh`, then restart Keycloak                                                                                    |
 | Edit the Keycloak login theme     | edit under `deploy/keycloak/themes/protofast`; `start-dev` disables theme caching, so a refresh is enough                                     |
-| Change the realm                  | edit `infra/keycloak/realms/protofast-realm.json` **and** delete the Keycloak container's data — the import skips a realm that already exists |
+| Change the realm                  | edit `infra/keycloak/realms/protofast-realm.json` **and** remove the Keycloak data volume — the import skips a realm that already exists (see *What survives a restart*) |
 | See traces / logs / metrics       | the Aspire dashboard URL printed by `aspire run`                                                                                              |
 | See the prompts a run sent        | the same dashboard — the worker's `gen_ai.*` spans carry the messages in dev (see `09-reference.md`)                                          |
 | Run the auth tests                | `dotnet test services/auth/tests/ProtoFast.Auth.UnitTests` (and `…IntegrationTests`)                                                          |

@@ -32,6 +32,31 @@ public class PromptAssetTests
     [InlineData("prompts/structure-window.v1.md")]
     [InlineData("prompts/structure-orchestrator.v1.md")]
     [InlineData("prompts/structure-followup.v1.md")]
+    [InlineData("skills/presentation-classification/SKILL.md")]
+    [InlineData("skills/item-typing/SKILL.md")]
+    [InlineData("skills/referent-resolution/SKILL.md")]
+    [InlineData("skills/referent-orchestration/SKILL.md")]
+    [InlineData("skills/scene-cutting/SKILL.md")]
+    [InlineData("skills/scene-linking/SKILL.md")]
+    [InlineData("skills/scene-link-orchestration/SKILL.md")]
+    [InlineData("skills/augment/render-text/SKILL.md")]
+    [InlineData("schemas/presentation.schema.json")]
+    [InlineData("schemas/items.schema.json")]
+    [InlineData("schemas/persona-window.schema.json")]
+    [InlineData("schemas/registry-plan.schema.json")]
+    [InlineData("schemas/scene-cut.schema.json")]
+    [InlineData("schemas/scene-links.schema.json")]
+    [InlineData("schemas/scene-link-plan.schema.json")]
+    [InlineData("schemas/augment-render-text.schema.json")]
+    [InlineData("prompts/presentation.v1.md")]
+    [InlineData("prompts/item-typing.v1.md")]
+    [InlineData("prompts/persona-window.v1.md")]
+    [InlineData("prompts/persona-orchestrator.v1.md")]
+    [InlineData("prompts/scene-cut.v1.md")]
+    [InlineData("prompts/scene-link-window.v1.md")]
+    [InlineData("prompts/scene-link-orchestrator.v1.md")]
+    [InlineData("rules/closed-class.en.txt")]
+    [InlineData("prompts/augment-item.v1.md")]
     public void EveryAssetTheAgentsUseIsEmbedded(string path)
     {
         Assert.False(string.IsNullOrWhiteSpace(_assets.Read(path)));
@@ -42,6 +67,9 @@ public class PromptAssetTests
     [InlineData("legal-filing")]
     [InlineData("slide-export")]
     [InlineData("transcript")]
+    [InlineData("novel")]
+    [InlineData("textbook")]
+    [InlineData("screenplay")]
     public void EveryDetectableFamilyHasASkill(string family)
     {
         // FamilyDetector can return these, and a family with no skill would silently fall back to
@@ -110,6 +138,14 @@ public class PromptAssetTests
     [InlineData("structure-window")]
     [InlineData("assembly-plan")]
     [InlineData("structure-answers")]
+    [InlineData("presentation")]
+    [InlineData("items")]
+    [InlineData("persona-window")]
+    [InlineData("registry-plan")]
+    [InlineData("scene-cut")]
+    [InlineData("scene-links")]
+    [InlineData("scene-link-plan")]
+    [InlineData("augment-render-text")]
     public void WireSchemasStayInsideTheDecoderSubset(string name)
     {
         // The provider rejects the whole request with a 400 when a structured-output schema uses
@@ -194,6 +230,13 @@ public class PromptAssetTests
     [Theory]
     [InlineData("assembly-plan")]
     [InlineData("structure-answers")]
+    [InlineData("registry-plan")]
+    [InlineData("scene-link-plan")]
+    [InlineData("presentation")]
+    [InlineData("items")]
+    [InlineData("persona-window")]
+    [InlineData("scene-cut")]
+    [InlineData("scene-links")]
     public void TheOrchestrationSchemasHaveNoOptionalProperties(string name)
     {
         // These are flat, so they are not near the grammar ceiling — but every field being
@@ -248,6 +291,68 @@ public class PromptAssetTests
     }
 
     [Fact]
+    public void EverySceneRoleHasItsOwnPromptVersion()
+    {
+        // Seven new qualification keys (scene plan §8.7, §8.9). A collision would let a change to one
+        // phase's skill silently invalidate another phase's qualification row — or fail to.
+        var roles = new[]
+        {
+            AgentRole.PresentationClassifier, AgentRole.ItemTyper, AgentRole.PersonaWindower,
+            AgentRole.PersonaOrchestrator, AgentRole.SceneCutter, AgentRole.SceneLinkWindower,
+            AgentRole.SceneLinkOrchestrator,
+        };
+
+        var versions = roles.Select(_assets.VersionFor).ToList();
+
+        Assert.Equal(roles.Length, versions.Distinct(StringComparer.Ordinal).Count());
+        Assert.DoesNotContain(_assets.VersionFor(AgentRole.Structurer), versions);
+    }
+
+    [Fact]
+    public void TheClosedClassListCoversTheWordsTheGroundingGateMustAdmit()
+    {
+        // The list is what makes render-text-grounding affordable as a HARD gate (§3.7): every
+        // feared false failure was a function word. A list missing a copula turns a correct rewrite
+        // into a rejected one.
+        var lexicon = _assets.ClosedClass();
+
+        foreach (var word in new[] { "the", "a", "was", "is", "were", "'s", "he", "she", "they", "and", "of", "to", "in", "not" })
+        {
+            Assert.True(lexicon.Admits(word), $"'{word}' must be admitted by the closed-class list");
+        }
+
+        // And nothing open-class: admitting one content word would let an invention through.
+        foreach (var word in new[] { "door", "professor", "ran", "laboratory" })
+        {
+            Assert.False(lexicon.Admits(word), $"'{word}' is a content word and must not be admitted");
+        }
+    }
+
+    [Fact]
+    public void TheSceneSkillsForbidWhatTheMaterializersReject()
+    {
+        // Each of these is an exact error a materializer can return. The skill text is what gives
+        // the agent a chance to comply before it costs a repair round.
+        Assert.Contains(
+            "exactly once", _assets.Skill("referent-orchestration"), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "wrong is worse", _assets.Skill("referent-orchestration"), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "uncited link is not stored", _assets.Skill("scene-linking"), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "document order", _assets.Skill("scene-link-orchestration"), StringComparison.OrdinalIgnoreCase);
+
+        // The two mistakes the cut rule exists to prevent [unit §7 case 2].
+        var cutting = _assets.Skill("scene-cutting");
+        Assert.Contains("not the current speaker", cutting, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("never cut for length", cutting, StringComparison.OrdinalIgnoreCase);
+
+        // The asymmetry that governs every close call in phase 5 (§5.2).
+        Assert.Contains(
+            "over-removal", _assets.Skill("presentation-classification"), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TheOrchestrationSkillForbidsWhatTheMaterializerRejects()
     {
         // Each of these is an exact error the materializer can return. The skill text is what
@@ -267,6 +372,14 @@ public class PromptAssetTests
     [InlineData("heading-levels")]
     [InlineData("review")]
     [InlineData("augment-key-points")]
+    [InlineData("presentation")]
+    [InlineData("items")]
+    [InlineData("persona-window")]
+    [InlineData("registry-plan")]
+    [InlineData("scene-cut")]
+    [InlineData("scene-links")]
+    [InlineData("scene-link-plan")]
+    [InlineData("augment-render-text")]
     public void WireSchemasNameTheSamePropertiesAsTheOnesThePromptShows(string name)
     {
         // Two files describing one artifact is the cost of the split: the prompt renders the
@@ -351,6 +464,14 @@ public class PromptAssetTests
     [InlineData("structure-reviewer.v1")]
     [InlineData("augmenter.v1")]
     [InlineData("augment-reviewer.v1")]
+    [InlineData("presentation.v1")]
+    [InlineData("item-typing.v1")]
+    [InlineData("persona-window.v1")]
+    [InlineData("persona-orchestrator.v1")]
+    [InlineData("scene-cut.v1")]
+    [InlineData("scene-link-window.v1")]
+    [InlineData("scene-link-orchestrator.v1")]
+    [InlineData("augment-item.v1")]
     public void EveryPromptThatDemandsASchemaCarriesIt(string template)
     {
         // Naming a schema file in the prompt tells the model nothing: it has no filesystem. A

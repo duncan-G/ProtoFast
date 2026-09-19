@@ -36,6 +36,12 @@ service Segmentation {
 
   rpc GetResult (GetRunRequest) returns (Result);
 
+  // The scene stream of a published run (scene plan §10, milestone S7): scenes over items, with
+  // every item's text resolved server-side and every persona and place already named. A renderer
+  // reads a scene from its own record and never asks for the document (K1), which is why the
+  // resolution happens here rather than being left as a join for each client to repeat.
+  rpc GetScenes (GetScenesRequest) returns (SceneResult);
+
   // One phase artifact as a presigned GET. Owner-only, and only for keys under the caller's run.
   rpc GetArtifact (GetArtifactRequest) returns (GetArtifactReply);
 
@@ -176,6 +182,147 @@ message Result {
   int64 frozen_unix_seconds = 6;
   repeated Finding findings = 7;
 }
+
+// ---- Scenes -----------------------------------------------------------------------------------
+//
+// The enumerations of the scene model cross as lowercase strings, the way `Paragraph.kind` and
+// `Run.condition` already do. Proto enum values share the enclosing package's scope, and these six
+// enumerations collide on their most useful names — `EXHIBITED` against `EXHIBIT`, `CONTINUES`
+// against `CONTINUOUS`, `ADDRESSED` against itself in two of them — so an enum here would have to
+// be prefix-mangled to compile. A string that reads as the model reads is worth more than an
+// integer nothing switches on.
+
+message GetScenesRequest {
+  string run_id = 1;
+
+  // Optional: only the scenes under this section, for a client reading one chapter of a novel
+  // rather than the whole of it. Empty means the whole document.
+  string section_id = 2;
+}
+
+message SceneResult {
+  string run_id = 1;
+
+  // The outline the scenes hang off, so one call renders a navigable view. Sections still carry
+  // their paragraph ids; a scene names its section rather than the section naming its scenes.
+  SectionNode root = 2;
+
+  repeated Scene scenes = 3;
+  repeated Persona personas = 4;
+  repeated Place places = 5;
+  string tree_hash = 6;
+  int64 frozen_unix_seconds = 7;
+
+  // Total scenes in the run, so a section-filtered reply can say what it is a slice of.
+  int32 total_scenes = 8;
+}
+
+message Scene {
+  string scene_id = 1;
+  string section_id = 2;
+
+  // Reading order across the whole document, assigned before any section filter is applied.
+  int32 ordinal = 3;
+
+  string title = 4;
+  bool title_inferred = 5;
+  Situation situation = 6;
+  repeated SceneItem items = 7;
+  repeated SceneLink links = 8;
+  repeated Flag flags = 9;
+
+  // How many scenes Setting was carried through to reach this one; 0 when it was stated here.
+  int32 inheritance_depth = 10;
+
+  repeated string paragraph_ids = 11;
+  string content_hash = 12;
+}
+
+// The five-coordinate tuple. Every coordinate is always present: an empty `place_id` is Void
+// rather than a missing value, and `time_relation: "unanchored"` is an answer.
+message Situation {
+  string place_id = 1;
+  string place_name = 2;              // resolved from the place registry
+  string setting_source = 3;          // stated | inferred | inherited; empty when Void
+  string inherited_from_scene_id = 4;
+  string time_anchor = 5;
+  string time_relation = 6;           // continuous | gap | earlier | later | simultaneous | unanchored
+  repeated CastMember cast = 7;
+  string mode = 8;                    // enacted | narrated | expounded | addressed | exhibited
+  string subject = 9;
+}
+
+message CastMember {
+  string persona_id = 1;
+  string name = 2;                    // resolved canonical name
+  string role = 3;                    // speaking | addressed | present
+}
+
+message SceneItem {
+  string item_id = 1;
+  string paragraph_id = 2;
+
+  // Half-open character offsets into the frozen paragraph, kept so a client can cite the source
+  // even though it is being handed the text.
+  int32 start_offset = 3;
+  int32 end_offset = 4;
+
+  string kind = 5;                    // speech | action | description | exhibit | transition
+
+  // The span, read out of the frozen paragraph server-side. Items never store text.
+  string text = 6;
+
+  // Generated staging text for an item that cannot be shown alone; empty when it can.
+  string render_text = 7;
+  bool is_standalone = 8;
+
+  Speech speech = 9;                  // set only on a speech item
+  string exhibit_id = 10;
+  repeated Tag tags = 11;
+}
+
+message Speech {
+  string surface_form = 1;
+  string speaker_persona_id = 2;
+  string speaker_name = 3;            // resolved canonical name; empty until phase 9 binds one
+  string embodiment = 4;              // embodied | disembodied
+  string addressee = 5;               // in_scene | audience | self
+  bool voiced = 6;
+}
+
+message Tag {
+  string tag_id = 1;
+  string kind = 2;                    // persona | group | place | exhibit_ref
+  int32 start_offset = 3;             // paragraph-relative, like the item's own
+  int32 end_offset = 4;
+  string surface_form = 5;
+  string referent_id = 6;
+  repeated string member_persona_ids = 7;   // a group reference's roster at this point
+  bool membership_complete = 8;             // false renders as a crowd rather than as its members
+}
+
+message SceneLink {
+  string from_scene_id = 1;
+  string to_scene_id = 2;
+  string kind = 3;                    // continues | returns_to | flashback_of | concurrent_with | frames | framed_by
+  double confidence = 4;
+}
+
+message Persona {
+  string persona_id = 1;
+  string canonical_name = 2;
+  string kind = 3;                    // individual | group
+  string scope = 4;                   // persistent | scene_local
+  repeated string surface_forms = 5;
+}
+
+message Place {
+  string place_id = 1;
+  string canonical_name = 2;
+}
+
+// A derived review signal, never a gate.
+message Flag { string kind = 1; string message = 2; }
 
 message GetArtifactRequest { string run_id = 1; string artifact_key = 2; }
 message GetArtifactReply   { string get_url = 1; int64 expires_unix_seconds = 2; }

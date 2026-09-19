@@ -12,11 +12,12 @@ import {
   type Result,
   type Run,
   type RunEvent,
+  type SceneResult,
   type Sensitivity,
   type SourceFormat,
 } from '../../lib/gen/segmentation_pb';
 
-export type { Result, Run, RunEvent, ListReviewsReply, ListModelsReply, SourceFormat };
+export type { Result, Run, RunEvent, SceneResult, ListReviewsReply, ListModelsReply, SourceFormat };
 
 /** What `EntityTooLarge` and its siblings mean to a person (ingest plan §7.4). */
 export class UploadRejectedError extends Error {
@@ -119,6 +120,19 @@ export class SegmentationApi {
 
   getResult(runId: string): Promise<Result> {
     return this.client.getResult({ runId });
+  }
+
+  /**
+   * The run's scene stream: scenes over items, with every item's text and every persona and place
+   * already resolved server-side.
+   *
+   * Separate from `getResult` rather than folded into it because the two are read by different
+   * pages and the scene stream is the larger of the two — the tree page would otherwise pay for a
+   * document's worth of items it never renders. Pass `sectionId` to read one chapter's scenes
+   * instead of the whole document's.
+   */
+  getScenes(runId: string, sectionId = ''): Promise<SceneResult> {
+    return this.client.getScenes({ runId, sectionId });
   }
 
   cancelRun(runId: string): Promise<Run> {

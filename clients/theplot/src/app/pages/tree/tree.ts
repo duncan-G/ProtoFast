@@ -28,7 +28,10 @@ import type { Paragraph, Result, SectionNode } from '../../../lib/gen/segmentati
               </span>
             </p>
           </div>
-          <a [routerLink]="['/app/runs', runId]" class="btn btn-secondary">Run details</a>
+          <div class="flex shrink-0 items-center gap-2">
+            <a [routerLink]="['/app/runs', runId, 'scenes']" class="btn btn-secondary">The scenes</a>
+            <a [routerLink]="['/app/runs', runId]" class="btn btn-secondary">Run details</a>
+          </div>
         </div>
 
         @if (current.findings.length > 0) {

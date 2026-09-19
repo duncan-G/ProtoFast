@@ -28,6 +28,9 @@ public sealed class PromptAssets
     private readonly ConcurrentDictionary<AgentRole, string> _versions = new();
     private readonly ConcurrentDictionary<string, JsonElement> _schemaElements = new(StringComparer.Ordinal);
 
+    private readonly ConcurrentDictionary<string, Core.Grounding.ClosedClassLexicon> _lexicons =
+        new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Reads one asset by its path under <c>Assets/</c>, e.g. <c>rules/common.md</c>.</summary>
     public string Read(string path) => _cache.GetOrAdd(path, key =>
     {
@@ -68,6 +71,19 @@ public sealed class PromptAssets
             : TryRead($"skills/families/{family}/SKILL.md") ?? string.Empty;
 
     public string Schema(string name) => Read($"schemas/{name}.schema.json");
+
+    /// <summary>
+    /// The closed-class allowlist for a language, or the English fallback (scene plan §3.7).
+    ///
+    /// <para>It ships beside the prompts and is versioned with them, because it is part of what
+    /// <c>render-text-grounding</c> means — a run whose allowlist changed is a run whose gate
+    /// changed. A language with no file still gets a hard gate rather than no gate.</para>
+    /// </summary>
+    public Core.Grounding.ClosedClassLexicon ClosedClass(string language = "en") =>
+        _lexicons.GetOrAdd(language, key =>
+            TryRead($"rules/closed-class.{key}.txt") is { } content
+                ? Core.Grounding.ClosedClassLexicon.Parse(content)
+                : Core.Grounding.ClosedClassLexicon.English);
 
     /// <summary>
     /// The schema actually sent as the provider's structured-output parameter, from
@@ -131,8 +147,29 @@ public sealed class PromptAssets
             ["rules/common.md", "skills/structure-review/SKILL.md", "prompts/structure-reviewer.v1.md", "schemas/review.schema.json", "schemas/wire/review.schema.json"],
         AgentRole.TreeRepairer =>
             ["rules/common.md", "skills/tree-repair/SKILL.md", "prompts/tree-repair.v1.md", "schemas/tree.schema.json", "schemas/wire/tree.schema.json"],
+        // The five scene phases (scene plan §8.1). Each role's version is the hash of exactly the
+        // assets its prompt is built from, so changing one phase's skill invalidates that role's
+        // qualification and no other's.
+        AgentRole.PresentationClassifier =>
+            ["rules/common.md", "skills/presentation-classification/SKILL.md", "prompts/presentation.v1.md", "schemas/presentation.schema.json", "schemas/wire/presentation.schema.json"],
+        AgentRole.ItemTyper =>
+            ["rules/common.md", "skills/item-typing/SKILL.md", "prompts/item-typing.v1.md", "schemas/items.schema.json", "schemas/wire/items.schema.json"],
+        AgentRole.PersonaWindower =>
+            ["rules/common.md", "skills/referent-resolution/SKILL.md", "prompts/persona-window.v1.md", "schemas/persona-window.schema.json", "schemas/wire/persona-window.schema.json"],
+        AgentRole.PersonaOrchestrator =>
+            ["rules/common.md", "skills/referent-orchestration/SKILL.md", "prompts/persona-orchestrator.v1.md", "schemas/registry-plan.schema.json", "schemas/wire/registry-plan.schema.json"],
+        AgentRole.SceneCutter =>
+            ["rules/common.md", "skills/scene-cutting/SKILL.md", "prompts/scene-cut.v1.md", "schemas/scene-cut.schema.json", "schemas/wire/scene-cut.schema.json"],
+        AgentRole.SceneLinkWindower =>
+            ["rules/common.md", "skills/scene-linking/SKILL.md", "prompts/scene-link-window.v1.md", "schemas/scene-links.schema.json", "schemas/wire/scene-links.schema.json"],
+        AgentRole.SceneLinkOrchestrator =>
+            ["rules/common.md", "skills/scene-link-orchestration/SKILL.md", "prompts/scene-link-orchestrator.v1.md", "schemas/scene-link-plan.schema.json", "schemas/wire/scene-link-plan.schema.json"],
+
+        // The re-writer runs under Augmenter and is a TYPE rather than a role (scene plan §3.6), so
+        // its skill, schema and the closed-class list it is gated against belong to this role's
+        // version: changing any of them changes what an Augmenter call means.
         AgentRole.Augmenter =>
-            ["rules/common.md", "prompts/augmenter.v1.md"],
+            ["rules/common.md", "prompts/augmenter.v1.md", "skills/augment/render-text/SKILL.md", "schemas/augment-render-text.schema.json", "rules/closed-class.en.txt"],
         AgentRole.AugmentReviewer =>
             ["rules/common.md", "prompts/augment-reviewer.v1.md", "schemas/review.schema.json"],
         _ => ["rules/common.md"],

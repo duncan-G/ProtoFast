@@ -1,0 +1,51 @@
+{
+  "type": "object",
+  "required": [
+    "verdicts"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "verdicts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/verdict"
+      }
+    }
+  },
+  "$defs": {
+    "verdict": {
+      "type": "object",
+      "required": [
+        "paragraphId",
+        "class",
+        "evidence",
+        "confidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "paragraphId": {
+          "type": "string"
+        },
+        "class": {
+          "enum": [
+            "displayable",
+            "RunningApparatus",
+            "FrontMatter",
+            "BackMatter",
+            "NavigationalLabel",
+            "ProductionNoise"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "confidence": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}

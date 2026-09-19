@@ -1,11 +1,15 @@
 import { PhaseState } from '../../lib/gen/segmentation_pb';
 
 /**
- * The twelve pipeline phases, named for a reader rather than for the code.
+ * The eighteen pipeline phases, named for a reader rather than for the code.
  *
- * The indices are the plan's (§9.1) and are also the `RerunFrom` argument, so they are pinned:
- * a phase's number appears in artifact keys and in the proto, and renumbering here would silently
- * re-run the wrong phase.
+ * The indices are the scene plan's (§8.1) and are also the `RerunFrom` argument, so they are
+ * pinned: a phase's number appears in artifact keys and in the proto, and renumbering here would
+ * silently re-run the wrong phase.
+ *
+ * The five scene phases were INSERTED rather than appended, which renumbered everything from
+ * Presentation onwards. That keeps the artifact prefixes in reading order, which is the whole
+ * reason the numbers are the prefixes.
  */
 export const PHASE_LABELS: readonly { index: number; name: string; blurb: string }[] = [
   { index: 0, name: 'Ingest', blurb: 'Converting the document and reading its layout' },
@@ -13,15 +17,23 @@ export const PHASE_LABELS: readonly { index: number; name: string; blurb: string
   { index: 2, name: 'Triage', blurb: 'Deciding which regions need a model' },
   { index: 3, name: 'Label', blurb: 'Labelling every line' },
   { index: 4, name: 'Assemble', blurb: 'Building the paragraphs' },
-  { index: 5, name: 'Structure', blurb: 'Inferring the section tree' },
-  { index: 6, name: 'Validate', blurb: 'Checking the result against the source' },
-  { index: 7, name: 'Review', blurb: 'A second opinion on the structure' },
-  { index: 8, name: 'Approval', blurb: 'Waiting for a person' },
-  { index: 9, name: 'Freeze', blurb: 'Making the structure permanent' },
-  { index: 10, name: 'Augment', blurb: 'Producing per-paragraph output' },
-  { index: 11, name: 'Check', blurb: 'Reviewing a sample of the augmentations' },
-  { index: 12, name: 'Publish', blurb: 'Writing the result' },
+  { index: 5, name: 'Presentation', blurb: 'Separating the work from its front and back matter' },
+  { index: 6, name: 'Structure', blurb: 'Inferring the section tree' },
+  { index: 7, name: 'Validate', blurb: 'Checking the result against the source' },
+  { index: 8, name: 'Items', blurb: 'Typing speech, action, description and exhibits' },
+  { index: 9, name: 'Referents', blurb: 'Resolving who and where into a cast list' },
+  { index: 10, name: 'Scenes', blurb: 'Cutting the scenes' },
+  { index: 11, name: 'Links', blurb: 'Finding flashbacks and framing stories' },
+  { index: 12, name: 'Review', blurb: 'A second opinion on the structure' },
+  { index: 13, name: 'Approval', blurb: 'Waiting for a person' },
+  { index: 14, name: 'Freeze', blurb: 'Making the structure permanent' },
+  { index: 15, name: 'Augment', blurb: 'Producing per-paragraph and per-item output' },
+  { index: 16, name: 'Check', blurb: 'Reviewing a sample of the augmentations' },
+  { index: 17, name: 'Publish', blurb: 'Writing the result' },
 ];
+
+/** The last phase. A run that reaches it has nothing further to do. */
+export const PUBLISH_PHASE = PHASE_LABELS[PHASE_LABELS.length - 1].index;
 
 export function phaseLabel(index: number): string {
   return PHASE_LABELS[index]?.name ?? `Phase ${index}`;
@@ -63,7 +75,7 @@ export function isTerminal(run: { cancelled: boolean; error: string; phases: { i
     return true;
   }
 
-  return run.phases.some((p) => p.index === 12 && p.state === PhaseState.DONE);
+  return run.phases.some((p) => p.index === PUBLISH_PHASE && p.state === PhaseState.DONE);
 }
 
 /**

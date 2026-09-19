@@ -14,7 +14,8 @@ namespace ProtoFast.Segmentation.Pipeline;
 /// <para>The graph is linear with two conditional branches — the human gate, and the labelling
 /// short-circuit. Fan-out is inside the label and augment executors rather than across edges,
 /// because the number of windows and paragraphs is not known until the document has been read
-/// (see <see cref="LabelExecutor"/>).</para>
+/// (see <see cref="LabelExecutor"/>). The five scene phases follow the same rule: phases 8, 9 and
+/// 11 fan out inside their executors, over windows the document's own length decides.</para>
 /// </summary>
 public sealed class SegmentationWorkflowFactory(
     IngestExecutor ingest,
@@ -22,8 +23,13 @@ public sealed class SegmentationWorkflowFactory(
     TriageExecutor triage,
     LabelExecutor label,
     AssembleExecutor assemble,
+    PresentationExecutor presentation,
     StructureExecutor structure,
     ValidateExecutor validate,
+    ItemExecutor items,
+    PersonaExecutor referents,
+    SceneCutExecutor scenes,
+    SceneLinkExecutor sceneLinks,
     StructureReviewExecutor structureReview,
     HumanGateExecutor humanGate,
     GateResumeExecutor gateResume,
@@ -54,9 +60,21 @@ public sealed class SegmentationWorkflowFactory(
             // which keeps one code path for "what is this line?" (plan §9.4).
             .AddEdge(triage, label)
             .AddEdge(label, assemble)
-            .AddEdge(assemble, structure)
+            // Presentation before structure, deliberately: front matter and a table of contents
+            // inferred AS SECTIONS is noise in the tree, and withholding them first makes the tree
+            // both smaller and better (scene plan §8.5).
+            .AddEdge(assemble, presentation)
+            .AddEdge(presentation, structure)
             .AddEdge(structure, validate)
-            .AddEdge(validate, structureReview)
+            // The five scene phases, in the one order their dependencies permit (scene plan §8.4):
+            // items are typed before scenes are cut because mode is largely a function of the item
+            // mix, and referents resolve between the two because cast is a scene coordinate while
+            // personas are discovered from speech attribution.
+            .AddEdge(validate, items)
+            .AddEdge(items, referents)
+            .AddEdge(referents, scenes)
+            .AddEdge(scenes, sceneLinks)
+            .AddEdge(sceneLinks, structureReview)
             // The gate is conditional. A run that needs no human goes straight to the freeze.
             .AddEdge<ReviewComplete>(structureReview, freeze, condition: r => r?.RequiresHuman == false)
             // One that does goes through the gate executor — which writes the review_tasks row so
@@ -67,9 +85,10 @@ public sealed class SegmentationWorkflowFactory(
             .AddEdge(HumanGatePort, gateResume)
             // The two ways out of the gate rejoin the graph at different places, so each gets its
             // own typed edge: an approval goes forward to the freeze, a rejection goes back to
-            // structure inference with the reviewer's notes (plan §9.10).
+            // structure inference with the reviewer's notes (plan §9.10). The rejection edge lands
+            // on presentation's output rather than assembly's, because structure now consumes that.
             .AddEdge<ReviewComplete>(gateResume, freeze, condition: _ => true)
-            .AddEdge<AssembleComplete>(gateResume, structure, condition: _ => true)
+            .AddEdge<PresentationComplete>(gateResume, structure, condition: _ => true)
             .AddEdge(freeze, augment)
             .WithOutputFrom(augment);
 

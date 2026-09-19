@@ -61,7 +61,10 @@ const UPLOAD_LIFETIME_SECONDS = 7 * 24 * 60 * 60;
 
           <div class="flex shrink-0 items-center gap-2">
             @if (done()) {
-              <a [routerLink]="['/app/runs', current.runId, 'tree']" class="btn btn-primary">
+              <a [routerLink]="['/app/runs', current.runId, 'scenes']" class="btn btn-primary">
+                Read the scenes
+              </a>
+              <a [routerLink]="['/app/runs', current.runId, 'tree']" class="btn btn-secondary">
                 Browse the tree
               </a>
               <a [routerLink]="['/app/runs', current.runId, 'augmentations']" class="btn btn-secondary">
