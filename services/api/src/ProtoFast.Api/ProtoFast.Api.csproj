@@ -14,6 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Aspire.Npgsql" Version="13.5.4" />
     <PackageReference Include="Grpc.AspNetCore" Version="2.80.0" />
     <PackageReference Include="Aspire.StackExchange.Redis" Version="13.5.3" />
   </ItemGroup>
@@ -25,6 +26,7 @@
     <ProjectReference Include="..\..\..\shared\ServiceDefaults\ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\..\shared\Storage.Abstractions\Storage.Abstractions.csproj" />
     <ProjectReference Include="..\..\..\shared\Storage\Storage.csproj" />
+    <ProjectReference Include="..\ProtoFast.Data\ProtoFast.Data.csproj" />
   </ItemGroup>
 
 </Project>

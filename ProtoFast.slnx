@@ -3,6 +3,7 @@
   <Folder Name="/services/api/" />
   <Folder Name="/services/api/src/">
     <Project Path="services/api/src/ProtoFast.Api/ProtoFast.Api.csproj" />
+    <Project Path="services/api/src/ProtoFast.Data/ProtoFast.Data.csproj" />
   </Folder>
   <Folder Name="/services/api/tests/" />
   <Folder Name="/services/auth/" />

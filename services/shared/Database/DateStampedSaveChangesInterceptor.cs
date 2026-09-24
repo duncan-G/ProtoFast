@@ -7,6 +7,16 @@ namespace ProtoFast.Database;
 
 public sealed class DateStampedSaveChangesInterceptor : SaveChangesInterceptor
 {
+    public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
+    {
+        if (eventData.Context is { } context)
+        {
+            UpdateDateStampedFields(context);
+        }
+
+        return result;
+    }
+
     public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
         DbContextEventData eventData,
         InterceptionResult<int> result,

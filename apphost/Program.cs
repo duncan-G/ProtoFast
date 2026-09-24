@@ -36,6 +36,8 @@ var authDb = postgres
     .AddDatabase("auth-db", databaseName: "auth")
     .WithSchemaMigrations<Projects.ProtoFast_Auth_SchemaMigrations>(builder);
 
+var protofastDb = postgres.AddDatabase("protofast-db", databaseName: "protofast");
+
 var redis = builder.AddRedis("redis");
 
 const string documentUploadBucket = "protofast-document-upload";
@@ -166,6 +168,8 @@ var payments = builder.AddProject<Projects.ProtoFast_Payments_Api>("payments")
 var api = builder.AddProject<Projects.ProtoFast_Api>("api")
     .WithReference(redis)
     .WaitFor(redis)
+    .WithReference(protofastDb, connectionName: "protofast")
+    .WaitFor(protofastDb)
     .WithLocalStackS3(localstack, envPrefix: "Api_", bucket: documentUploadBucket)
     .WithOtlpCollectorReference(otel)
     .WithSsoProfile();

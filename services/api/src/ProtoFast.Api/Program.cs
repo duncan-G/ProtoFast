@@ -1,4 +1,6 @@
 using ProtoFast.Api.Services;
+using ProtoFast.Data.ThePlot;
+using ProtoFast.Grpc;
 using ProtoFast.ServiceDefaults;
 using ProtoFast.ServiceDefaults.InternalAuth;
 using ProtoFast.ServiceDefaults.Secrets;
@@ -16,8 +18,16 @@ builder.Configuration
 builder.Services.AddInternalJwtAuth(builder.Configuration);
 
 // Enforce the internal JWT on every gRPC call except health probes — the edge only annotates,
-// so the backend is the real authorization gate.
-builder.Services.AddGrpc(options => options.Interceptors.Add<InternalJwtAuthInterceptor>());
+// so the backend is the real authorization gate. The user-context interceptor then confines every
+// query and write for the call to the subject that token names.
+builder.Services.AddGrpc(options =>
+{
+    options.Interceptors.Add<InternalJwtAuthInterceptor>();
+    options.Interceptors.Add<UserContextInterceptor>();
+});
+
+builder.AddNpgsqlDataSource("protofast"); // NpgsqlDataSource for the ThePlotDbContext
+builder.Services.AddThePlotData();
 
 builder.Services.AddS3ObjectStorage(options => builder.Configuration.GetSection("S3").Bind(options));
 

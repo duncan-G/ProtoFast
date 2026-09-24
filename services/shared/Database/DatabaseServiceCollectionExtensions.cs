@@ -32,7 +32,8 @@ public static class DatabaseServiceCollectionExtensions
                 options.UseNpgsql(
                         dataSource,
                         npgsqlOptions => npgsqlOptions.UseVector().CommandTimeout(dbOptions.CommandTimeout))
-                    .UseSnakeCaseNamingConvention();
+                    .UseSnakeCaseNamingConvention()
+                    .AddInterceptors(new DateStampedSaveChangesInterceptor(), new UserScopeSaveChangesInterceptor());
             })
             .AddScoped<UserContext>()
             .AddScoped<QueryFilterService>()

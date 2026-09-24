@@ -1,18 +1,26 @@
 using Grpc.Core;
+using ProtoFast.Data.ThePlot.Repositories;
+using ProtoFast.Database.Abstractions;
 using ProtoFast.DocumentImport.Core;
 using ProtoFast.DocumentImport.Storage;
 using ProtoFast.Grpc;
 using ProtoFast.Grpc.RateLimiting;
 using ProtoFast.Storage.Abstractions;
+using DocumentUploadRecord = ProtoFast.Data.ThePlot.Entities.DocumentUpload;
 
 namespace ProtoFast.Api.Services;
 
-public class DocumentUploadService(IPresignedUrlFactory urls) : DocumentUpload.DocumentUploadBase
+public class DocumentUploadService(
+    IPresignedUrlFactory urls,
+    IUnitOfWorkFactory unitOfWorkFactory,
+    IDocumentUploadRepository documentUploadRepository) : DocumentUpload.DocumentUploadBase
 {
     // Each minted URL is a standing permission to write into the bucket, so the budget per caller
     // stays deliberately small.
     private const int UploadUrlWindowSeconds = 3600;
     private const int UploadUrlsPerWindow = 20;
+
+    private const int MaxFileNameLength = 255;
 
     public override async Task<CreateDocumentUploadUrlReply> CreateDocumentUploadUrl(
         CreateDocumentUploadUrlRequest request,
@@ -38,11 +46,35 @@ public class DocumentUploadService(IPresignedUrlFactory urls) : DocumentUpload.D
                 $"The document must be between 1 byte and {SourceFormats.DefaultMaxBytes / (1024 * 1024)} MB."));
         }
 
+        if (request.FileName.Length > MaxFileNameLength)
+        {
+            throw new RpcException(new Status(
+                StatusCode.InvalidArgument,
+                $"The file name must be at most {MaxFileNameLength} characters."));
+        }
+
         var uploadId = DocumentImportIds.New();
-
         var sourceKey = ArtifactKeys.UploadSource(caller.Subject, uploadId, format.Extension);
-
         var postPolicy = urls.PresignPost(sourceKey, format.MediaType, SourceFormats.DefaultMaxBytes);
+
+        // Record the upload before handing out the URL, so every object that lands in the bucket
+        // has a row to reconcile against. Signing is local, so nothing leaks if the insert fails.
+        // The owner is stamped from the call's user context, never taken from the request.
+        using (var unitOfWork = unitOfWorkFactory.CreateReadWrite(nameof(CreateDocumentUploadUrl)))
+        {
+            await documentUploadRepository.AddAsync(
+                new DocumentUploadRecord
+                {
+                    UploadId = uploadId,
+                    FileName = request.FileName,
+                    SizeBytes = request.SizeBytes,
+                    MediaType = format.MediaType,
+                    FileExtension = format.Extension,
+                },
+                context.CancellationToken);
+
+            await unitOfWork.CommitAsync(context.CancellationToken);
+        }
 
         var reply = new CreateDocumentUploadUrlReply
         {

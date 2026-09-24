@@ -13,6 +13,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Database.Abstractions\Database.Abstractions.csproj" />
       <ProjectReference Include="..\Exceptions\Exceptions.csproj" />
       <ProjectReference Include="..\ServiceDefaults\ServiceDefaults.csproj" />
     </ItemGroup>
