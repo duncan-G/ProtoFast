@@ -64,6 +64,7 @@ services:
       # seeded into .env by deploy.sh ensure_secret_files.
       Auth_Keycloak__ClientSecretProtofastWeb: "${PROTOFAST_WEB_CLIENT_SECRET}"
       Auth_Keycloak__ClientSecretAdmin: "${ADMIN_CLIENT_SECRET}"
+      Auth_Keycloak__ClientSecretTheplotWeb: "${THEPLOT_WEB_CLIENT_SECRET}"
       Auth_Keycloak__AdminClientSecret: "${ACCOUNT_ADMIN_CLIENT_SECRET}"
       # The relay auth-svc sends its own mail through — the email-change code, and the heads-up
       # to the address that just lost the account. Same .env values Keycloak's realm import reads
@@ -85,6 +86,8 @@ services:
       Tenants__ByHost__protofast.dev__ClientId: protofast-web
       Tenants__ByHost__admin.protofast.dev__Realm: protofast
       Tenants__ByHost__admin.protofast.dev__ClientId: admin
+      Tenants__ByHost__theplot.protofast.dev__Realm: theplot
+      Tenants__ByHost__theplot.protofast.dev__ClientId: theplot-web
       # Admin-only re-authentication policy. Both clients share the realm's SSO session, so
       # without these a sign-in on the product site walks into the admin console silently.
       # max_age forces *a* re-authentication; acr_values asks the realm for the level whose
