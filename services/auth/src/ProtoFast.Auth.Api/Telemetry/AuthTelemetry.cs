@@ -10,5 +10,5 @@ namespace ProtoFast.Auth.Api.Telemetry;
 /// </summary>
 internal static class AuthTelemetry
 {
-    public static readonly ActivitySource Source = new("ProtoFast.Auth");
+    public static readonly ActivitySource Source = new("ProtoFast.Api");
 }

@@ -25,7 +25,7 @@ namespace ProtoFast.Auth.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("ProtoFast.Auth.Data.Entities.UserAccount", b =>
+            modelBuilder.Entity("ProtoFast.Api.Data.Entities.UserAccount", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()

@@ -1,6 +1,7 @@
 ﻿using ProtoFast.AppHost.Aws;
 using ProtoFast.AppHost.ClientApp;
 using ProtoFast.AppHost.EnvoyProxy;
+using ProtoFast.AppHost.LocalStack;
 using ProtoFast.AppHost.OpenTelemetryCollector;
 using ProtoFast.AppHost.Postgres;
 
@@ -36,6 +37,11 @@ var authDb = postgres
     .WithSchemaMigrations<Projects.ProtoFast_Auth_SchemaMigrations>(builder);
 
 var redis = builder.AddRedis("redis");
+
+var localstack = builder
+    .AddLocalStack("localstack")
+    .WithBuckets(["protofast-document-upload"])
+    .WithQueues(["protofast-document-upload"]);
 
 var keycloak = builder.AddKeycloak("keycloak", 8080)
     .WithImageTag("26.7")
@@ -99,7 +105,7 @@ if (!builder.ExecutionContext.IsPublishMode)
         .WithEnvironment("WEBAUTHN_RP_ID", "localhost");
 }
 
-// Auth
+// Api
 var auth = builder.AddProject<Projects.ProtoFast_Auth_Api>("auth")
     .WithOtlpCollectorReference(otel)
     .WithReference(redis)
@@ -112,7 +118,7 @@ var auth = builder.AddProject<Projects.ProtoFast_Auth_Api>("auth")
 
 if (smtp4dev is not null)
 {
-    // Auth is a host process. appsettings.Development.json still says localhost:1025
+    // Api is a host process. appsettings.Development.json still says localhost:1025
     // (MailHog's usual mapping), but Aspire publishes smtp4dev's SMTP on an allocated
     // port — so without these, email-change hits connection-refused on 1025.
     var mailFromHost = smtp4dev.GetEndpoint("smtp", KnownNetworkIdentifiers.LocalhostNetwork);
@@ -150,6 +156,9 @@ var payments = builder.AddProject<Projects.ProtoFast_Payments_Api>("payments")
 
 // Api
 var api = builder.AddProject<Projects.ProtoFast_Api>("api")
+    .WithReference(redis)
+    .WaitFor(localstack)
+    .WaitFor(redis)
     .WithOtlpCollectorReference(otel)
     .WithSsoProfile();
 
@@ -159,6 +168,8 @@ var proxy = builder.AddEnvoyProxy("envoy", useSsrHost)
     .WaitFor(auth)
     .WaitFor(payments)
     .WaitFor(api);
+
+localstack.WithClientOrigins(proxy.GetClientOrigins());
 
 var otelHttp = otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName);
 
