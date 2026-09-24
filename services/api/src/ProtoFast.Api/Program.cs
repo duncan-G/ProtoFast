@@ -1,4 +1,3 @@
-using ProtoFast.Api.RateLimiting;
 using ProtoFast.Api.Services;
 using ProtoFast.ServiceDefaults;
 using ProtoFast.ServiceDefaults.InternalAuth;
@@ -16,6 +15,8 @@ builder.Configuration
 
 builder.Services.AddInternalJwtAuth(builder.Configuration);
 
+// Enforce the internal JWT on every gRPC call except health probes — the edge only annotates,
+// so the backend is the real authorization gate.
 builder.Services.AddGrpc(options => options.Interceptors.Add<InternalJwtAuthInterceptor>());
 
 builder.Services.AddS3ObjectStorage(options => builder.Configuration.GetSection("S3").Bind(options));

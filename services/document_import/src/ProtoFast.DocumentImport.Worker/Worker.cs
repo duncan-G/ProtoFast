@@ -1,17 +1,12 @@
 namespace ProtoFast.DocumentImport.Worker;
 
-public class Worker(ILogger<Worker> logger) : BackgroundService
+/// <summary>
+/// Placeholder until the SQS consumer for document-import runs lands. The project exists so the
+/// upload side and the processing side grow in the same service from the start; it is not yet
+/// registered in the AppHost.
+/// </summary>
+public class Worker : BackgroundService
 {
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            if (logger.IsEnabled(LogLevel.Information))
-            {
-                logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
-            }
-
-            await Task.Delay(1000, stoppingToken);
-        }
-    }
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+        Task.Delay(Timeout.Infinite, stoppingToken);
 }

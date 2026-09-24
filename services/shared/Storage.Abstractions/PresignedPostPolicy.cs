@@ -1,4 +1,4 @@
-namespace ProtoFast.Storage;
+namespace ProtoFast.Storage.Abstractions;
 
 /// <summary>
 /// A signed POST policy, ready for a browser to replay as <c>multipart/form-data</c>.

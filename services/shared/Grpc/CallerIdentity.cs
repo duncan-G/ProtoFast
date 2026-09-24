@@ -2,12 +2,12 @@
 using Grpc.Core;
 using ProtoFast.ServiceDefaults.InternalAuth;
 
-namespace ProtoFast.Api;
+namespace ProtoFast.Grpc;
 
 /// <summary>
 /// Who is calling, taken from the internal JWT and from nowhere else.
 ///
-/// <para>This is the single enforcement point for F17. Every query in the service filters on
+/// <para>This is the single enforcement point for caller identity. Every query in a service filters on
 /// <see cref="Subject"/>, and <see cref="Subject"/> can only come from a validated token — there
 /// is deliberately no way to pass an owner in a request, because a request field would be a
 /// client-controlled authorization key.</para>

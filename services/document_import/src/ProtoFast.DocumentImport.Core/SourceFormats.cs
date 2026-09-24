@@ -1,6 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 
-namespace Protofast.DocumentImport.Core;
+namespace ProtoFast.DocumentImport.Core;
 
 public static class SourceFormats
 {
@@ -72,7 +72,7 @@ public static class SourceFormats
 
         new(".epub", "application/epub+zip", "EPUB", false, false, true, ["application/epub"]),
 
-        // Outlook item. Attachments are not recursed in v1 (ingest plan §27).
+        // Outlook item. Attachments are not recursed in v1.
         new(".msg", "application/vnd.ms-outlook", "Outlook message", false, false, true, ["application/x-msg"]),
 
         new(".ipynb", "application/x-ipynb+json", "Notebook", false, false, true, ["application/json", "text/plain"]),
@@ -99,7 +99,7 @@ public static class SourceFormats
                 .Concat(Formats.Select(f => f.MediaType).Distinct(StringComparer.Ordinal)));
 
     /// <summary>
-    /// Resolves an upload by extension <em>and</em> media type (ingest plan C1).
+    /// Resolves an upload by extension <em>and</em> media type.
     ///
     /// <para>The extension decides which format this is; the media type only has to agree with it.
     /// A browser that reports nothing, or reports <c>application/octet-stream</c>, is taken as
@@ -170,6 +170,6 @@ public static class SourceFormats
         return name[dot..].ToString().ToLowerInvariant();
     }
 
-    /// <summary>The name to show for a rejected upload: ".xyz", or "that" when there is no extension.</summary>
-    public static string DescribeRejected(string? fileName) => ExtensionOf(fileName) ?? "that kind of";
+    /// <summary>The name to show for a rejected upload: its extension, or "unknown" when it has none.</summary>
+    public static string DescribeRejected(string? fileName) => ExtensionOf(fileName) ?? "unknown";
 }

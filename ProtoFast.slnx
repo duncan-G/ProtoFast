@@ -17,7 +17,7 @@
   </Folder>
   <Folder Name="/services/document_import/" />
   <Folder Name="/services/document_import/src/">
-    <Project Path="services/document_import/src/Protofast.DocumentImport.Core/Protofast.DocumentImport.Core.csproj" />
+    <Project Path="services/document_import/src/ProtoFast.DocumentImport.Core/ProtoFast.DocumentImport.Core.csproj" />
     <Project Path="services/document_import/src/ProtoFast.DocumentImport.Storage/ProtoFast.DocumentImport.Storage.csproj" />
     <Project Path="services/document_import/src/ProtoFast.DocumentImport.Worker/ProtoFast.DocumentImport.Worker.csproj" />
   </Folder>
@@ -31,10 +31,10 @@
     <Project Path="services/shared/Database.Abstractions/Database.Abstractions.csproj" />
     <Project Path="services/shared/Database/Database.csproj" />
     <Project Path="services/shared/Exceptions/Exceptions.csproj" />
+    <Project Path="services/shared/Grpc/Grpc.csproj" />
     <Project Path="services/shared/ServiceDefaults/ServiceDefaults.csproj" />
     <Project Path="services/shared/Storage.Abstractions/Storage.Abstractions.csproj" />
     <Project Path="services/shared/Storage/Storage.csproj" />
-    <Project Path="services\shared\Api\Api.csproj" />
   </Folder>
   <Project Path="apphost/ProtoFast.AppHost.csproj" />
 </Solution>

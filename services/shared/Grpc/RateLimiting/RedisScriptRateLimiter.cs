@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Threading.RateLimiting;
 using StackExchange.Redis;
 
-namespace ProtoFast.Api.RateLimiting;
+namespace ProtoFast.Grpc.RateLimiting;
 
 internal sealed class RedisScriptRateLimiter(
     IDatabase database,
@@ -15,78 +15,60 @@ internal sealed class RedisScriptRateLimiter(
 {
     public override TimeSpan? IdleDuration => null;
 
+    public override RateLimiterStatistics? GetStatistics() => null;
+
     protected override async ValueTask<RateLimitLease> AcquireAsyncCore(int permitCount, CancellationToken cancellationToken)
     {
-        var (allowed, retryAfter) = await EvaluateScriptAsync(cancellationToken).ConfigureAwait(false);
-        return new SimpleLease(allowed, retryAfter);
+        TagAttempt();
+        var result = await database.ScriptEvaluateAsync(script, ScriptParameters).ConfigureAwait(false);
+        return Interpret(result);
     }
-
-    public override RateLimiterStatistics? GetStatistics() => null;
 
     protected override RateLimitLease AttemptAcquireCore(int permitCount)
     {
-        var (allowed, retryAfter) = EvaluateScriptSync();
-        return new SimpleLease(allowed, retryAfter);
+        TagAttempt();
+        return Interpret(database.ScriptEvaluate(script, ScriptParameters));
     }
 
     protected override void Dispose(bool disposing)
     {
-        // no-op
+        // Nothing to release: the Redis connection is owned by the container.
     }
 
-    private (bool allowed, int retryAfter) EvaluateScriptSync()
+    private object ScriptParameters => new
+    {
+        key = (RedisKey)key,
+        window = windowSeconds,
+        max_requests = maxRequests
+    };
+
+    private void TagAttempt()
     {
         var activity = Activity.Current;
         activity?.SetTag("rate.limit.key", key);
         activity?.SetTag("rate.limit.window_seconds", windowSeconds);
         activity?.SetTag("rate.limit.max_requests", maxRequests);
         activity?.SetTag("rate.limit.algorithm", algorithm);
-
-        var result = (RedisValue[])database.ScriptEvaluate(script, new
-        {
-            key = (RedisKey)key,
-            window = windowSeconds,
-            max_requests = maxRequests
-        });
-
-        var allowed = (int)result[0] == 0;
-        var retryAfter = (int)result[1];
-
-        activity?.SetTag("rate.limit.allowed", allowed);
-        activity?.SetTag("rate.limit.retry_after", retryAfter);
-        if (!allowed)
-        {
-            activity?.AddEvent(new ActivityEvent("rate_limit.blocked"));
-        }
-        return (allowed, retryAfter);
     }
 
-    private async Task<(bool allowed, int retryAfter)> EvaluateScriptAsync(CancellationToken cancellationToken)
+    private static SimpleLease Interpret(RedisResult raw)
     {
-        var activity = Activity.Current;
-        activity?.SetTag("rate.limit.key", key);
-        activity?.SetTag("rate.limit.window_seconds", windowSeconds);
-        activity?.SetTag("rate.limit.max_requests", maxRequests);
-        activity?.SetTag("rate.limit.algorithm", algorithm);
-
-        var task = database.ScriptEvaluateAsync(script, new
-        {
-            key = (RedisKey)key,
-            window = windowSeconds,
-            max_requests = maxRequests
-        });
-        var result = (RedisValue[])await task.ConfigureAwait(false);
+        // Both scripts return {blocked, retry_after_seconds}.
+        var result = (RedisValue[]?)raw
+            ?? throw new InvalidOperationException("The rate-limit script returned no result.");
 
         var allowed = (int)result[0] == 0;
         var retryAfter = (int)result[1];
 
+        var activity = Activity.Current;
         activity?.SetTag("rate.limit.allowed", allowed);
         activity?.SetTag("rate.limit.retry_after", retryAfter);
         if (!allowed)
         {
             activity?.AddEvent(new ActivityEvent("rate_limit.blocked"));
         }
-        return (allowed, retryAfter);
+
+        return new SimpleLease(allowed, retryAfter);
     }
 
     private sealed class SimpleLease(bool isAcquired, int retryAfterSeconds = 0) : RateLimitLease
@@ -102,10 +84,9 @@ internal sealed class RedisScriptRateLimiter(
                 metadata = retryAfterSeconds;
                 return true;
             }
+
             metadata = null;
             return false;
         }
     }
 }
-
-

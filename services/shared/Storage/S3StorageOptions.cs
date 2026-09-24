@@ -10,7 +10,12 @@ public sealed class S3StorageOptions
     /// </summary>
     public string? ServiceUrl { get; set; }
 
-    public required string AwsRegion { get; set; }
+    /// <summary>
+    /// The region presigned policies are signed for. Set alongside <see cref="ServiceUrl"/> in
+    /// dev (LocalStack created the bucket in it); in production the client's own resolved region
+    /// wins and this stays unset.
+    /// </summary>
+    public string? AwsRegion { get; set; }
 
     /// <summary>How long a presigned upload URL stays valid.</summary>
     public TimeSpan UploadUrlTtl { get; set; } = TimeSpan.FromMinutes(15);

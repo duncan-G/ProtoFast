@@ -19,9 +19,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\document_import\src\Protofast.DocumentImport.Core\Protofast.DocumentImport.Core.csproj" />
+    <ProjectReference Include="..\..\..\document_import\src\ProtoFast.DocumentImport.Core\ProtoFast.DocumentImport.Core.csproj" />
     <ProjectReference Include="..\..\..\document_import\src\ProtoFast.DocumentImport.Storage\ProtoFast.DocumentImport.Storage.csproj" />
-    <ProjectReference Include="..\..\..\shared\Api\Api.csproj" />
+    <ProjectReference Include="..\..\..\shared\Grpc\Grpc.csproj" />
     <ProjectReference Include="..\..\..\shared\ServiceDefaults\ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\..\shared\Storage.Abstractions\Storage.Abstractions.csproj" />
     <ProjectReference Include="..\..\..\shared\Storage\Storage.csproj" />

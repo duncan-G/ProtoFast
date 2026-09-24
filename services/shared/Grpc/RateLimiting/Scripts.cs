@@ -1,12 +1,14 @@
 using StackExchange.Redis;
 
-namespace ProtoFast.Api.RateLimiting;
+namespace ProtoFast.Grpc.RateLimiting;
 
 public static class Scripts
 {
-    public static LuaScript SlidingWindowScript => LuaScript.Prepare(SlidingWindowLua);
+    // Prepared once: LuaScript.Prepare parses the script text, which there is no reason to redo
+    // on every call.
+    public static LuaScript SlidingWindowScript { get; } = LuaScript.Prepare(SlidingWindowLua);
 
-    public static LuaScript FixedWindowScript => LuaScript.Prepare(FixedWindowLua);
+    public static LuaScript FixedWindowScript { get; } = LuaScript.Prepare(FixedWindowLua);
 
     private const string SlidingWindowLua = @"
             local current_time = redis.call('TIME')

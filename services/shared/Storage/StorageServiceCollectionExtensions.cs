@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Amazon.Runtime;
 using Amazon.S3;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,17 +9,17 @@ namespace ProtoFast.Storage;
 public static class StorageServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the S3 and SQS clients, the artifact store and the checkpoint store.
+    /// Registers the S3 client, the object store and the presigned-URL factory.
     ///
-    /// <para>Credentials are never configured here. On Host B both <c>api</c> and the worker run
-    /// under the instance profile and the SDK's default chain finds it over IMDS; in dev the
+    /// <para>Credentials are never configured here. In production both <c>api</c> and the worker
+    /// run under the instance profile and the SDK's default chain finds it over IMDS; in dev the
     /// LocalStack endpoint is set and any credentials will do. A <c>ServiceUrl</c> that is set in
     /// production would silently point the whole feature at a machine that is not AWS, so it is
-    /// left unset there rather than defaulted (plan §20.1).</para>
+    /// left unset there rather than defaulted.</para>
     /// </summary>
     public static IServiceCollection AddS3ObjectStorage(
         this IServiceCollection services,
-        Action<S3StorageOptions> configureOptions )
+        Action<S3StorageOptions> configureOptions)
     {
         services.Configure(configureOptions);
         services.AddSingleton<IAmazonS3>(provider =>
@@ -49,7 +48,7 @@ public static class StorageServiceCollectionExtensions
         return services;
     }
 
-    private static AmazonS3Client CreateS3(string? serviceUrl, string region)
+    private static AmazonS3Client CreateS3(string? serviceUrl, string? region)
     {
         if (string.IsNullOrWhiteSpace(serviceUrl))
         {

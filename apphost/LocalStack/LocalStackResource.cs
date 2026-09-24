@@ -7,6 +7,5 @@ public class LocalStackResource(string name) : ContainerResource(name), IResourc
     internal const int GatewayPort = 4566;
 
     internal static string GatewayHostAndPort => $"{GatewayHost}:{GatewayPort}";
-    internal static string GatewayUrl => $"https://{GatewayHost}";
-
+    internal static string GatewayUrl => $"https://{GatewayHostAndPort}";
 }

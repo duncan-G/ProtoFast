@@ -1,18 +1,20 @@
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 
-namespace Protofast.DocumentImport.Core;
+namespace ProtoFast.DocumentImport.Core;
 
-public static class IdHelper
+public static class DocumentImportIds
 {
     /// <summary>
-    /// A lowercase Crockford-style ULID: 48-bit millisecond timestamp then 80 random bits, so
-    /// run ids sort by creation time in a Postgres index and in an S3 listing. Also the SQS
-    /// message deduplication key (plan §8.4).
+    /// Mints the id that identifies one document import end to end: the upload's S3 key, the
+    /// queue message's deduplication key, and the import run's artifacts all carry it.
+    ///
+    /// <para>A lowercase Crockford-style ULID: 48-bit millisecond timestamp then 80 random bits,
+    /// so ids sort by creation time in a Postgres index and in an S3 listing.</para>
     /// </summary>
-    public static string NewDocumentImportRunId() => NewDocumentImportRunId(DateTimeOffset.UtcNow, RandomNumberGenerator.GetBytes(10));
+    public static string New() => New(DateTimeOffset.UtcNow, RandomNumberGenerator.GetBytes(10));
 
-    private static string NewDocumentImportRunId(DateTimeOffset now, ReadOnlySpan<byte> randomness)
+    private static string New(DateTimeOffset now, ReadOnlySpan<byte> randomness)
     {
         Span<byte> bytes = stackalloc byte[16];
         BinaryPrimitives.WriteInt64BigEndian(bytes, now.ToUnixTimeMilliseconds() << 16);

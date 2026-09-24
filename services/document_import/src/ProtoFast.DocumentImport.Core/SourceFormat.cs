@@ -1,4 +1,4 @@
-namespace Protofast.DocumentImport.Core;
+namespace ProtoFast.DocumentImport.Core;
 
 public sealed record SourceFormat(
     string Extension,

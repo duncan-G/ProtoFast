@@ -14,7 +14,7 @@ public static class LocalStackResourceBuilderExtensions
             throw new InvalidOperationException("AWS region not configured");
         }
 
-        var resource =  new LocalStackResource(name);
+        var resource = new LocalStackResource(name);
 
         var localstack = builder
             .AddResource(resource)
@@ -43,8 +43,8 @@ public static class LocalStackResourceBuilderExtensions
         return localstack;
     }
 
-    public static IResourceBuilder<ContainerResource> WithClientOrigins(
-        this IResourceBuilder<ContainerResource> localstack,
+    public static IResourceBuilder<LocalStackResource> WithClientOrigins(
+        this IResourceBuilder<LocalStackResource> localstack,
         IReadOnlyList<string> origins)
     {
         if (origins.Count == 0)
@@ -52,13 +52,11 @@ public static class LocalStackResourceBuilderExtensions
             return localstack;
         }
 
-        var list = string.Join(',', origins);
-
-        return localstack.WithEnvironment("EXTRA_CORS_ALLOWED_ORIGINS", list);
+        return localstack.WithEnvironment("EXTRA_CORS_ALLOWED_ORIGINS", string.Join(',', origins));
     }
 
-    public static IResourceBuilder<ContainerResource> WithBuckets(
-        this IResourceBuilder<ContainerResource> localstack,
+    public static IResourceBuilder<LocalStackResource> WithBuckets(
+        this IResourceBuilder<LocalStackResource> localstack,
         IReadOnlyList<string> buckets)
     {
         if (buckets.Count == 0)
@@ -66,13 +64,11 @@ public static class LocalStackResourceBuilderExtensions
             return localstack;
         }
 
-        var list = string.Join(',', buckets);
-
-        return localstack.WithEnvironment("BUCKET_NAMES", list);
+        return localstack.WithEnvironment("BUCKET_NAMES", string.Join(',', buckets));
     }
 
-    public static IResourceBuilder<ContainerResource> WithQueues(
-        this IResourceBuilder<ContainerResource> localstack,
+    public static IResourceBuilder<LocalStackResource> WithQueues(
+        this IResourceBuilder<LocalStackResource> localstack,
         IReadOnlyList<string> queues)
     {
         if (queues.Count == 0)
@@ -80,16 +76,36 @@ public static class LocalStackResourceBuilderExtensions
             return localstack;
         }
 
-        var list = string.Join(',', queues);
-
-        return localstack.WithEnvironment("QUEUE_NAMES", list);
+        return localstack.WithEnvironment("QUEUE_NAMES", string.Join(',', queues));
     }
 
     /// <summary>
-    /// The queue URL a client should use, built from <see cref="GatewayUrl"/> so it agrees with
-    /// every other consumer of the gateway rather than being derived separately.
+    /// Points a service's <c>S3</c> options at the LocalStack gateway: endpoint, bucket, region,
+    /// and object lock off, because LocalStack's community edition does not implement it. The
+    /// <paramref name="envPrefix"/> is the service's own env-var prefix ("Api_", …).
+    ///
+    /// <para>In publish mode this is a no-op: production resolves the real S3 endpoint from the
+    /// region and the instance role, and deliberately never carries a ServiceUrl.</para>
     /// </summary>
-    public static string QueueUrl(
-        this IResourceBuilder<ContainerResource> _, string queueName) =>
-        $"{LocalStackResource.GatewayUrl}/000000000000/{queueName}";
+    public static IResourceBuilder<ProjectResource> WithLocalStackS3(
+        this IResourceBuilder<ProjectResource> project,
+        IResourceBuilder<LocalStackResource> localstack,
+        string envPrefix,
+        string bucket)
+    {
+        if (project.ApplicationBuilder.ExecutionContext.IsPublishMode)
+        {
+            return project;
+        }
+
+        var awsRegion = project.ApplicationBuilder.Configuration[AwsRegion]
+            ?? throw new InvalidOperationException("AWS region not configured");
+
+        return project
+            .WaitFor(localstack)
+            .WithEnvironment($"{envPrefix}S3__ServiceUrl", LocalStackResource.GatewayUrl)
+            .WithEnvironment($"{envPrefix}S3__Bucket", bucket)
+            .WithEnvironment($"{envPrefix}S3__AwsRegion", awsRegion)
+            .WithEnvironment($"{envPrefix}S3__ObjectLockEnabled", "false");
+    }
 }

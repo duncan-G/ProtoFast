@@ -1,5 +1,6 @@
 using Amazon.S3;
 using Amazon.S3.Model;
+using ProtoFast.Storage.Abstractions;
 
 namespace ProtoFast.Storage;
 
@@ -25,7 +26,8 @@ internal sealed partial class S3ObjectStore
         });
 
     /// <summary>
-    /// Signs a POST policy with the <c>content-length-range</c> condition of ingest plan §7.2.
+    /// Signs a POST policy whose <c>content-length-range</c> condition makes S3 itself enforce
+    /// the size cap.
     ///
     /// <para>Every condition here is exact-match except the range: the browser chooses neither the
     /// key it writes to nor the type it declares, which is what stops a leaked URL from being

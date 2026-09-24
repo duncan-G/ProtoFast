@@ -146,8 +146,7 @@ internal sealed partial class S3ObjectStore(
 
     /// <summary>
     /// GOVERNANCE retention, set at write time. The instance role deliberately has no
-    /// <c>s3:BypassGovernanceRetention</c> (plan §24.1), so the worker that wrote it cannot
-    /// unwrite it.
+    /// <c>s3:BypassGovernanceRetention</c>, so the worker that wrote it cannot unwrite it.
     /// </summary>
     public Task<ObjectRef> WriteFrozenAsync<T>(
         string key, T value, string idempotencyKey, CancellationToken ct = default)
@@ -196,7 +195,9 @@ internal sealed partial class S3ObjectStore(
     /// </summary>
     private string RegionName =>
         s3.Config.RegionEndpoint?.SystemName
-        ?? (string.IsNullOrWhiteSpace(s3.Config.AuthenticationRegion) ? _options.AwsRegion : s3.Config.AuthenticationRegion);
+        ?? (string.IsNullOrWhiteSpace(s3.Config.AuthenticationRegion) ? _options.AwsRegion : s3.Config.AuthenticationRegion)
+        ?? throw new InvalidOperationException(
+            "No AWS region: the S3 client resolved none and S3:AwsRegion is not configured.");
 
     private async Task<ObjectRef> PutAsync(
         string key,

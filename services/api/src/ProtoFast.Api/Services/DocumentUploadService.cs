@@ -1,13 +1,19 @@
 using Grpc.Core;
-using ProtoFast.Api.RateLimiting;
-using Protofast.DocumentImport.Core;
+using ProtoFast.DocumentImport.Core;
 using ProtoFast.DocumentImport.Storage;
+using ProtoFast.Grpc;
+using ProtoFast.Grpc.RateLimiting;
 using ProtoFast.Storage.Abstractions;
 
 namespace ProtoFast.Api.Services;
 
 public class DocumentUploadService(IPresignedUrlFactory urls) : DocumentUpload.DocumentUploadBase
 {
+    // Each minted URL is a standing permission to write into the bucket, so the budget per caller
+    // stays deliberately small.
+    private const int UploadUrlWindowSeconds = 3600;
+    private const int UploadUrlsPerWindow = 20;
+
     public override async Task<CreateDocumentUploadUrlReply> CreateDocumentUploadUrl(
         CreateDocumentUploadUrlRequest request,
         ServerCallContext context)
@@ -15,14 +21,14 @@ public class DocumentUploadService(IPresignedUrlFactory urls) : DocumentUpload.D
         var caller = CallerIdentity.From(context);
 
         await context
-            .EnforceFixedLimitByIdentityAsync(3600, 20, cancellationToken: context.CancellationToken)
+            .EnforceFixedLimitByIdentityAsync(UploadUrlWindowSeconds, UploadUrlsPerWindow, context.CancellationToken)
             .ConfigureAwait(false);
 
         if (!SourceFormats.TryResolve(request.FileName, request.ContentType, out var format))
         {
             throw new RpcException(new Status(
                 StatusCode.InvalidArgument,
-                $"ThePlot cannot read {SourceFormats.DescribeRejected(request.FileName)} files yet."));
+                $"Unsupported document type: {SourceFormats.DescribeRejected(request.FileName)}."));
         }
 
         if (request.SizeBytes is <= 0 or > SourceFormats.DefaultMaxBytes)
@@ -32,7 +38,7 @@ public class DocumentUploadService(IPresignedUrlFactory urls) : DocumentUpload.D
                 $"The document must be between 1 byte and {SourceFormats.DefaultMaxBytes / (1024 * 1024)} MB."));
         }
 
-        var uploadId = IdHelper.NewDocumentImportRunId();
+        var uploadId = DocumentImportIds.New();
 
         var sourceKey = ArtifactKeys.UploadSource(caller.Subject, uploadId, format.Extension);
 

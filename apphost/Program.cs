@@ -38,10 +38,12 @@ var authDb = postgres
 
 var redis = builder.AddRedis("redis");
 
+const string documentUploadBucket = "protofast-document-upload";
+
 var localstack = builder
     .AddLocalStack("localstack")
-    .WithBuckets(["protofast-document-upload"])
-    .WithQueues(["protofast-document-upload"]);
+    .WithBuckets([documentUploadBucket])
+    .WithQueues([documentUploadBucket]);
 
 var keycloak = builder.AddKeycloak("keycloak", 8080)
     .WithImageTag("26.7")
@@ -111,7 +113,7 @@ if (!builder.ExecutionContext.IsPublishMode)
         .WithEnvironment("THEPLOT_WEBAUTHN_RP_ID", "localhost");
 }
 
-// Api
+// Auth
 var auth = builder.AddProject<Projects.ProtoFast_Auth_Api>("auth")
     .WithOtlpCollectorReference(otel)
     .WithReference(redis)
@@ -124,7 +126,7 @@ var auth = builder.AddProject<Projects.ProtoFast_Auth_Api>("auth")
 
 if (smtp4dev is not null)
 {
-    // Api is a host process. appsettings.Development.json still says localhost:1025
+    // Auth is a host process. appsettings.Development.json still says localhost:1025
     // (MailHog's usual mapping), but Aspire publishes smtp4dev's SMTP on an allocated
     // port — so without these, email-change hits connection-refused on 1025.
     var mailFromHost = smtp4dev.GetEndpoint("smtp", KnownNetworkIdentifiers.LocalhostNetwork);
@@ -163,8 +165,8 @@ var payments = builder.AddProject<Projects.ProtoFast_Payments_Api>("payments")
 // Api
 var api = builder.AddProject<Projects.ProtoFast_Api>("api")
     .WithReference(redis)
-    .WaitFor(localstack)
     .WaitFor(redis)
+    .WithLocalStackS3(localstack, envPrefix: "Api_", bucket: documentUploadBucket)
     .WithOtlpCollectorReference(otel)
     .WithSsoProfile();
 
