@@ -8,7 +8,9 @@ description: >-
   registers the client with the unified SSR host (clients/host) that serves
   every client from one Node process in publish mode, creates a SERVER_URL
   injection token with TransferState for resolving the backend URL in SSR
-  and browser contexts, and wires buf + Connect proto codegen for gRPC-Web.
+  and browser contexts, wires buf + Connect proto codegen for gRPC-Web,
+  and registers the client's tenant with the auth BFF (dev + production
+  host→realm maps and client-secret plumbing).
   Use when the user asks to add a new Angular client, frontend app, web UI,
   or SPA — either during initial bootstrap or after the project is already
   running.
@@ -139,6 +141,19 @@ conventions and any fixes applied since the reference was written.
 
 If the project does not have OTel yet, skip this step — the
 `add-opentelemetry` skill wires every client when it runs.
+
+## Step 6 — Register the client with the auth BFF
+
+If the project has an auth BFF (`services/auth/` exists), **load
+`references/auth-tenant.md`** and follow it. The auth service resolves
+the tenant from the request `Host` and 404s unknown hosts, so a client
+missing from the tenant map serves pages fine but 404s on
+`/signup`/`/signin` — and the dev and production maps live in different
+files (`appsettings.Development.json` vs the auth service env in
+`deploy/docker-compose.host-services.yml`), so a working dev sign-in
+does not prove the production wiring exists.
+
+If the project has no auth BFF, skip this step.
 
 ## Guardrails
 
