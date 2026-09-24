@@ -28,6 +28,7 @@ openssl pkey -in "$tmp/jwt-private.pem" -pubout -out "$tmp/jwt-public.pem"
 "$script_dir/populate-secrets.sh" \
   Auth_Keycloak__ClientSecretProtofastWeb=dev-protofast-web-secret \
   Auth_Keycloak__ClientSecretAdmin=dev-admin-secret \
+  Auth_Keycloak__ClientSecretTheplotWeb=dev-theplot-web-secret \
   Auth_Keycloak__AdminClientSecret=dev-account-admin-secret \
   Auth_InternalJwt__PrivateKeyPem="$(cat "$tmp/jwt-private.pem")" \
   Shared_InternalJwt__PublicKeyPem="$(cat "$tmp/jwt-public.pem")" \

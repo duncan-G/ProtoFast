@@ -9,11 +9,17 @@ data "cloudflare_zone" "this" {
 }
 
 locals {
+  # theplot answers on its own subdomain of the zone unless a full hostname is
+  # given — unlike admin/protofast there is no required variable (and no CI
+  # secret) to forget.
+  theplot_domain = var.theplot_domain != "" ? var.theplot_domain : "theplot.${var.cloudflare_zone}"
+
   # Public hostname → internal origin. Client domains hit Envoy's publish listener;
   # telemetry (if enabled) hits the Aspire Dashboard, gated by Access (access.tf).
   client_hostnames = {
     admin     = var.admin_domain
     protofast = var.protofast_domain
+    theplot   = local.theplot_domain
   }
 
   telemetry_enabled = var.telemetry_domain != "" && length(var.telemetry_access_emails) > 0

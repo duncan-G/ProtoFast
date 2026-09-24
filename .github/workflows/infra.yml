@@ -40,6 +40,8 @@ env:
   TF_VAR_cloudflare_zone: ${{ secrets.CLOUDFLARE_ZONE }}
   TF_VAR_admin_domain: ${{ secrets.ADMIN_DOMAIN }}
   TF_VAR_protofast_domain: ${{ secrets.PROTOFAST_DOMAIN }}
+  # Optional: unset derives theplot.<cloudflare_zone> (infra/cloudflare.tf).
+  TF_VAR_theplot_domain: ${{ secrets.THEPLOT_DOMAIN }}
   TF_VAR_keycloak_domain: ${{ secrets.KEYCLOAK_DOMAIN }}
   TF_VAR_telemetry_domain: ${{ secrets.TELEMETRY_DOMAIN }}
   # List var: the repo secret must hold a JSON array, e.g. ["you@example.com"].

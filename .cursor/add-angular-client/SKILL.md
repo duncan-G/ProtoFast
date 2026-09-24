@@ -121,7 +121,7 @@ exists and `AddOpenTelemetryCollector` appears in `apphost/Program.cs`),
 for the new client. It installs the OTel npm packages, creates browser
 telemetry (`src/lib/telemetry.browser.ts`), the ConnectRPC trace
 interceptor (`src/lib/grpc-trace.interceptor.ts`), and Node SSR
-instrumentation (`src/instrumentation.ts`), and wires them into
+instrumentation (`src/telemetry.server.ts`), and wires them into
 `src/main.ts`, `src/server.ts`, and `src/app/grpc-transport.ts`.
 
 When registering the client in `apphost/Program.cs`, pass the
@@ -163,6 +163,7 @@ If the project does not have OTel yet, skip this step — the
   to codegen. This is where per-client selectivity lives.
 - The `--host 0.0.0.0` and `--allowed-hosts` flags are required for
   containers (Envoy) to reach the dev server.
-- The client's `src/instrumentation.ts` must keep the
-  `globalThis.__nodeOtelSdkStarted` guard — in the unified host every
-  bundle shares one process and only the first may start the Node SDK.
+- The client's `src/telemetry.server.ts` (named `src/instrumentation.ts`
+  in the oldest client) must keep the `globalThis.__nodeOtelSdkStarted`
+  guard — in the unified host every bundle shares one process and only
+  the first may start the Node SDK.

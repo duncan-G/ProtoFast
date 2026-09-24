@@ -20,6 +20,7 @@ public sealed class KeycloakOptions
     // Confidential-client secrets — auth-svc is the only holder (BFF). From the Auth_ SM secret.
     public string ClientSecretProtofastWeb { get; init; } = "";
     public string ClientSecretAdmin { get; init; } = "";
+    public string ClientSecretTheplotWeb { get; init; } = "";
 
     /// <summary>
     /// Service-account client used for the Admin API calls account management needs — reading a
@@ -43,6 +44,7 @@ public sealed class KeycloakOptions
     {
         "protofast-web" => ClientSecretProtofastWeb,
         "admin" => ClientSecretAdmin,
+        "theplot-web" => ClientSecretTheplotWeb,
         _ => throw new InvalidOperationException($"No client secret configured for client '{clientId}'.")
     };
 }
