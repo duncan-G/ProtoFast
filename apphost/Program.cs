@@ -81,8 +81,10 @@ var keycloak = builder.AddKeycloak("keycloak", 8080)
 IResourceBuilder<ContainerResource>? smtp4dev = null;
 if (!builder.ExecutionContext.IsPublishMode)
 {
+    // Static host port for the web UI so the mailbox URL survives restarts
+    // (bookmarkable at http://localhost:8025 — the conventional dev mail-UI port).
     smtp4dev = builder.AddContainer("smtp4dev", "rnwood/smtp4dev")
-        .WithHttpEndpoint(targetPort: 80, name: "web")
+        .WithHttpEndpoint(port: 8025, targetPort: 80, name: "web")
         .WithEndpoint(targetPort: 25, name: "smtp");
 
     // Keycloak is a container, so it has to reach smtp4dev by container DNS and the
