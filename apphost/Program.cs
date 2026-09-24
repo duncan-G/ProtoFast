@@ -1,4 +1,4 @@
-﻿using ProtoFast.AppHost.Aws;
+using ProtoFast.AppHost.Aws;
 using ProtoFast.AppHost.ClientApp;
 using ProtoFast.AppHost.EnvoyProxy;
 using ProtoFast.AppHost.OpenTelemetryCollector;
