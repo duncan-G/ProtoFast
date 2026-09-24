@@ -1,0 +1,730 @@
+@layer theme, base, ember, components, utilities;
+
+/*
+  Ember — ThePlot's design system, vendored from the Claude Design project
+  "ThePlot app design system" (claude.ai/artifact/DNLkNWRTWf4Cp55boTN653).
+
+  The look: a near-black warm ground (#14110f), cream ink (#f1ebe2), one
+  burnt-orange accent (oklch(0.72 0.15 45) ≈ #e8794a), Newsreader serif for
+  display type (weight 350, italic for emphasis), Geist for UI/body, and
+  JetBrains Mono for kickers and metadata. Surfaces are square — the only
+  rounded shape on a page is a pill button — and light "paper" panels
+  (#f3eee6) carry the editorial moments.
+
+  Structurally a sibling of Protofast's Nocturne: the same class contract —
+  .btn, .surface-card, .panel, .rise and friends — over this token block, so
+  pages and shared components port between the two systems by swapping the
+  sheet. The Keycloak login theme (infra/keycloak/themes/theplot) carries a
+  verbatim copy of the `:root` block below; retune it here and re-copy it
+  there.
+*/
+@layer ember {
+  :root {
+    --color-bg: #14110f;
+    --color-bg-deep: #0c0a09; /* the darker stage: video asides, players */
+    --color-surface: #1d1916;
+    --color-text: #f1ebe2;
+    --color-accent: oklch(0.72 0.15 45); /* ≈ #e8794a — the plot point */
+    --color-accent-bright: oklch(0.78 0.14 45); /* hover step */
+    --color-accent-2: #b0552e; /* the rust the paper panels use */
+    --color-divider: color-mix(in srgb, #f0e6d7 12%, transparent);
+
+    /* The paper register — light editorial panels on the dark page. */
+    --color-paper: #f3eee6;
+    --color-paper-ink: #1f1a16;
+    --color-paper-muted: #4a423a;
+    --color-paper-kicker: #8a5a3c;
+
+    /* Tonal ramps — warm taupe neutrals straight from the design's greys. */
+    --color-neutral-100: #f3eee6;
+    --color-neutral-200: #e5ddd0;
+    --color-neutral-300: #cfc5b6;
+    --color-neutral-400: #b8afa3;
+    --color-neutral-500: #a89f93;
+    --color-neutral-600: #8a8076;
+    --color-neutral-700: #6b6157;
+    --color-neutral-800: #46403a;
+    --color-neutral-900: #262220;
+
+    --color-accent-100: #fdf0e9;
+    --color-accent-200: #f9d8c8;
+    --color-accent-300: #f3b79a;
+    --color-accent-400: #ee9871;
+    --color-accent-500: #e8794a;
+    --color-accent-600: #c05f36;
+    --color-accent-700: #944827;
+    --color-accent-800: #68331b;
+    --color-accent-900: #40200f;
+
+    --color-accent-2-100: #f9ede4;
+    --color-accent-2-200: #efd2bd;
+    --color-accent-2-300: #e0ac89;
+    --color-accent-2-400: #cd8055;
+    --color-accent-2-500: #b0552e;
+    --color-accent-2-600: #8f4525;
+    --color-accent-2-700: #6d351d;
+    --color-accent-2-800: #4c2514;
+    --color-accent-2-900: #2e160c;
+
+    /* Deck-scale fills only. Not interface colors. */
+    --color-section: #2e1c10;
+    --color-section-glow: #472a16;
+    --color-section-ghost: #663c1f;
+
+    --font-heading: 'Newsreader', Georgia, serif;
+    --font-heading-weight: 350;
+    --font-body: 'Geist', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+
+    --space-1: 2.8px;
+    --space-2: 5.6px;
+    --space-3: 8.4px;
+    --space-4: 11.2px;
+    --space-6: 16.8px;
+    --space-8: 22.4px;
+
+    /* Square surfaces are the design's signature — the pill button is the one
+       rounded shape, and it hard-codes its own radius. */
+    --radius-sm: 0px;
+    --radius-md: 0px;
+    --radius-lg: 0px;
+    --radius-pill: 999px;
+
+    /* Elevation — on a dark ground, a hairline edge plus ambient darkness.
+       Ring hexes are --color-divider flattened over the bg. */
+    --shadow-sm: 0 0 0 1px #2b2620;
+    --shadow-md: 0 0 0 1px #3a342c, 0 6px 18px rgba(0, 0, 0, 0.55);
+    --shadow-lg: 0 0 0 1px #a89f93, 0 16px 40px rgba(0, 0, 0, 0.65);
+  }
+
+  /* `:where()` keeps these at element specificity so `.btn-primary` still wins
+     over `a`, and pages without `.ember` are untouched. */
+  .ember {
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.55;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Display type is Newsreader at a light 350, tight and slightly closed up —
+     the serif itself is the emphasis, with italics for the accented word. */
+  :where(.ember) h1,
+  :where(.ember) h2,
+  :where(.ember) h3,
+  :where(.ember) h4,
+  :where(.ember) h5 {
+    font-family: var(--font-heading);
+    font-weight: var(--font-heading-weight);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin: 0 0 var(--space-2);
+  }
+  :where(.ember) h1 {
+    font-size: 52px;
+    line-height: 0.98;
+    letter-spacing: -0.025em;
+  }
+  :where(.ember) h2 {
+    font-size: 38px;
+  }
+  :where(.ember) h3 {
+    font-size: 26px;
+    line-height: 1.15;
+  }
+  :where(.ember) h4 {
+    font-size: 21px;
+  }
+  :where(.ember) h5 {
+    font-size: 17px;
+  }
+  /* The kicker register: mono, small, tracked out, uppercase, accent. */
+  :where(.ember) h6 {
+    font-family: var(--font-mono);
+    font-weight: 400;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-accent-bright);
+    margin: 0 0 var(--space-3);
+  }
+  :where(.ember) p {
+    margin: 0 0 var(--space-3);
+  }
+  :where(.ember) a {
+    color: var(--color-text);
+    text-decoration: none;
+  }
+  :where(.ember) a:hover {
+    color: var(--color-accent-bright);
+  }
+  :where(.ember) img {
+    display: block;
+    max-width: 100%;
+  }
+  :where(.ember) figure {
+    margin: 0;
+  }
+  :where(.ember) figcaption {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    margin-top: var(--space-2);
+    color: var(--color-neutral-600);
+  }
+  :where(.ember) .text-muted {
+    color: var(--color-neutral-500);
+  }
+  :where(.ember) :focus {
+    outline: none;
+  }
+  :where(.ember) :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  :where(.ember) ::selection {
+    background: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  }
+  :where(.ember) ::placeholder {
+    color: #7d746a;
+  }
+
+  .lighten {
+    mix-blend-mode: lighten;
+    background-color: transparent;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     Components — built with the tokens above. Plain CSS on plain HTML.
+     ══════════════════════════════════════════════════════════════════════ */
+
+  /* — rules — */
+  /* Hairlines run edge to edge at 8% cream — the design divides its sections
+     with full-bleed borders, never a fade. */
+  .hr {
+    height: 1px;
+    border: 0;
+    margin: var(--space-4) 0;
+    background: var(--color-divider);
+  }
+
+  /* — buttons — */
+  /* Pills, per the design: a filled accent primary, a filled cream variant for
+     headers, and a hairline outline secondary. Text buttons stay bare. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    font-family: var(--font-body);
+    font-weight: 500;
+    font-size: 14px;
+    line-height: 1.2;
+    color: var(--color-text);
+    background: transparent;
+    border: 1px solid transparent;
+    padding: 10px 18px;
+    border-radius: var(--radius-pill);
+  }
+  .btn svg {
+    display: block;
+  }
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-bg);
+  }
+  .btn-primary:hover {
+    background: var(--color-accent-bright);
+    border-color: var(--color-accent-bright);
+    color: var(--color-bg);
+  }
+  .btn-primary:active {
+    background: var(--color-accent-500);
+    border-color: var(--color-accent-500);
+  }
+  .btn-cream {
+    background: var(--color-text);
+    border-color: var(--color-text);
+    color: var(--color-bg);
+  }
+  .btn-cream:hover {
+    background: var(--color-accent-bright);
+    border-color: var(--color-accent-bright);
+    color: var(--color-bg);
+  }
+  .btn-secondary {
+    border-color: color-mix(in srgb, #f0e6d7 25%, transparent);
+  }
+  .btn-secondary:hover {
+    border-color: var(--color-text);
+    color: var(--color-text);
+  }
+  .btn-secondary:active {
+    background: color-mix(in srgb, var(--color-text) 8%, transparent);
+  }
+  .btn-ghost {
+    color: var(--color-accent-bright);
+    padding-inline: var(--space-1);
+  }
+  .btn-ghost:hover {
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  }
+  .btn-ghost:active {
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  }
+  .btn-icon {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+  }
+  .btn-block {
+    width: 100%;
+    margin-top: var(--space-2);
+  }
+
+  /* — forms — */
+  /* Square fields on the surface tone; focus swaps the hairline for accent. */
+  .field > label {
+    display: block;
+    font-size: 13px;
+    margin-bottom: 8px;
+    color: var(--color-neutral-400);
+  }
+  .input {
+    width: 100%;
+    min-height: 44px;
+    padding: 12px 14px;
+    font: inherit;
+    font-size: 15px;
+    color: var(--color-text);
+    caret-color: var(--color-accent);
+    background: var(--color-surface);
+    border: 1px solid var(--color-divider);
+    border-radius: 0;
+  }
+  .input:hover {
+    border-color: color-mix(in srgb, var(--color-text) 35%, transparent);
+  }
+  .input:focus-visible {
+    border-color: var(--color-accent);
+    outline: none;
+  }
+  textarea.input {
+    min-height: 90px;
+    resize: vertical;
+  }
+
+  /* — cards — */
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-6);
+    background: var(--color-surface);
+    border: 1px solid var(--color-divider);
+  }
+  .card-kicker {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-accent-bright);
+  }
+  .card-title {
+    font-family: var(--font-heading);
+    font-weight: 400;
+    font-size: 22px;
+    line-height: 1.15;
+  }
+  .card-body {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--color-neutral-500);
+    flex: 1;
+  }
+  .card-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-neutral-600);
+  }
+  .elev-sm {
+    box-shadow: var(--shadow-sm);
+  }
+  .elev-md {
+    box-shadow: var(--shadow-md);
+  }
+  .elev-lg {
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* — tags — */
+  /* Mono chips. `.tag-accent` is the design's "Sentence → scene" pill;
+     `.tag-paper` is the cream genre chip on a poster. */
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+  }
+  .tag-accent {
+    background: var(--color-accent);
+    color: var(--color-bg);
+    border-radius: var(--radius-pill);
+  }
+  .tag-paper {
+    background: var(--color-text);
+    color: var(--color-bg);
+  }
+  .tag-neutral {
+    background: var(--color-neutral-800);
+    color: var(--color-neutral-100);
+  }
+  .tag-outline {
+    border: 1px solid var(--color-accent);
+    color: var(--color-accent-bright);
+    border-radius: var(--radius-pill);
+  }
+
+  /* — navigation — */
+  .nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    padding: var(--space-4) var(--space-6);
+  }
+  .nav-brand {
+    font-family: var(--font-heading);
+    font-size: 26px;
+    letter-spacing: -0.01em;
+    margin-right: auto;
+  }
+  .nav a {
+    color: var(--color-neutral-500);
+    text-decoration: none;
+    font-size: 14px;
+  }
+  .nav a:hover,
+  .nav a[aria-current='page'] {
+    color: var(--color-text);
+  }
+
+  /* A row in the collapsed-nav menu panel. Full-bleed hit area with a hairline
+     between rows, sized for a thumb rather than a cursor. */
+  .mobile-nav-link {
+    display: block;
+    padding: 13px 0;
+    font-size: 15px;
+    color: var(--color-neutral-400);
+    text-decoration: none;
+    border-bottom: 1px solid var(--color-divider);
+  }
+  .mobile-nav-link:last-of-type {
+    border-bottom: none;
+  }
+  .mobile-nav-link:hover,
+  .mobile-nav-link:active {
+    color: var(--color-text);
+  }
+
+  /* — tables — */
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  .table th {
+    text-align: left;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-neutral-600);
+    padding: var(--space-2);
+    border-bottom: 1px solid var(--color-divider);
+  }
+  .table td {
+    padding: var(--space-2);
+    border-bottom: 1px solid var(--color-divider);
+  }
+  .table tbody tr:hover {
+    background: color-mix(in srgb, var(--color-text) 4%, transparent);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     Page motion. Everything stands down under prefers-reduced-motion.
+     ══════════════════════════════════════════════════════════════════════ */
+  @keyframes ember-blink {
+    0%,
+    49% {
+      opacity: 1;
+    }
+    50%,
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes ember-glow {
+    0%,
+    100% {
+      opacity: 0.5;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  .caret {
+    display: inline-block;
+    width: 8px;
+    height: 1em;
+    vertical-align: -0.15em;
+    background: var(--color-accent);
+    animation: ember-blink 1s step-end infinite;
+  }
+  .glow {
+    animation: ember-glow 1.6s ease-in-out infinite;
+  }
+  .glow-delayed {
+    animation: ember-glow 1.6s ease-in-out 0.4s infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .caret,
+    .glow,
+    .glow-delayed {
+      animation: none;
+    }
+    .caret {
+      opacity: 1;
+    }
+    .glow,
+    .glow-delayed {
+      opacity: 1;
+    }
+  }
+
+  /* Account page and danger. */
+
+  :root {
+    /* Danger keeps its own hue lane so a destructive control never reads as
+       the brand accent — dustier and cooler than the plot-point orange. */
+    --color-danger: #d96459;
+    --color-danger-200: oklch(0.85 0.06 25);
+    --color-danger-300: oklch(0.72 0.13 25);
+    --color-danger-600: oklch(0.6 0.12 25);
+  }
+
+  /* Outlined pill — destructive actions stay line-weight so they never
+     compete with the filled primary. */
+  .btn-danger {
+    color: var(--color-danger-300);
+    border-color: var(--color-danger-600);
+  }
+  .btn-ghost.btn-danger {
+    border-color: transparent;
+  }
+  .btn-danger:hover {
+    background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  }
+  .btn-danger:active {
+    background: color-mix(in srgb, var(--color-danger) 22%, transparent);
+  }
+  .btn-danger:focus-visible {
+    outline-color: var(--color-danger);
+  }
+
+  /* A destructive action sitting in a row of calm ones — the Remove on each
+     passkey. Neutral until it is pointed at. Below `.btn-ghost` in the sheet so
+     its hover, at the same specificity, is the one that lands. */
+  .btn-muted-danger {
+    color: var(--color-neutral-500);
+  }
+  .btn-muted-danger:hover,
+  .btn-muted-danger:focus-visible {
+    color: var(--color-danger-300);
+    background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  }
+
+  /* A row in the account menu (src/app/shared/account-menu.ts) — the panel the
+     avatar button opens in every signed-in header. Padded for a thumb rather
+     than a cursor, and flat until pointed at.
+
+     Qualified with the element on purpose: the landing header is a `.nav`, and
+     `.nav a` (0,1,1) would otherwise outrank a bare class and hand these rows
+     the nav's own colours. */
+  a.account-menu-item {
+    display: block;
+    padding: 9px 10px;
+    font-size: 14px;
+    line-height: 1.2;
+    color: var(--color-neutral-400);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  a.account-menu-item:hover,
+  a.account-menu-item:focus-visible {
+    background: color-mix(in srgb, var(--color-text) 7%, transparent);
+    color: var(--color-text);
+  }
+
+  /* ────────────────────────────────────────────────────────────────────────
+     Shapes the account page asks for (src/app/pages/account/account.ts).
+     Square surfaces with hairline edges, per the system.
+     ──────────────────────────────────────────────────────────────────────── */
+
+  /* The lettered label a section opens with — the kicker register. */
+  .section-label {
+    margin: 0 0 var(--space-4);
+    font-family: var(--font-mono);
+    font-weight: 400;
+    font-size: 11px;
+    line-height: 1.2;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-neutral-600);
+  }
+
+  /* The sentence under a section's controls. It sits below rather than above
+     because it is a footnote to the control, not an introduction to it. */
+  .section-note {
+    margin: var(--space-3) 0 0;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--color-neutral-600);
+  }
+
+  /* The one raised shape on the page: everything a section holds — the address
+     row, each passkey — sits on one of these. */
+  .surface-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-divider);
+  }
+  /* A row inside one. Roomier on the left than the right, because the left
+     holds a glyph and the right holds a button that carries its own padding. */
+  .surface-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-4) var(--space-4) var(--space-6);
+  }
+
+  /* A control that has opened in place of a row — the email form, the code
+     box. Same ground and geometry as the row it replaced, with the hairline
+     swapped for an accent edge, so the section reads as one card that has
+     grown rather than as a second card stacked on the first. */
+  .panel {
+    padding: var(--space-6);
+    background: var(--color-surface);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
+  }
+
+  /* The same panel in the destructive register. Its ground is the surface
+     tinted, not a transparent wash, so it stays a card on the page rather than
+     a stain over it. Doubles as the page's alert box. */
+  .panel-danger {
+    padding: var(--space-6);
+    background: color-mix(in srgb, var(--color-danger) 6%, var(--color-surface));
+    border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
+  }
+
+  /* A destructive confirmation that opens *inside* a list row, as a strip below
+     it, so the row it is asking about stays on screen — the thing a dialog over
+     the page cannot do. */
+  .strip-danger {
+    background: color-mix(in srgb, var(--color-danger) 11%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-danger) 30%, transparent);
+  }
+
+  /* One digit of a confirmation code. The cells are presentation only: a single
+     transparent input lies across the whole row, so paste, autofill and the
+     one-time-code keyboard all keep working on one real field. That input has
+     nothing of its own to show focus with, hence the group ring — and
+     :focus-within rather than :focus-visible, because clicking the cells is the
+     ordinary way in and would otherwise give no feedback at all. */
+  .code-cells {
+    display: flex;
+    gap: 7px;
+  }
+  .code-cell {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 50px;
+    background: var(--color-surface);
+    box-shadow: inset 0 0 0 1px var(--color-divider);
+    font-family: var(--font-mono);
+    font-size: 19px;
+  }
+  .code-cells:focus-within .code-cell {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 60%, transparent);
+  }
+  .code-input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    border: 0;
+    background: transparent;
+    cursor: text;
+    font-size: 16px; /* under 16px, iOS Safari zooms the page on focus */
+  }
+
+  @keyframes ember-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes ember-rise {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* An inline busy mark, sized for a line of 13–14px text and drawn entirely
+     from currentColor — so it takes the colour of the button or label holding
+     it, and there is one of these rather than one per accent. */
+  .spinner {
+    display: inline-block;
+    flex: none;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    border: 1.6px solid color-mix(in srgb, currentColor 35%, transparent);
+    border-top-color: currentColor;
+    animation: ember-spin 0.8s linear infinite;
+  }
+
+  /* What anything the page adds does on the way in — a panel opening in place,
+     a row arriving in a list. `both` so a staggered item stays invisible
+     through its own delay rather than flashing in and then animating. */
+  .rise {
+    animation: ember-rise 0.26s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spinner,
+    .rise {
+      animation: none;
+    }
+  }
+}

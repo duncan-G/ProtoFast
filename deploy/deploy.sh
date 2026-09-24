@@ -178,6 +178,7 @@ PY
   # would make ensure_secret_files return non-zero and abort the whole deploy (set -e).
   v="$(_secret_get Auth_Keycloak__ClientSecretProtofastWeb || true)"; if [ -n "$v" ]; then set_env "$ENV_FILE" PROTOFAST_WEB_CLIENT_SECRET "$v"; fi
   v="$(_secret_get Auth_Keycloak__ClientSecretAdmin || true)";        if [ -n "$v" ]; then set_env "$ENV_FILE" ADMIN_CLIENT_SECRET "$v"; fi
+  v="$(_secret_get Auth_Keycloak__ClientSecretTheplotWeb || true)";   if [ -n "$v" ]; then set_env "$ENV_FILE" THEPLOT_WEB_CLIENT_SECRET "$v"; fi
   # The Admin API service account behind account management (passkey removal, account
   # deletion). Absent, the realm import falls back to its dev default and auth-svc has no
   # secret at all — sign-in is unaffected and the account endpoints answer 503.

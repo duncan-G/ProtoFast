@@ -303,10 +303,10 @@ else
 
 ## 2f. Guard OTel instrumentation for the unified host
 
-If the client has Node OTel instrumentation (`src/instrumentation.ts`,
-added by the add-opentelemetry skill), it must guard SDK startup so
-that only the first bundle loaded into the unified SSR host process
-starts the SDK:
+If the client has Node OTel instrumentation (`src/telemetry.server.ts`,
+added by the add-opentelemetry skill; the oldest client still calls it
+`src/instrumentation.ts`), it must guard SDK startup so that only the
+first bundle loaded into the unified SSR host process starts the SDK:
 
 ```typescript
 const otelGlobal = globalThis as { __nodeOtelSdkStarted?: boolean };
@@ -317,5 +317,5 @@ if (otelEndpoint && !otelGlobal.__nodeOtelSdkStarted) {
 }
 ```
 
-Copy the pattern from an existing client (e.g.
-`clients/admin/src/instrumentation.ts`).
+Copy the pattern from the most recently added client (e.g.
+`clients/protofast/src/telemetry.server.ts`).

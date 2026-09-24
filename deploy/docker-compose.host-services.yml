@@ -239,10 +239,12 @@ services:
       PROTOFAST_WEB_CLIENT_SECRET: "${PROTOFAST_WEB_CLIENT_SECRET}"
       ADMIN_CLIENT_SECRET: "${ADMIN_CLIENT_SECRET}"
       ACCOUNT_ADMIN_CLIENT_SECRET: "${ACCOUNT_ADMIN_CLIENT_SECRET}"
+      THEPLOT_WEB_CLIENT_SECRET: "${THEPLOT_WEB_CLIENT_SECRET}"
       # Client "Home URL" (client.baseUrl) — where the login-page brand link returns the
       # user. Overrides the realm import's dev-localhost default with the public app domains.
       PROTOFAST_WEB_BASE_URL: "${PROTOFAST_WEB_BASE_URL:-https://protofast.dev}"
       ADMIN_BASE_URL: "${ADMIN_BASE_URL:-https://admin.protofast.dev}"
+      THEPLOT_WEB_BASE_URL: "${THEPLOT_WEB_BASE_URL:-https://theplot.protofast.dev}"
       # Where Keycloak POSTs the logout token when an SSO session ends (both clients share the
       # endpoint; the token's `aud` says which one it is for). Same-host compose DNS, never the
       # public edge — Envoy's vhost routes only the browser OIDC paths to auth, so this URL is

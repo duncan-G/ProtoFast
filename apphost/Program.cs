@@ -96,7 +96,11 @@ if (!builder.ExecutionContext.IsPublishMode)
         .WithEnvironment("SMTP_FROM", "no-reply@protofast.dev")
         // WebAuthn RP ID must be the origin hostname. protofast.dev is correct in
         // prod (covers auth.protofast.dev); locally the ceremony runs on localhost.
-        .WithEnvironment("WEBAUTHN_RP_ID", "localhost");
+        // Each tenant realm has its own RP ID placeholder (realm README: a shared
+        // RP ID leaks account existence across tenants in the passkey picker), so
+        // the theplot realm gets its own — the same localhost value in dev.
+        .WithEnvironment("WEBAUTHN_RP_ID", "localhost")
+        .WithEnvironment("THEPLOT_WEBAUTHN_RP_ID", "localhost");
 }
 
 // Auth
@@ -165,6 +169,7 @@ var otelHttp = otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointN
 // Clients: each gets its own Envoy listener (dev) or domain virtual host (publish).
 var adminWeb = proxy.WithClient(builder, "admin");
 var protofastWeb = proxy.WithClient(builder, "protofast");
+var theplotWeb = proxy.WithClient(builder, "theplot");
 
 if (useSsrHost)
 {
@@ -181,6 +186,9 @@ else
 
     var protofastDev = builder.AddClientApp("protofast", "../clients/protofast", protofastWeb, otelHttp, otelHttp);
     proxy.WithUpstreamEndpoint("CLIENT_PROTOFAST", protofastDev);
+
+    var theplotDev = builder.AddClientApp("theplot", "../clients/theplot", theplotWeb, otelHttp, otelHttp);
+    proxy.WithUpstreamEndpoint("CLIENT_THEPLOT", theplotDev);
 }
 
 proxy

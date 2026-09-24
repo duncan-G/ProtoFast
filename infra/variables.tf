@@ -37,6 +37,12 @@ variable "protofast_domain" {
   type        = string
 }
 
+variable "theplot_domain" {
+  description = "Hostname for the theplot client. Empty derives theplot.<cloudflare_zone>."
+  type        = string
+  default     = ""
+}
+
 variable "telemetry_domain" {
   description = "Hostname for the Aspire Dashboard, gated by Cloudflare Access (e.g. telemetry.example.com)."
   type        = string
