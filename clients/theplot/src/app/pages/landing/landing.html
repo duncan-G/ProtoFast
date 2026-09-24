@@ -1,0 +1,318 @@
+<div class="ember relative min-h-screen overflow-x-hidden antialiased">
+  <!-- ──────────────────────────── header ──────────────────────────── -->
+  <header
+    class="sticky top-0 z-10 border-b border-[var(--color-divider)] bg-[rgba(20,17,15,0.82)] backdrop-blur-[12px]"
+  >
+    <div
+      class="mx-auto flex max-w-[1240px] items-center justify-between gap-6 px-[clamp(20px,4vw,48px)] py-4"
+    >
+      <a href="/" class="text-[26px] no-underline"><app-theplot-logo /></a>
+
+      <nav class="hidden flex-wrap items-center gap-7 text-[14px] md:flex">
+        <a href="#how" class="text-[var(--color-neutral-500)] hover:text-[var(--color-text)]">How it works</a>
+        <a href="#stories" class="text-[var(--color-neutral-500)] hover:text-[var(--color-text)]">Stories</a>
+        <a href="#writers" class="text-[var(--color-neutral-500)] hover:text-[var(--color-text)]">For writers</a>
+      </nav>
+
+      <div class="flex items-center gap-2.5">
+        @if (auth.authenticated) {
+          <a href="/app" class="btn btn-cream">Open ThePlot</a>
+          <app-account-menu />
+        } @else {
+          <!-- /signin, /signup are BFF endpoints, not Angular routes — full-page navigation. -->
+          <a
+            href="/signin"
+            rel="external"
+            class="hidden px-3.5 py-2.5 text-[14px] text-[var(--color-text)] hover:text-[var(--color-accent-bright)] sm:inline"
+            >Sign in</a
+          >
+          <a href="/signup" rel="external" class="btn btn-cream">Start free</a>
+          <!-- On a phone the nav and Sign in collapse into this panel. -->
+          <button
+            type="button"
+            class="btn btn-secondary btn-icon md:hidden"
+            [attr.aria-expanded]="menuOpen()"
+            aria-controls="landing-menu"
+            [attr.aria-label]="menuOpen() ? 'Close menu' : 'Open menu'"
+            (click)="toggleMenu()"
+          >
+            <svg class="h-[18px] w-[18px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              @if (menuOpen()) {
+                <path d="M5 5 15 15 M15 5 5 15" />
+              } @else {
+                <path d="M3.5 6 H16.5 M3.5 10 H16.5 M3.5 14 H16.5" />
+              }
+            </svg>
+          </button>
+        }
+      </div>
+    </div>
+
+    @if (menuOpen()) {
+      <div id="landing-menu" class="border-t border-[var(--color-divider)] px-[clamp(20px,4vw,48px)] pt-1 pb-3 md:hidden">
+        <a href="#how" class="mobile-nav-link" (click)="closeMenu()">How it works</a>
+        <a href="#stories" class="mobile-nav-link" (click)="closeMenu()">Stories</a>
+        <a href="#writers" class="mobile-nav-link" (click)="closeMenu()">For writers</a>
+        <a href="/signin" rel="external" class="mobile-nav-link">Sign in</a>
+      </div>
+    }
+  </header>
+
+  <main>
+    <!-- ───────────────────────────── hero ───────────────────────────── -->
+    <section
+      class="mx-auto grid max-w-[1240px] grid-cols-[repeat(auto-fit,minmax(min(100%,460px),1fr))] items-center gap-[clamp(40px,6vw,80px)] px-[clamp(20px,4vw,48px)] pt-[clamp(56px,9vw,120px)] pb-[clamp(64px,8vw,110px)]"
+    >
+      <div class="flex flex-col gap-7">
+        <div
+          class="font-[family-name:var(--font-mono)] text-[12px] tracking-[0.14em] text-[var(--color-accent-bright)] uppercase"
+        >
+          Write it · Read it · Watch it
+        </div>
+        <h1
+          class="m-0 text-[clamp(48px,6.4vw,88px)] leading-[0.98] tracking-[-0.025em] [text-wrap:balance]"
+        >
+          Every story deserves a
+          <span class="italic text-[var(--color-accent-bright)]">screening.</span>
+        </h1>
+        <p class="m-0 max-w-[520px] text-[18px] leading-[1.6] text-[var(--color-neutral-400)] [text-wrap:pretty]">
+          Write chapters on ThePlot and your readers can open them as prose — or press play and
+          watch an AI-generated adaptation, scene by scene, drawn straight from your words.
+        </p>
+        <div class="flex flex-wrap gap-3">
+          @if (auth.authenticated) {
+            <a href="/app" class="btn btn-primary px-6 py-[15px] text-[15px]">Open ThePlot</a>
+          } @else {
+            <a href="/signup" rel="external" class="btn btn-primary px-6 py-[15px] text-[15px]">
+              Start writing
+            </a>
+            <a href="/signup" rel="external" class="btn btn-secondary px-6 py-[14px] text-[15px]">
+              Browse stories
+            </a>
+          }
+        </div>
+      </div>
+
+      <!-- The collage: a rotated manuscript page, the player card it becomes,
+           and the "Sentence → scene" pill pinned where they overlap. Artwork. -->
+      <div class="relative min-h-[520px]" aria-hidden="true">
+        <div
+          class="absolute top-0 left-0 w-[68%] -rotate-2 bg-[var(--color-paper)] px-[30px] pt-8 pb-10 text-[var(--color-paper-ink)] shadow-[0_30px_60px_rgba(0,0,0,0.45)]"
+        >
+          <div
+            class="mb-[22px] flex justify-between font-[family-name:var(--font-mono)] text-[10.5px] tracking-[0.1em] text-[#8a7f72] uppercase"
+          >
+            <span>{{ manuscript.work }}</span><span>{{ manuscript.chapter }}</span>
+          </div>
+          <p class="m-0 mb-3.5 font-[family-name:var(--font-heading)] text-[16px] leading-[1.65] [text-wrap:pretty]">
+            {{ manuscript.p1 }}
+          </p>
+          <p class="m-0 mb-3.5 font-[family-name:var(--font-heading)] text-[16px] leading-[1.65] [text-wrap:pretty]">
+            <span class="bg-[oklch(0.86_0.09_55)] shadow-[0_0_0_3px_oklch(0.86_0.09_55)]">{{
+              manuscript.highlighted
+            }}</span>
+          </p>
+          <p class="m-0 font-[family-name:var(--font-heading)] text-[16px] leading-[1.65] text-[#6b6157] [text-wrap:pretty]">
+            {{ manuscript.p3 }}
+          </p>
+        </div>
+
+        <div
+          class="absolute right-0 bottom-0 w-[66%] border border-[rgba(240,230,215,0.12)] bg-[var(--color-bg-deep)] shadow-[0_30px_70px_rgba(0,0,0,0.6)]"
+        >
+          <div
+            class="relative flex aspect-[16/10] items-center justify-center bg-[repeating-linear-gradient(135deg,#1c1815_0_10px,#221d19_10px_20px)]"
+          >
+            <span class="font-[family-name:var(--font-mono)] text-[11px] tracking-[0.06em] text-[#8a8076]">{{
+              manuscript.still
+            }}</span>
+            <div
+              class="absolute right-0 bottom-0 left-0 bg-[linear-gradient(transparent,rgba(0,0,0,0.75))] px-4 py-3.5"
+            >
+              <div class="text-center font-[family-name:var(--font-heading)] text-[15px] italic">
+                {{ manuscript.cue }}
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 px-3.5 py-3">
+            <span class="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-[var(--color-text)]">
+              <span
+                class="ml-[2px] h-0 w-0 border-t-[5px] border-b-[5px] border-l-[8px] border-t-transparent border-b-transparent border-l-[var(--color-bg)]"
+              ></span>
+            </span>
+            <div class="relative h-[3px] flex-1 bg-[rgba(240,230,215,0.15)]">
+              <div class="absolute top-0 bottom-0 left-0 w-[38%] bg-[var(--color-accent)]"></div>
+            </div>
+            <span class="font-[family-name:var(--font-mono)] text-[11px] text-[var(--color-neutral-500)]">{{
+              manuscript.meta
+            }}</span>
+          </div>
+        </div>
+
+        <div
+          class="tag tag-accent absolute top-[47%] left-[52%] -translate-x-1/2 -translate-y-1/2 px-2.5 py-1.5 whitespace-nowrap"
+        >
+          Sentence → scene
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────────────────── how it works ───────────────────────── -->
+    <section id="how" class="scroll-mt-16 border-t border-[var(--color-divider)]">
+      <div class="mx-auto max-w-[1240px] px-[clamp(20px,4vw,48px)] py-[clamp(64px,8vw,110px)]">
+        <h2
+          class="m-0 mb-14 max-w-[720px] text-[clamp(34px,4vw,52px)] leading-[1.05] tracking-[-0.02em] [text-wrap:balance]"
+        >
+          From first draft to <span class="italic">premiere</span>, without leaving the page.
+        </h2>
+        <div
+          class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-px border border-[rgba(240,230,215,0.1)] bg-[rgba(240,230,215,0.1)]"
+        >
+          @for (step of steps; track step.kicker) {
+            <div class="flex flex-col gap-4 bg-[var(--color-bg)] px-7 pt-8 pb-10">
+              <div class="font-[family-name:var(--font-mono)] text-[12px] text-[var(--color-accent-bright)]">
+                {{ step.kicker }}
+              </div>
+              <div class="font-[family-name:var(--font-heading)] text-[26px] leading-[1.15]">
+                {{ step.title }}
+              </div>
+              <p class="m-0 text-[15px] leading-[1.6] text-[var(--color-neutral-500)] [text-wrap:pretty]">
+                {{ step.body }}
+              </p>
+            </div>
+          }
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────── now showing ──────────────────────── -->
+    <section id="stories" class="scroll-mt-16 border-t border-[var(--color-divider)]">
+      <div class="mx-auto max-w-[1240px] px-[clamp(20px,4vw,48px)] py-[clamp(64px,8vw,110px)]">
+        <div class="mb-10 flex flex-wrap items-end justify-between gap-6">
+          <h2 class="m-0 text-[clamp(34px,4vw,52px)] leading-[1.05] tracking-[-0.02em]">Now showing</h2>
+          <a
+            href="/signup"
+            rel="external"
+            class="border-b border-[rgba(240,230,215,0.25)] pb-[3px] text-[14px] text-[var(--color-neutral-500)] hover:text-[var(--color-text)]"
+            >See all stories</a
+          >
+        </div>
+        <div class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,240px),1fr))] gap-7">
+          @for (story of stories; track story.title) {
+            <a href="/signup" rel="external" class="flex flex-col gap-3.5 no-underline hover:text-[var(--color-text)]">
+              <div
+                class="flex aspect-[2/3] flex-col justify-between border border-[var(--color-divider)] bg-[repeating-linear-gradient(135deg,#1d1916_0_10px,#231e1a_10px_20px)] p-3.5"
+              >
+                <span class="tag tag-paper self-start">{{ story.genre }}</span>
+                <span class="text-center font-[family-name:var(--font-mono)] text-[11px] text-[#7d746a]">cover art</span>
+                <span></span>
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <div class="font-[family-name:var(--font-heading)] text-[22px] leading-[1.15]">
+                  {{ story.title }}
+                </div>
+                <div class="text-[13.5px] text-[var(--color-neutral-500)]">by {{ story.author }}</div>
+                <div class="mt-1 flex gap-3.5 font-[family-name:var(--font-mono)] text-[11.5px] text-[var(--color-neutral-500)]">
+                  <span>Read · {{ story.read }}</span>
+                  <span class="text-[var(--color-accent-bright)]">▶ Watch · {{ story.watch }}</span>
+                </div>
+              </div>
+            </a>
+          }
+        </div>
+      </div>
+    </section>
+
+    <!-- ──────────────────── for writers / for audiences ─────────────── -->
+    <section id="writers" class="scroll-mt-16 border-t border-[var(--color-divider)]">
+      <div
+        class="mx-auto grid max-w-[1240px] grid-cols-[repeat(auto-fit,minmax(min(100%,420px),1fr))] gap-6 px-[clamp(20px,4vw,48px)] py-[clamp(64px,8vw,110px)]"
+      >
+        <div class="flex flex-col gap-[22px] bg-[var(--color-paper)] p-[clamp(32px,4vw,52px)] text-[var(--color-paper-ink)]">
+          <div
+            class="font-[family-name:var(--font-mono)] text-[12px] tracking-[0.14em] text-[var(--color-paper-kicker)] uppercase"
+          >
+            For writers
+          </div>
+          <h3
+            class="m-0 font-[family-name:var(--font-heading)] text-[clamp(30px,3.2vw,42px)] leading-[1.08] font-normal tracking-[-0.015em] [text-wrap:balance]"
+          >
+            Your words stay yours. The adaptation follows your lead.
+          </h3>
+          <ul class="m-0 flex list-none flex-col gap-3 p-0 text-[15.5px] leading-[1.5] text-[var(--color-paper-muted)]">
+            <li class="flex gap-3"><span class="text-[var(--color-accent-2)]">—</span>Adaptations are only made from stories you publish.</li>
+            <li class="flex gap-3"><span class="text-[var(--color-accent-2)]">—</span>Approve, regenerate or lock every scene.</li>
+            <li class="flex gap-3"><span class="text-[var(--color-accent-2)]">—</span>Credited on every read and every play.</li>
+          </ul>
+          <a
+            href="/signup"
+            rel="external"
+            class="mt-2 inline-flex self-start rounded-[var(--radius-pill)] bg-[var(--color-paper-ink)] px-[22px] py-3.5 text-[15px] font-medium text-[var(--color-paper)] no-underline hover:bg-[var(--color-accent-2)] hover:text-[var(--color-paper)]"
+            >Start writing — free</a
+          >
+        </div>
+
+        <div class="flex flex-col gap-[22px] border border-[var(--color-divider)] bg-[var(--color-surface)] p-[clamp(32px,4vw,52px)]">
+          <div
+            class="font-[family-name:var(--font-mono)] text-[12px] tracking-[0.14em] text-[var(--color-accent-bright)] uppercase"
+          >
+            For audiences
+          </div>
+          <h3
+            class="m-0 font-[family-name:var(--font-heading)] text-[clamp(30px,3.2vw,42px)] leading-[1.08] font-normal tracking-[-0.015em] [text-wrap:balance]"
+          >
+            Stories nobody’s greenlit yet. You get the first screening.
+          </h3>
+          <ul class="m-0 flex list-none flex-col gap-3 p-0 text-[15.5px] leading-[1.5] text-[var(--color-neutral-400)]">
+            <li class="flex gap-3"><span class="text-[var(--color-accent-bright)]">—</span>Flip between page and screen mid-chapter.</li>
+            <li class="flex gap-3"><span class="text-[var(--color-accent-bright)]">—</span>Follow writers and get new chapters as they drop.</li>
+            <li class="flex gap-3"><span class="text-[var(--color-accent-bright)]">—</span>Leave notes the author actually reads.</li>
+          </ul>
+          <a href="/signup" rel="external" class="btn btn-cream mt-2 self-start px-[22px] py-3.5 text-[15px]"
+            >Start reading</a
+          >
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────── closing CTA ──────────────────────── -->
+    <section class="border-t border-[var(--color-divider)]">
+      <div
+        class="mx-auto flex max-w-[1240px] flex-col items-center gap-8 px-[clamp(20px,4vw,48px)] py-[clamp(80px,10vw,140px)] text-center"
+      >
+        <h2
+          class="m-0 max-w-[900px] text-[clamp(44px,6vw,84px)] leading-none tracking-[-0.025em] [text-wrap:balance]"
+        >
+          Lose the plot. <span class="italic text-[var(--color-accent-bright)]">Find a better one.</span>
+        </h2>
+        <div class="flex flex-wrap justify-center gap-3">
+          @if (auth.authenticated) {
+            <a href="/app" class="btn btn-primary px-[26px] py-[15px] text-[15px]">Open ThePlot</a>
+          } @else {
+            <a href="/signup" rel="external" class="btn btn-primary px-[26px] py-[15px] text-[15px]"
+              >Create your account</a
+            >
+            <a href="/signin" rel="external" class="btn btn-secondary px-[25px] py-[14px] text-[15px]"
+              >I already have one</a
+            >
+          }
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ───────────────────────────── footer ─────────────────────────── -->
+  <footer class="border-t border-[var(--color-divider)]">
+    <div
+      class="mx-auto flex max-w-[1240px] flex-wrap justify-between gap-5 px-[clamp(20px,4vw,48px)] py-7 text-[13px] text-[#8a8076]"
+    >
+      <span class="text-[18px]"><app-theplot-logo /></span>
+      <div class="flex flex-wrap gap-6">
+        <a href="#how" class="text-[#8a8076] hover:text-[var(--color-text)]">How it works</a>
+        <a href="#stories" class="text-[#8a8076] hover:text-[var(--color-text)]">Stories</a>
+        <a href="#writers" class="text-[#8a8076] hover:text-[var(--color-text)]">Writer rights</a>
+      </div>
+      <span>© {{ year }} ThePlot</span>
+    </div>
+  </footer>
+</div>

@@ -1,3 +1,5 @@
+using System.Text;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using ProtoFast.Auth.Api.Configuration;
 using ProtoFast.Auth.Api.Tenancy;
@@ -14,6 +16,9 @@ public class TenantResolverTests
             ["protofast.dev"] = new TenantConfig { Realm = "protofast", ClientId = "protofast-web" },
             ["admin.protofast.dev"] = new TenantConfig { Realm = "protofast", ClientId = "admin" },
             ["localhost"] = new TenantConfig { Realm = "protofast", ClientId = "protofast-web" },
+            // '+' is how config spells "host:port" — a colon in a configuration key is a
+            // path separator and never survives binding (see TenantResolver's constructor).
+            ["localhost+20002"] = new TenantConfig { Realm = "theplot", ClientId = "theplot-web" },
         },
     }));
 
@@ -30,6 +35,53 @@ public class TenantResolverTests
     {
         Assert.True(Resolver().TryResolve("localhost:20001", out var tenant));
         Assert.Equal("protofast-web", tenant!.ClientId);
+    }
+
+    [Fact]
+    public void Host_and_port_entry_wins_over_the_bare_host()
+    {
+        // Dev-only: per-client Envoy listeners share localhost and differ only by port, so a
+        // "host:port" entry is what lets one listener live in its own realm.
+        Assert.True(Resolver().TryResolve("localhost:20002", out var tenant));
+        Assert.Equal("theplot", tenant!.Realm);
+        Assert.Equal("theplot-web", tenant.ClientId);
+    }
+
+    [Fact]
+    public void Host_and_port_entry_is_case_insensitive()
+    {
+        Assert.True(Resolver().TryResolve("LocalHost:20002", out var tenant));
+        Assert.Equal("theplot", tenant!.Realm);
+    }
+
+    [Fact]
+    public void Port_entry_survives_configuration_binding()
+    {
+        // The other tests construct the dictionary directly, which is exactly how the original
+        // bug slipped through: a key written "localhost:20002" in appsettings binds as nested
+        // path segments and silently vanishes. This test goes through real JSON binding to
+        // prove the '+' spelling arrives intact.
+        var json = """
+            {
+              "Tenants": {
+                "ByHost": {
+                  "localhost": { "Realm": "protofast", "ClientId": "protofast-web" },
+                  "localhost+20002": { "Realm": "theplot", "ClientId": "theplot-web" }
+                }
+              }
+            }
+            """;
+        var config = new ConfigurationBuilder()
+            .AddJsonStream(new MemoryStream(Encoding.UTF8.GetBytes(json)))
+            .Build();
+        var options = new TenantOptions();
+        config.GetSection("Tenants").Bind(options);
+
+        var resolver = new TenantResolver(Options.Create(options));
+        Assert.True(resolver.TryResolve("localhost:20002", out var theplot));
+        Assert.Equal("theplot", theplot!.Realm);
+        Assert.True(resolver.TryResolve("localhost:20001", out var protofast));
+        Assert.Equal("protofast", protofast!.Realm);
     }
 
     [Fact]

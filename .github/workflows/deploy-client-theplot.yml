@@ -1,0 +1,38 @@
+name: deploy-client-theplot
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "clients/theplot/**"
+      - "services/**/Protos/**"
+      - ".github/workflows/deploy-client-theplot.yml"
+      - ".github/workflows/_component-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing artifact tag to (re)deploy or roll back to. Blank = build current source."
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-client-theplot
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_component-deploy.yml
+    with:
+      component: client-theplot
+      host: edge
+      build: client-s3
+      target: theplot
+      kind: client
+      hash_paths: "clients/theplot :(glob)services/**/Protos/**"
+      project: clients/theplot
+      tag: ${{ inputs.tag }}
+    secrets: inherit

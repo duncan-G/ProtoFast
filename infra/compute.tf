@@ -57,9 +57,10 @@ locals {
     aws_region       = var.aws_region
     admin_domain     = var.admin_domain
     protofast_domain = var.protofast_domain
+    theplot_domain   = local.theplot_domain
     keycloak_domain  = var.keycloak_domain
     default_client   = "protofast"
-    clients          = "admin,protofast"
+    clients          = "admin,protofast,theplot"
     assets_bucket    = aws_s3_bucket.assets.bucket
     tunnel_token     = local.tunnel_token
     host_b_ip        = local.host_b_private_ip

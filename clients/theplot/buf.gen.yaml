@@ -1,0 +1,7 @@
+version: v2
+inputs:
+  - directory: ../../services/api/src/ProtoFast.Api/Protos
+plugins:
+  - local: protoc-gen-es
+    out: src/lib/gen
+    opt: target=ts

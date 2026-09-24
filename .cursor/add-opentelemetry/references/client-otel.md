@@ -229,7 +229,7 @@ Each RPC call produces a span named `gRPC ServiceName/MethodName` with
 `rpc.system`, `rpc.service`, `rpc.method` attributes. On failure,
 `rpc.grpc.status_code` is set from the `ConnectError` code.
 
-## 5d. Create `src/instrumentation.ts`
+## 5d. Create `src/telemetry.server.ts`
 
 Node SSR instrumentation. Must be imported before any other module so
 monkey-patching captures all HTTP activity.
@@ -329,7 +329,7 @@ In `src/server.ts` (SSR entry), import instrumentation as the very
 first line:
 
 ```typescript
-import './telemetry.server.ts';
+import './telemetry.server';
 
 import { AngularNodeAppEngine, ... } from '@angular/ssr/node';
 // ... rest of server.ts unchanged
@@ -378,7 +378,7 @@ generate misleading telemetry.
 |------|--------|---------|
 | `src/lib/telemetry.browser.ts` | Create | Browser OTel init (traces + logs via OTLP HTTP to Envoy) |
 | `src/lib/grpc-trace.interceptor.ts` | Create | ConnectRPC interceptor for RPC span creation |
-| `src/instrumentation.ts` | Create | Node SSR OTel init (traces + logs via OTLP HTTP) |
+| `src/telemetry.server.ts` | Create | Node SSR OTel init (traces + logs via OTLP HTTP) |
 | `src/main.ts` | Modify | Call `initBrowserTelemetry()` before bootstrap |
 | `src/server.ts` | Modify | Import `./instrumentation` as first line |
 | `src/app/grpc-transport.ts` | Modify | Add `traceInterceptor` to transport interceptors |
@@ -388,6 +388,6 @@ generate misleading telemetry.
 
 | Env var | Source | Used by |
 |---|---|---|
-| `SERVER_OTEL_ENDPOINT` | Collector HTTP endpoint (port 4318) | `src/instrumentation.ts` — SSR OTLP HTTP export |
+| `SERVER_OTEL_ENDPOINT` | Collector HTTP endpoint (port 4318) | `src/telemetry.server.ts` — SSR OTLP HTTP export |
 | `BROWSER_OTEL_ENDPOINT` | Collector HTTP endpoint (port 4318) | Injected but unused — browser uses `SERVER_URL` + `/otlp/v1/` |
 | `SERVER_URL` | Envoy HTTPS proxy endpoint | `src/lib/telemetry.browser.ts` — browser OTel export base URL (via transfer state) |

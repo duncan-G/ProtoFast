@@ -56,9 +56,9 @@ for the naming rules).
 |---|---|---|
 | `Keycloak:Authority` | the AppHost-assigned Keycloak URL | `http://keycloak:8080` (private, same host) |
 | `Keycloak:PublicAuthority` | empty → falls back to `Authority` | `https://${KEYCLOAK_DOMAIN}` — used for redirects and as the expected token issuer |
-| `Keycloak:ClientSecretProtofastWeb` / `…Admin` | from Secrets Manager (`dev-*-secret` defaults) | from Secrets Manager |
-| `Keycloak:AdminClientId` / `AdminClientSecret` | `account-admin` / from Secrets Manager | from Secrets Manager; empty disables account management (503) instead of failing startup |
-| `Tenants:ByHost:<host>:Realm` / `:ClientId` | `localhost` → `protofast` / `protofast-web` | `protofast.dev` → `protofast-web`, `admin.protofast.dev` → `admin` |
+| `Keycloak:ClientSecretProtofastWeb` / `…Admin` / `…TheplotWeb` | from Secrets Manager (`dev-*-secret` defaults) | from Secrets Manager |
+| `Keycloak:AdminClientId` / `AdminClientSecret` | `account-admin` / from Secrets Manager | from Secrets Manager; empty disables account management (503) instead of failing startup. One value serves every realm: each realm's `account-admin` client is imported with the same secret placeholder |
+| `Tenants:ByHost:<host>:Realm` / `:ClientId` | `localhost` → `protofast` / `protofast-web`; `localhost+20002` → `theplot` / `theplot-web` | `protofast.dev` → `protofast-web`, `admin.protofast.dev` → `admin`, `theplot.protofast.dev` → `theplot` / `theplot-web` |
 | `Tenants:ByHost:admin…:MaxAge` / `:AcrValues` | — | forces re-authentication (and optionally a passkey) when entering the admin console |
 | `Session:*` | defaults | defaults: `pf_session`, 8 h idle, 7 d absolute, id rotated on refresh |
 | `InternalJwt:PrivateKeyPem` / `:KeyId` | from Secrets Manager (`protofast/dev`) | private PEM from Secrets Manager; never a file in prod |
@@ -66,6 +66,11 @@ for the naming rules).
 | `Subscriptions:Enabled` | off | off until billing exists |
 
 A host that is not in `Tenants:ByHost` is never guessed — it routes public.
+A `host:port` entry beats the bare host: dev's per-client Envoy listeners all
+share `localhost` and differ only by port, so the port is the only thing that
+can put one listener (theplot's, `localhost:20002`) in its own realm. In the
+config key the port is written with `+` (`localhost+20002`) — a colon in a
+configuration key is a path separator and would silently unbind the entry.
 
 **Why two Keycloak authorities?** Tokens are stamped with the issuer captured
 during the browser login. If the back-channel used a different URL, the refresh
@@ -77,8 +82,9 @@ first refresh. Prod pins `KC_HOSTNAME` to the full public URL and keeps
 
 Keycloak is configured by four things:
 
-1. **The realm import** — `infra/keycloak/realms/protofast-realm.json` (dev, via
-   Aspire `WithRealmImport`) and its synchronised copy at
+1. **The realm import** — `infra/keycloak/realms/` (dev, via Aspire
+   `WithRealmImport`; one file per realm — `protofast-realm.json`,
+   `theplot-realm.json`) and its synchronised copy at
    `deploy/keycloak/realms/` (prod, bind-mounted for `--import-realm`). Secrets and
    URLs inside it are `${VAR:default}` placeholders substituted from the
    environment; placeholder substitution only happens because both environments set
@@ -86,12 +92,12 @@ Keycloak is configured by four things:
 
    | Placeholder | Supplies |
    |---|---|
-   | `PROTOFAST_WEB_CLIENT_SECRET`, `ADMIN_CLIENT_SECRET`, `ACCOUNT_ADMIN_CLIENT_SECRET` | the three confidential client secrets |
-   | `PROTOFAST_WEB_BASE_URL`, `ADMIN_BASE_URL` | each client's "Home URL" |
+   | `PROTOFAST_WEB_CLIENT_SECRET`, `ADMIN_CLIENT_SECRET`, `ACCOUNT_ADMIN_CLIENT_SECRET`, `THEPLOT_WEB_CLIENT_SECRET` | the confidential client secrets (`ACCOUNT_ADMIN_CLIENT_SECRET` is shared by every realm's `account-admin`) |
+   | `PROTOFAST_WEB_BASE_URL`, `ADMIN_BASE_URL`, `THEPLOT_WEB_BASE_URL` | each client's "Home URL" |
    | `BACKCHANNEL_LOGOUT_URL` | where Keycloak posts logout tokens |
    | `SMTP_HOST/PORT/FROM/USER/PASSWORD/AUTH/STARTTLS/SSL` | the realm's mail server |
    | `GOOGLE_*`, `APPLE_*` | social sign-in (both providers ship **disabled**) |
-   | `WEBAUTHN_RP_ID` | `localhost` in dev, `protofast.dev` in prod |
+   | `WEBAUTHN_RP_ID` / `THEPLOT_WEBAUTHN_RP_ID` | `localhost` in dev; `protofast.dev` / `theplot.protofast.dev` in prod — one per realm, so a tenant's passkeys never surface in another tenant's picker |
 
 2. **The theme** — `deploy/keycloak/themes/protofast` (login + email), bind-mounted
    in both environments; the realm's `loginTheme` names it.

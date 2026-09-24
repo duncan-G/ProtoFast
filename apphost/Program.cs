@@ -1,4 +1,4 @@
-﻿using ProtoFast.AppHost.Aws;
+using ProtoFast.AppHost.Aws;
 using ProtoFast.AppHost.ClientApp;
 using ProtoFast.AppHost.EnvoyProxy;
 using ProtoFast.AppHost.LocalStack;
@@ -87,8 +87,10 @@ var keycloak = builder.AddKeycloak("keycloak", 8080)
 IResourceBuilder<ContainerResource>? smtp4dev = null;
 if (!builder.ExecutionContext.IsPublishMode)
 {
+    // Static host port for the web UI so the mailbox URL survives restarts
+    // (bookmarkable at http://localhost:8025 — the conventional dev mail-UI port).
     smtp4dev = builder.AddContainer("smtp4dev", "rnwood/smtp4dev")
-        .WithHttpEndpoint(targetPort: 80, name: "web")
+        .WithHttpEndpoint(port: 8025, targetPort: 80, name: "web")
         .WithEndpoint(targetPort: 25, name: "smtp");
 
     // Keycloak is a container, so it has to reach smtp4dev by container DNS and the
@@ -102,7 +104,11 @@ if (!builder.ExecutionContext.IsPublishMode)
         .WithEnvironment("SMTP_FROM", "no-reply@protofast.dev")
         // WebAuthn RP ID must be the origin hostname. protofast.dev is correct in
         // prod (covers auth.protofast.dev); locally the ceremony runs on localhost.
-        .WithEnvironment("WEBAUTHN_RP_ID", "localhost");
+        // Each tenant realm has its own RP ID placeholder (realm README: a shared
+        // RP ID leaks account existence across tenants in the passkey picker), so
+        // the theplot realm gets its own — the same localhost value in dev.
+        .WithEnvironment("WEBAUTHN_RP_ID", "localhost")
+        .WithEnvironment("THEPLOT_WEBAUTHN_RP_ID", "localhost");
 }
 
 // Api
@@ -176,6 +182,7 @@ var otelHttp = otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointN
 // Clients: each gets its own Envoy listener (dev) or domain virtual host (publish).
 var adminWeb = proxy.WithClient(builder, "admin");
 var protofastWeb = proxy.WithClient(builder, "protofast");
+var theplotWeb = proxy.WithClient(builder, "theplot");
 
 if (useSsrHost)
 {
@@ -192,6 +199,9 @@ else
 
     var protofastDev = builder.AddClientApp("protofast", "../clients/protofast", protofastWeb, otelHttp, otelHttp);
     proxy.WithUpstreamEndpoint("CLIENT_PROTOFAST", protofastDev);
+
+    var theplotDev = builder.AddClientApp("theplot", "../clients/theplot", theplotWeb, otelHttp, otelHttp);
+    proxy.WithUpstreamEndpoint("CLIENT_THEPLOT", theplotDev);
 }
 
 proxy

@@ -56,6 +56,7 @@ jobs:
     uses: ./.github/workflows/_component-deploy.yml
     with:
       component: client-«clientname»
+      host: edge
       build: client-s3
       target: «clientname»
       kind: client
@@ -73,15 +74,26 @@ SSM (`deploy.sh apply client-«clientname»=<tag>`).
 
 The host (and Envoy) discover clients from the comma-separated `CLIENTS`
 env var. Add `«clientname»` to it in the instance seed —
-`infra/templates/user_data.sh.tftpl` (the `CLIENTS=` line) and the
-`clients = "..."` value passed to the template in `infra/compute.tf`, plus
-the matching `CLIENT_«CLIENTNAME»_DOMAIN` wiring for Envoy if the client
-answers on its own subdomain.
+`infra/templates/user_data.host_edge.sh.tftpl` (the `CLIENTS=` line) and
+the `clients = "..."` value passed to the template in `infra/compute.tf`,
+plus the matching `CLIENT_«CLIENTNAME»_DOMAIN` wiring (a
+`«clientname»_domain` variable, the `CLIENT_«CLIENTNAME»_DOMAIN=` line in
+the seed, and the Cloudflare record in `infra/cloudflare.tf`).
+
+**The domain wiring must land before the client's first prod deploy.**
+Publish-mode Envoy `require_env`s `CLIENT_<NAME>_DOMAIN` for every name in
+`CLIENTS` and exits without it — a client registered (or self-registered)
+without its domain takes the edge listener down. Until the domain is
+decided, keep the new workflow `workflow_dispatch`-only (no `push`
+trigger), as `deploy-client-theplot.yml` does. Note also that the edge
+host has `user_data_replace_on_change = true`: editing the seed replaces
+the instance on the next `terraform apply`.
 
 For an already-running instance you do not have to re-provision: the first
 `deploy.sh apply client-«clientname»=<tag>` self-registers the name in
 `/opt/protofast/.env`'s `CLIENTS` and writes `CLIENT_«CLIENTNAME»_TAG` to
-`versions.env`, then recreates the host so it pulls the new client.
+`versions.env`, then recreates the host so it pulls the new client (the
+domain env var must already be present on the box — see above).
 
 ## 3. (Manifest line — automatic)
 
