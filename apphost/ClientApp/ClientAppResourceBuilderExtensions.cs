@@ -49,7 +49,7 @@ public static class ClientAppResourceBuilderExtensions
             {
                 ctx.EnvironmentVariables["SSL_CERT"] = ctx.CertificatePath;
                 ctx.EnvironmentVariables["SSL_KEY"] = ctx.KeyPath;
-                return Task.CompletedTask; 
+                return Task.CompletedTask;
             })
             .WithEnvironment("SERVER_URL", serverEndpoint);
 
