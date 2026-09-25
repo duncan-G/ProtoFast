@@ -1,0 +1,360 @@
+syntax = "proto3";
+
+option csharp_namespace = "ProtoFast.Api";
+
+package story;
+
+// A user's stories: their outline, scenes and library. Every call is confined to the caller the
+// internal JWT names; anything the caller does not own reads as not found.
+service Stories {
+
+    // The caller's stories, most recently modified first.
+    rpc ListStories (ListStoriesRequest) returns (ListStoriesReply);
+
+    // Starts the story with one container, "Act I", holding one untitled scene.
+    rpc CreateStory (CreateStoryRequest) returns (CreateStoryReply);
+
+    // The outline and the library, without the scenes' elements.
+    rpc GetStory (GetStoryRequest) returns (GetStoryReply);
+
+    rpc UpdateStory (UpdateStoryRequest) returns (UpdateStoryReply);
+
+    rpc DeleteStory (DeleteStoryRequest) returns (DeleteStoryReply);
+
+    rpc GetScene (GetSceneRequest) returns (GetSceneReply);
+
+    // Replaces the scene's title and elements; positions follow the order of the elements.
+    rpc SaveScene (SaveSceneRequest) returns (SaveSceneReply);
+
+    // Inserts at the scene's position in its container, moving later scenes down one.
+    rpc CreateScene (CreateSceneRequest) returns (CreateSceneReply);
+
+    rpc CreateContainer (CreateContainerRequest) returns (CreateContainerReply);
+
+    rpc RenameContainer (RenameContainerRequest) returns (RenameContainerReply);
+
+    rpc CreateCharacter (CreateCharacterRequest) returns (CreateCharacterReply);
+
+    // A rename rewrites every @Name that mentions the character.
+    rpc UpdateCharacter (UpdateCharacterRequest) returns (UpdateCharacterReply);
+
+    // Unlinks its mentions, keeping their text, and clears it from dialogue.
+    rpc DeleteCharacter (DeleteCharacterRequest) returns (DeleteCharacterReply);
+
+    rpc CreateLocation (CreateLocationRequest) returns (CreateLocationReply);
+
+    rpc UpdateLocation (UpdateLocationRequest) returns (UpdateLocationReply);
+
+    rpc DeleteLocation (DeleteLocationRequest) returns (DeleteLocationReply);
+
+    rpc CreateProp (CreatePropRequest) returns (CreatePropReply);
+
+    rpc UpdateProp (UpdatePropRequest) returns (UpdatePropReply);
+
+    rpc DeleteProp (DeletePropRequest) returns (DeletePropReply);
+
+    // Replaces the labels the story adds to the default vocabulary.
+    rpc SaveVocabulary (SaveVocabularyRequest) returns (SaveVocabularyReply);
+
+}
+
+enum SceneElementType {
+    SCENE_ELEMENT_TYPE_UNSPECIFIED = 0;
+    SCENE_ELEMENT_TYPE_HEADING = 1;
+    SCENE_ELEMENT_TYPE_ACTION = 2;
+    SCENE_ELEMENT_TYPE_DESCRIPTION = 3;
+    SCENE_ELEMENT_TYPE_NARRATION = 4;
+    SCENE_ELEMENT_TYPE_DIALOGUE = 5;
+    SCENE_ELEMENT_TYPE_TRANSITION = 6;
+}
+
+enum LocationSetting {
+    LOCATION_SETTING_UNSPECIFIED = 0;
+    LOCATION_SETTING_INTERIOR = 1;
+    LOCATION_SETTING_EXTERIOR = 2;
+}
+
+enum AvatarShape {
+    AVATAR_SHAPE_UNSPECIFIED = 0;
+    AVATAR_SHAPE_CIRCLE = 1;
+    AVATAR_SHAPE_SQUARE = 2;
+    AVATAR_SHAPE_SQUIRCLE = 3;
+    AVATAR_SHAPE_TEARDROP = 4;
+    AVATAR_SHAPE_PILL = 5;
+    AVATAR_SHAPE_DIAMOND = 6;
+    AVATAR_SHAPE_TRIANGLE = 7;
+    AVATAR_SHAPE_PENTAGON = 8;
+    AVATAR_SHAPE_HEXAGON = 9;
+    AVATAR_SHAPE_OCTAGON = 10;
+    AVATAR_SHAPE_STAR = 11;
+    AVATAR_SHAPE_SHIELD = 12;
+}
+
+message StorySummary {
+    string id = 1;
+    string title = 2;
+    int64 created_unix_seconds = 3;
+    int64 last_modified_unix_seconds = 4;
+}
+
+message Story {
+    string id = 1;
+    string title = 2;
+    // Only the story's additions; the defaults live in the client and the API alike.
+    StoryVocabulary vocabulary = 3;
+    // In position order.
+    repeated Container containers = 4;
+    repeated Character characters = 5;
+    repeated Location locations = 6;
+    repeated Prop props = 7;
+}
+
+message StoryVocabulary {
+    repeated string times_of_day = 1;
+    repeated string transitions = 2;
+    repeated CharacterKind character_kinds = 3;
+}
+
+message CharacterKind {
+    string label = 1;
+    AvatarShape avatar_shape = 2;
+}
+
+message Container {
+    string id = 1;
+    string story_id = 2;
+    int32 position = 3;
+    string label = 4;
+    // In position order.
+    repeated SceneSummary scenes = 5;
+}
+
+message SceneSummary {
+    string id = 1;
+    string container_id = 2;
+    int32 position = 3;
+    string title = 4;
+    // From the scene's first heading.
+    optional string opening_location_id = 5;
+    optional string opening_time_of_day = 6;
+}
+
+message Scene {
+    string id = 1;
+    string container_id = 2;
+    int32 position = 3;
+    string title = 4;
+    // In position order.
+    repeated SceneElement elements = 5;
+}
+
+// The type decides which of the optional fields may be set.
+message SceneElement {
+    string id = 1;
+    string scene_id = 2;
+    int32 position = 3;
+    SceneElementType type = 4;
+    optional string text = 5;
+    optional string location_id = 6;
+    optional string time_of_day = 7;
+    optional string speaker_id = 8;
+    // Without the parentheses.
+    optional string parenthetical = 9;
+    optional string transition = 10;
+    repeated SceneElementMention mentions = 11;
+}
+
+// An @Name in an element's text. Offsets and lengths count UTF-16 code units.
+message SceneElementMention {
+    string id = 1;
+    oneof target {
+        string character_id = 2;
+        string location_id = 3;
+        string prop_id = 4;
+    }
+    // Index of the @.
+    int32 offset = 5;
+    // With the @.
+    int32 length = 6;
+}
+
+message Character {
+    string id = 1;
+    string story_id = 2;
+    string name = 3;
+    // A character kind label from the default or the story's vocabulary.
+    string kind = 4;
+    // OKLCH hue, 0–359.
+    int32 hue = 5;
+}
+
+message Location {
+    string id = 1;
+    string story_id = 2;
+    string name = 3;
+    LocationSetting setting = 4;
+    // OKLCH hue, 0–359.
+    int32 hue = 5;
+}
+
+message Prop {
+    string id = 1;
+    string story_id = 2;
+    string name = 3;
+}
+
+message ListStoriesRequest {}
+
+message ListStoriesReply {
+    repeated StorySummary stories = 1;
+}
+
+message CreateStoryRequest {
+    string title = 1;
+}
+
+message CreateStoryReply {
+    Story story = 1;
+}
+
+message GetStoryRequest {
+    string story_id = 1;
+}
+
+message GetStoryReply {
+    Story story = 1;
+}
+
+message UpdateStoryRequest {
+    string story_id = 1;
+    string title = 2;
+}
+
+message UpdateStoryReply {}
+
+message DeleteStoryRequest {
+    string story_id = 1;
+}
+
+message DeleteStoryReply {}
+
+message GetSceneRequest {
+    string scene_id = 1;
+}
+
+message GetSceneReply {
+    Scene scene = 1;
+}
+
+// The scene's container and position are kept; only its title and elements change.
+message SaveSceneRequest {
+    Scene scene = 1;
+}
+
+message SaveSceneReply {}
+
+// The client picks the scene and element ids.
+message CreateSceneRequest {
+    Scene scene = 1;
+}
+
+message CreateSceneReply {
+    Scene scene = 1;
+}
+
+message CreateContainerRequest {
+    string story_id = 1;
+    string label = 2;
+}
+
+message CreateContainerReply {
+    Container container = 1;
+}
+
+message RenameContainerRequest {
+    string container_id = 1;
+    string label = 2;
+}
+
+message RenameContainerReply {}
+
+message CreateCharacterRequest {
+    string story_id = 1;
+    string name = 2;
+    string kind = 3;
+    int32 hue = 4;
+}
+
+message CreateCharacterReply {
+    Character character = 1;
+}
+
+message UpdateCharacterRequest {
+    string character_id = 1;
+    string name = 2;
+    string kind = 3;
+    int32 hue = 4;
+}
+
+message UpdateCharacterReply {}
+
+message DeleteCharacterRequest {
+    string character_id = 1;
+}
+
+message DeleteCharacterReply {}
+
+message CreateLocationRequest {
+    string story_id = 1;
+    string name = 2;
+    LocationSetting setting = 3;
+    int32 hue = 4;
+}
+
+message CreateLocationReply {
+    Location location = 1;
+}
+
+message UpdateLocationRequest {
+    string location_id = 1;
+    string name = 2;
+    LocationSetting setting = 3;
+    int32 hue = 4;
+}
+
+message UpdateLocationReply {}
+
+message DeleteLocationRequest {
+    string location_id = 1;
+}
+
+message DeleteLocationReply {}
+
+message CreatePropRequest {
+    string story_id = 1;
+    string name = 2;
+}
+
+message CreatePropReply {
+    Prop prop = 1;
+}
+
+message UpdatePropRequest {
+    string prop_id = 1;
+    string name = 2;
+}
+
+message UpdatePropReply {}
+
+message DeletePropRequest {
+    string prop_id = 1;
+}
+
+message DeletePropReply {}
+
+message SaveVocabularyRequest {
+    string story_id = 1;
+    StoryVocabulary vocabulary = 2;
+}
+
+message SaveVocabularyReply {}

@@ -130,6 +130,7 @@ export function describeError(err: unknown, fallback: string): string {
       case Code.PermissionDenied:
         return 'Your session has expired. Sign in again to continue.';
       case Code.InvalidArgument:
+      case Code.AlreadyExists:
       case Code.FailedPrecondition:
       case Code.NotFound:
       case Code.ResourceExhausted:

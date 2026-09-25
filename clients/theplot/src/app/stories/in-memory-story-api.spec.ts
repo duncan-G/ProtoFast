@@ -87,4 +87,31 @@ describe('InMemoryStoryApi', () => {
     ]);
     expect(beat.text).toContain('@Harbor Docks');
   });
+
+  it('creates a story opening on one untitled scene with an empty heading', async () => {
+    const story = await api.createStory('  The Far Shore ');
+    expect(story.title).toBe('The Far Shore');
+    expect(story.containers.map((c) => [c.label, c.scenes.map((s) => s.title)])).toEqual([
+      ['Act I', ['Untitled scene']],
+    ]);
+    const scene = await api.getScene(story.containers[0].scenes[0].id);
+    expect(scene.elements.map((e) => [e.type, e.locationId, e.timeOfDay])).toEqual([
+      ['Heading', null, null],
+    ]);
+    await expect(api.createStory('  ')).rejects.toThrow('A story needs a title.');
+  });
+
+  it('lists stories most recently modified first, and renames and deletes them', async () => {
+    const story = await api.createStory('The Far Shore');
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await api.updateStory(SAMPLE_STORY_ID, 'The Signal');
+    expect((await api.listStories()).map((s) => [s.id, s.title])).toEqual([
+      [SAMPLE_STORY_ID, 'The Signal'],
+      [story.id, 'The Far Shore'],
+    ]);
+    const sceneId = story.containers[0].scenes[0].id;
+    await api.deleteStory(story.id);
+    expect((await api.listStories()).map((s) => s.id)).toEqual([SAMPLE_STORY_ID]);
+    await expect(api.getScene(sceneId)).rejects.toThrow('That scene could not be found.');
+  });
 });

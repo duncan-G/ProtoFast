@@ -49,6 +49,7 @@ export class SceneEditorStore implements OnDestroy {
   readonly titleRequest = signal(false);
 
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private saving: Promise<void> = Promise.resolve();
 
   readonly characters = computed(() => this.story()?.characters ?? []);
   readonly locations = computed(() => this.story()?.locations ?? []);
@@ -140,7 +141,7 @@ export class SceneEditorStore implements OnDestroy {
   // ─── loading ───────────────────────────────────────────────────────────
 
   async open(storyId: string, sceneId: string | null): Promise<void> {
-    this.flushSave();
+    const saved = this.flushSave();
     this.error.set('');
     try {
       if (this.story()?.id !== storyId) {
@@ -157,6 +158,7 @@ export class SceneEditorStore implements OnDestroy {
         return;
       }
       if (this.scene()?.id !== target) {
+        await saved;
         this.scene.set(await this.api.getScene(target));
         this.editingId.set(null);
       }
@@ -200,18 +202,22 @@ export class SceneEditorStore implements OnDestroy {
     this.saveTimer = setTimeout(() => this.flushSave(), SAVE_DELAY_MS);
   }
 
-  private flushSave(): void {
+  /** Saves go one at a time, so an older one never lands after a newer one or a library change. */
+  private flushSave(): Promise<void> {
     if (this.saveTimer === null) {
-      return;
+      return this.saving;
     }
     clearTimeout(this.saveTimer);
     this.saveTimer = null;
     const scene = this.scene();
     if (scene) {
-      this.api
-        .saveScene(scene)
-        .catch((err) => this.error.set(describeError(err, 'Your changes could not be saved.')));
+      this.saving = this.saving.then(() =>
+        this.api
+          .saveScene(scene)
+          .catch((err) => this.error.set(describeError(err, 'Your changes could not be saved.'))),
+      );
     }
+    return this.saving;
   }
 
   setTitle(title: string): void {
@@ -507,7 +513,7 @@ export class SceneEditorStore implements OnDestroy {
     if (entry.name === trimmed) {
       return null;
     }
-    this.flushSave();
+    await this.flushSave();
     const error = await this.updateEntry(target, { name: trimmed });
     if (!error) {
       this.scene.update(
@@ -530,7 +536,7 @@ export class SceneEditorStore implements OnDestroy {
   }
 
   async remove(target: ReferenceTarget): Promise<void> {
-    this.flushSave();
+    await this.flushSave();
     await this.run(async () => {
       if (target.kind === 'character') {
         await this.api.deleteCharacter(target.id);
