@@ -1,9 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Npgsql;
 using ProtoFast.Data.ThePlot;
+using ProtoFast.DocumentImport.Data.Postgres;
 
-// Standalone schema-migrations runner for the `protofast` database (the ThePlot `plot` schema).
+// Standalone schema-migrations runner for the `protofast` database: ThePlot's `plot` schema and
+// the document import workflow engine's `engine` schema.
 // The API never migrates on boot (replicas would race); this one-shot exe owns schema changes,
 // the same way ProtoFast.Auth.SchemaMigrations does for `auth`. Dev runs it via Aspire's
 // WithSchemaMigrations. Exit codes: 0 ok, 1 migration error, 2 refused (--rebuild-schema in prod).
@@ -13,10 +16,13 @@ var builder = Host.CreateApplicationBuilder(args);
 // Reads ConnectionStrings__protofast (dev: Aspire reference; prod: compose env).
 builder.AddNpgsqlDataSource("protofast");
 builder.Services.AddThePlotData();
+builder.Services.AddDbContext<WorkflowEngineDbContext>((sp, options) =>
+    options.UseWorkflowEngineNpgsql(sp.GetRequiredService<NpgsqlDataSource>()));
 
 using var host = builder.Build();
 using var scope = host.Services.CreateScope();
 var db = scope.ServiceProvider.GetRequiredService<ThePlotDbContext>();
+var engineDb = scope.ServiceProvider.GetRequiredService<WorkflowEngineDbContext>();
 
 var isProd = builder.Environment.IsProduction();
 var rebuild = args.Contains("--rebuild-schema", StringComparer.OrdinalIgnoreCase);
@@ -38,17 +44,21 @@ try
     {
         // The migrations history table follows the model's default schema, so dropping the
         // schema takes it too; the public one is dropped for a history left by an older layout.
-        var schema = db.Model.GetDefaultSchema() ?? "public";
-        Console.WriteLine($"Rebuild: dropping schema \"{schema}\" + migrations history…");
-#pragma warning disable EF1002 // interpolated identifiers are our own schema name, not user input
-        await db.Database.ExecuteSqlRawAsync($@"DROP SCHEMA IF EXISTS ""{schema}"" CASCADE;");
-        await db.Database.ExecuteSqlRawAsync($@"CREATE SCHEMA ""{schema}"";");
-        await db.Database.ExecuteSqlRawAsync(@"DROP TABLE IF EXISTS public.""__EFMigrationsHistory"";");
+        foreach (var schema in new[] { db.Model.GetDefaultSchema() ?? "public", WorkflowEngineDbContext.Schema })
+        {
+            Console.WriteLine($"Rebuild: dropping schema \"{schema}\" + migrations history…");
+#pragma warning disable EF1002 // interpolated identifiers are our own schema names, not user input
+            await db.Database.ExecuteSqlRawAsync($@"DROP SCHEMA IF EXISTS ""{schema}"" CASCADE;");
+            await db.Database.ExecuteSqlRawAsync($@"CREATE SCHEMA ""{schema}"";");
 #pragma warning restore EF1002
+        }
+
+        await db.Database.ExecuteSqlRawAsync(@"DROP TABLE IF EXISTS public.""__EFMigrationsHistory"";");
     }
 
     Console.WriteLine("Applying migrations…");
     await db.Database.MigrateAsync();
+    await engineDb.Database.MigrateAsync();
     Console.WriteLine("Migrations applied.");
     return 0;
 }

@@ -125,6 +125,8 @@ internal sealed partial class S3ObjectStore(
         return results;
     }
 
+    public Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default) => OpenAsync(key, ct);
+
     public Task<ObjectRef> WriteAsync<T>(string key, T value, string idempotencyKey, CancellationToken ct = default) =>
         PutAsync(key, JsonSerializer.SerializeToUtf8Bytes(value, Json), idempotencyKey, "application/json", null, ct);
 
@@ -149,7 +151,11 @@ internal sealed partial class S3ObjectStore(
     /// <c>s3:BypassGovernanceRetention</c>, so the worker that wrote it cannot unwrite it.
     /// </summary>
     public Task<ObjectRef> WriteFrozenAsync<T>(
-        string key, T value, string idempotencyKey, CancellationToken ct = default)
+        string key, T value, string idempotencyKey, CancellationToken ct = default) =>
+        WriteFrozenBytesAsync(key, JsonSerializer.SerializeToUtf8Bytes(value, Json), "application/json", idempotencyKey, ct);
+
+    public Task<ObjectRef> WriteFrozenBytesAsync(
+        string key, byte[] content, string contentType, string idempotencyKey, CancellationToken ct = default)
     {
         DateTime? retainUntil = _options.ObjectLockEnabled
             ? DateTime.UtcNow.AddDays(_options.FrozenLockDays)
@@ -164,7 +170,7 @@ internal sealed partial class S3ObjectStore(
                 key);
         }
 
-        return PutAsync(key, JsonSerializer.SerializeToUtf8Bytes(value, Json), idempotencyKey, "application/json", retainUntil, ct);
+        return PutAsync(key, content, idempotencyKey, contentType, retainUntil, ct);
     }
 
     public async Task DeleteAsync(string key, CancellationToken ct = default)

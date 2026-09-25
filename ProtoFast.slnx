@@ -22,10 +22,15 @@
   <Folder Name="/services/document_import/" />
   <Folder Name="/services/document_import/src/">
     <Project Path="services/document_import/src/ProtoFast.DocumentImport.Core/ProtoFast.DocumentImport.Core.csproj" />
+    <Project Path="services/document_import/src/ProtoFast.DocumentImport.Data/ProtoFast.DocumentImport.Data.csproj" />
+    <Project Path="services/document_import/src/ProtoFast.DocumentImport.Engine/ProtoFast.DocumentImport.Engine.csproj" />
     <Project Path="services/document_import/src/ProtoFast.DocumentImport.Storage/ProtoFast.DocumentImport.Storage.csproj" />
     <Project Path="services/document_import/src/ProtoFast.DocumentImport.Worker/ProtoFast.DocumentImport.Worker.csproj" />
   </Folder>
-  <Folder Name="/services/document_import/tests/" />
+  <Folder Name="/services/document_import/tests/">
+    <Project Path="services/document_import/tests/ProtoFast.DocumentImport.IntegrationTests/ProtoFast.DocumentImport.IntegrationTests.csproj" />
+    <Project Path="services/document_import/tests/ProtoFast.DocumentImport.UnitTests/ProtoFast.DocumentImport.UnitTests.csproj" />
+  </Folder>
   <Folder Name="/services/payments/" />
   <Folder Name="/services/payments/src/">
     <Project Path="services/payments/src/ProtoFast.Payments.Api/ProtoFast.Payments.Api.csproj" />

@@ -45,10 +45,13 @@ var redis = builder.AddRedis("redis");
 
 const string documentUploadBucket = "protofast-document-upload";
 
+// FIFO, grouped by document family, so each family's policy has one writer at a time.
+const string workflowOutcomesQueue = "protofast-workflow-outcomes.fifo";
+
 var localstack = builder
     .AddLocalStack("localstack")
     .WithBuckets([documentUploadBucket])
-    .WithQueues([documentUploadBucket]);
+    .WithQueues([documentUploadBucket, workflowOutcomesQueue]);
 
 var keycloak = builder.AddKeycloak("keycloak", 8080)
     .WithImageTag("26.7")
