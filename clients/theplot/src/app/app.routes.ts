@@ -19,6 +19,17 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/account/account').then((m) => m.Account),
   },
   {
+    // Without a scene, the editor opens the story's first one.
+    path: 'app/stories/:storyId',
+    canActivate: [authGuard],
+    loadComponent: () => import('./pages/scene-editor/scene-editor').then((m) => m.SceneEditor),
+  },
+  {
+    path: 'app/stories/:storyId/scenes/:sceneId',
+    canActivate: [authGuard],
+    loadComponent: () => import('./pages/scene-editor/scene-editor').then((m) => m.SceneEditor),
+  },
+  {
     // Catch-all: unmatched paths render a branded 404 (SSR returns HTTP 404) instead of
     // falling through to Express's bare "Cannot GET …".
     path: '**',

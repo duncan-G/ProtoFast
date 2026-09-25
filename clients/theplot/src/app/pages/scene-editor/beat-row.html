@@ -1,0 +1,180 @@
+@if (!editing()) {
+  <div class="se-grid se-beat" (click)="edit()">
+    <div class="se-kicker se-rail" [class.has-hue]="row().hue !== null" [style.--hue]="row().hue">
+      {{ typeLabel() }}
+    </div>
+    <div class="se-beat-body">
+      @if (isDialogue()) {
+        <div class="se-dialogue">
+          <div class="se-speaker">
+            @if (speaker(); as speaker) {
+              <app-avatar
+                [shape]="store.kindOf(speaker).avatarShape"
+                [hue]="speaker.hue"
+                [initials]="speakerInitials()"
+                [size]="18"
+              />
+              <span class="se-speaker-name hue-text" [style.--hue]="speaker.hue">{{
+                speaker.name.toUpperCase()
+              }}</span>
+            } @else {
+              <app-avatar [shape]="'Circle'" initials="?" [size]="18" />
+              <span class="se-speaker-name se-missing">NO SPEAKER — PICK ONE</span>
+            }
+          </div>
+          @if (element().parenthetical) {
+            <div class="se-paren">({{ element().parenthetical }})</div>
+          }
+          <div class="se-script se-text">
+            @if (element().text) {
+              <app-mention-text [text]="element().text!" [mentions]="element().mentions" />
+            } @else {
+              <span class="se-empty">Empty — click to write</span>
+            }
+          </div>
+        </div>
+      } @else {
+        <div
+          class="se-text"
+          [class.se-script]="element().type !== 'Narration'"
+          [class.se-description]="element().type === 'Description'"
+          [class.se-narration]="element().type === 'Narration'"
+        >
+          @if (element().text) {
+            <app-mention-text [text]="element().text!" [mentions]="element().mentions" />
+          } @else {
+            <span class="se-empty">Empty — click to write</span>
+          }
+        </div>
+      }
+    </div>
+  </div>
+} @else {
+  <div class="se-grid py-1">
+    <div
+      class="se-kicker se-rail se-editing-label"
+      [class.has-hue]="row().hue !== null"
+      [style.--hue]="row().hue"
+    >
+      {{ typeLabel() }}
+    </div>
+    <div class="se-card rise">
+      <div class="se-card-head">
+        <div class="se-seg" role="group" aria-label="Beat type">
+          @for (option of types; track option.type) {
+            <button
+              type="button"
+              [attr.aria-pressed]="option.type === element().type"
+              (click)="store.setBeatType(element().id, option.type)"
+            >
+              {{ option.label }}
+            </button>
+          }
+        </div>
+        <app-row-actions
+          (up)="store.moveElement(element().id, -1)"
+          (down)="store.moveElement(element().id, 1)"
+          (remove)="store.removeElement(element().id)"
+          (done)="finish()"
+        />
+      </div>
+
+      @if (isDialogue()) {
+        <div class="flex flex-col gap-2">
+          <span class="se-kicker">Who speaks</span>
+          <app-speaker-picker
+            [element]="element()"
+            [index]="row().index"
+            (picked)="
+              store.caretRequest.set({
+                elementId: element().id,
+                caret: element().text?.length ?? 0,
+              })
+            "
+          />
+          <input
+            class="se-paren-input"
+            aria-label="Parenthetical"
+            placeholder="(parenthetical — e.g. whispering, beat, to Bolt)"
+            maxlength="255"
+            [value]="element().parenthetical ?? ''"
+            (input)="setParenthetical($any($event.target).value)"
+            (blur)="commitParenthetical()"
+            (keydown.escape)="finish()"
+          />
+        </div>
+      }
+
+      <div class="relative">
+        <textarea
+          #textarea
+          class="se-textarea se-script"
+          rows="2"
+          [attr.aria-label]="typeLabel() + ' text'"
+          [placeholder]="placeholder()"
+          [value]="element().text ?? ''"
+          (input)="onInput()"
+          (keydown)="onKey($event)"
+          (keyup)="trackCaret()"
+          (click)="trackCaret()"
+          (blur)="closeQuery()"
+        ></textarea>
+        @if (query()) {
+          <div class="se-pop se-ac" role="listbox" aria-label="References">
+            <div class="se-pop-group">Reference</div>
+            @for (item of suggestions(); track item.kind + item.id; let i = $index) {
+              <button
+                type="button"
+                class="se-pop-item"
+                role="option"
+                [class.is-active]="i === active()"
+                [attr.aria-selected]="i === active()"
+                (mousedown)="$event.preventDefault(); pickReference(item)"
+              >
+                @switch (item.kind) {
+                  @case ('character') {
+                    <app-avatar
+                      [shape]="shapeOf(item)"
+                      [hue]="hueOf(item)"
+                      [initials]="initialsOf(item)"
+                      [size]="22"
+                    />
+                  }
+                  @case ('location') {
+                    <span
+                      class="se-ref-badge se-ref-badge-location hue-fill"
+                      [style.--hue]="hueOf(item)"
+                      >{{ settingOf(item) }}</span
+                    >
+                  }
+                  @case ('prop') {
+                    <span class="se-ref-badge se-ref-badge-prop">◆</span>
+                  }
+                }
+                <span class="se-pop-label">{{ item.name }}</span>
+                <span class="se-pop-meta">{{ kindLabel(item) }}</span>
+              </button>
+            } @empty {
+              <div class="se-pop-empty">No match — add it in the library first.</div>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="se-card-foot">
+        <button
+          type="button"
+          class="se-btn"
+          title="Search all characters, locations and props"
+          (mousedown)="$event.preventDefault(); openReferenceSearch()"
+        >
+          <span class="se-option-glyph se-script font-bold">&#64;</span>Reference…<span
+            class="se-pop-meta"
+            >{{ store.referables().length }}</span
+          >
+        </button>
+        <small>⌥↑↓ move · Esc to finish</small>
+      </div>
+    </div>
+  </div>
+}

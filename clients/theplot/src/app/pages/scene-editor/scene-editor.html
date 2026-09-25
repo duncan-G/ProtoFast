@@ -1,0 +1,226 @@
+<div class="ember scene-editor antialiased" [attr.data-theme]="theme()">
+  <header class="se-header">
+    <a routerLink="/app" class="se-logo" aria-label="ThePlot — back to your desk"
+      ><app-theplot-logo
+    /></a>
+
+    <nav class="se-crumbs" aria-label="Breadcrumb">
+      <span class="se-crumb-story" [title]="store.story()?.title ?? ''">{{
+        store.story()?.title
+      }}</span>
+      <span aria-hidden="true">/</span>
+      <app-container-menu />
+    </nav>
+
+    <div class="se-scene-nav">
+      <button
+        type="button"
+        class="se-btn se-btn-icon"
+        title="Previous scene"
+        aria-label="Previous scene"
+        [disabled]="!store.previous()"
+        (click)="store.go(store.previous()!.summary.id)"
+      >
+        ‹
+      </button>
+      <span class="se-scene-badge"
+        >SCENE {{ sceneNumber() }}<span> / {{ sceneCount() }}</span></span
+      >
+      <button
+        type="button"
+        class="se-btn se-btn-icon"
+        title="Next scene"
+        aria-label="Next scene"
+        [disabled]="!store.next()"
+        (click)="store.go(store.next()!.summary.id)"
+      >
+        ›
+      </button>
+    </div>
+
+    <input
+      #titleField
+      class="se-title-input"
+      aria-label="Scene title"
+      placeholder="Scene title"
+      maxlength="255"
+      [value]="store.scene()?.title ?? ''"
+      (input)="store.setTitle($any($event.target).value)"
+      (blur)="store.commitTitle()"
+      (keydown.enter)="titleField.blur()"
+    />
+
+    <span class="se-hint">Type <span class="se-key">&#64;</span> to reference</span>
+    <button type="button" class="se-btn" title="Switch light / dark" (click)="toggleTheme()">
+      {{ theme() === 'dark' ? '☀ Light' : '☾ Dark' }}
+    </button>
+    <button
+      type="button"
+      class="se-btn"
+      [attr.aria-pressed]="showOverview()"
+      (click)="toggleOverview()"
+    >
+      Overview
+    </button>
+  </header>
+
+  @if (store.error(); as error) {
+    <div class="se-alert" role="alert">
+      <span class="flex-1">{{ error }}</span>
+      <button type="button" class="se-btn" (click)="store.error.set('')">Dismiss</button>
+    </div>
+  }
+
+  <div class="se-body">
+    <app-library-panel />
+
+    <main #scroller class="se-main">
+      @if (store.scene(); as scene) {
+        <div class="se-page">
+          <div class="se-page-top">
+            @if (store.previous(); as previous) {
+              <button type="button" class="se-back" (click)="store.go(previous.summary.id)">
+                <span aria-hidden="true">↑</span>
+                <span class="se-kicker">{{ placeLabel(previous) }}</span>
+                <span>{{ previous.summary.title }}</span>
+              </button>
+            } @else {
+              <span class="se-kicker text-[var(--se-muted-2)]">Start of story</span>
+            }
+            <button type="button" class="se-btn se-dashed ml-auto" (click)="store.addScene(false)">
+              + Scene before
+            </button>
+          </div>
+
+          @if (insertAt() === 0) {
+            <app-insert-menu
+              class="se-insert-menu"
+              [cancellable]="true"
+              (pick)="insert(0, $event)"
+              (cancel)="insertAt.set(null)"
+            />
+          } @else {
+            <div
+              class="se-insert-line"
+              role="button"
+              tabindex="0"
+              title="Insert at the top"
+              (click)="insertAt.set(0)"
+              (keydown.enter)="insertAt.set(0)"
+            >
+              <span>+ insert</span>
+            </div>
+          }
+          @for (row of store.rows(); track row.element.id) {
+            <div
+              class="se-row"
+              [id]="'row-' + row.element.id"
+              [class.is-dragged]="isDragged(row.index)"
+              [class.is-editing]="store.editingId() === row.element.id"
+              (dragover)="onDragOver($event, row.index)"
+              (drop)="onDrop($event)"
+            >
+              <div
+                class="se-handle"
+                draggable="true"
+                [style.top.px]="row.element.type === 'Heading' && row.index > 0 ? 30 : 8"
+                [title]="
+                  row.element.type === 'Heading'
+                    ? 'Drag to move this location with its beats'
+                    : 'Drag to reorder'
+                "
+                (dragstart)="onDragStart($event, row)"
+                (dragend)="endDrag()"
+              >
+                ⋮⋮
+              </div>
+              @if (showsDrop(row.index)) {
+                <div class="se-drop-line">
+                  <span>{{ dragLabel() }}</span>
+                </div>
+              }
+              @switch (row.element.type) {
+                @case ('Heading') {
+                  <app-heading-row [row]="row" [editing]="store.editingId() === row.element.id" />
+                }
+                @case ('Transition') {
+                  <app-transition-row
+                    [row]="row"
+                    [editing]="store.editingId() === row.element.id"
+                  />
+                }
+                @default {
+                  <app-beat-row [row]="row" [editing]="store.editingId() === row.element.id" />
+                }
+              }
+              @if (insertAt() === row.index + 1) {
+                <app-insert-menu
+                  class="se-insert-menu"
+                  [cancellable]="true"
+                  (pick)="insert(row.index + 1, $event)"
+                  (cancel)="insertAt.set(null)"
+                />
+              } @else {
+                <div
+                  class="se-insert-line"
+                  role="button"
+                  tabindex="0"
+                  title="Insert here"
+                  (click)="insertAt.set(row.index + 1)"
+                  (keydown.enter)="insertAt.set(row.index + 1)"
+                >
+                  <span>+ insert</span>
+                </div>
+              }
+            </div>
+          }
+
+          <div class="relative h-[18px]" (dragover)="onEndDragOver($event)" (drop)="onDrop($event)">
+            @if (showsDrop(scene.elements.length)) {
+              <div class="se-drop-line top-[6px]">
+                <span>{{ dragLabel() }}</span>
+              </div>
+            }
+          </div>
+
+          <div class="se-grid se-continue">
+            <span class="se-kicker">Continue</span>
+            <app-insert-menu (pick)="insert(scene.elements.length, $event)" />
+          </div>
+
+          <div class="se-end">END OF SCENE {{ sceneNumber() }}</div>
+
+          <div class="se-scene-cards">
+            <button type="button" class="se-scene-card is-new" (click)="store.addScene(true)">
+              <span class="se-scene-card-plus" aria-hidden="true">+</span>
+              <span class="se-scene-card-text">
+                <span class="text-[14px] font-semibold">New scene after</span>
+                <span class="text-[12px] text-[var(--se-muted)]">{{ addAfterHint() }}</span>
+              </span>
+            </button>
+            @if (store.next(); as next) {
+              <button type="button" class="se-scene-card" (click)="store.go(next.summary.id)">
+                <span class="se-scene-card-text">
+                  <span class="se-kicker">Next · {{ placeLabel(next) }}</span>
+                  <span class="text-[14px] font-semibold">{{ next.summary.title }}</span>
+                  @if (nextSlug()) {
+                    <span class="se-slug text-[12px] text-[var(--se-muted)]">{{ nextSlug() }}</span>
+                  }
+                </span>
+                <span class="text-[16px] text-[var(--se-muted)]" aria-hidden="true">→</span>
+              </button>
+            }
+          </div>
+        </div>
+      } @else if (store.loading()) {
+        <p class="se-kicker mt-10 flex items-center justify-center gap-2">
+          <span class="spinner" aria-hidden="true"></span>Opening the scene…
+        </p>
+      }
+    </main>
+
+    @if (showOverview()) {
+      <app-overview-panel (jump)="jump($event)" />
+    }
+  </div>
+</div>
