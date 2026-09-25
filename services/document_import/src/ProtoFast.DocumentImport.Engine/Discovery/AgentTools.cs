@@ -2,66 +2,6 @@ using System.Collections.Concurrent;
 
 namespace ProtoFast.DocumentImport.Engine;
 
-/// <summary>
-/// Optional check on an executor the agent defines, beyond the structural rules
-/// <see cref="AgentTools.DefineExecutor"/> applies itself: that a Codified assembly builds, that a
-/// playbook's prompt is well-formed. Throw <see cref="ArgumentException"/> to reject.
-/// </summary>
-public interface IExecutorSpecValidator
-{
-    Task ValidateAsync(ExecutorSpec spec, CancellationToken ct);
-}
-
-public sealed class AgentToolsFactory(
-    IArtifactStore artifacts,
-    IRunLedger ledger,
-    IRegistry registry,
-    IBucketCatalog catalog,
-    VerifierRunner verifiers,
-    StageAttempts attempts,
-    IOutcomeBus outcomes,
-    TimeProvider time,
-    EngineOptions options,
-    IEnumerable<IExecutorSpecValidator> validators)
-{
-    /// <summary>Tools for a discovery run: the agent owns control flow, every write and delegation is recorded.</summary>
-    public AgentTools ForRun(string runId, Signature signature, ArtifactRef input, TraceRef trace, CancellationToken ct) =>
-        new(this, runId, signature, input, trace, scope: null, ct);
-
-    /// <summary>
-    /// Tools for the stage-scoped agent loop that is a scheduled run's Orchestrator executor. It can
-    /// only write its own stage's output, and its writes are not recorded as attempts: the
-    /// scheduler records the attempt the loop as a whole makes.
-    /// </summary>
-    public AgentTools ForStage(StageRequest request, TraceRef trace, CancellationToken ct) =>
-        new(this, request.RunId, request.Signature, request.Inputs[0], trace, scope: request, ct);
-
-    internal IArtifactStore Artifacts => artifacts;
-    internal IRunLedger Ledger => ledger;
-    internal IRegistry Registry => registry;
-    internal IBucketCatalog Catalog => catalog;
-    internal VerifierRunner Verifiers => verifiers;
-    internal StageAttempts Attempts => attempts;
-    internal IOutcomeBus Outcomes => outcomes;
-    internal TimeProvider Time => time;
-    internal EngineOptions Options => options;
-    internal IEnumerable<IExecutorSpecValidator> Validators => validators;
-}
-
-/// <summary>
-/// The engine's primitives as agent tools. See <see cref="IAgentTools"/>; the rules enforced here:
-///
-/// <list type="bullet">
-/// <item>Every write and delegation names a stage, and the inputs it names become the stage's
-/// recorded dependency edges.</item>
-/// <item>A stage's verifiers are the bucket's <see cref="VerifierSpec"/>s for it. Failures are
-/// returned to the agent, never escalated: in discovery the agent is the escalation.</item>
-/// <item>A write is a <see cref="StageRecord"/> at Orchestrator with the agent loop as executor; a
-/// delegation is one at the delegate's tier, and is also recorded as a
-/// <see cref="Decision"/> keyed <c>executor:{stageId}</c>.</item>
-/// <item>An agent-defined executor is usable only in the bucket that defined it.</item>
-/// </list>
-/// </summary>
 public sealed class AgentTools : IAgentTools
 {
     private readonly AgentToolsFactory _engine;
@@ -88,23 +28,23 @@ public sealed class AgentTools : IAgentTools
         _ct = ct;
     }
 
-    private string Bucket => _signature.Bucket;
+    private string Family => _signature.Family;
 
-    /// <summary>Stage-scoped only: the last output written, or last delegated output that passed.</summary>
+    /// <summary>Stage scope only.</summary>
     public ArtifactRef? ScopedOutput { get; private set; }
 
-    /// <summary>Stage-scoped only: the loop's decisions, which become the executor result's.</summary>
+    /// <summary>Stage scope only.</summary>
     public IReadOnlyList<Decision> ScopedDecisions => _scopedDecisions.ToList();
 
-    public async Task<BucketContext> Context()
+    public async Task<DocumentFamilyContext> Context()
     {
-        var runs = await _engine.Ledger.RecentAsync(Bucket, RunMode.Discovery, _engine.Options.ContextRuns, _ct);
-        var verifiers = await _engine.Catalog.VerifiersAsync(Bucket, _ct);
+        var runs = await _engine.Ledger.RecentAsync(Family, RunMode.Discovery, _engine.Options.ContextRuns, _ct);
+        var verifiers = await _engine.Catalog.VerifiersAsync(Family, _ct);
         var records = runs.SelectMany(r => r.Stages).ToList();
 
         var stageIds = records.Select(r => r.StageId).Concat(verifiers.Select(v => v.StageId)).Distinct().ToList();
 
-        var executorRefs = (await _engine.Catalog.ExecutorsAsync(Bucket, _ct))
+        var executorRefs = (await _engine.Catalog.ExecutorsAsync(Family, _ct))
             .Concat(records.Where(r => r.Tier != Tier.Orchestrator).Select(r => r.Executor))
             .Distinct()
             .ToList();
@@ -117,7 +57,7 @@ public sealed class AgentTools : IAgentTools
             }
             catch (KeyNotFoundException)
             {
-                // A record can outlive a registry entry; there is nothing to offer for it.
+                // A record can outlive its registry entry.
             }
         }
 
@@ -127,7 +67,7 @@ public sealed class AgentTools : IAgentTools
             verifiers = verifiers.Where(v => v.StageId == scope.Stage.Id).ToList();
         }
 
-        return new BucketContext(stageIds, executors, verifiers);
+        return new DocumentFamilyContext(stageIds, executors, verifiers);
     }
 
     public Task<Stream> ReadArtifact(ArtifactRef reference) => _engine.Artifacts.GetAsync(reference, _ct);
@@ -165,7 +105,7 @@ public sealed class AgentTools : IAgentTools
         var record = new StageRecord(
             _runId, stage, inputs, _engine.Options.Orchestrator, Tier.Orchestrator, result, verdicts, IsShadow: false);
         await _engine.Ledger.RecordAsync(record, _ct);
-        await _engine.Outcomes.PublishAsync(Outcome.From(record, Bucket, _engine.Time.GetUtcNow()), _ct);
+        await _engine.Outcomes.PublishAsync(Outcome.From(record, Family, _engine.Time.GetUtcNow()), _ct);
 
         return new WriteResult(output, verdicts);
     }
@@ -190,9 +130,9 @@ public sealed class AgentTools : IAgentTools
             await validator.ValidateAsync(spec, _ct);
         }
 
-        // The registry applies the human gate: promoted now at an agent tier, not with code.
+        // The registry decides Promoted.
         var published = await _engine.Registry.PublishAsync(spec with { Origin = ExecutorOrigin.AgentDefined }, _ct);
-        await _engine.Catalog.AddExecutorAsync(Bucket, published, _ct);
+        await _engine.Catalog.AddExecutorAsync(Family, published, _ct);
         return published;
     }
 
@@ -205,17 +145,16 @@ public sealed class AgentTools : IAgentTools
 
         EnsureWritable(spec.StageId);
 
-        var existing = (await _engine.Catalog.VerifiersAsync(Bucket, _ct)).FirstOrDefault(v => v.Id == spec.Id);
+        var existing = (await _engine.Catalog.VerifiersAsync(Family, _ct)).FirstOrDefault(v => v.Id == spec.Id);
         if (existing is not null)
         {
-            // Reuse before redefine: the same spec is a no-op, a different one under the same id
-            // would silently change what earlier records were judged against.
+            // A different spec under the same id would change what earlier records were judged against.
             return existing == spec
                 ? spec.Id
-                : throw new ArgumentException($"Verifier '{spec.Id}' is already defined differently in this bucket.", nameof(spec));
+                : throw new ArgumentException($"Verifier '{spec.Id}' is already defined differently in this document family.", nameof(spec));
         }
 
-        await _engine.Catalog.AddVerifierAsync(Bucket, spec, _ct);
+        await _engine.Catalog.AddVerifierAsync(Family, spec, _ct);
         return spec.Id;
     }
 
@@ -232,9 +171,9 @@ public sealed class AgentTools : IAgentTools
         }
 
         if (spec.Origin == ExecutorOrigin.AgentDefined
-            && !(await _engine.Catalog.ExecutorsAsync(Bucket, _ct)).Contains(executor))
+            && !(await _engine.Catalog.ExecutorsAsync(Family, _ct)).Contains(executor))
         {
-            throw new ArgumentException($"Executor {executor} was defined in another bucket.", nameof(executor));
+            throw new ArgumentException($"Executor {executor} was defined in another document family.", nameof(executor));
         }
 
         StageDefinition stage;
@@ -252,7 +191,7 @@ public sealed class AgentTools : IAgentTools
             var contract = output
                 ?? (_contracts.TryGetValue(stageId, out var known) ? known : await LastRecordedContractAsync(stageId))
                 ?? throw new ArgumentException(
-                    $"Stage '{stageId}' has no recorded output contract in this bucket; pass one.", nameof(output));
+                    $"Stage '{stageId}' has no recorded output contract in this document family; pass one.", nameof(output));
             _contracts[stageId] = contract;
             stage = await RecordedStageAsync(stageId, inputs, contract);
         }
@@ -344,10 +283,6 @@ public sealed class AgentTools : IAgentTools
         }
     }
 
-    /// <summary>
-    /// The stage definition a discovery attempt is recorded against. Its dependencies are the
-    /// stages that produced its inputs; its input contract is the first input's.
-    /// </summary>
     private async Task<StageDefinition> RecordedStageAsync(string stageId, IReadOnlyList<ArtifactRef> inputs, ContractRef output)
     {
         var dependsOn = inputs
@@ -356,7 +291,7 @@ public sealed class AgentTools : IAgentTools
             .Distinct()
             .ToList();
         var input = await _engine.Artifacts.ContractOfAsync(inputs.Count > 0 ? inputs[0] : _input, _ct);
-        var verifiers = (await _engine.Catalog.VerifiersAsync(Bucket, _ct))
+        var verifiers = (await _engine.Catalog.VerifiersAsync(Family, _ct))
             .Where(v => v.StageId == stageId)
             .Select(v => v.Id)
             .ToList();
@@ -366,7 +301,7 @@ public sealed class AgentTools : IAgentTools
 
     private async Task<ContractRef?> LastRecordedContractAsync(string stageId)
     {
-        var runs = await _engine.Ledger.RecentAsync(Bucket, RunMode.Discovery, _engine.Options.ContextRuns, _ct);
+        var runs = await _engine.Ledger.RecentAsync(Family, RunMode.Discovery, _engine.Options.ContextRuns, _ct);
         return runs
             .SelectMany(r => r.Stages)
             .Where(s => s.StageId == stageId)

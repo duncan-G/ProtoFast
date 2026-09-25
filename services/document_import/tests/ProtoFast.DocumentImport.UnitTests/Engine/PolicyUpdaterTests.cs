@@ -17,7 +17,7 @@ public class PolicyUpdaterTests
 
     private async Task<PolicyRow> SeedAsync(Tier primary, Tier? shadow, Confidence confidence = default)
     {
-        var row = PolicyRow.Default(Bucket, "extract", _h.Orchestrator, _h.Time.GetUtcNow()) with
+        var row = PolicyRow.Default(Family, "extract", _h.Orchestrator, _h.Time.GetUtcNow()) with
         {
             Ladder = new Dictionary<Tier, ExecutorRef>
             {
@@ -25,7 +25,7 @@ public class PolicyUpdaterTests
                 [Tier.DelegateLarge] = Large,
                 [Tier.DelegateSmall] = Small,
             },
-            Tier = primary,
+            Primary = primary,
             Shadow = shadow,
             Confidence = confidence == default ? Confidence.Prior : confidence,
         };
@@ -34,9 +34,9 @@ public class PolicyUpdaterTests
     }
 
     private Task ApplyAsync(ExecutorRef executor, OutcomeKind kind, double weight = 1) =>
-        Updater.ApplyAsync(new Outcome(Bucket, "extract", executor, kind, weight, _h.Time.GetUtcNow()), Ct);
+        Updater.ApplyAsync(new Outcome(Family, "extract", executor, kind, weight, _h.Time.GetUtcNow()), Ct);
 
-    private Task<PolicyRow> RowAsync() => _h.Policies.GetAsync(Bucket, "extract", Ct);
+    private Task<PolicyRow> RowAsync() => _h.Policies.GetAsync(Family, "extract", Ct);
 
     [Fact]
     public async Task A_primary_outcome_moves_the_primary_confidence()
@@ -70,13 +70,13 @@ public class PolicyUpdaterTests
         }
 
         var row = await RowAsync();
-        Assert.Equal(Tier.DelegateSmall, row.Tier);
+        Assert.Equal(Tier.DelegateSmall, row.Primary);
         Assert.Equal(new Confidence(19, 1), row.Confidence);
         Assert.Null(row.Shadow);
         Assert.Equal(Confidence.Prior, row.ShadowConfidence);
 
-        // Ready, with no shadow: the distiller is asked for the next rung.
-        Assert.Equal(Tier.DelegateSmall, Assert.Single(_h.Distiller.Requests).Tier);
+        // Ready with no shadow, so the distiller is asked for the next rung.
+        Assert.Equal(Tier.DelegateSmall, Assert.Single(_h.Distiller.Requests).Primary);
     }
 
     [Fact]
@@ -87,7 +87,7 @@ public class PolicyUpdaterTests
         await ApplyAsync(Small, OutcomeKind.VerifierFail);
 
         var row = await RowAsync();
-        Assert.Equal(Tier.DelegateLarge, row.Tier);
+        Assert.Equal(Tier.DelegateLarge, row.Primary);
         Assert.Equal(Confidence.Prior, row.Confidence);
         Assert.Equal(Tier.DelegateSmall, row.Shadow);
     }
@@ -101,7 +101,7 @@ public class PolicyUpdaterTests
         await ApplyAsync(Large, OutcomeKind.VerifierPass);
         await ApplyAsync(Large, OutcomeKind.VerifierFail);
 
-        Assert.Equal(Tier.DelegateLarge, (await RowAsync()).Tier);
+        Assert.Equal(Tier.DelegateLarge, (await RowAsync()).Primary);
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public class PolicyUpdaterTests
     {
         await SeedAsync(Tier.DelegateLarge, null);
 
-        await Updater.ApplyAsync(Outcome.Correction(Bucket, "extract", Large, _h.Time.GetUtcNow()), Ct);
+        await Updater.ApplyAsync(Outcome.Correction(Family, "extract", Large, _h.Time.GetUtcNow()), Ct);
 
         Assert.Equal(new Confidence(1, 4), (await RowAsync()).Confidence);
     }
@@ -128,29 +128,29 @@ public class PolicyUpdaterTests
     }
 
     [Fact]
-    public async Task A_workflow_in_shadow_flips_its_bucket_to_scheduled_when_ready_and_back_when_it_regresses()
+    public async Task A_workflow_in_shadow_flips_its_family_to_scheduled_when_ready_and_back_when_it_regresses()
     {
         var workflow = new WorkflowRef("mined:invoice", 1);
-        await _h.Buckets.PutAsync(BucketPolicy.Default(Bucket, _h.Time.GetUtcNow()) with { Workflow = workflow }, Ct);
+        await _h.Families.PutAsync(DocumentFamilyPolicy.Default(Family, _h.Time.GetUtcNow()) with { Workflow = workflow }, Ct);
 
         for (var i = 0; i < 18; i++)
         {
-            await Updater.ApplyAsync(Outcome.ForWorkflow(Bucket, workflow, true, false, _h.Time.GetUtcNow()), Ct);
+            await Updater.ApplyAsync(Outcome.ForWorkflow(Family, workflow, true, false, _h.Time.GetUtcNow()), Ct);
         }
 
-        Assert.Equal(RunMode.Scheduled, (await _h.Buckets.GetAsync(Bucket, Ct)).Mode);
+        Assert.Equal(RunMode.Scheduled, (await _h.Families.GetAsync(Family, Ct)).Mode);
 
         // An older workflow's outcome does not count.
         await Updater.ApplyAsync(
-            Outcome.ForWorkflow(Bucket, workflow with { Version = 0 }, false, false, _h.Time.GetUtcNow()), Ct);
-        Assert.Equal(new Confidence(19, 1), (await _h.Buckets.GetAsync(Bucket, Ct)).Confidence);
+            Outcome.ForWorkflow(Family, workflow with { Version = 0 }, false, false, _h.Time.GetUtcNow()), Ct);
+        Assert.Equal(new Confidence(19, 1), (await _h.Families.GetAsync(Family, Ct)).Confidence);
 
         for (var i = 0; i < 4; i++)
         {
-            await Updater.ApplyAsync(Outcome.ForWorkflow(Bucket, workflow, false, false, _h.Time.GetUtcNow()), Ct);
+            await Updater.ApplyAsync(Outcome.ForWorkflow(Family, workflow, false, false, _h.Time.GetUtcNow()), Ct);
         }
 
-        var policy = await _h.Buckets.GetAsync(Bucket, Ct);
+        var policy = await _h.Families.GetAsync(Family, Ct);
         Assert.Equal(RunMode.Discovery, policy.Mode);
         Assert.Null(policy.Workflow);
     }

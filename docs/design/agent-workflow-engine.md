@@ -17,8 +17,8 @@ Everything about *what* a stage does lives in data: workflow definitions, execut
             └─────────────────────────────────────────────────┘
 ```
 
-Two run modes per bucket. **Discovery**: the agent owns the loop and the engine records (section 6).
-**Scheduled**: the engine owns the loop and the agent is one executor (section 5). Buckets start in
+Two run modes per document family. **Discovery**: the agent owns the loop and the engine records (section 6).
+**Scheduled**: the engine owns the loop and the agent is one executor (section 5). Document families start in
 Discovery and move to Scheduled as a workflow is mined from their ledgers.
 
 Three roles, never shared within a run: whoever owns the loop owns routing and escalation,
@@ -61,11 +61,12 @@ public sealed record StageDefinition(
 The engine sees one input artifact and one output artifact per stage. Fan-out over units of a
 document is the executor's business, behind its contract. The scheduler never inspects content.
 
-The classifier turns a run's input into a `Signature`. The signature is the policy key.
-Its taxonomy is data; the engine treats it as an opaque bucket.
+The classifier turns a run's input into a `Signature`. Its `Family` is the policy key: a document
+family is a set of documents similar enough to share one workflow and policy, such as one vendor's
+invoices. The taxonomy is data; the engine treats the family as an opaque key.
 
 ```csharp
-public sealed record Signature(string Bucket, IReadOnlyDictionary<string, string> Facets);
+public sealed record Signature(string Family, IReadOnlyDictionary<string, string> Facets);
 
 public interface IClassifier
 {
@@ -165,16 +166,16 @@ promoted past `Orchestrator`.
 
 ## 4. Policy
 
-One row per (bucket, stage). A row is a ladder: the executor at each populated tier, which tier
+One row per (document family, stage). A row is a ladder: the executor at each populated tier, which tier
 is primary, and which tier is under shadow evaluation. `Orchestrator` is always populated; its
 seed executor is the stage-scoped agent loop (section 6).
 
 ```csharp
 public sealed record PolicyRow(
-    string Bucket,
+    string Family,
     string StageId,
     IReadOnlyDictionary<Tier, ExecutorRef> Ladder,
-    Tier Tier,                        // current primary
+    Tier Primary,
     Confidence Confidence,            // primary pass rate
     Tier? Shadow,                     // next tier under evaluation; always a populated ladder slot
     Confidence ShadowConfidence,      // shadow pass rate
@@ -193,10 +194,10 @@ public readonly record struct Confidence(double Alpha, double Beta)
 
 public interface IPolicyStore
 {
-    // One read per run. A stage with no row gets the default: Ladder = { Orchestrator }, Tier = Orchestrator.
+    // One read per run. A stage with no row gets the default: Ladder = { Orchestrator }, Primary = Orchestrator.
     Task<IReadOnlyDictionary<string, PolicyRow>> SnapshotAsync(
-        string bucket, IEnumerable<string> stageIds, CancellationToken ct);
-    Task<PolicyRow> GetAsync(string bucket, string stageId, CancellationToken ct);
+        string family, IEnumerable<string> stageIds, CancellationToken ct);
+    Task<PolicyRow> GetAsync(string family, string stageId, CancellationToken ct);
     Task PutAsync(PolicyRow row, CancellationToken ct);
 }
 ```
@@ -221,7 +222,7 @@ async Task<RunSummary> RunAsync(WorkflowDefinition wf, ArtifactRef input, Cancel
 {
     var runId   = Ids.New();
     var sig     = await classifier.ClassifyAsync(input, ct);
-    var policy  = await store.SnapshotAsync(sig.Bucket, wf.Stages.Select(s => s.Id), ct);   // frozen for this run
+    var policy  = await store.SnapshotAsync(sig.Family, wf.Stages.Select(s => s.Id), ct);   // frozen for this run
     var outputs = new ConcurrentDictionary<string, ArtifactRef>();
     var shadows = new ConcurrentBag<Task>();
     using var run = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -245,7 +246,7 @@ async Task<RunSummary> RunAsync(WorkflowDefinition wf, ArtifactRef input, Cancel
 
 async Task<StageRecord> ExecuteWithEscalationAsync(StageRequest req, PolicyRow row, CancellationToken ct)
 {
-    var tier = row.Tier;
+    var tier = row.Primary;
     while (true)
     {
         var record = await AttemptAsync(req, row.Ladder[tier], isShadow: false, ct);
@@ -265,7 +266,7 @@ async Task<StageRecord> AttemptAsync(StageRequest req, ExecutorRef executorRef, 
 
     var record = new StageRecord(req.RunId, req.Stage.Id, executorRef, executor.Tier, result, verdicts, isShadow);
     await ledger.RecordAsync(record, ct);
-    await outcomes.PublishAsync(Outcome.From(record, req.Signature.Bucket), ct);   // durable, non-blocking
+    await outcomes.PublishAsync(Outcome.From(record, req.Signature.Family), ct);   // durable, non-blocking
     return record;
 }
 ```
@@ -275,8 +276,8 @@ path. Shadows are sampled, not universal: at a 20% sample a row with a shadow co
 
 ## 6. Discovery mode
 
-Section 5 is the engine driving the agent. For a new bucket the opposite is true: the agent
-drives, and the engine records. Every bucket has a run mode.
+Section 5 is the engine driving the agent. For a new document family the opposite is true: the agent
+drives, and the engine records. Every document family has a run mode.
 
 ```csharp
 public enum RunMode
@@ -285,8 +286,8 @@ public enum RunMode
     Scheduled    // engine walks a mined WorkflowDefinition; agent is one executor among tiers
 }
 
-public sealed record BucketPolicy(
-    string Bucket,
+public sealed record DocumentFamilyPolicy(
+    string Family,
     RunMode Mode,
     WorkflowRef? Workflow,        // present once a mined definition has been promoted
     Confidence Confidence);       // pass rate of the scheduled run's terminal output
@@ -300,7 +301,7 @@ primitives, so nothing the agent does is invisible.
 ```csharp
 public interface IAgentTools
 {
-    Task<BucketContext> Context();                   // stage ids, executors, verifiers earlier runs used here
+    Task<DocumentFamilyContext> Context();                   // stage ids, executors, verifiers earlier runs used here
     Task<Stream>        ReadArtifact(ArtifactRef reference);
     Task<WriteResult>   WriteArtifact(string stageId, Stream content, ContractRef contract);
     Task<ExecutorRef>   DefineExecutor(ExecutorSpec spec);   // validated (tier, tools, assembly builds); usable now
@@ -309,7 +310,7 @@ public interface IAgentTools
     Task                Record(Decision decision);
 }
 
-public sealed record BucketContext(
+public sealed record DocumentFamilyContext(
     IReadOnlyList<string> StageIds,
     IReadOnlyList<ExecutorSpec> Executors,
     IReadOnlyList<VerifierSpec> Verifiers);
@@ -321,9 +322,9 @@ public sealed record WriteResult(ArtifactRef Ref, IReadOnlyList<VerifierResult> 
 Rules the engine enforces:
 
 - The agent names a `stageId` on every write and every delegation. Ids are the agent's, but
-  `Context()` offers the ids, executors and verifiers this bucket has used before, so the agent
+  `Context()` offers the ids, executors and verifiers this document family has used before, so the agent
   reuses before it redefines.
-- A stage's verifiers are the `VerifierSpec`s registered for it in this bucket. They run on every
+- A stage's verifiers are the `VerifierSpec`s registered for it in this document family. They run on every
   `WriteArtifact` and every `Delegate`. Failures are returned to the agent, not escalated. In
   discovery mode the agent *is* the escalation.
 - A `WriteArtifact` is a `StageRecord` at `Orchestrator` with the agent loop as executor. A
@@ -332,7 +333,7 @@ Rules the engine enforces:
   exist to the engine and earns no policy credit.
 - The executor the agent delegates to is recorded as a `Decision` keyed `executor:{stageId}`, so
   policy learns which executor the agent trusted for which stage.
-- An agent-defined executor is scoped to its bucket until the miner carries it into a workflow.
+- An agent-defined executor is scoped to its document family until the miner carries it into a workflow.
 - A Codified spec the agent writes runs in a sandbox with the stage's contract enforced at both
   ends. It is not `Promoted` until a human promotes it, so the scheduler will never route to it.
 
@@ -342,7 +343,7 @@ recorded. The agent loop's own transcript is the run-level trace on `RunSummary`
 
 ### Mining a workflow
 
-After every `MineAfterRuns` discovery runs the miner reads the bucket's ledgers and proposes a
+After every `MineAfterRuns` discovery runs the miner reads the document family's ledgers and proposes a
 workflow plus the policy rows that seed it.
 
 ```csharp
@@ -354,22 +355,22 @@ public interface IWorkflowMiner
     // the DAG. Per stage, the executor the agent delegated to most seeds the ladder and becomes
     // the primary: its discovery StageRecords are its track record. Stages the agent always did
     // itself stay at Orchestrator.
-    Task<MinedWorkflow?> MineAsync(string bucket, IReadOnlyList<RunSummary> runs, CancellationToken ct);
+    Task<MinedWorkflow?> MineAsync(string family, IReadOnlyList<RunSummary> runs, CancellationToken ct);
 }
 ```
 
-A mined workflow is a draft until a human promotes it. Once promoted, the bucket runs in shadow:
+A mined workflow is a draft until a human promotes it. Once promoted, the document family runs in shadow:
 discovery mode is still primary, and on a `ShadowSampleRate` sample of inputs the scheduler runs
 the mined definition too. The scheduled run's terminal output is judged by the terminal stage's
 verifiers, which publishes `WorkflowShadowPass` or `WorkflowShadowFail` against
-`BucketPolicy.Confidence`. Reaching `PromoteAt` over `MinObservations` flips the mode to
+`DocumentFamilyPolicy.Confidence`. Reaching `PromoteAt` over `MinObservations` flips the mode to
 `Scheduled`.
 
 ### After the flip
 
 Scheduled mode is section 5 unchanged. Stages at `Orchestrator` run a stage-scoped agent loop:
 same tools, same rules, but it can only write that stage's output. Per-stage tier promotion then
-proceeds as in section 8. The bucket demotes the same way a stage does: if the terminal output's
+proceeds as in section 8. The document family demotes the same way a stage does: if the terminal output's
 pass rate falls below `DemoteAt`, the mode flips back to `Discovery` and mining starts over on the
 new ledgers.
 
@@ -401,7 +402,7 @@ public interface IRunLedger
 {
     Task RecordAsync(StageRecord record, CancellationToken ct);                       // append-only
     Task<RunSummary> SummariseAsync(string runId, CancellationToken ct);
-    Task<IReadOnlyList<RunSummary>> RecentAsync(string bucket, RunMode mode, int take, CancellationToken ct);
+    Task<IReadOnlyList<RunSummary>> RecentAsync(string family, RunMode mode, int take, CancellationToken ct);
 }
 
 public sealed record Playbook(
@@ -440,11 +441,11 @@ public enum OutcomeKind
     VerifierPass, VerifierFail,                 // primary or escalation attempt
     ShadowPass, ShadowFail,                     // shadow attempt
     ExternalCorrection,                         // a human fixed the output; a fail at triple weight
-    WorkflowShadowPass, WorkflowShadowFail      // bucket level, StageId is null
+    WorkflowShadowPass, WorkflowShadowFail      // family level, StageId is null
 }
 
 public sealed record Outcome(
-    string Bucket, string? StageId, ExecutorRef Executor,
+    string Family, string? StageId, ExecutorRef Executor,
     OutcomeKind Kind, double Weight, DateTimeOffset At);      // Weight: 1, or 0.5 for a Degraded pass
 
 public interface IOutcomeBus
@@ -462,7 +463,7 @@ public sealed record Thresholds(
     double MinSupport = 0.8);         // fraction of runs a stage or edge must appear in
 ```
 
-The updater moves confidence and tiers. The bus partitions by bucket and the updater is a single
+The updater moves confidence and tiers. The bus partitions by document family and the updater is a single
 writer per partition, so no row is ever read-modify-written concurrently and no CAS is needed.
 
 ```csharp
@@ -471,14 +472,14 @@ public interface IPolicyUpdater
     Task ApplyAsync(Outcome outcome, CancellationToken ct);
 }
 
-// Reference update, stage level. Bucket-level kinds update BucketPolicy.Confidence the same way.
+// Reference update, stage level. Family-level kinds update DocumentFamilyPolicy.Confidence the same way.
 async Task ApplyAsync(Outcome o, CancellationToken ct)
 {
-    var row   = await store.GetAsync(o.Bucket, o.StageId!, ct);
+    var row   = await store.GetAsync(o.Family, o.StageId!, ct);
     var decay = Math.Pow(0.5, (o.At - row.UpdatedAt).TotalDays / t.HalfLifeDays);
     var pass  = o.Kind is OutcomeKind.VerifierPass or OutcomeKind.ShadowPass;
 
-    if (o.Executor == row.Ladder[row.Tier])
+    if (o.Executor == row.Ladder[row.Primary])
         row = row with { Confidence = row.Confidence.Decay(decay).Observe(pass, o.Weight) };
     else if (row.Shadow is { } s && o.Executor == row.Ladder[s])
         row = row with { ShadowConfidence = row.ShadowConfidence.Decay(decay).Observe(pass, o.Weight) };
@@ -489,12 +490,12 @@ async Task ApplyAsync(Outcome o, CancellationToken ct)
     {
         // Promote: the shadow becomes primary and keeps its track record as the new confidence.
         { Shadow: { } s } when Ready(row.ShadowConfidence)
-            => row with { Tier = s, Confidence = row.ShadowConfidence, Shadow = null, ShadowConfidence = Confidence.Prior },
+            => row with { Primary = s, Confidence = row.ShadowConfidence, Shadow = null, ShadowConfidence = Confidence.Prior },
 
         // Demote: step to the nearest populated tier left; the old primary goes back to shadow.
-        { Tier: > Tier.Orchestrator } when row.Confidence.Mean < t.DemoteAt
-            => row with { Tier = row.Ladder.Below(row.Tier), Confidence = Confidence.Prior,
-                          Shadow = row.Tier, ShadowConfidence = Confidence.Prior },
+        { Primary: > Tier.Orchestrator } when row.Confidence.Mean < t.DemoteAt
+            => row with { Primary = row.Ladder.Below(row.Primary), Confidence = Confidence.Prior,
+                          Shadow = row.Primary, ShadowConfidence = Confidence.Prior },
 
         _ => row
     };
@@ -503,7 +504,7 @@ async Task ApplyAsync(Outcome o, CancellationToken ct)
 
     // Earned a shadow but has none: ask the distiller for a next-tier candidate. Off the row's
     // write path; the candidate arrives later as its own PutAsync when it is Promoted.
-    if (row is { Shadow: null, Tier: < Tier.Codified } && Ready(row.Confidence))
+    if (row is { Shadow: null, Primary: < Tier.Codified } && Ready(row.Confidence))
         await distiller.RequestCandidateAsync(row, ct);
 }
 

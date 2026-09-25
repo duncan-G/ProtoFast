@@ -14,14 +14,14 @@ public class SchedulerTests
     private static async Task SetRowAsync(
         EngineHarness h, string stageId, Tier primary, Tier? shadow, params (Tier Tier, ExecutorRef Executor)[] ladder)
     {
-        var row = PolicyRow.Default(Bucket, stageId, h.Orchestrator, h.Time.GetUtcNow());
+        var row = PolicyRow.Default(Family, stageId, h.Orchestrator, h.Time.GetUtcNow());
         var rungs = new Dictionary<Tier, ExecutorRef>(row.Ladder);
         foreach (var (tier, executor) in ladder)
         {
             rungs[tier] = executor;
         }
 
-        await h.Policies.PutAsync(row with { Ladder = rungs, Tier = primary, Shadow = shadow }, Ct);
+        await h.Policies.PutAsync(row with { Ladder = rungs, Primary = primary, Shadow = shadow }, Ct);
     }
 
     [Fact]
@@ -55,7 +55,7 @@ public class SchedulerTests
         Assert.Equal("good", await h.ReadAsync(summary.Stages[^1].Output));
 
         // One failure is not enough evidence to demote; the row keeps its primary.
-        Assert.Equal(Tier.DelegateSmall, (await h.Policies.GetAsync(Bucket, "extract", Ct)).Tier);
+        Assert.Equal(Tier.DelegateSmall, (await h.Policies.GetAsync(Family, "extract", Ct)).Primary);
     }
 
     [Fact]
@@ -105,7 +105,7 @@ public class SchedulerTests
         Assert.Equal(small, shadow.Executor);
         Assert.Equal([primary.Output], summary.Stages.Single(s => s.StageId == "b").Inputs);
         Assert.Contains(h.Outcomes.Published, o => o is { Kind: OutcomeKind.ShadowPass } && o.Executor == small);
-        Assert.Equal(1, (await h.Policies.GetAsync(Bucket, "a", Ct)).ShadowConfidence.Observations);
+        Assert.Equal(1, (await h.Policies.GetAsync(Family, "a", Ct)).ShadowConfidence.Observations);
     }
 
     [Fact]
@@ -141,7 +141,7 @@ public class SchedulerTests
     {
         var h = new EngineHarness();
         var untraced = await h.DelegateAsync("untraced", Tier.Orchestrator, _ => "good");
-        await h.Policies.PutAsync(PolicyRow.Default(Bucket, "a", untraced, h.Time.GetUtcNow()), Ct);
+        await h.Policies.PutAsync(PolicyRow.Default(Family, "a", untraced, h.Time.GetUtcNow()), Ct);
 
         var e = await Assert.ThrowsAsync<StageFailedException>(() =>
             h.Get<IScheduler>().RunAsync(Workflow(Stage("a")), h.InputAsync().Result, Ct));

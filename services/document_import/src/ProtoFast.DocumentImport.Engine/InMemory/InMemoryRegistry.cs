@@ -1,10 +1,5 @@
 namespace ProtoFast.DocumentImport.Engine.InMemory;
 
-/// <summary>
-/// Versions per id, assigned on publish. Applies the human gate on publish: a seed keeps the
-/// <see cref="ExecutorSpec.Promoted"/> it was configured with, an agent-defined executor is
-/// promoted unless it carries code, and a distilled one never is.
-/// </summary>
 public sealed class InMemoryRegistry : IRegistry
 {
     private readonly Lock _gate = new();

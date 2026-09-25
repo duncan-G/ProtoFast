@@ -4,26 +4,6 @@ using ProtoFast.DocumentImport.Core;
 
 namespace ProtoFast.DocumentImport.Engine;
 
-public interface IScheduler
-{
-    Task<RunSummary> RunAsync(WorkflowDefinition workflow, ArtifactRef input, CancellationToken ct);
-}
-
-public interface IShadowSampler
-{
-    bool Take(double rate);
-}
-
-public sealed class RandomShadowSampler : IShadowSampler
-{
-    public bool Take(double rate) => rate > 0 && Random.Shared.NextDouble() < rate;
-}
-
-/// <summary>
-/// Pure control flow. No reasoning, no artifact inspection. A stage starts as soon as every
-/// dependency has an output; independent stages run concurrently. A stage failure cancels the rest
-/// of the run.
-/// </summary>
 public sealed class Scheduler(
     IClassifier classifier,
     IPolicyStore store,
@@ -40,14 +20,13 @@ public sealed class Scheduler(
         return await RunAsync(workflow, input, signature, ct);
     }
 
-    /// <summary>Runs an already-classified input; the dispatcher classifies once to choose the run mode.</summary>
     public async Task<RunSummary> RunAsync(
         WorkflowDefinition workflow, ArtifactRef input, Signature signature, CancellationToken ct)
     {
-        Dag.Validate(workflow);
+        StageGraph.Validate(workflow);
 
         var runId = DocumentImportIds.New();
-        var policy = await FreezePolicyAsync(workflow, signature.Bucket, ct);   // frozen for this run
+        var policy = await FreezePolicyAsync(workflow, signature.Family, ct);
         var outputs = new ConcurrentDictionary<string, ArtifactRef>(StringComparer.Ordinal);
         var shadows = new ConcurrentBag<Task>();
 
@@ -76,8 +55,7 @@ public sealed class Scheduler(
             }
             finally
             {
-                // Bounded by stage budgets; never touches outputs. Awaited on failure too, so no
-                // shadow outlives the token source it runs under.
+                // Awaited on failure too, so no shadow outlives `run`.
                 await Task.WhenAll(shadows);
             }
         }
@@ -91,7 +69,7 @@ public sealed class Scheduler(
 
     private async Task<StageRecord> ExecuteWithEscalationAsync(StageRequest request, PolicyRow row, CancellationToken ct)
     {
-        var tier = row.Tier;
+        var tier = row.Primary;
         while (true)
         {
             var record = await attempts.RunAsync(request, row.Ladder[tier], isShadow: false, ct);
@@ -105,14 +83,14 @@ public sealed class Scheduler(
                 throw new StageFailedException(request, record.Verdicts);
             }
 
-            tier = row.Ladder.Below(tier);              // one step left, this run only
+            tier = row.Ladder.Below(tier);
         }
     }
 
     private async Task<IReadOnlyDictionary<string, PolicyRow>> FreezePolicyAsync(
-        WorkflowDefinition workflow, string bucket, CancellationToken ct)
+        WorkflowDefinition workflow, string family, CancellationToken ct)
     {
-        var snapshot = await store.SnapshotAsync(bucket, workflow.Stages.Select(s => s.Id), ct);
+        var snapshot = await store.SnapshotAsync(family, workflow.Stages.Select(s => s.Id), ct);
         var frozen = new Dictionary<string, PolicyRow>(StringComparer.Ordinal);
         foreach (var stage in workflow.Stages)
         {
@@ -133,17 +111,7 @@ public sealed class Scheduler(
         }
         catch (Exception e)
         {
-            // A shadow never affects the run; it has already been recorded if it got that far.
             logger.LogWarning(e, "Shadow attempt failed outside its executor");
         }
     }
-}
-
-public sealed class StageFailedException(StageRequest request, IReadOnlyList<VerifierResult> verdicts)
-    : Exception(
-        $"Stage '{request.Stage.Id}' of run {request.RunId} failed at Orchestrator: "
-        + string.Join("; ", verdicts.Where(v => v.Verdict == Verdict.Fail).Select(v => $"{v.VerifierId}: {v.Reason}")))
-{
-    public StageRequest Request { get; } = request;
-    public IReadOnlyList<VerifierResult> Verdicts { get; } = verdicts;
 }

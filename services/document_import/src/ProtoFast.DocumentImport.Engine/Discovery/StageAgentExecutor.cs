@@ -2,11 +2,6 @@ using ProtoFast.DocumentImport.Core;
 
 namespace ProtoFast.DocumentImport.Engine;
 
-/// <summary>
-/// The seed <see cref="Tier.Orchestrator"/> executor on every ladder: the discovery agent loop
-/// scoped to one stage. Its output is the last artifact the loop wrote (or delegated and saw pass),
-/// and its decisions are the ones the loop recorded.
-/// </summary>
 public sealed class StageAgentExecutor(IDiscoveryAgent agent, AgentToolsFactory tools, TimeProvider time) : IExecutor
 {
     public Tier Tier => Tier.Orchestrator;

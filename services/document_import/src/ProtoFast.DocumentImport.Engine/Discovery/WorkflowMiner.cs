@@ -1,32 +1,20 @@
 namespace ProtoFast.DocumentImport.Engine;
 
-/// <summary>
-/// Turns a bucket's discovery ledgers into a workflow draft. Per run, a stage's accepted record is
-/// its last passing non-shadow attempt: that is the output the agent went on with.
-///
-/// <list type="bullet">
-/// <item>A stage enters the DAG when at least MinSupport of the runs accepted an output for it.</item>
-/// <item>An edge enters when at least MinSupport of the runs recorded it on the accepted record,
-/// strongest first, skipping any edge that would close a cycle across runs.</item>
-/// <item>Contracts and verifier sets are the ones most runs used; the budget is the latest.</item>
-/// <item>The executor the agent delegated to most becomes the primary, seeded with its discovery
-/// track record. A stage the agent always did itself stays at Orchestrator with the agent's.</item>
-/// </list>
-/// </summary>
+/// <summary>A stage's accepted record in a run is its last passing non-shadow attempt.</summary>
 public sealed class WorkflowMiner(EngineOptions options, TimeProvider time) : IWorkflowMiner
 {
-    public Task<MinedWorkflow?> MineAsync(string bucket, IReadOnlyList<RunSummary> runs, CancellationToken ct) =>
-        Task.FromResult(Mine(bucket, runs));
+    public Task<MinedWorkflow?> MineAsync(string family, IReadOnlyList<RunSummary> runs, CancellationToken ct) =>
+        Task.FromResult(Mine(family, runs));
 
-    private MinedWorkflow? Mine(string bucket, IReadOnlyList<RunSummary> runs)
+    private MinedWorkflow? Mine(string family, IReadOnlyList<RunSummary> runs)
     {
-        runs = runs.Where(r => r.Mode == RunMode.Discovery && r.Signature.Bucket == bucket).ToList();
+        runs = runs.Where(r => r.Mode == RunMode.Discovery && r.Signature.Family == family).ToList();
         if (runs.Count == 0)
         {
             return null;
         }
 
-        // Rounded up to a whole run count, tolerating 0.8 * 10 landing a hair above 8.
+        // The epsilon stops 0.8 * 10 rounding up to 9.
         var required = Math.Max(1, (int)Math.Ceiling(options.Thresholds.MinSupport * runs.Count - 1e-9));
 
         var accepted = runs
@@ -68,11 +56,11 @@ public sealed class WorkflowMiner(EngineOptions options, TimeProvider time) : IW
         }).ToList();
 
         var workflow = new WorkflowDefinition(
-            new WorkflowRef($"mined:{bucket}", 0),
-            Dag.TopologicalOrder(stages)!);
+            new WorkflowRef($"mined:{family}", 0),
+            StageGraph.TopologicalOrder(stages)!);
 
         var now = time.GetUtcNow();
-        var seeds = stageIds.Select(id => Seed(bucket, id, runs, now)).ToList();
+        var seeds = stageIds.Select(id => Seed(family, id, runs, now)).ToList();
 
         return new MinedWorkflow(workflow, seeds);
     }
@@ -96,7 +84,7 @@ public sealed class WorkflowMiner(EngineOptions options, TimeProvider time) : IW
         var kept = new List<(string From, string To)>();
         foreach (var edge in candidates)
         {
-            if (!Reaches(kept, edge.To, edge.From))
+            if (!ClosesCycle(kept, edge))
             {
                 kept.Add(edge);
             }
@@ -105,23 +93,22 @@ public sealed class WorkflowMiner(EngineOptions options, TimeProvider time) : IW
         return kept;
     }
 
-    // Whether `to` is reachable from `from` over the kept edges; adding from->to would then be a cycle.
-    private static bool Reaches(List<(string From, string To)> edges, string from, string to)
+    private static bool ClosesCycle(List<(string From, string To)> edges, (string From, string To) edge)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var pending = new Stack<string>([from]);
+        var pending = new Stack<string>([edge.To]);
         while (pending.TryPop(out var node))
         {
-            if (node == to)
+            if (node == edge.From)
             {
                 return true;
             }
 
             if (seen.Add(node))
             {
-                foreach (var edge in edges.Where(e => e.From == node))
+                foreach (var next in edges.Where(e => e.From == node))
                 {
-                    pending.Push(edge.To);
+                    pending.Push(next.To);
                 }
             }
         }
@@ -129,7 +116,7 @@ public sealed class WorkflowMiner(EngineOptions options, TimeProvider time) : IW
         return false;
     }
 
-    private PolicyRow Seed(string bucket, string stageId, IReadOnlyList<RunSummary> runs, DateTimeOffset now)
+    private PolicyRow Seed(string family, string stageId, IReadOnlyList<RunSummary> runs, DateTimeOffset now)
     {
         var records = runs
             .SelectMany(r => r.Stages)
@@ -144,7 +131,7 @@ public sealed class WorkflowMiner(EngineOptions options, TimeProvider time) : IW
             .ThenBy(g => g.Key.Executor.Id, StringComparer.Ordinal)
             .FirstOrDefault();
 
-        var row = PolicyRow.Default(bucket, stageId, options.Orchestrator, now);
+        var row = PolicyRow.Default(family, stageId, options.Orchestrator, now);
         if (favourite is null)
         {
             return row with { Confidence = TrackRecord(records.Where(r => r.Tier == Tier.Orchestrator)) };
@@ -154,7 +141,7 @@ public sealed class WorkflowMiner(EngineOptions options, TimeProvider time) : IW
         return row with
         {
             Ladder = new Dictionary<Tier, ExecutorRef> { [Tier.Orchestrator] = options.Orchestrator, [tier] = executor },
-            Tier = tier,
+            Primary = tier,
             Confidence = TrackRecord(favourite),
         };
     }

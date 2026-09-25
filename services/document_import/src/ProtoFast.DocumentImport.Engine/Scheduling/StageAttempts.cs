@@ -2,11 +2,6 @@ using Microsoft.Extensions.Logging;
 
 namespace ProtoFast.DocumentImport.Engine;
 
-/// <summary>
-/// One attempt at one stage with one executor. Shared by primary, escalation and shadow attempts
-/// and by discovery-mode delegation. Every attempt is recorded and published, including failed
-/// ones: failed traces are what the distiller learns from.
-/// </summary>
 public sealed class StageAttempts(
     IExecutorResolver resolver,
     VerifierRunner verifiers,
@@ -39,7 +34,7 @@ public sealed class StageAttempts(
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
-                // The budget ran out, not the run: a failed attempt, which escalation can recover.
+                // The stage budget expired, not the run.
                 result = Empty(time.GetElapsedTime(started));
                 verdicts = [EngineChecks.OverTime(budget)];
             }
@@ -55,7 +50,7 @@ public sealed class StageAttempts(
         var record = new StageRecord(
             request.RunId, request.Stage, request.Inputs, executorRef, executor.Tier, result, verdicts, isShadow);
         await ledger.RecordAsync(record, ct);
-        await outcomes.PublishAsync(Outcome.From(record, request.Signature.Bucket, time.GetUtcNow()), ct);
+        await outcomes.PublishAsync(Outcome.From(record, request.Signature.Family, time.GetUtcNow()), ct);
         return record;
     }
 

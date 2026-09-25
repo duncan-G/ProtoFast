@@ -5,13 +5,8 @@ using Microsoft.Extensions.Logging;
 namespace ProtoFast.DocumentImport.Engine;
 
 /// <summary>
-/// Partitions outcomes by bucket and drains each partition with one loop, so the updater is the
-/// single writer for every row and bucket policy in it and no row is read-modify-written
-/// concurrently.
-///
-/// <para>In-process and therefore not durable: outcomes still queued when the process stops are
-/// lost. A durable bus (SQS FIFO with the bucket as message group) replaces this without changing
-/// either side.</para>
+/// One loop per partition makes the updater the single writer for each document family.
+/// Not durable: queued outcomes are lost on shutdown.
 /// </summary>
 public sealed class PartitionedOutcomeBus : BackgroundService, IOutcomeBus
 {
@@ -28,13 +23,12 @@ public sealed class PartitionedOutcomeBus : BackgroundService, IOutcomeBus
             .ToArray();
     }
 
-    /// <summary>Never waits on the updater: the channel is unbounded, so this is an append.</summary>
     public Task PublishAsync(Outcome outcome, CancellationToken ct)
     {
-        if (!_partitions[PartitionOf(outcome.Bucket)].Writer.TryWrite(outcome))
+        if (!_partitions[PartitionOf(outcome.Family)].Writer.TryWrite(outcome))
         {
-            _logger.LogWarning("Outcome bus is closed; dropped {Kind} for {Bucket}/{StageId}",
-                outcome.Kind, outcome.Bucket, outcome.StageId);
+            _logger.LogWarning("Outcome bus is closed; dropped {Kind} for {Family}/{StageId}",
+                outcome.Kind, outcome.Family, outcome.StageId);
         }
 
         return Task.CompletedTask;
@@ -65,8 +59,8 @@ public sealed class PartitionedOutcomeBus : BackgroundService, IOutcomeBus
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
-                    _logger.LogError(e, "Policy update failed for {Kind} on {Bucket}/{StageId}",
-                        outcome.Kind, outcome.Bucket, outcome.StageId);
+                    _logger.LogError(e, "Policy update failed for {Kind} on {Family}/{StageId}",
+                        outcome.Kind, outcome.Family, outcome.StageId);
                 }
             }
         }
@@ -75,12 +69,11 @@ public sealed class PartitionedOutcomeBus : BackgroundService, IOutcomeBus
         }
     }
 
-    // FNV-1a rather than string.GetHashCode, which is randomised per process: a bucket keeps its
-    // partition across restarts, which a durable replacement will rely on.
-    private int PartitionOf(string bucket)
+    // FNV-1a: stable across processes, unlike string.GetHashCode.
+    private int PartitionOf(string family)
     {
         var hash = 2166136261u;
-        foreach (var c in bucket)
+        foreach (var c in family)
         {
             hash = (hash ^ c) * 16777619u;
         }

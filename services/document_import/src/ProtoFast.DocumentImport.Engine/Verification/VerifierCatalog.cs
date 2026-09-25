@@ -3,13 +3,12 @@ using System.Collections.Concurrent;
 namespace ProtoFast.DocumentImport.Engine;
 
 /// <summary>
-/// Resolves verifier ids. A verifier registered in code wins, so a distilled deterministic
-/// verifier replaces the rubric-judged one of the same id; otherwise the id is looked up among
-/// the bucket's agent-defined <see cref="VerifierSpec"/>s.
+/// Verifiers registered in code take precedence over the document family's rubric-judged specs
+/// with the same id.
 /// </summary>
 public sealed class VerifierCatalog(
     IEnumerable<IVerifier> registered,
-    IBucketCatalog buckets,
+    IDocumentFamilyCatalog families,
     IRubricVerifierFactory? rubrics = null)
 {
     private readonly Dictionary<string, IVerifier> _registered =
@@ -18,7 +17,7 @@ public sealed class VerifierCatalog(
     private readonly ConcurrentDictionary<VerifierSpec, IVerifier> _rubricVerifiers = new();
 
     public async Task<IReadOnlyList<IVerifier>> ResolveAsync(
-        string bucket, IReadOnlyList<string> ids, CancellationToken ct)
+        string family, IReadOnlyList<string> ids, CancellationToken ct)
     {
         if (ids.Count == 0)
         {
@@ -35,9 +34,9 @@ public sealed class VerifierCatalog(
                 continue;
             }
 
-            specs ??= await buckets.VerifiersAsync(bucket, ct);
+            specs ??= await families.VerifiersAsync(family, ct);
             var spec = specs.FirstOrDefault(s => s.Id == id)
-                ?? throw new InvalidOperationException($"Verifier '{id}' is not registered and bucket '{bucket}' does not define it.");
+                ?? throw new InvalidOperationException($"Verifier '{id}' is not registered and document family '{family}' does not define it.");
             if (rubrics is null)
             {
                 throw new InvalidOperationException($"Verifier '{id}' is rubric-judged but no {nameof(IRubricVerifierFactory)} is registered.");
@@ -49,6 +48,6 @@ public sealed class VerifierCatalog(
         return resolved;
     }
 
-    public async Task<bool> HasDeterministicAsync(string bucket, IReadOnlyList<string> ids, CancellationToken ct) =>
-        (await ResolveAsync(bucket, ids, ct)).Any(v => v.IsDeterministic);
+    public async Task<bool> HasDeterministicAsync(string family, IReadOnlyList<string> ids, CancellationToken ct) =>
+        (await ResolveAsync(family, ids, ct)).Any(v => v.IsDeterministic);
 }

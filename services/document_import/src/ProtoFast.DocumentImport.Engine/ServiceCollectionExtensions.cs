@@ -8,11 +8,8 @@ namespace ProtoFast.DocumentImport.Engine;
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the engine with in-memory data-plane stores. Durable stores registered before
-    /// this call win. The caller supplies what the engine cannot own: an <see cref="IClassifier"/>,
-    /// an <see cref="IDiscoveryAgent"/>, <see cref="IExecutorFactory"/>s for the agent and Codified
-    /// tiers, and optionally an <see cref="IRubricVerifierFactory"/>, <see cref="IVerifier"/>s and an
-    /// <see cref="IDistiller"/>.
+    /// Stores are added with TryAdd, so durable ones registered first win. Callers must register
+    /// an <see cref="IClassifier"/>, an <see cref="IDiscoveryAgent"/> and <see cref="IExecutorFactory"/>s.
     /// </summary>
     public static IServiceCollection AddAgentWorkflowEngine(
         this IServiceCollection services, Action<EngineOptions>? configure = null)
@@ -23,16 +20,14 @@ public static class ServiceCollectionExtensions
 
         services.TryAddSingleton(TimeProvider.System);
 
-        // Data plane.
         services.TryAddSingleton<IArtifactStore, InMemoryArtifactStore>();
         services.TryAddSingleton<IRunLedger, InMemoryRunLedger>();
         services.TryAddSingleton<IPolicyStore, InMemoryPolicyStore>();
-        services.TryAddSingleton<IBucketPolicyStore, InMemoryBucketPolicyStore>();
+        services.TryAddSingleton<IDocumentFamilyPolicyStore, InMemoryDocumentFamilyPolicyStore>();
         services.TryAddSingleton<IRegistry, InMemoryRegistry>();
-        services.TryAddSingleton<IBucketCatalog, InMemoryBucketCatalog>();
+        services.TryAddSingleton<IDocumentFamilyCatalog, InMemoryDocumentFamilyCatalog>();
         services.TryAddSingleton<IMinedWorkflowStore, InMemoryMinedWorkflowStore>();
 
-        // Control plane.
         services.TryAddSingleton<VerifierCatalog>();
         services.TryAddSingleton<VerifierRunner>();
         services.TryAddSingleton<IExecutorResolver, RegistryExecutorResolver>();
@@ -46,7 +41,6 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<WorkflowPromotion>();
         services.TryAddSingleton<RunDispatcher>();
 
-        // Learning plane.
         services.TryAddSingleton<IDistiller, NullDistiller>();
         services.TryAddSingleton<IPolicyUpdater, PolicyUpdater>();
         services.TryAddSingleton<PartitionedOutcomeBus>();

@@ -37,7 +37,7 @@ public class AgentToolsTests
     }
 
     [Fact]
-    public async Task A_stage_is_judged_by_the_bucket_verifiers_and_failures_go_back_to_the_agent()
+    public async Task A_stage_is_judged_by_the_family_verifiers_and_failures_go_back_to_the_agent()
     {
         var (runId, input, tools) = await OpenRunAsync();
         await tools.DefineVerifier(new VerifierSpec("clean", "extract", "No bad words."));
@@ -132,7 +132,7 @@ public class AgentToolsTests
     }
 
     [Fact]
-    public async Task An_executor_another_bucket_defined_cannot_be_delegated_to()
+    public async Task An_executor_another_family_defined_cannot_be_delegated_to()
     {
         var (_, input, tools) = await OpenRunAsync();
         var elsewhere = await _h.DelegateAsync("elsewhere", Tier.DelegateSmall, _ => "x", ExecutorOrigin.AgentDefined);

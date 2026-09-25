@@ -54,9 +54,9 @@ public sealed class InMemoryRunLedger : IRunLedger
     public Task<RunSummary> SummariseAsync(string runId, CancellationToken ct) =>
         Task.FromResult(Summarise(runId, Find(runId)));
 
-    public Task<IReadOnlyList<RunSummary>> RecentAsync(string bucket, RunMode mode, int take, CancellationToken ct)
+    public Task<IReadOnlyList<RunSummary>> RecentAsync(string family, RunMode mode, int take, CancellationToken ct)
     {
-        IReadOnlyList<RunSummary> recent = Closed(bucket, mode)
+        IReadOnlyList<RunSummary> recent = Closed(family, mode)
             .OrderByDescending(r => r.Value.ClosedSequence)
             .Take(take)
             .Select(r => Summarise(r.Key, r.Value))
@@ -64,11 +64,11 @@ public sealed class InMemoryRunLedger : IRunLedger
         return Task.FromResult(recent);
     }
 
-    public Task<int> CountAsync(string bucket, RunMode mode, CancellationToken ct) =>
-        Task.FromResult(Closed(bucket, mode).Count());
+    public Task<int> CountAsync(string family, RunMode mode, CancellationToken ct) =>
+        Task.FromResult(Closed(family, mode).Count());
 
-    private IEnumerable<KeyValuePair<string, Run>> Closed(string bucket, RunMode mode) =>
-        _runs.Where(r => r.Value.ClosedSequence is not null && r.Value.Mode == mode && r.Value.Signature.Bucket == bucket);
+    private IEnumerable<KeyValuePair<string, Run>> Closed(string family, RunMode mode) =>
+        _runs.Where(r => r.Value.ClosedSequence is not null && r.Value.Mode == mode && r.Value.Signature.Family == family);
 
     private Run Find(string runId) =>
         _runs.TryGetValue(runId, out var run) ? run : throw new KeyNotFoundException($"Run {runId} was never opened.");

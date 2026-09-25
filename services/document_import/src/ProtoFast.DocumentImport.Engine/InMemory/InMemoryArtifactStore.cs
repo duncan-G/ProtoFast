@@ -3,7 +3,6 @@ using System.Security.Cryptography;
 
 namespace ProtoFast.DocumentImport.Engine.InMemory;
 
-/// <summary>Content-addressed by SHA-256. Writing the same content to the same stage twice is a no-op.</summary>
 public sealed class InMemoryArtifactStore : IArtifactStore
 {
     private readonly ConcurrentDictionary<ArtifactRef, (byte[] Content, ContractRef Contract)> _artifacts = new();

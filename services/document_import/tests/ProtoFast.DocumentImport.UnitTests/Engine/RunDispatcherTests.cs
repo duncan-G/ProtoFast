@@ -4,7 +4,6 @@ using static ProtoFast.DocumentImport.UnitTests.Engine.EngineHarness;
 
 namespace ProtoFast.DocumentImport.UnitTests.Engine;
 
-/// <summary>A bucket's life: discovery, mining, promotion, shadow, the flip to scheduled, and back.</summary>
 public class RunDispatcherTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -42,13 +41,13 @@ public class RunDispatcherTests
             await Dispatcher.RunAsync(await _h.InputAsync(), Ct);
         }
 
-        var workflow = new WorkflowRef($"mined:{Bucket}", 1);
+        var workflow = new WorkflowRef($"mined:{Family}", 1);
         Assert.NotNull(await _h.Get<IMinedWorkflowStore>().GetAsync(workflow, Ct));
         return workflow;
     }
 
     [Fact]
-    public async Task A_new_bucket_runs_in_discovery_and_records_what_the_agent_did()
+    public async Task A_new_family_runs_in_discovery_and_records_what_the_agent_did()
     {
         await ScriptDiscoveryAsync();
 
@@ -73,16 +72,16 @@ public class RunDispatcherTests
         Assert.Equal((Raw, Text), (stages[0].Input, stages[0].Output));
 
         var extract = mined.Seeds.Single(s => s.StageId == "extract");
-        Assert.Equal(Tier.DelegateSmall, extract.Tier);
+        Assert.Equal(Tier.DelegateSmall, extract.Primary);
         Assert.Equal(small, extract.Ladder[Tier.DelegateSmall]);
         Assert.Equal(new Confidence(4, 1), extract.Confidence);
-        Assert.Equal(Tier.Orchestrator, mined.Seeds.Single(s => s.StageId == "summarise").Tier);
+        Assert.Equal(Tier.Orchestrator, mined.Seeds.Single(s => s.StageId == "summarise").Primary);
 
         Assert.False(await _h.Registry.IsPromotedAsync(mined.Workflow.Ref, Ct));
     }
 
     [Fact]
-    public async Task A_promoted_workflow_shadows_discovery_until_it_flips_the_bucket_to_scheduled()
+    public async Task A_promoted_workflow_shadows_discovery_until_it_flips_the_family_to_scheduled()
     {
         await ScriptDiscoveryAsync();
         var workflow = await MineAsync();
@@ -91,7 +90,7 @@ public class RunDispatcherTests
         Assert.DoesNotContain(_h.Outcomes.Published, o => o.StageId is null);
 
         await _h.Get<WorkflowPromotion>().PromoteAsync(workflow, Ct);
-        Assert.Equal(Tier.DelegateSmall, (await _h.Policies.GetAsync(Bucket, "extract", Ct)).Tier);
+        Assert.Equal(Tier.DelegateSmall, (await _h.Policies.GetAsync(Family, "extract", Ct)).Primary);
 
         for (var i = 0; i < 3; i++)
         {
@@ -99,7 +98,7 @@ public class RunDispatcherTests
         }
 
         Assert.Equal(3, _h.Outcomes.Published.Count(o => o.Kind == OutcomeKind.WorkflowShadowPass));
-        Assert.Equal(RunMode.Scheduled, (await _h.Buckets.GetAsync(Bucket, Ct)).Mode);
+        Assert.Equal(RunMode.Scheduled, (await _h.Families.GetAsync(Family, Ct)).Mode);
 
         var before = _discoveryRuns;
         var scheduled = await Dispatcher.RunAsync(await _h.InputAsync(), Ct);
@@ -111,7 +110,7 @@ public class RunDispatcherTests
     }
 
     [Fact]
-    public async Task A_scheduled_bucket_whose_runs_fail_goes_back_to_discovery()
+    public async Task A_scheduled_family_whose_runs_fail_goes_back_to_discovery()
     {
         await ScriptDiscoveryAsync();
         var workflow = await MineAsync();
@@ -127,7 +126,7 @@ public class RunDispatcherTests
             await Assert.ThrowsAsync<StageFailedException>(async () => await Dispatcher.RunAsync(await _h.InputAsync(), Ct));
         }
 
-        var policy = await _h.Buckets.GetAsync(Bucket, Ct);
+        var policy = await _h.Families.GetAsync(Family, Ct);
         Assert.Equal(RunMode.Discovery, policy.Mode);
         Assert.Null(policy.Workflow);
         Assert.Equal(RunMode.Discovery, (await Dispatcher.RunAsync(await _h.InputAsync(), Ct)).Mode);
