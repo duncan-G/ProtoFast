@@ -90,7 +90,7 @@ realm-import placeholders (`*_CLIENT_SECRET`, `*_BASE_URL`, `BACKCHANNEL_LOGOUT_
 ### `/opt/protofast/versions.env` (production)
 
 One tag per component: `AUTH_TAG`, `AUTH_MIGRATIONS_TAG`, `PAYMENTS_TAG`, `API_TAG`,
-`API_MIGRATIONS_TAG`,
+`API_MIGRATIONS_TAG`, `CONVERSION_TAG`,
 `ENVOY_TAG`, `OTEL_TAG`, `CLIENTS_HOST_TAG`, `CLIENT_ADMIN_TAG`,
 `CLIENT_PROTOFAST_TAG`, `KEYCLOAK_TAG`, `POSTGRES_TAG`, `REDIS_TAG`,
 `CLOUDFLARED_TAG`, `ASPIRE_TAG`.
@@ -112,6 +112,7 @@ clients/host/             unified SSR host image (pulls client assets from S3)
 proxy/                    Envoy templates + entrypoint
 services/auth/            BFF: sign-in, sessions, accounts, ext_authz
 services/payments|api/    gRPC services behind the internal JWT
+services/conversion/      document → Markdown service (Python, MarkItDown, Tesseract)
 services/shared/          ServiceDefaults (telemetry, health, secrets, internal JWT)
 infra/                    Terraform: AWS + Cloudflare (run in CI)
 infra/bootstrap/          one-time local Terraform: state bucket + OIDC roles
@@ -136,3 +137,4 @@ scripts/                  secrets, dev helpers, Keycloak apply scripts
 | 8083 | prod, Host B | Keycloak HTTP (cross-host, via Envoy's vhost only) |
 | 4317 / 4318 | prod, Host A | OTLP gRPC / HTTP receivers |
 | 5432, 6379 | prod, Host B | Postgres, Redis — **not** published |
+| 8090 | both | conversion HTTP — **not** published in prod |

@@ -39,7 +39,7 @@ profile:
 | | Host A (`Role=edge`) | Host B (`Role=services`) |
 |---|---|---|
 | Default type | `t4g.small` | `t4g.medium` |
-| Runs | cloudflared, Envoy, clients host, otel-collector, Aspire dashboard | auth, payments, api, Keycloak, Postgres, Redis |
+| Runs | cloudflared, Envoy, clients host, otel-collector, Aspire dashboard | auth, payments, api, conversion, Keycloak, Postgres, Redis |
 | Private IP | static, `cidrhost(subnet, 10)` | static, `cidrhost(subnet, 11)` |
 | AMI | floats with the latest AL2023 | **pinned** (`ignore_changes = [ami]`) |
 | `user_data_replace_on_change` | `true` — pure cattle | `false` — it holds state |

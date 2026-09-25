@@ -7,7 +7,7 @@
 #
 # Usage:  deploy.sh apply <component>=<tag> [<component>=<tag> ...]
 #
-#   component ∈ auth | payments | api | envoy | otel-collector | clients-host
+#   component ∈ auth | payments | api | conversion | envoy | otel-collector | clients-host
 #               | auth-migrations | api-migrations | aspire-dashboard
 #               | client-<name>            (e.g. client-admin, client-protofast)
 #
@@ -824,7 +824,7 @@ upper() { printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_'; }
 
 # Resolve a component id to its manifest key, compose service, and kind. Sets the
 # globals KEY, SVC, KIND (and CLIENT_NAME for client kinds). Unknown → exit 2.
-#   KIND ∈ service | envoy | otel | host | client | aspire | edge | stateful
+#   KIND ∈ service | conversion | envoy | otel | host | client | aspire | edge | stateful
 # stateful (keycloak/postgres/redis — two-instance restructure §5.3) gets its OWN
 # apply path, kept separate from the recreate+health+rollback service flow:
 # Postgres never auto-rolls-back its tag; Redis is a disposable cache.
@@ -834,6 +834,9 @@ resolve() {
   case "$component" in
     auth|payments|api)
       KEY="$(upper "$component")_TAG"; SVC="$component"; KIND="service" ;;
+    conversion)
+      # Its own kind: plain HTTP, so the gRPC probe would fail a healthy container.
+      KEY="CONVERSION_TAG"; SVC="conversion"; KIND="conversion" ;;
     auth-migrations)
       # Not a long-running container — applying it only publishes the image + pins the tag; the
       # migration RUN happens as a pre-step of the auth apply (run_auth_migrations).
@@ -914,6 +917,12 @@ grpc_ok() {
   compose exec -T "$1" /usr/local/bin/grpc_health_probe -addr=localhost:8080
 }
 
+# The conversion service publishes no port, so probe /health from inside its container.
+conversion_ok() {
+  compose exec -T conversion python -c \
+    "import urllib.request;urllib.request.urlopen('http://localhost:8090/health')" >/dev/null 2>&1
+}
+
 # otel-collector readiness extension (config.yaml: health_check on :13133).
 otel_ok() {
   docker run --rm --network "$NETWORK" curlimages/curl:latest \
@@ -952,6 +961,8 @@ health_once() {
   case "$KIND" in
     service)
       grpc_ok "$SVC" || { rc=1; log "grpc health not serving: ${SVC}"; } ;;
+    conversion)
+      conversion_ok || { rc=1; log "conversion /health not serving"; } ;;
     migrations)
       : ;; # one-shot job: no long-running container to probe; the auth/api apply runs and gates it
     envoy)
@@ -1067,15 +1078,25 @@ run_api_migrations() {
   log "api schema migrations applied"
 }
 
+# Without a bucket the converter starts healthy and then fails every conversion.
+require_documents_bucket() {
+  if [ -z "$(get_env "$ENV_FILE" DOCUMENTS_BUCKET)" ]; then
+    log "DOCUMENTS_BUCKET unset — the deploy job passes it from the DOCUMENTS_BUCKET repo variable"
+    log "(infra/bootstrap). Aborting ${SVC} apply."
+    return 1
+  fi
+}
+
 apply_kind() {
   case "$KIND" in
-    service|envoy|otel|aspire|edge)
+    service|conversion|envoy|otel|aspire|edge)
       log "pulling ${SVC}"
       compose pull "$SVC"
       # Gate the auth apply on a successful schema migration (rc 4 → manifest restored upstream).
       case "$SVC" in
         auth) run_auth_migrations || return 4 ;;
         api)  run_api_migrations  || return 4 ;;
+        conversion) require_documents_bucket || return 4 ;;
       esac
       log "recreating ${SVC}${RECREATE:+ (forced)}"
       # shellcheck disable=SC2086  # RECREATE is intentionally word-split (flag or empty)
@@ -1182,7 +1203,8 @@ prune_old_images() {
   ecr="$(get_env "$ENV_FILE" ECR)"
   [ -n "$ecr" ] || return 0
   for repo in protofast-envoy protofast-clients-host protofast-auth protofast-auth-migrations \
-              protofast-payments protofast-api protofast-api-migrations protofast-otel-collector; do
+              protofast-payments protofast-api protofast-api-migrations protofast-conversion \
+              protofast-otel-collector; do
     docker image ls "${ecr}/${repo}" --format '{{.CreatedAt}}\t{{.Repository}}:{{.Tag}}' \
       | sort -r \
       | awk -v keep="$KEEP_RELEASES" 'NR>keep {print $NF}' \
@@ -1229,7 +1251,7 @@ push_manifest() {
 host_bringup_sets() {
   case "$(get_env "$ENV_FILE" HOST_ROLE)" in
     services)
-      SERVICE_TAGS="auth:AUTH_TAG payments:PAYMENTS_TAG api:API_TAG"
+      SERVICE_TAGS="auth:AUTH_TAG payments:PAYMENTS_TAG api:API_TAG conversion:CONVERSION_TAG"
       ALWAYS_UP="postgres redis keycloak" ;;
     *) # edge (also the default for a pre-split .env that predates HOST_ROLE)
       SERVICE_TAGS="envoy:ENVOY_TAG clients:CLIENTS_HOST_TAG otel-collector:OTEL_TAG"
@@ -1505,7 +1527,7 @@ for pair in "$@"; do
     continue
   fi
   if [ "$apply_rc" -eq 4 ]; then
-    log "restoring manifest: ${COMPONENT} stays at ${CUR_TAG:-<unset>} (${SVC} pre-apply migrations failed; ${SVC} not recreated)"
+    log "restoring manifest: ${COMPONENT} stays at ${CUR_TAG:-<unset>} (${SVC} pre-apply step failed; ${SVC} not recreated)"
     [ -f "$VERSIONS_PREV" ] && cp "$VERSIONS_PREV" "$VERSIONS_FILE"
     RC=1
     continue
