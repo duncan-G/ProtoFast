@@ -539,11 +539,6 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("date_last_modified");
 
-                    b.Property<string>("SourceDocumentId")
-                        .HasMaxLength(26)
-                        .HasColumnType("character varying(26)")
-                        .HasColumnName("source_document_id");
-
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -558,9 +553,6 @@ namespace ProtoFast.Data.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_stories");
-
-                    b.HasIndex("SourceDocumentId")
-                        .HasDatabaseName("ix_stories_source_document_id");
 
                     b.HasIndex("UserId", "DateLastModified")
                         .HasDatabaseName("ix_stories_user_id_date_last_modified");
@@ -704,12 +696,6 @@ namespace ProtoFast.Data.Migrations
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Story", b =>
                 {
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Document", null)
-                        .WithMany()
-                        .HasForeignKey("SourceDocumentId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_stories_documents_source_document_id");
-
                     b.OwnsOne("ProtoFast.Data.ThePlot.Entities.StoryVocabulary", "Vocabulary", b1 =>
                         {
                             b1.Property<Guid>("StoryId");

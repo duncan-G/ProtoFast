@@ -12,12 +12,6 @@ public sealed class StoryQuery : Query<Story>, IStoryQuery
         return this;
     }
 
-    public IStoryQuery FromDocument(string documentId)
-    {
-        Where(s => s.SourceDocumentId == documentId);
-        return this;
-    }
-
     public IStoryQuery TitleContains(string text)
     {
         string lowered = text.ToLower();

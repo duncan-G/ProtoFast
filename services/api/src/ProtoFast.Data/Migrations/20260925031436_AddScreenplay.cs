@@ -19,7 +19,6 @@ namespace ProtoFast.Data.Migrations
                     id = table.Column<Guid>(type: "uuid", nullable: false),
                     user_id = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     title = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
-                    source_document_id = table.Column<string>(type: "character varying(26)", maxLength: 26, nullable: true),
                     date_created = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     date_last_modified = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     vocabulary = table.Column<string>(type: "jsonb", nullable: false)
@@ -27,13 +26,6 @@ namespace ProtoFast.Data.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("pk_stories", x => x.id);
-                    table.ForeignKey(
-                        name: "fk_stories_documents_source_document_id",
-                        column: x => x.source_document_id,
-                        principalSchema: "plot",
-                        principalTable: "documents",
-                        principalColumn: "id",
-                        onDelete: ReferentialAction.SetNull);
                 });
 
             migrationBuilder.CreateTable(
@@ -338,12 +330,6 @@ namespace ProtoFast.Data.Migrations
                 schema: "plot",
                 table: "scenes",
                 columns: new[] { "container_id", "position" });
-
-            migrationBuilder.CreateIndex(
-                name: "ix_stories_source_document_id",
-                schema: "plot",
-                table: "stories",
-                column: "source_document_id");
 
             migrationBuilder.CreateIndex(
                 name: "ix_stories_user_id_date_last_modified",

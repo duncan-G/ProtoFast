@@ -100,7 +100,6 @@ public sealed class ThePlotDbContext(
             entity.HasKey(s => s.Id);
             entity.Property(s => s.UserId).IsRequired().HasMaxLength(UserIdLength);
             entity.Property(s => s.Title).IsRequired().HasMaxLength(NameLength);
-            entity.Property(s => s.SourceDocumentId).HasMaxLength(UploadIdLength);
 
             entity.OwnsOne(s => s.Vocabulary, vocabulary =>
             {
@@ -110,13 +109,7 @@ public sealed class ThePlotDbContext(
             });
             entity.Navigation(s => s.Vocabulary).IsRequired();
 
-            entity.HasOne<Document>()
-                .WithMany()
-                .HasForeignKey(s => s.SourceDocumentId)
-                .OnDelete(DeleteBehavior.SetNull);
-
             entity.HasIndex(s => new { s.UserId, s.DateLastModified });
-            entity.HasIndex(s => s.SourceDocumentId);
         });
 
         modelBuilder.Entity<Container>(entity =>

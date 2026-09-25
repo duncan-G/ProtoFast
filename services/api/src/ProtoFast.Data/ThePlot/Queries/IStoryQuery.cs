@@ -11,8 +11,6 @@ public interface IStoryQuery : IQuery<Story>
 {
     IStoryQuery WithId(Guid id);
 
-    IStoryQuery FromDocument(string documentId);
-
     /// <summary>Case-insensitive.</summary>
     IStoryQuery TitleContains(string text);
 

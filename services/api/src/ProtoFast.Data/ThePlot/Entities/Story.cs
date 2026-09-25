@@ -10,9 +10,6 @@ public sealed class Story : IDateStamped
 
     public required string Title { get; set; }
 
-    /// <summary>The imported document the story was adapted from, if any.</summary>
-    public string? SourceDocumentId { get; set; }
-
     public List<Container> Containers { get; set; } = [];
 
     public List<Character> Characters { get; set; } = [];
