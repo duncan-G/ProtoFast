@@ -1,4 +1,10 @@
-using ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Discovery;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Learning;
+using ProtoFast.DocumentImport.Engine.Policy;
+using ProtoFast.DocumentImport.Engine.Scheduling;
+using ProtoFast.DocumentImport.Engine.Verification;
+using ProtoFast.DocumentImport.Engine.Workflows;
 using Xunit;
 using static ProtoFast.DocumentImport.UnitTests.Engine.EngineHarness;
 

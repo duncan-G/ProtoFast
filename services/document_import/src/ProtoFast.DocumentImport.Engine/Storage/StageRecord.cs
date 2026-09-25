@@ -1,4 +1,8 @@
-namespace ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Verification;
+using ProtoFast.DocumentImport.Engine.Workflows;
+
+namespace ProtoFast.DocumentImport.Engine.Storage;
 
 /// <summary>
 /// In discovery mode <see cref="Stage"/> is recorded from the agent's call; its DependsOn is the

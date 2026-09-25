@@ -1,6 +1,8 @@
 using ProtoFast.DocumentImport.Core;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Storage;
 
-namespace ProtoFast.DocumentImport.Engine;
+namespace ProtoFast.DocumentImport.Engine.Discovery;
 
 public sealed class StageAgentExecutor(IDiscoveryAgent agent, AgentToolsFactory tools, TimeProvider time) : IExecutor
 {

@@ -1,4 +1,6 @@
-namespace ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Executors;
+
+namespace ProtoFast.DocumentImport.Engine.Policy;
 
 public sealed record PolicyRow(
     string Family,

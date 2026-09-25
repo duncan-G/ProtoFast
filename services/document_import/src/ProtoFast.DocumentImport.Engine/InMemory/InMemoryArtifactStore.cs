@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
+using ProtoFast.DocumentImport.Engine.Storage;
+using ProtoFast.DocumentImport.Engine.Workflows;
 
 namespace ProtoFast.DocumentImport.Engine.InMemory;
 

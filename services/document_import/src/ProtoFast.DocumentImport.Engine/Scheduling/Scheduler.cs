@@ -1,8 +1,12 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using ProtoFast.DocumentImport.Core;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Policy;
+using ProtoFast.DocumentImport.Engine.Storage;
+using ProtoFast.DocumentImport.Engine.Workflows;
 
-namespace ProtoFast.DocumentImport.Engine;
+namespace ProtoFast.DocumentImport.Engine.Scheduling;
 
 public sealed class Scheduler(
     IClassifier classifier,

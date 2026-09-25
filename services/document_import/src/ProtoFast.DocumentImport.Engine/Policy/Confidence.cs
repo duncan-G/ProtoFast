@@ -1,4 +1,4 @@
-namespace ProtoFast.DocumentImport.Engine;
+namespace ProtoFast.DocumentImport.Engine.Policy;
 
 /// <summary>Beta posterior on pass rate.</summary>
 public readonly record struct Confidence(double Alpha, double Beta)

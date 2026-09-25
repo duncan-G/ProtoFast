@@ -1,4 +1,7 @@
 using System.Collections.Concurrent;
+using ProtoFast.DocumentImport.Engine.Discovery;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Verification;
 
 namespace ProtoFast.DocumentImport.Engine.InMemory;
 

@@ -1,4 +1,10 @@
-namespace ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Learning;
+using ProtoFast.DocumentImport.Engine.Policy;
+using ProtoFast.DocumentImport.Engine.Storage;
+using ProtoFast.DocumentImport.Engine.Workflows;
+
+namespace ProtoFast.DocumentImport.Engine.Discovery;
 
 /// <summary>A stage's accepted record in a run is its last passing non-shadow attempt.</summary>
 public sealed class WorkflowMiner(EngineOptions options, TimeProvider time) : IWorkflowMiner

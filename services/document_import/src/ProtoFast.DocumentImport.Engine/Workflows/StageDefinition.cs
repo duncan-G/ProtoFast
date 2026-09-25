@@ -1,4 +1,6 @@
-namespace ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Executors;
+
+namespace ProtoFast.DocumentImport.Engine.Workflows;
 
 public sealed record StageDefinition(
     string Id,

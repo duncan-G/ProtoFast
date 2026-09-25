@@ -1,4 +1,11 @@
-namespace ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Learning;
+using ProtoFast.DocumentImport.Engine.Scheduling;
+using ProtoFast.DocumentImport.Engine.Storage;
+using ProtoFast.DocumentImport.Engine.Verification;
+using ProtoFast.DocumentImport.Engine.Workflows;
+
+namespace ProtoFast.DocumentImport.Engine.Discovery;
 
 public sealed class AgentToolsFactory(
     IArtifactStore artifacts,

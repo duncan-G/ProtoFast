@@ -1,3 +1,9 @@
+using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Storage;
+using ProtoFast.DocumentImport.Engine.Workflows;
+
 namespace ProtoFast.DocumentImport.Engine.InMemory;
 
 public sealed class InMemoryRegistry : IRegistry
@@ -7,6 +13,7 @@ public sealed class InMemoryRegistry : IRegistry
     private readonly Dictionary<string, List<ExecutorSpec>> _executors = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<WorkflowDefinition>> _workflows = new(StringComparer.Ordinal);
     private readonly HashSet<WorkflowRef> _promotedWorkflows = [];
+    private readonly ConcurrentDictionary<string, byte[]> _code = new(StringComparer.Ordinal);
 
     public Task<Playbook> ResolveAsync(PlaybookRef reference, CancellationToken ct) =>
         Task.FromResult(Find(_playbooks, reference.Id, reference.Version, $"Playbook {reference.Id}@{reference.Version}"));
@@ -34,13 +41,7 @@ public sealed class InMemoryRegistry : IRegistry
         {
             var versions = VersionsOf(_executors, spec.Ref.Id);
             var reference = new ExecutorRef(spec.Ref.Id, versions.Count + 1);
-            var promoted = spec.Origin switch
-            {
-                ExecutorOrigin.Seed => spec.Promoted,
-                ExecutorOrigin.AgentDefined => spec.CodeAssembly is null && spec.Tier != Tier.Codified,
-                _ => false,
-            };
-            versions.Add(spec with { Ref = reference, Promoted = promoted });
+            versions.Add(spec with { Ref = reference, Promoted = spec.PromotedOnPublish });
             return Task.FromResult(reference);
         }
     }
@@ -55,6 +56,23 @@ public sealed class InMemoryRegistry : IRegistry
             return Task.FromResult(reference);
         }
     }
+
+    public async Task<string> PublishCodeAsync(Stream code, CancellationToken ct)
+    {
+        using var buffer = new MemoryStream();
+        await code.CopyToAsync(buffer, ct);
+        var bytes = buffer.ToArray();
+        var hash = Convert.ToHexStringLower(SHA256.HashData(bytes));
+        _code.TryAdd(hash, bytes);
+        return hash;
+    }
+
+    public Task<Stream> OpenCodeAsync(string hash, CancellationToken ct) =>
+        _code.TryGetValue(hash, out var bytes)
+            ? Task.FromResult<Stream>(new MemoryStream(bytes, writable: false))
+            : throw new KeyNotFoundException($"No code with hash {hash}.");
+
+    public Task<bool> CodeExistsAsync(string hash, CancellationToken ct) => Task.FromResult(_code.ContainsKey(hash));
 
     public Task PromoteAsync(ExecutorRef reference, CancellationToken ct)
     {

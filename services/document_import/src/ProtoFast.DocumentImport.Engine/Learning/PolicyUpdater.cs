@@ -1,4 +1,7 @@
-namespace ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Policy;
+
+namespace ProtoFast.DocumentImport.Engine.Learning;
 
 public sealed class PolicyUpdater(
     IPolicyStore store,

@@ -1,4 +1,4 @@
-namespace ProtoFast.DocumentImport.Engine;
+namespace ProtoFast.DocumentImport.Engine.Executors;
 
 public sealed record Budget(decimal MaxCost, TimeSpan MaxDuration)
 {

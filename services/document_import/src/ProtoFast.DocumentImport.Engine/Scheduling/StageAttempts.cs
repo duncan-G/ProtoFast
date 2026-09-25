@@ -1,6 +1,10 @@
 using Microsoft.Extensions.Logging;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Learning;
+using ProtoFast.DocumentImport.Engine.Storage;
+using ProtoFast.DocumentImport.Engine.Verification;
 
-namespace ProtoFast.DocumentImport.Engine;
+namespace ProtoFast.DocumentImport.Engine.Scheduling;
 
 public sealed class StageAttempts(
     IExecutorResolver resolver,

@@ -1,4 +1,8 @@
-namespace ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Storage;
+using ProtoFast.DocumentImport.Engine.Workflows;
+
+namespace ProtoFast.DocumentImport.Engine.Learning;
 
 public sealed record Outcome(
     string Family, string? StageId, ExecutorRef Executor,

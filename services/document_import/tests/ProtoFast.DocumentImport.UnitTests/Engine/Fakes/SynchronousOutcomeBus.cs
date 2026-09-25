@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
-using ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Learning;
 
-namespace ProtoFast.DocumentImport.UnitTests.Engine;
+namespace ProtoFast.DocumentImport.UnitTests.Engine.Fakes;
 
 /// <summary>Applies outcomes one at a time, as the single writer would.</summary>
 internal sealed class SynchronousOutcomeBus(IServiceProvider services) : IOutcomeBus

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
+using ProtoFast.DocumentImport.Engine.Policy;
 
-namespace ProtoFast.DocumentImport.Engine;
+namespace ProtoFast.DocumentImport.Engine.Learning;
 
 public sealed class NullDistiller(ILogger<NullDistiller> logger) : IDistiller
 {

@@ -1,6 +1,6 @@
-using ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Verification;
 
-namespace ProtoFast.DocumentImport.UnitTests.Engine;
+namespace ProtoFast.DocumentImport.UnitTests.Engine.Fakes;
 
 internal sealed class ContentRubricFactory(EngineHarness harness) : IRubricVerifierFactory
 {

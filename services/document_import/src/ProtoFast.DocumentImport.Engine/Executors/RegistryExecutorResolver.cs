@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
+using ProtoFast.DocumentImport.Engine.Discovery;
+using ProtoFast.DocumentImport.Engine.Storage;
 
-namespace ProtoFast.DocumentImport.Engine;
+namespace ProtoFast.DocumentImport.Engine.Executors;
 
 public sealed class RegistryExecutorResolver(
     IRegistry registry,

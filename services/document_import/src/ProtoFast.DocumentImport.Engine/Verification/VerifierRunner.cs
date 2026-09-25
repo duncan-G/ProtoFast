@@ -1,4 +1,6 @@
-namespace ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Executors;
+
+namespace ProtoFast.DocumentImport.Engine.Verification;
 
 public sealed class VerifierRunner(VerifierCatalog catalog)
 {

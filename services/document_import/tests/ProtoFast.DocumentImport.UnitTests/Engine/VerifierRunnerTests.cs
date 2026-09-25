@@ -1,4 +1,5 @@
-using ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Verification;
 using Xunit;
 using static ProtoFast.DocumentImport.UnitTests.Engine.EngineHarness;
 

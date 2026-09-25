@@ -1,6 +1,7 @@
-using ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Storage;
+using ProtoFast.DocumentImport.Engine.Workflows;
 
-namespace ProtoFast.DocumentImport.UnitTests.Engine;
+namespace ProtoFast.DocumentImport.UnitTests.Engine.Fakes;
 
 internal sealed class FixedClassifier(string family) : IClassifier
 {

@@ -1,4 +1,4 @@
-namespace ProtoFast.DocumentImport.Engine;
+namespace ProtoFast.DocumentImport.Engine.Executors;
 
 public sealed record Cost(decimal Amount, TimeSpan Duration)
 {

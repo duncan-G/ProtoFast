@@ -1,4 +1,4 @@
-namespace ProtoFast.DocumentImport.Engine;
+namespace ProtoFast.DocumentImport.Engine.Learning;
 
 public interface IOutcomeBus
 {

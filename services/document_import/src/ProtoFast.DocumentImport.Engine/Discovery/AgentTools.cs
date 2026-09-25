@@ -1,6 +1,12 @@
 using System.Collections.Concurrent;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Learning;
+using ProtoFast.DocumentImport.Engine.Policy;
+using ProtoFast.DocumentImport.Engine.Storage;
+using ProtoFast.DocumentImport.Engine.Verification;
+using ProtoFast.DocumentImport.Engine.Workflows;
 
-namespace ProtoFast.DocumentImport.Engine;
+namespace ProtoFast.DocumentImport.Engine.Discovery;
 
 public sealed class AgentTools : IAgentTools
 {
@@ -110,9 +116,32 @@ public sealed class AgentTools : IAgentTools
         return new WriteResult(output, verdicts);
     }
 
+    public async Task<PlaybookRef> DefinePlaybook(Playbook playbook)
+    {
+        if (string.IsNullOrWhiteSpace(playbook.Ref.Id) || string.IsNullOrWhiteSpace(playbook.Instructions))
+        {
+            throw new ArgumentException("A playbook needs an id and instructions.", nameof(playbook));
+        }
+
+        foreach (var example in playbook.Examples)
+        {
+            await EnsureArtifactExistsAsync(example.Input);
+            await EnsureArtifactExistsAsync(example.Output);
+        }
+
+        return await _engine.Registry.PublishAsync(playbook, _ct);
+    }
+
+    public Task<string> UploadCode(Stream code) => _engine.Registry.PublishCodeAsync(code, _ct);
+
     public async Task<ExecutorRef> DefineExecutor(ExecutorSpec spec)
     {
         ValidateStructure(spec);
+        if (spec.CodeAssembly is { } code && !await _engine.Registry.CodeExistsAsync(code, _ct))
+        {
+            throw new ArgumentException($"No uploaded code has hash {code}; call UploadCode first.", nameof(spec));
+        }
+
         if (spec.Playbook is { } playbook)
         {
             try
@@ -269,6 +298,18 @@ public sealed class AgentTools : IAgentTools
         if (_scope is { } scope && stageId != scope.Stage.Id)
         {
             throw new ArgumentException($"This loop can only write stage '{scope.Stage.Id}'.", nameof(stageId));
+        }
+    }
+
+    private async Task EnsureArtifactExistsAsync(ArtifactRef reference)
+    {
+        try
+        {
+            await _engine.Artifacts.ContractOfAsync(reference, _ct);
+        }
+        catch (KeyNotFoundException)
+        {
+            throw new ArgumentException($"Artifact {reference} does not exist.", nameof(reference));
         }
     }
 

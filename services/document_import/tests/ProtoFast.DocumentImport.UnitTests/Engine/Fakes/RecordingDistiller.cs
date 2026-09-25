@@ -1,7 +1,8 @@
 using System.Collections.Concurrent;
-using ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Learning;
+using ProtoFast.DocumentImport.Engine.Policy;
 
-namespace ProtoFast.DocumentImport.UnitTests.Engine;
+namespace ProtoFast.DocumentImport.UnitTests.Engine.Fakes;
 
 internal sealed class RecordingDistiller : IDistiller
 {

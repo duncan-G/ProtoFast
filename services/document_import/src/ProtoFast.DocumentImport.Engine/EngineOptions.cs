@@ -1,3 +1,6 @@
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Policy;
+
 namespace ProtoFast.DocumentImport.Engine;
 
 public sealed class EngineOptions

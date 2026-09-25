@@ -1,6 +1,7 @@
 using System.Runtime.ExceptionServices;
+using ProtoFast.DocumentImport.Engine.Storage;
 
-namespace ProtoFast.DocumentImport.Engine;
+namespace ProtoFast.DocumentImport.Engine.Workflows;
 
 public static class StageGraph
 {

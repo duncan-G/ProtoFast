@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
-using ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Storage;
+using ProtoFast.DocumentImport.Engine.Workflows;
 using Xunit;
 using static ProtoFast.DocumentImport.UnitTests.Engine.EngineHarness;
 

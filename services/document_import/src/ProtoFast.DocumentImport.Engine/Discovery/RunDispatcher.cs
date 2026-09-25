@@ -1,7 +1,13 @@
 using Microsoft.Extensions.Logging;
 using ProtoFast.DocumentImport.Core;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Learning;
+using ProtoFast.DocumentImport.Engine.Policy;
+using ProtoFast.DocumentImport.Engine.Scheduling;
+using ProtoFast.DocumentImport.Engine.Storage;
+using ProtoFast.DocumentImport.Engine.Workflows;
 
-namespace ProtoFast.DocumentImport.Engine;
+namespace ProtoFast.DocumentImport.Engine.Discovery;
 
 /// <summary>Hands each run to exactly one owner: the discovery agent or the scheduler.</summary>
 public sealed class RunDispatcher(

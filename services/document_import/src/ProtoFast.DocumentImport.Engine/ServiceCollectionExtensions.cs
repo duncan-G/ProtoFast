@@ -1,7 +1,14 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Hosting;
+using ProtoFast.DocumentImport.Engine.Discovery;
+using ProtoFast.DocumentImport.Engine.Executors;
 using ProtoFast.DocumentImport.Engine.InMemory;
+using ProtoFast.DocumentImport.Engine.Learning;
+using ProtoFast.DocumentImport.Engine.Policy;
+using ProtoFast.DocumentImport.Engine.Scheduling;
+using ProtoFast.DocumentImport.Engine.Storage;
+using ProtoFast.DocumentImport.Engine.Verification;
+using ProtoFast.DocumentImport.Engine.Workflows;
 
 namespace ProtoFast.DocumentImport.Engine;
 

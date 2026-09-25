@@ -1,4 +1,8 @@
-namespace ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Policy;
+using ProtoFast.DocumentImport.Engine.Workflows;
+
+namespace ProtoFast.DocumentImport.Engine.Storage;
 
 public sealed record RunSummary(
     string RunId, Signature Signature, RunMode Mode,

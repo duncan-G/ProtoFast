@@ -1,4 +1,4 @@
-namespace ProtoFast.DocumentImport.Engine;
+namespace ProtoFast.DocumentImport.Engine.Executors;
 
 public readonly record struct ExecutorRef(string Id, int Version)
 {

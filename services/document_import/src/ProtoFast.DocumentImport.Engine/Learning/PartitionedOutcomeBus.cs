@@ -2,7 +2,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace ProtoFast.DocumentImport.Engine;
+namespace ProtoFast.DocumentImport.Engine.Learning;
 
 /// <summary>
 /// One loop per partition makes the updater the single writer for each document family.

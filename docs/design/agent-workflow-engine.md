@@ -304,6 +304,8 @@ public interface IAgentTools
     Task<DocumentFamilyContext> Context();                   // stage ids, executors, verifiers earlier runs used here
     Task<Stream>        ReadArtifact(ArtifactRef reference);
     Task<WriteResult>   WriteArtifact(string stageId, Stream content, ContractRef contract);
+    Task<PlaybookRef>   DefinePlaybook(Playbook playbook);   // examples must be existing artifacts
+    Task<string>        UploadCode(Stream code);             // returns the SHA-256 a Codified spec names
     Task<ExecutorRef>   DefineExecutor(ExecutorSpec spec);   // validated (tier, tools, assembly builds); usable now
     Task<string>        DefineVerifier(VerifierSpec spec);   // rubric-judged until a deterministic one is distilled
     Task<StageRecord>   Delegate(string stageId, ExecutorRef executor, IReadOnlyList<ArtifactRef> inputs);
@@ -421,6 +423,10 @@ public interface IRegistry
     Task<ExecutorRef> PublishAsync(ExecutorSpec spec, CancellationToken ct);
     Task<WorkflowRef> PublishAsync(WorkflowDefinition workflow, CancellationToken ct);
 
+    Task<string> PublishCodeAsync(Stream code, CancellationToken ct);   // returns the code's SHA-256
+    Task<Stream> OpenCodeAsync(string hash, CancellationToken ct);
+    Task<bool>   CodeExistsAsync(string hash, CancellationToken ct);
+
     Task PromoteAsync(ExecutorRef reference, CancellationToken ct);   // human gate
     Task PromoteAsync(WorkflowRef reference, CancellationToken ct);   // human gate
 }
@@ -429,6 +435,13 @@ public interface IRegistry
 The human gate is precise. An `AgentDefined` executor at an agent tier is `Promoted` on publish:
 the agent already ran it under verifiers. A `Distilled` executor, any executor with a
 `CodeAssembly`, and any mined workflow need `PromoteAsync` before the scheduler will route to them.
+
+### Where the data lives
+
+Registry content (playbooks, executor specs, workflows, code) is frozen in S3 under its SHA-256,
+with object lock, so a ref can never change meaning. Postgres (`engine` schema in the `protofast`
+database) holds what changes or is queried: the version index, promotion flags, and each document
+family's executors and verifiers. Promoting flips a row; it never rewrites content.
 
 ## 8. Learning plane
 

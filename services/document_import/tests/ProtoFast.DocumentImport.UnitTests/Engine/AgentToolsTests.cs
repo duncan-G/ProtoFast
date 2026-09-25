@@ -1,4 +1,9 @@
-using ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Discovery;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Learning;
+using ProtoFast.DocumentImport.Engine.Policy;
+using ProtoFast.DocumentImport.Engine.Storage;
+using ProtoFast.DocumentImport.Engine.Verification;
 using Xunit;
 using static ProtoFast.DocumentImport.UnitTests.Engine.EngineHarness;
 
@@ -101,18 +106,48 @@ public class AgentToolsTests
     public async Task An_agent_defined_executor_is_promoted_at_an_agent_tier_but_not_with_code()
     {
         var (_, _, tools) = await OpenRunAsync();
-        var playbook = await _h.Registry.PublishAsync(
-            new Playbook(new PlaybookRef("extract", 0), "Extract the text.", [], new Dictionary<string, string>()), Ct);
+        var playbook = await tools.DefinePlaybook(
+            new Playbook(new PlaybookRef("extract", 0), "Extract the text.", [], new Dictionary<string, string>()));
+        var code = await tools.UploadCode(Utf8("assembly bytes"));
 
         var agentTier = await tools.DefineExecutor(new ExecutorSpec(
             new ExecutorRef("extractor", 0), Tier.DelegateMedium, ModelClasses.Medium, playbook, [], null, ExecutorOrigin.Seed, false));
         var codified = await tools.DefineExecutor(new ExecutorSpec(
-            new ExecutorRef("extractor-code", 0), Tier.Codified, null, null, [], "extractor.dll", ExecutorOrigin.Seed, true));
+            new ExecutorRef("extractor-code", 0), Tier.Codified, null, null, [], code, ExecutorOrigin.Seed, true));
 
         var agentSpec = await _h.Registry.ResolveAsync(agentTier, Ct);
         Assert.Equal((ExecutorOrigin.AgentDefined, true), (agentSpec.Origin, agentSpec.Promoted));
         Assert.False((await _h.Registry.ResolveAsync(codified, Ct)).Promoted);
         Assert.Equal([agentTier, codified], (await tools.Context()).Executors.Select(e => e.Ref));
+    }
+
+    [Fact]
+    public async Task A_Codified_executor_must_name_uploaded_code()
+    {
+        var (_, _, tools) = await OpenRunAsync();
+        var code = await tools.UploadCode(Utf8("assembly bytes"));
+
+        await Assert.ThrowsAsync<ArgumentException>(() => tools.DefineExecutor(new ExecutorSpec(
+            new ExecutorRef("extractor-code", 0), Tier.Codified, null, null, [], "not-uploaded", ExecutorOrigin.AgentDefined, false)));
+
+        using var reader = new StreamReader(await _h.Registry.OpenCodeAsync(code, Ct));
+        Assert.Equal("assembly bytes", await reader.ReadToEndAsync(Ct));
+    }
+
+    [Fact]
+    public async Task A_playbook_is_versioned_and_its_examples_must_exist()
+    {
+        var (_, input, tools) = await OpenRunAsync();
+        var output = await tools.WriteArtifact("extract", Utf8("text"), Text, [input]);
+        var playbook = new Playbook(
+            new PlaybookRef("extract", 0), "Extract the text.", [new Example(input, output.Ref)], new Dictionary<string, string>());
+
+        Assert.Equal(new PlaybookRef("extract", 1), await tools.DefinePlaybook(playbook));
+        Assert.Equal(new PlaybookRef("extract", 2), await tools.DefinePlaybook(playbook with { Instructions = "Extract it all." }));
+
+        var missing = new ArtifactRef("run", "extract", "0000");
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            tools.DefinePlaybook(playbook with { Examples = [new Example(input, missing)] }));
     }
 
     [Theory]

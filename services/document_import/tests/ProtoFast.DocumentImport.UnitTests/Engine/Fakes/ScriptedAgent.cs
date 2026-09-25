@@ -1,6 +1,8 @@
-using ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Discovery;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Storage;
 
-namespace ProtoFast.DocumentImport.UnitTests.Engine;
+namespace ProtoFast.DocumentImport.UnitTests.Engine.Fakes;
 
 internal sealed class ScriptedAgent : IDiscoveryAgent
 {

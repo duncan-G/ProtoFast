@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
-using ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Storage;
+using ProtoFast.DocumentImport.Engine.Verification;
 
-namespace ProtoFast.DocumentImport.UnitTests.Engine;
+namespace ProtoFast.DocumentImport.UnitTests.Engine.Fakes;
 
 /// <summary>Fails content containing "bad", degrades content containing "meh".</summary>
 internal sealed class ContentVerifier(string id, bool deterministic, IArtifactStore artifacts) : IVerifier

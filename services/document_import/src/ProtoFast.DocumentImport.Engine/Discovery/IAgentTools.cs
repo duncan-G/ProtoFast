@@ -1,4 +1,9 @@
-namespace ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Storage;
+using ProtoFast.DocumentImport.Engine.Verification;
+using ProtoFast.DocumentImport.Engine.Workflows;
+
+namespace ProtoFast.DocumentImport.Engine.Discovery;
 
 public interface IAgentTools
 {
@@ -8,6 +13,11 @@ public interface IAgentTools
     // `inputs` become the stage's recorded dependencies.
     Task<WriteResult>   WriteArtifact(
         string stageId, Stream content, ContractRef contract, IReadOnlyList<ArtifactRef>? inputs = null);
+
+    Task<PlaybookRef>   DefinePlaybook(Playbook playbook);
+
+    // Returns the hash to set as ExecutorSpec.CodeAssembly.
+    Task<string>        UploadCode(Stream code);
 
     Task<ExecutorRef>   DefineExecutor(ExecutorSpec spec);
     Task<string>        DefineVerifier(VerifierSpec spec);

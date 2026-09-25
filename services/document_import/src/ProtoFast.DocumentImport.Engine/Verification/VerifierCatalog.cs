@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
+using ProtoFast.DocumentImport.Engine.Discovery;
 
-namespace ProtoFast.DocumentImport.Engine;
+namespace ProtoFast.DocumentImport.Engine.Verification;
 
 /// <summary>
 /// Verifiers registered in code take precedence over the document family's rubric-judged specs

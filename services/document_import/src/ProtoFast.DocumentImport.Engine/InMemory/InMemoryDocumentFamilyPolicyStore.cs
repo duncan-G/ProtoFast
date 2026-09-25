@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using ProtoFast.DocumentImport.Engine.Policy;
 
 namespace ProtoFast.DocumentImport.Engine.InMemory;
 

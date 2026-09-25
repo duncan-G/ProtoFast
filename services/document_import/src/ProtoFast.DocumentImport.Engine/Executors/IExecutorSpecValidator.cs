@@ -1,4 +1,4 @@
-namespace ProtoFast.DocumentImport.Engine;
+namespace ProtoFast.DocumentImport.Engine.Executors;
 
 /// <summary>
 /// Extra checks on agent-defined executors, e.g. that a Codified assembly builds. Throw

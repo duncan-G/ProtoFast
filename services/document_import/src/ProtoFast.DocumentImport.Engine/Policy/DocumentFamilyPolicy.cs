@@ -1,4 +1,6 @@
-namespace ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Workflows;
+
+namespace ProtoFast.DocumentImport.Engine.Policy;
 
 public sealed record DocumentFamilyPolicy(
     string Family,

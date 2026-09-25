@@ -1,4 +1,6 @@
-namespace ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Storage;
+
+namespace ProtoFast.DocumentImport.Engine.Discovery;
 
 public interface IWorkflowMiner
 {

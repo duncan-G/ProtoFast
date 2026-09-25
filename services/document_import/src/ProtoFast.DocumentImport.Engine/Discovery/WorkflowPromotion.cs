@@ -1,4 +1,8 @@
-namespace ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Policy;
+using ProtoFast.DocumentImport.Engine.Storage;
+using ProtoFast.DocumentImport.Engine.Workflows;
+
+namespace ProtoFast.DocumentImport.Engine.Discovery;
 
 /// <summary>Writes outside the updater's partition; accepted because promotion is rare and manual.</summary>
 public sealed class WorkflowPromotion(

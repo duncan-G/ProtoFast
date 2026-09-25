@@ -1,4 +1,7 @@
-namespace ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Workflows;
+
+namespace ProtoFast.DocumentImport.Engine.Storage;
 
 public interface IRegistry
 {
@@ -10,6 +13,11 @@ public interface IRegistry
     Task<PlaybookRef> PublishAsync(Playbook playbook, CancellationToken ct);
     Task<ExecutorRef> PublishAsync(ExecutorSpec spec, CancellationToken ct);
     Task<WorkflowRef> PublishAsync(WorkflowDefinition workflow, CancellationToken ct);
+
+    // Returns the code's SHA-256, which ExecutorSpec.CodeAssembly names.
+    Task<string> PublishCodeAsync(Stream code, CancellationToken ct);
+    Task<Stream> OpenCodeAsync(string hash, CancellationToken ct);
+    Task<bool> CodeExistsAsync(string hash, CancellationToken ct);
 
     Task PromoteAsync(ExecutorRef reference, CancellationToken ct);
     Task PromoteAsync(WorkflowRef reference, CancellationToken ct);

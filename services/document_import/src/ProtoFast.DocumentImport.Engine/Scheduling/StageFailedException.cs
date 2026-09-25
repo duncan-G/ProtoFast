@@ -1,4 +1,7 @@
-namespace ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Verification;
+
+namespace ProtoFast.DocumentImport.Engine.Scheduling;
 
 public sealed class StageFailedException(StageRequest request, IReadOnlyList<VerifierResult> verdicts)
     : Exception(

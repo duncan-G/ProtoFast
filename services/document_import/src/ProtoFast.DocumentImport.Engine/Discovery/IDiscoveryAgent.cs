@@ -1,4 +1,7 @@
-namespace ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Storage;
+
+namespace ProtoFast.DocumentImport.Engine.Discovery;
 
 /// <summary>The engine mints <c>trace</c> up front because every <c>WriteArtifact</c> must carry one.</summary>
 public interface IDiscoveryAgent

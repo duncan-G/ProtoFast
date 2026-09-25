@@ -1,4 +1,4 @@
-namespace ProtoFast.DocumentImport.Engine;
+namespace ProtoFast.DocumentImport.Engine.Storage;
 
 public readonly record struct ArtifactRef(string RunId, string StageId, string Hash)
 {

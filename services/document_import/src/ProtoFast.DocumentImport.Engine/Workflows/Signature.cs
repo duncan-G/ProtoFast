@@ -1,4 +1,4 @@
-namespace ProtoFast.DocumentImport.Engine;
+namespace ProtoFast.DocumentImport.Engine.Workflows;
 
 /// <param name="Family">
 /// Documents similar enough to share one workflow and policy, e.g. one vendor's invoices.
