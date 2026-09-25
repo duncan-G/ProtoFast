@@ -50,18 +50,35 @@
       (keydown.enter)="titleField.blur()"
     />
 
-    <span class="se-hint">Type <span class="se-key">&#64;</span> to reference</span>
-    <button type="button" class="se-btn" title="Switch light / dark" (click)="toggleTheme()">
-      {{ theme() === 'dark' ? '☀ Light' : '☾ Dark' }}
-    </button>
-    <button
-      type="button"
-      class="se-btn"
-      [attr.aria-pressed]="showOverview()"
-      (click)="toggleOverview()"
-    >
-      Overview
-    </button>
+    <div class="se-tools">
+      <span class="se-hint">Type <span class="se-key">&#64;</span> to reference</span>
+      <button
+        type="button"
+        class="se-btn se-library-toggle"
+        [attr.aria-pressed]="store.libraryOpen()"
+        (click)="toggleLibrary()"
+      >
+        Library
+      </button>
+      <button
+        type="button"
+        class="se-btn"
+        title="Switch light / dark"
+        [attr.aria-label]="theme() === 'dark' ? 'Light theme' : 'Dark theme'"
+        (click)="toggleTheme()"
+      >
+        {{ theme() === 'dark' ? '☀' : '☾'
+        }}<span class="se-btn-label">{{ theme() === 'dark' ? 'Light' : 'Dark' }}</span>
+      </button>
+      <button
+        type="button"
+        class="se-btn"
+        [attr.aria-pressed]="showOverview()"
+        (click)="toggleOverview()"
+      >
+        Overview
+      </button>
+    </div>
   </header>
 
   @if (store.error(); as error) {
@@ -72,7 +89,10 @@
   }
 
   <div class="se-body">
-    <app-library-panel />
+    <app-library-panel [class.is-open]="store.libraryOpen()" />
+    @if (store.libraryOpen() || showOverview()) {
+      <div class="se-scrim" aria-hidden="true" (click)="closeDrawers()"></div>
+    }
 
     <main #scroller class="se-main">
       @if (store.scene(); as scene) {
