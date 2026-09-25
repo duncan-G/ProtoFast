@@ -8,6 +8,7 @@ import {
 } from '@angular/ssr/node';
 import express from 'express';
 import { join } from 'node:path';
+import { ssrRequestContext, ssrTraceMiddleware } from './lib/telemetry.ssr';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 
@@ -74,11 +75,13 @@ app.use((req, res, next) => {
 });
 
 /**
- * Handle all other requests by rendering the Angular application.
+ * Handle all other requests by rendering the Angular application. Each render runs inside a
+ * server span whose traceparent the page carries to the browser (see lib/telemetry.ssr.ts).
  */
+app.use(ssrTraceMiddleware);
 app.use((req, res, next) => {
   angularApp
-    .handle(req)
+    .handle(req, ssrRequestContext(res))
     .then((response) =>
       response ? writeResponseToNodeResponse(response, res) : next(),
     )
