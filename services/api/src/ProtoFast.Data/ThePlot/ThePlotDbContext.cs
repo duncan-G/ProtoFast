@@ -196,7 +196,7 @@ public sealed class ThePlotDbContext(
                 .HasForeignKey(m => m.SceneElementId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // Deleting a cast member or prop drops its mentions; the "@Name" stays in the text.
+            // Deleting a cast member, prop or location drops its mentions; the "@Name" stays in the text.
             entity.HasOne(m => m.CastMember)
                 .WithMany()
                 .HasForeignKey(m => m.CastMemberId)
@@ -207,15 +207,21 @@ public sealed class ThePlotDbContext(
                 .HasForeignKey(m => m.PropId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            entity.HasOne(m => m.Location)
+                .WithMany()
+                .HasForeignKey(m => m.LocationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
             entity.HasIndex(m => m.SceneElementId);
             entity.HasIndex(m => m.CastMemberId);
             entity.HasIndex(m => m.PropId);
+            entity.HasIndex(m => m.LocationId);
 
             entity.ToTable(t =>
             {
                 t.HasCheckConstraint(
                     "ck_scene_element_mentions_one_target",
-                    "(cast_member_id IS NULL) <> (prop_id IS NULL)");
+                    "num_nonnulls(cast_member_id, prop_id, location_id) = 1");
                 t.HasCheckConstraint(
                     "ck_scene_element_mentions_span",
                     "\"offset\" >= 0 AND length >= 2");

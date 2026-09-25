@@ -224,19 +224,27 @@ namespace ProtoFast.Data.Migrations
                     scene_element_id = table.Column<Guid>(type: "uuid", nullable: false),
                     cast_member_id = table.Column<Guid>(type: "uuid", nullable: true),
                     prop_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    location_id = table.Column<Guid>(type: "uuid", nullable: true),
                     offset = table.Column<int>(type: "integer", nullable: false),
                     length = table.Column<int>(type: "integer", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("pk_scene_element_mentions", x => x.id);
-                    table.CheckConstraint("ck_scene_element_mentions_one_target", "(cast_member_id IS NULL) <> (prop_id IS NULL)");
+                    table.CheckConstraint("ck_scene_element_mentions_one_target", "num_nonnulls(cast_member_id, prop_id, location_id) = 1");
                     table.CheckConstraint("ck_scene_element_mentions_span", "\"offset\" >= 0 AND length >= 2");
                     table.ForeignKey(
                         name: "fk_scene_element_mentions_cast_members_cast_member_id",
                         column: x => x.cast_member_id,
                         principalSchema: "plot",
                         principalTable: "cast_members",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "fk_scene_element_mentions_locations_location_id",
+                        column: x => x.location_id,
+                        principalSchema: "plot",
+                        principalTable: "locations",
                         principalColumn: "id",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
@@ -287,6 +295,12 @@ namespace ProtoFast.Data.Migrations
                 schema: "plot",
                 table: "scene_element_mentions",
                 column: "cast_member_id");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_scene_element_mentions_location_id",
+                schema: "plot",
+                table: "scene_element_mentions",
+                column: "location_id");
 
             migrationBuilder.CreateIndex(
                 name: "ix_scene_element_mentions_prop_id",

@@ -485,6 +485,10 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("length");
 
+                    b.Property<Guid?>("LocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("location_id");
+
                     b.Property<int>("Offset")
                         .HasColumnType("integer")
                         .HasColumnName("offset");
@@ -503,6 +507,9 @@ namespace ProtoFast.Data.Migrations
                     b.HasIndex("CastMemberId")
                         .HasDatabaseName("ix_scene_element_mentions_cast_member_id");
 
+                    b.HasIndex("LocationId")
+                        .HasDatabaseName("ix_scene_element_mentions_location_id");
+
                     b.HasIndex("PropId")
                         .HasDatabaseName("ix_scene_element_mentions_prop_id");
 
@@ -511,7 +518,7 @@ namespace ProtoFast.Data.Migrations
 
                     b.ToTable("scene_element_mentions", "plot", t =>
                         {
-                            t.HasCheckConstraint("ck_scene_element_mentions_one_target", "(cast_member_id IS NULL) <> (prop_id IS NULL)");
+                            t.HasCheckConstraint("ck_scene_element_mentions_one_target", "num_nonnulls(cast_member_id, prop_id, location_id) = 1");
 
                             t.HasCheckConstraint("ck_scene_element_mentions_span", "\"offset\" >= 0 AND length >= 2");
                         });
@@ -667,6 +674,12 @@ namespace ProtoFast.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .HasConstraintName("fk_scene_element_mentions_cast_members_cast_member_id");
 
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Location", "Location")
+                        .WithMany()
+                        .HasForeignKey("LocationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_scene_element_mentions_locations_location_id");
+
                     b.HasOne("ProtoFast.Data.ThePlot.Entities.Prop", "Prop")
                         .WithMany()
                         .HasForeignKey("PropId")
@@ -681,6 +694,8 @@ namespace ProtoFast.Data.Migrations
                         .HasConstraintName("fk_scene_element_mentions_scene_elements_scene_element_id");
 
                     b.Navigation("CastMember");
+
+                    b.Navigation("Location");
 
                     b.Navigation("Prop");
 

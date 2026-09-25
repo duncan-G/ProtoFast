@@ -60,6 +60,12 @@ public sealed class SceneElementQuery : Query<SceneElement>, ISceneElementQuery
         return this;
     }
 
+    public ISceneElementQuery MentioningLocation(Guid locationId)
+    {
+        Where(e => e.Mentions.Any(m => m.LocationId == locationId));
+        return this;
+    }
+
     public ISceneElementQuery WithMentions()
     {
         Apply(q => q.Include(e => e.Mentions.OrderBy(m => m.Offset)));

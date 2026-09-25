@@ -28,6 +28,8 @@ public interface ISceneElementQuery : IQuery<SceneElement>
 
     ISceneElementQuery MentioningProp(Guid propId);
 
+    ISceneElementQuery MentioningLocation(Guid locationId);
+
     ISceneElementQuery WithMentions();
 
     ISceneElementQuery InOrder();
