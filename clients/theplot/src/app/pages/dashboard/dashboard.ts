@@ -2,11 +2,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   afterNextRender,
   computed,
+  effect,
   inject,
   linkedSignal,
   signal,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -16,6 +19,8 @@ import { describeError, DocumentApi, DocumentSummary } from '../../documents/doc
 import { DocumentImportService, ImportJob, LIVE_PHASES } from '../../documents/document-import';
 import { coverStripe, formatBytes, relativeTime, titleFromFileName } from '../../documents/format';
 import { AccountMenu } from '../../shared/account-menu';
+import { StorySummary } from '../../stories/model/story-summary';
+import { StoryApi } from '../../stories/story-api';
 import { TheplotLogo } from '../../shared/theplot-logo';
 import { DESK_MODES, DeskMode, MODES, parseMode } from './dashboard.data';
 import { ImportDialog, ImportDraft } from './import-dialog';
@@ -29,12 +34,15 @@ interface PendingRow {
   status: string;
 }
 
-/** A row on the desk: a document, with what the columns show for it. */
+/** A row on the desk: a story or an imported document, with what the columns show for it. */
 interface DeskRow {
-  document: DocumentSummary;
+  kind: 'story' | 'document';
+  id: string;
+  title: string;
   cover: string;
   state: string;
   updated: string;
+  lastModifiedAt: Date;
   isNew: boolean;
 }
 
@@ -48,8 +56,8 @@ const TOAST_MS = 7000;
 
 /**
  * The signed-in home: one app, three modes in the top bar — Read, Write, Watch — each
- * listing stories. Write is the writer's own desk and holds Import; Read and Watch are laid out
- * but empty until publishing and adaptation exist.
+ * listing stories. Write is the writer's own desk and holds New story and Import; Read and Watch
+ * are laid out but empty until publishing and adaptation exist.
  *
  * Import is asynchronous and never blocks the app: the dialog starts a job in
  * `DocumentImportService`, the tray bottom-right follows every job across all three modes, and a
@@ -65,6 +73,7 @@ const TOAST_MS = 7000;
 export class Dashboard {
   protected readonly auth = inject(AuthIdentityService);
   private readonly api = inject(DocumentApi);
+  private readonly storyApi = inject(StoryApi);
   private readonly imports = inject(DocumentImportService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -87,8 +96,17 @@ export class Dashboard {
   protected readonly search = signal('');
 
   protected readonly documents = signal<DocumentSummary[]>([]);
-  protected readonly documentsLoading = signal(true);
-  protected readonly documentsError = signal('');
+  protected readonly stories = signal<StorySummary[]>([]);
+  protected readonly deskLoading = signal(true);
+  protected readonly deskError = signal('');
+
+  protected readonly newStoryOpen = signal(false);
+  protected readonly newStoryTitle = signal('');
+  protected readonly newStoryError = signal('');
+  protected readonly creatingStory = signal(false);
+  private readonly newStoryField = viewChild<ElementRef<HTMLInputElement>>('newStoryField');
+  /** The story whose delete confirmation is open under its row. */
+  protected readonly confirmingDeleteId = signal<string | null>(null);
   /** Documents that arrived this session, so their rows carry the Imported tag. */
   private readonly newDocumentIds = signal<ReadonlySet<string>>(new Set());
 
@@ -112,7 +130,7 @@ export class Dashboard {
   /** The count next to Write in the top bar. Read and Watch have nothing to count yet. */
   protected readonly counts = computed<Record<DeskMode, number | null>>(() => ({
     read: null,
-    write: this.documents().length,
+    write: this.documents().length + this.stories().length,
     watch: null,
   }));
 
@@ -133,44 +151,60 @@ export class Dashboard {
   );
 
   protected readonly deskRows = computed<DeskRow[]>(() => {
-    // Only "All" has anything in it: every document here is an import, and drafts, publishing
-    // and adaptation are not built yet.
+    // Only "All" has anything in it: publishing and adaptation are not built yet.
     if (this.tab() !== 0) {
       return [];
     }
     const query = this.search().trim().toLowerCase();
+    const matches = (...texts: string[]) =>
+      query.length === 0 || texts.some((t) => t.toLowerCase().includes(query));
     const isNew = this.newDocumentIds();
-    return this.documents()
-      .filter(
-        (d) =>
-          query.length === 0 ||
-          d.name.toLowerCase().includes(query) ||
-          d.fileName.toLowerCase().includes(query),
-      )
-      .map((document) => ({
-        document,
+    const stories = this.stories()
+      .filter((story) => matches(story.title))
+      .map<DeskRow>((story) => ({
+        kind: 'story',
+        id: story.id,
+        title: story.title,
+        cover: coverStripe(story.id),
+        state: 'Screenplay',
+        updated: relativeTime(story.lastModifiedAt),
+        lastModifiedAt: story.lastModifiedAt,
+        isNew: false,
+      }));
+    const documents = this.documents()
+      .filter((d) => matches(d.name, d.fileName))
+      .map<DeskRow>((document) => ({
+        kind: 'document',
+        id: document.id,
+        title: document.name,
         cover: coverStripe(document.id),
         state: `Imported from ${document.fileName} · ${formatBytes(document.sizeBytes)}`,
         updated: relativeTime(document.lastModifiedAt),
+        lastModifiedAt: document.lastModifiedAt,
         isNew: isNew.has(document.id),
       }));
+    return [...stories, ...documents].sort(
+      (a, b) => b.lastModifiedAt.getTime() - a.lastModifiedAt.getTime(),
+    );
   });
 
   protected readonly emptyState = computed(() => this.info().empty[this.tab()] ?? this.info().empty[0]);
 
-  /** True when the desk has documents but the search matched none of them. */
+  /** True when the desk has entries but the search matched none of them. */
   protected readonly searchMissed = computed(
     () =>
       this.mode() === 'write' &&
       this.tab() === 0 &&
       this.search().trim().length > 0 &&
-      this.documents().length > 0 &&
+      this.documents().length + this.stories().length > 0 &&
       this.deskRows().length === 0,
   );
 
   constructor() {
     const destroyRef = inject(DestroyRef);
     destroyRef.onDestroy(() => this.clearToast());
+
+    effect(() => this.newStoryField()?.nativeElement.focus());
 
     this.imports.completed$
       .pipe(takeUntilDestroyed(destroyRef))
@@ -179,7 +213,7 @@ export class Dashboard {
     // Browser-only: the session cookie never reaches the SSR render, so asking there would
     // paint an empty desk and then correct itself on hydration.
     afterNextRender(() => {
-      void this.loadDocuments();
+      void this.loadDesk();
       void this.imports.ensureFormats().catch(() => undefined);
     });
   }
@@ -193,15 +227,72 @@ export class Dashboard {
     });
   }
 
-  protected async loadDocuments(): Promise<void> {
-    this.documentsLoading.set(true);
-    this.documentsError.set('');
+  /** Either list can fail alone; the other still shows. */
+  protected async loadDesk(): Promise<void> {
+    this.deskLoading.set(true);
+    this.deskError.set('');
+    const [documents, stories] = await Promise.allSettled([
+      this.api.listDocuments(),
+      this.storyApi.listStories(),
+    ]);
+    if (documents.status === 'fulfilled') {
+      this.documents.set(documents.value);
+    }
+    if (stories.status === 'fulfilled') {
+      this.stories.set(stories.value);
+    }
+    const failed = [documents, stories].find((r) => r.status === 'rejected');
+    if (failed) {
+      this.deskError.set(describeError(failed.reason, 'Your desk could not be loaded.'));
+    }
+    this.deskLoading.set(false);
+  }
+
+  // ─── stories ─────────────────────────────────────────────────────────────
+
+  protected openNewStory(): void {
+    this.setMode('write');
+    this.tab.set(0);
+    this.newStoryTitle.set('');
+    this.newStoryError.set('');
+    this.newStoryOpen.set(true);
+  }
+
+  protected closeNewStory(): void {
+    if (!this.creatingStory()) {
+      this.newStoryOpen.set(false);
+    }
+  }
+
+  /** Opens the new story's first scene in the editor. */
+  protected async createStory(): Promise<void> {
+    const title = this.newStoryTitle().trim();
+    if (!title) {
+      this.newStoryError.set('A story needs a title.');
+      return;
+    }
+    this.creatingStory.set(true);
+    this.newStoryError.set('');
     try {
-      this.documents.set(await this.api.listDocuments());
+      const story = await this.storyApi.createStory(title);
+      const sceneId = story.containers[0]?.scenes[0]?.id;
+      await this.router.navigate(
+        sceneId ? ['/app/stories', story.id, 'scenes', sceneId] : ['/app/stories', story.id],
+      );
     } catch (err) {
-      this.documentsError.set(describeError(err, 'Your desk could not be loaded.'));
+      this.newStoryError.set(describeError(err, 'The story could not be created.'));
     } finally {
-      this.documentsLoading.set(false);
+      this.creatingStory.set(false);
+    }
+  }
+
+  protected async deleteStory(storyId: string): Promise<void> {
+    this.confirmingDeleteId.set(null);
+    try {
+      await this.storyApi.deleteStory(storyId);
+      this.stories.update((stories) => stories.filter((s) => s.id !== storyId));
+    } catch (err) {
+      this.deskError.set(describeError(err, 'The story could not be deleted.'));
     }
   }
 
