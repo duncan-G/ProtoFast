@@ -6,7 +6,7 @@
     <RootNamespace>ProtoFast.SchemaMigrations</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ContainerRepository>protofast-migrations</ContainerRepository>
+    <ContainerRepository>protofast-api-migrations</ContainerRepository>
     <ContainerFamily>noble-chiseled</ContainerFamily>
   </PropertyGroup>
 

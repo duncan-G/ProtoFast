@@ -57,7 +57,7 @@ fi
 # keys (e.g. Payments_StripeKey, third-party API keys) are NOT listed here — pass
 # them as CLI args. The DEV secret is for laptop-only values (test API keys); it
 # does not generate the production DB passwords.
-MANAGED_KEYS="Infra_KcDbPassword Auth_DbPassword"
+MANAGED_KEYS="Infra_KcDbPassword Auth_DbPassword Api_DbPassword"
 if [[ "$DEV" -eq 1 ]]; then
   MANAGED_KEYS=""
 fi

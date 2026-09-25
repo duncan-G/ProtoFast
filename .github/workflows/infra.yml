@@ -5,7 +5,8 @@
 # scoping, every run). "Update" is just editing infra/*.tf and re-running apply
 # — Terraform diffs and converges.
 #
-# Repo VARIABLES (set by infra/bootstrap): AWS_REGION, TFSTATE_BUCKET, ASSETS_BUCKET.
+# Repo VARIABLES (set by infra/bootstrap): AWS_REGION, TFSTATE_BUCKET, ASSETS_BUCKET,
+#   DOCUMENTS_BUCKET.
 # Repo SECRETS (set by infra/bootstrap): AWS_INFRA_ROLE_ARN, CLOUDFLARE_API_TOKEN,
 #   CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_ZONE, ADMIN_DOMAIN, PROTOFAST_DOMAIN,
 #   KEYCLOAK_DOMAIN (optional TELEMETRY_DOMAIN, TELEMETRY_ACCESS_EMAILS — the
@@ -36,6 +37,7 @@ env:
   CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
   TF_VAR_aws_region: ${{ vars.AWS_REGION }}
   TF_VAR_assets_bucket: ${{ vars.ASSETS_BUCKET }}
+  TF_VAR_documents_bucket: ${{ vars.DOCUMENTS_BUCKET }}
   TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
   TF_VAR_cloudflare_zone: ${{ secrets.CLOUDFLARE_ZONE }}
   TF_VAR_admin_domain: ${{ secrets.ADMIN_DOMAIN }}

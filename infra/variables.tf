@@ -15,6 +15,16 @@ variable "assets_bucket" {
   type        = string
 }
 
+variable "documents_bucket" {
+  description = "S3 bucket for user document uploads (ThePlot imports). Named by infra/bootstrap and passed from the DOCUMENTS_BUCKET repo variable."
+  type        = string
+
+  validation {
+    condition     = length(var.documents_bucket) > 0
+    error_message = "documents_bucket is empty: re-apply infra/bootstrap so it publishes the DOCUMENTS_BUCKET repo variable."
+  }
+}
+
 # --- Cloudflare / DNS ---------------------------------------------------------
 
 variable "cloudflare_account_id" {
@@ -178,6 +188,7 @@ variable "ecr_repositories" {
     "protofast-auth-migrations",
     "protofast-payments",
     "protofast-api",
+    "protofast-api-migrations",
     "protofast-otel-collector",
   ]
 }

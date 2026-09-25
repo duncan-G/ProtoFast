@@ -7,9 +7,10 @@ locals {
   ecr_registry = "${local.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
 
   github_variables = {
-    AWS_REGION     = var.aws_region
-    TFSTATE_BUCKET = aws_s3_bucket.state.id
-    ASSETS_BUCKET  = local.assets_bucket_name
+    AWS_REGION       = var.aws_region
+    TFSTATE_BUCKET   = aws_s3_bucket.state.id
+    ASSETS_BUCKET    = local.assets_bucket_name
+    DOCUMENTS_BUCKET = local.documents_bucket_name
   }
 
   github_secrets = merge(

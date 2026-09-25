@@ -18,6 +18,11 @@ output "assets_bucket" {
   value       = local.assets_bucket_name
 }
 
+output "documents_bucket" {
+  description = "S3 bucket for user document uploads (set as repo variable DOCUMENTS_BUCKET; created by infra/documents.tf)."
+  value       = local.documents_bucket_name
+}
+
 output "infra_role_arn" {
   description = "ARN the infra workflow assumes (set as repo secret AWS_INFRA_ROLE_ARN)."
   value       = aws_iam_role.infra.arn

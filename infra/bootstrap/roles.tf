@@ -12,6 +12,9 @@ locals {
   state_bucket_arn   = aws_s3_bucket.state.arn
   assets_bucket_name = "${var.project}-assets-${local.name_suffix}"
   assets_bucket_arn  = "arn:aws:s3:::${local.assets_bucket_name}"
+
+  documents_bucket_name = "${var.project}-documents-${local.name_suffix}"
+  documents_bucket_arn  = "arn:aws:s3:::${local.documents_bucket_name}"
 }
 
 # ---------------------------------------------------------------------------
@@ -92,6 +95,16 @@ data "aws_iam_policy_document" "infra" {
     effect    = "Allow"
     actions   = ["s3:*"]
     resources = [local.assets_bucket_arn, "${local.assets_bucket_arn}/*"]
+  }
+
+  # Same for the user-documents bucket (infra/documents.tf), which also carries CORS
+  # and a bucket policy. Terraform does not set force_destroy on it, so the object
+  # actions are never exercised in practice; s3:* is kept for parity with the above.
+  statement {
+    sid       = "DocumentsBucket"
+    effect    = "Allow"
+    actions   = ["s3:*"]
+    resources = [local.documents_bucket_arn, "${local.documents_bucket_arn}/*"]
   }
 
   # The single application secret (infra/secrets.tf). The infra plane owns only the

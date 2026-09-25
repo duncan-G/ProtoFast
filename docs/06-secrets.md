@@ -13,6 +13,7 @@ the same flat JSON map whose keys are prefixed by audience:
 {
   "Infra_KcDbPassword": "…",
   "Auth_DbPassword": "…",
+  "Api_DbPassword": "…",
   "Auth_Keycloak__ClientSecretProtofastWeb": "…",
   "Auth_InternalJwt__PrivateKeyPem": "-----BEGIN PRIVATE KEY-----…",
   "Auth_Smtp__Password": "…",
@@ -40,9 +41,9 @@ scripts/populate-secrets.sh --prod Payments_StripeKey=sk_live_...   # protofast/
 `populate-secrets.sh` is additive and idempotent: it merges your `Key=value`
 arguments into the current map and, for `protofast/app` only, generates a fresh
 32-character password for any *managed* key that is still missing
-(`Infra_KcDbPassword`, `Auth_DbPassword`). First-time local values come from
+(`Infra_KcDbPassword`, `Auth_DbPassword`, `Api_DbPassword`). First-time local values come from
 `scripts/generate-dev-secrets.sh` — JWT pair, `Auth_InternalJwt__KeyId`, and the
-three Keycloak client secrets. SES SMTP and the two DB passwords stay out of the
+three Keycloak client secrets. SES SMTP and the DB passwords stay out of the
 DEV map — local mail is smtp4dev, local databases are Aspire.
 
 > Because no value is in Terraform state, replacing or destroying the secret loses

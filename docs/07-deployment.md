@@ -18,7 +18,7 @@ reused. That is also what makes rollback trivial: an old tag is still there.
 |---|---|---|---|
 | `auth` (+ `auth-migrations`) | B | ECR image | `services/auth services/shared` |
 | `payments` | B | ECR image | `services/payments services/shared` |
-| `api` | B | ECR image | `services/api services/shared` |
+| `api` (+ `api-migrations`) | B | ECR image | `services/api services/document_import services/shared` |
 | `envoy` | A | ECR image | `proxy` |
 | `otel-collector` | A | ECR image | `otel-collector` |
 | `clients-host` | A | ECR image | `clients/host` |

@@ -52,15 +52,16 @@ scripts/populate-secrets.sh Payments_StripeKey=sk_test_...
 Ground rules:
 
 - **OrgAdmin for `protofast/app`.** PlatformAdmin has no `secretsmanager:` value APIs, and the boundary blocks creating the IAM access key SES needs. Developer SSO can Get/Put `protofast/dev` only.
-- **The script is additive and idempotent.** Keys you don't pass are preserved; `--prod` generates the two DB passwords if they're missing. Local JWT + Keycloak secrets come from `scripts/generate-dev-secrets.sh`. Re-run either any time to add or rotate keys.
+- **The script is additive and idempotent.** Keys you don't pass are preserved; `--prod` generates the three DB passwords if they're missing. Local JWT + Keycloak secrets come from `scripts/generate-dev-secrets.sh`. Re-run either any time to add or rotate keys.
 - **Never `terraform init`/`apply` this directory as OrgAdmin.** CI owns this state.
-- `deploy.sh` reads these keys on every Host B apply and seeds config files and `.env`. Missing DB passwords abort the deploy; missing auth, JWT, or SMTP keys leave those services broken or silent.
+- `deploy.sh` reads these keys on every Host B apply and seeds config files and `.env`. Missing `Infra_`/`Auth_` DB passwords abort the deploy, a missing `Api_DbPassword` aborts only the api apply; missing auth, JWT, or SMTP keys leave those services broken or silent.
 - If the secret is ever deleted and recreated, its values are gone — re-run 4.1 and 4.2.
 
 | Key                                       | Set in                  | Used by                                            |
 | ----------------------------------------- | ----------------------- | -------------------------------------------------- |
 | `Infra_KcDbPassword`                      | auto-generated          | Postgres superuser + Keycloak                      |
 | `Auth_DbPassword`                         | auto-generated          | `auth` DB role                                     |
+| `Api_DbPassword`                          | auto-generated          | `protofast` DB role (api + api-migrations)         |
 | `Auth_Keycloak__ClientSecretProtofastWeb` | 4.1                     | Keycloak realm import + auth BFF (`protofast-web`) |
 | `Auth_Keycloak__ClientSecretAdmin`        | 4.1                     | Keycloak realm import + auth BFF (`admin`)         |
 | `Auth_Keycloak__AdminClientSecret`        | 4.1                     | Keycloak realm import + auth-svc (`account-admin`) |
@@ -82,7 +83,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 ### 4.1 DB passwords + auth material
 
-A single run sets the two Keycloak client secrets and the internal-JWT keypair (P-256, PKCS#8 private / SPKI public — the same form Aspire uses locally), and auto-generates the two DB passwords. Quote the PEM substitutions so the newlines survive.
+A single run sets the two Keycloak client secrets and the internal-JWT keypair (P-256, PKCS#8 private / SPKI public — the same form Aspire uses locally), and auto-generates the three DB passwords. Quote the PEM substitutions so the newlines survive.
 
 ```sh
 openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out jwt-private.pem
