@@ -25,7 +25,7 @@ public sealed class ThePlotDbContext(
 
     private const int NameLength = 255;
 
-    /// <summary>Enums are stored by name; the longest today is <c>Description</c>.</summary>
+    /// <summary>Enums are stored by name, so renaming a member needs a data migration.</summary>
     private const int EnumLength = 32;
 
     public DbSet<Document> Documents => Set<Document>();
@@ -91,13 +91,6 @@ public sealed class ThePlotDbContext(
         ConfigureStoryLibrary(modelBuilder);
     }
 
-    /// <summary>
-    /// The screenplay tree: story → act → scene → element. Every row the API reads or writes on its
-    /// own carries its own <c>UserId</c>, like <see cref="Document"/>, so its user filter is a column
-    /// compare. A mention is only reached through its element, so it is owned: no <c>UserId</c>, and
-    /// its filter follows the required foreign key to the element. Deleting a parent takes its
-    /// subtree with it.
-    /// </summary>
     private static void ConfigureScreenplay(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Story>(entity =>
@@ -112,7 +105,6 @@ public sealed class ThePlotDbContext(
                 .HasForeignKey(s => s.SourceDocumentId)
                 .OnDelete(DeleteBehavior.SetNull);
 
-            // The desk lists a user's stories most recently touched first.
             entity.HasIndex(s => new { s.UserId, s.DateLastModified });
             entity.HasIndex(s => s.SourceDocumentId);
         });
@@ -128,6 +120,7 @@ public sealed class ThePlotDbContext(
                 .HasForeignKey(a => a.StoryId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // Positions are not unique, so a reorder can rewrite them in any order in one save.
             entity.HasIndex(a => new { a.StoryId, a.Position });
             entity.ToTable(t => t.HasCheckConstraint("ck_acts_position_non_negative", "position >= 0"));
         });
@@ -161,8 +154,7 @@ public sealed class ThePlotDbContext(
                 .HasForeignKey(e => e.SceneId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // Library entries can be deleted out from under the flow; the editor shows the gap
-            // ("MISSING LOCATION", "UNASSIGNED") and asks the writer to fill it.
+            // Deleting a location or cast member leaves the heading or line unassigned.
             entity.HasOne(e => e.Location)
                 .WithMany()
                 .HasForeignKey(e => e.LocationId)
@@ -177,8 +169,6 @@ public sealed class ThePlotDbContext(
             entity.HasIndex(e => e.LocationId);
             entity.HasIndex(e => e.SpeakerId);
 
-            // Each kind owns its columns. Enum values are stored by name, so the literals here
-            // are the SceneElementType / TimeOfDay / TransitionKind member names.
             entity.ToTable(t =>
             {
                 t.HasCheckConstraint("ck_scene_elements_position_non_negative", "position >= 0");
@@ -206,8 +196,7 @@ public sealed class ThePlotDbContext(
                 .HasForeignKey(m => m.SceneElementId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // Deleting a library entry drops its mentions; the "@Name" stays in the prose as
-            // plain text, which is how the editor renders a name it can no longer resolve.
+            // Deleting a cast member or prop drops its mentions; the "@Name" stays in the text.
             entity.HasOne(m => m.CastMember)
                 .WithMany()
                 .HasForeignKey(m => m.CastMemberId)
@@ -234,12 +223,7 @@ public sealed class ThePlotDbContext(
         });
     }
 
-    /// <summary>
-    /// The story library: the cast, locations and props every scene of a story shares. Names are
-    /// unique per story because <c>@Name</c> references resolve by them. The index compares
-    /// exactly; the queries that check for a clash before an insert compare case-insensitively,
-    /// as the editor does.
-    /// </summary>
+    /// <summary>Names are unique per story because <c>@Name</c> references resolve by them.</summary>
     private static void ConfigureStoryLibrary(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<CastMember>(entity =>

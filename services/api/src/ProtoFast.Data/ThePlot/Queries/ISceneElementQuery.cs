@@ -17,27 +17,18 @@ public interface ISceneElementQuery : IQuery<SceneElement>
 
     ISceneElementQuery OfType(SceneElementType type);
 
-    /// <summary>Dialogue beats the cast member speaks: the editor's "N lines" count.</summary>
     ISceneElementQuery SpokenBy(Guid castMemberId);
 
-    /// <summary>Headings set at the location: the library's "in scene ×N" count.</summary>
     ISceneElementQuery AtLocation(Guid locationId);
 
-    /// <summary>
-    /// Elements in the range <c>[from, to)</c>, for moving a heading together with the beats it
-    /// opens, or shifting the tail of the flow when inserting.
-    /// </summary>
+    /// <summary>Positions in <c>[from, to)</c>.</summary>
     ISceneElementQuery InPositionRange(int from, int to = int.MaxValue);
 
-    /// <summary>Beats that mention the cast member: the editor's "N mentions" count, and a rename's rewrite set.</summary>
     ISceneElementQuery MentioningCastMember(Guid castMemberId);
 
-    /// <summary>Beats that reference the prop: "Props in play", and a rename's rewrite set.</summary>
     ISceneElementQuery MentioningProp(Guid propId);
 
-    /// <summary>Loads each beat's mentions. Saving a beat replaces this collection.</summary>
     ISceneElementQuery WithMentions();
 
-    /// <summary>Scene order, ties broken by id.</summary>
     ISceneElementQuery InOrder();
 }

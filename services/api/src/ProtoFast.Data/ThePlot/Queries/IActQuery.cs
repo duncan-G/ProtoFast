@@ -13,9 +13,7 @@ public interface IActQuery : IQuery<Act>
 
     IActQuery InStory(Guid storyId);
 
-    /// <summary>Acts at or after a position: the ones to shift when inserting or removing one.</summary>
     IActQuery AtOrAfterPosition(int position);
 
-    /// <summary>Story order, ties broken by id.</summary>
     IActQuery InOrder();
 }

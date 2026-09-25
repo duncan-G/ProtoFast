@@ -13,10 +13,10 @@ public interface IPropQuery : IQuery<Prop>
 
     IPropQuery InStory(Guid storyId);
 
-    /// <inheritdoc cref="ICastMemberQuery.WithName"/>
+    /// <summary>Case-insensitive, as the editor matches names.</summary>
     IPropQuery WithName(string name);
 
-    /// <summary>Case-insensitive substring match, for <c>@</c> autocomplete.</summary>
+    /// <summary>Case-insensitive.</summary>
     IPropQuery NameContains(string text);
 
     IPropQuery ByName();

@@ -13,10 +13,10 @@ public interface ICastMemberQuery : IQuery<CastMember>
 
     ICastMemberQuery InStory(Guid storyId);
 
-    /// <summary>Case-insensitive exact name match: the clash check before adding or renaming.</summary>
+    /// <summary>Case-insensitive, as the editor matches names.</summary>
     ICastMemberQuery WithName(string name);
 
-    /// <summary>Case-insensitive substring match, for the speaker picker and <c>@</c> autocomplete.</summary>
+    /// <summary>Case-insensitive.</summary>
     ICastMemberQuery NameContains(string text);
 
     ICastMemberQuery OfKind(CastMemberKind kind);

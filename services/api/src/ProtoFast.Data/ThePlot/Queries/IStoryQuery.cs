@@ -11,21 +11,16 @@ public interface IStoryQuery : IQuery<Story>
 {
     IStoryQuery WithId(Guid id);
 
-    /// <summary>Stories adapted from the given imported <see cref="Document"/>.</summary>
     IStoryQuery FromDocument(string documentId);
 
-    /// <summary>Case-insensitive substring match on the title, for the desk's search box.</summary>
+    /// <summary>Case-insensitive.</summary>
     IStoryQuery TitleContains(string text);
 
-    /// <summary>Loads the story library: cast, locations and props, each by name.</summary>
+    /// <summary>Includes the cast, locations and props, each ordered by name.</summary>
     IStoryQuery WithLibrary();
 
-    /// <summary>
-    /// Loads the story's outline: its acts and each act's scenes, in order, without the scenes'
-    /// elements. Enough for the breadcrumb, scene navigation and the "next scene" preview's title.
-    /// </summary>
+    /// <summary>Includes the acts and their scenes in order, without the scenes' elements.</summary>
     IStoryQuery WithOutline();
 
-    /// <summary>Most recently modified first, ties broken by id.</summary>
     IStoryQuery RecentlyModifiedFirst();
 }

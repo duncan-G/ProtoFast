@@ -100,11 +100,8 @@ public sealed class QueryFilterService
     }
 
     /// <summary>
-    /// Whether a navigation leads from an owned row to its owner: a required foreign key on this
-    /// side, pointing at the principal. An optional reference (a scene element's location, say)
-    /// is null on some rows, so a filter through it would hide those rows; and the principal side
-    /// of a one-to-one may have no dependent at all. Either could still be the shortest path, so
-    /// both are skipped rather than left to the search.
+    /// Only a required foreign key reaches an owner from every row. A filter through an optional
+    /// reference would hide the rows where it is null.
     /// </summary>
     private static bool IsPathToOwner(IReadOnlyNavigation navigation) =>
         !navigation.IsCollection && navigation.IsOnDependent && navigation.ForeignKey.IsRequired;

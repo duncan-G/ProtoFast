@@ -17,15 +17,11 @@ public interface ISceneQuery : IQuery<Scene>
 
     ISceneQuery AtPosition(int position);
 
-    /// <summary>Scenes at or after a position: the ones to shift when inserting or removing one.</summary>
     ISceneQuery AtOrAfterPosition(int position);
 
-    /// <summary>
-    /// Loads everything the scene editor renders: the elements in order, each with its mentions,
-    /// speaker and location. The library itself comes from <see cref="IStoryQuery.WithLibrary"/>.
-    /// </summary>
+    /// <summary>Includes the elements in order, with their mentions, speaker and location.</summary>
     ISceneQuery WithElements();
 
-    /// <summary>Story order — by act, then position within the act — ties broken by id.</summary>
+    /// <summary>By act, then by position within the act.</summary>
     ISceneQuery InOrder();
 }

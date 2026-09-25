@@ -13,13 +13,12 @@ public interface ILocationQuery : IQuery<Location>
 
     ILocationQuery InStory(Guid storyId);
 
-    /// <inheritdoc cref="ICastMemberQuery.WithName"/>
+    /// <summary>Case-insensitive, as the editor matches names.</summary>
     ILocationQuery WithName(string name);
 
-    /// <summary>Case-insensitive substring match, for the heading's location picker.</summary>
+    /// <summary>Case-insensitive.</summary>
     ILocationQuery NameContains(string text);
 
-    /// <summary>Narrows the picker when the search starts with <c>INT.</c> or <c>EXT.</c>.</summary>
     ILocationQuery WithSetting(LocationSetting setting);
 
     ILocationQuery ByName();

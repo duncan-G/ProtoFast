@@ -1,16 +1,8 @@
 namespace ProtoFast.Data.ThePlot.Entities;
 
 /// <summary>
-/// One <c>@Name</c> reference inside a beat's <see cref="SceneElement.Text"/>, resolved to the
-/// cast member or prop it names. Written alongside the text: saving a beat replaces its mentions.
-///
-/// <para>Owned by its beat: a mention is only ever read or written through its
-/// <see cref="SceneElement"/>, so it has no <c>UserId</c>, repository or query of its own, and the
-/// user filter reaches the owner through <see cref="SceneElement"/>.</para>
-///
-/// <para>Stored rather than re-parsed on read so the library can answer "where is this used"
-/// (the per-character mention counts, "Props in play", unused props) without scanning prose, and
-/// so a rename can rewrite each reference at its recorded span.</para>
+/// An <c>@Name</c> in a beat's text, pointing at a cast member or a prop. Owned by its
+/// <see cref="SceneElement"/>: it has no <c>UserId</c> and is only read and written through it.
 /// </summary>
 public sealed class SceneElementMention
 {
@@ -20,19 +12,17 @@ public sealed class SceneElementMention
 
     public SceneElement SceneElement { get; set; } = null!;
 
-    /// <summary>Set when the mention names a cast member; exactly one of this and <see cref="PropId"/> is.</summary>
     public Guid? CastMemberId { get; set; }
 
     public CastMember? CastMember { get; set; }
 
-    /// <summary>Set when the mention names a prop; exactly one of this and <see cref="CastMemberId"/> is.</summary>
     public Guid? PropId { get; set; }
 
     public Prop? Prop { get; set; }
 
-    /// <summary>The index of the <c>@</c> in the beat's text.</summary>
+    /// <summary>Index of the <c>@</c> in the beat's text.</summary>
     public int Offset { get; set; }
 
-    /// <summary>The span's length, <c>@</c> included.</summary>
+    /// <summary>Length of the reference, <c>@</c> included.</summary>
     public int Length { get; set; }
 }
