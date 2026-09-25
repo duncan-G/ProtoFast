@@ -27,7 +27,7 @@ AWS CLI v2 and an SSO profile named **`developer`** (the Developer permission se
 | `auth-db`                 | database             | runs `ProtoFast.Auth.SchemaMigrations` before `auth` starts                                                      |
 | `protofast-db`            | database             | runs `ProtoFast.SchemaMigrations` (the ThePlot `plot` schema) alongside `api`                                    |
 | `redis`                   | container            | session, correlation and replay stores                                                                           |
-| `keycloak`                | container (26.7)     | realm import from `infra/keycloak/realms`, themes and provider JAR bind-mounted, tracing + logs to the collector |
+| `keycloak`                | container (26.7)     | stores users/realms in the `keycloak` database (so they survive restarts), realm import from `infra/keycloak/realms`, themes and provider JAR bind-mounted, tracing + logs to the collector |
 | `smtp4dev`                | container            | local mail catcher; both Keycloak and `auth` are pointed at it                                                   |
 | `auth`, `payments`, `api` | .NET projects        | OTLP reference, Redis/Postgres connection strings; JWT and Keycloak secrets from `protofast/dev`                 |
 | `conversion`              | Dockerfile container | document → Markdown; LocalStack S3 by container DNS, the upload bucket, OTLP to the collector                    |
@@ -107,7 +107,7 @@ this is for UI work only.
 | Apply migrations                  | automatic — `auth-db` and `protofast-db` each run their migrations project when the AppHost starts                                            |
 | Rebuild the Keycloak provider JAR | `infra/keycloak/providers/build.sh`, then restart Keycloak                                                                                    |
 | Edit the Keycloak login theme     | edit under `deploy/keycloak/themes/protofast`; `start-dev` disables theme caching, so a refresh is enough                                     |
-| Change the realm                  | edit `infra/keycloak/realms/protofast-realm.json` **and** delete the Keycloak container's data — the import skips a realm that already exists |
+| Change the realm                  | edit `infra/keycloak/realms/protofast-realm.json`, drop the `keycloak` database in pgAdmin (this also wipes local accounts), then restart the AppHost — the import skips a realm that already exists |
 | See traces / logs / metrics       | the Aspire dashboard URL printed by `aspire run`                                                                                              |
 | Run the auth tests                | `dotnet test services/auth/tests/ProtoFast.Auth.UnitTests` (and `…IntegrationTests`)                                                          |
 

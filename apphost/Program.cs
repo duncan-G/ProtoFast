@@ -31,7 +31,7 @@ if (!builder.ExecutionContext.IsPublishMode)
         .WithDataVolume();
 }
 
-postgres.AddDatabase("keycloak-db", databaseName: "keycloak");
+var keycloakDb = postgres.AddDatabase("keycloak-db", databaseName: "keycloak");
 
 var authDb = postgres
     .AddDatabase("auth-db", databaseName: "auth")
@@ -90,6 +90,20 @@ var keycloak = builder.AddKeycloak("keycloak", 8080)
     // session-persistence tasks not tied to an incoming request, so they're just
     // noise. Keeps the request-scoped auth/sign-in spans intact.
     .WithEnvironment("KC_TRACING_INFINISPAN_ENABLED", "false");
+
+// Without KC_DB, start-dev keeps users in an H2 file inside the container, which is
+// discarded on every teardown — so accounts had to be re-created after each restart.
+var postgresFromContainer = postgres.GetEndpoint(
+    "tcp", KnownNetworkIdentifiers.DefaultAspireContainerNetwork);
+keycloak
+    .WaitFor(keycloakDb)
+    .WithEnvironment("KC_DB", "postgres")
+    .WithEnvironment(
+        "KC_DB_URL",
+        ReferenceExpression.Create(
+            $"jdbc:postgresql://{postgresFromContainer.Property(EndpointProperty.Host)}:{postgresFromContainer.Property(EndpointProperty.Port)}/{keycloakDb.Resource.DatabaseName}"))
+    .WithEnvironment("KC_DB_USERNAME", postgres.Resource.UserNameReference)
+    .WithEnvironment("KC_DB_PASSWORD", postgres.Resource.PasswordParameter);
 
 IResourceBuilder<ContainerResource>? smtp4dev = null;
 if (!builder.ExecutionContext.IsPublishMode)
