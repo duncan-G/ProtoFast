@@ -10,7 +10,7 @@ public sealed class StageAttempts(
     IExecutorResolver resolver,
     VerifierRunner verifiers,
     IRunLedger ledger,
-    IOutcomeBus outcomes,
+    IOutcomeQueue outcomes,
     TimeProvider time,
     ILogger<StageAttempts> logger)
 {

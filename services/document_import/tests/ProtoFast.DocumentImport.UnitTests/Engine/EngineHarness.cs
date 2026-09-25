@@ -1,15 +1,16 @@
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
+using ProtoFast.DocumentImport.Engine;
 using ProtoFast.DocumentImport.Engine.Discovery;
 using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.InMemory;
 using ProtoFast.DocumentImport.Engine.Learning;
 using ProtoFast.DocumentImport.Engine.Policy;
 using ProtoFast.DocumentImport.Engine.Scheduling;
 using ProtoFast.DocumentImport.Engine.Storage;
 using ProtoFast.DocumentImport.Engine.Verification;
 using ProtoFast.DocumentImport.Engine.Workflows;
-using ProtoFast.DocumentImport.Engine;
 using ProtoFast.DocumentImport.UnitTests.Engine.Fakes;
 
 namespace ProtoFast.DocumentImport.UnitTests.Engine;
@@ -34,7 +35,6 @@ internal sealed class EngineHarness
         services.AddSingleton<IShadowSampler>(Sampler);
         services.AddSingleton<IDistiller>(Distiller);
         services.AddSingleton<IRubricVerifierFactory>(new ContentRubricFactory(this));
-        services.AddSingleton<IOutcomeBus, SynchronousOutcomeBus>();
         services.AddSingleton<IVerifier>(sp => new ContentVerifier("no-bad", deterministic: true, sp.GetRequiredService<IArtifactStore>()));
         services.AddSingleton<IVerifier>(sp => new ContentVerifier("judge", deterministic: false, sp.GetRequiredService<IArtifactStore>()));
         services.AddAgentWorkflowEngine(o =>
@@ -42,6 +42,8 @@ internal sealed class EngineHarness
             o.Thresholds = new Thresholds(MinObservations: 3, MineAfterRuns: 3, ShadowSampleRate: shadowRate);
             configure?.Invoke(o);
         });
+        services.AddInMemoryWorkflowEngineStores();
+        services.AddSingleton<IOutcomeQueue, SynchronousOutcomeQueue>();
         Services = services.BuildServiceProvider();
         Executors.Use(Artifacts);
     }
@@ -59,7 +61,7 @@ internal sealed class EngineHarness
     public IRegistry Registry => Get<IRegistry>();
     public IPolicyStore Policies => Get<IPolicyStore>();
     public IDocumentFamilyPolicyStore Families => Get<IDocumentFamilyPolicyStore>();
-    public SynchronousOutcomeBus Outcomes => (SynchronousOutcomeBus)Get<IOutcomeBus>();
+    public SynchronousOutcomeQueue Outcomes => (SynchronousOutcomeQueue)Get<IOutcomeQueue>();
     public ExecutorRef Orchestrator => Get<EngineOptions>().Orchestrator;
 
     public Signature Signature { get; } = new(Family, new Dictionary<string, string>());

@@ -14,7 +14,7 @@ public sealed class AgentToolsFactory(
     IDocumentFamilyCatalog catalog,
     VerifierRunner verifiers,
     StageAttempts attempts,
-    IOutcomeBus outcomes,
+    IOutcomeQueue outcomes,
     TimeProvider time,
     EngineOptions options,
     IEnumerable<IExecutorSpecValidator> validators)
@@ -32,7 +32,7 @@ public sealed class AgentToolsFactory(
     internal IDocumentFamilyCatalog Catalog => catalog;
     internal VerifierRunner Verifiers => verifiers;
     internal StageAttempts Attempts => attempts;
-    internal IOutcomeBus Outcomes => outcomes;
+    internal IOutcomeQueue Outcomes => outcomes;
     internal TimeProvider Time => time;
     internal EngineOptions Options => options;
     internal IEnumerable<IExecutorSpecValidator> Validators => validators;

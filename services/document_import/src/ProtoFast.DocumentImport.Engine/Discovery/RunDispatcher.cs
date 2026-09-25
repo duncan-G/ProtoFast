@@ -20,7 +20,7 @@ public sealed class RunDispatcher(
     IRunLedger ledger,
     IWorkflowMiner miner,
     IMinedWorkflowStore drafts,
-    IOutcomeBus outcomes,
+    IOutcomeQueue outcomes,
     IShadowSampler sampler,
     EngineOptions options,
     TimeProvider time,

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ProtoFast.DocumentImport.Data.Postgres;
@@ -11,9 +12,11 @@ using ProtoFast.DocumentImport.Data.Postgres;
 namespace ProtoFast.DocumentImport.Data.Migrations
 {
     [DbContext(typeof(WorkflowEngineDbContext))]
-    partial class WorkflowEngineDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260925040350_InitialCreate")]
+    partial class InitialCreate
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

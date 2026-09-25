@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Npgsql;
 using ProtoFast.Data.ThePlot;
-using ProtoFast.DocumentImport.Data;
+using ProtoFast.DocumentImport.Data.Postgres;
 
 // Standalone schema-migrations runner for the `protofast` database: ThePlot's `plot` schema and
 // the document import workflow engine's `engine` schema.

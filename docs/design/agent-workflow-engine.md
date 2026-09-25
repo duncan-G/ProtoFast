@@ -13,7 +13,7 @@ Everything about *what* a stage does lives in data: workflow definitions, execut
             └────────────────────────────────┬────────────────┘
                                              ▼
             ┌──────────── learning plane ─────────────────────┐
-            │  OutcomeBus ──▶ PolicyUpdater ──▶ Distiller      │
+            │  OutcomeQueue ──▶ PolicyUpdater ──▶ Distiller    │
             └─────────────────────────────────────────────────┘
 ```
 
@@ -438,10 +438,19 @@ the agent already ran it under verifiers. A `Distilled` executor, any executor w
 
 ### Where the data lives
 
-Registry content (playbooks, executor specs, workflows, code) is frozen in S3 under its SHA-256,
-with object lock, so a ref can never change meaning. Postgres (`engine` schema in the `protofast`
-database) holds what changes or is queried: the version index, promotion flags, and each document
-family's executors and verifiers. Promoting flips a row; it never rewrites content.
+| Data | Store |
+|---|---|
+| Artifacts, and the contract each was written against | S3, frozen, keyed by run, stage and SHA-256 |
+| Registry content: playbooks, executor specs, workflows, code | S3, frozen, keyed by SHA-256 |
+| Registry versions and promotion flags | Postgres `engine` schema |
+| Run ledger: runs, stage records, decisions | Postgres |
+| Policy rows and document family policies | Postgres |
+| Document family executors and verifiers, mined workflow drafts | Postgres |
+| Outcomes | SQS FIFO queue, grouped by document family |
+
+Frozen content means a ref can never change meaning; promoting flips a row and never rewrites
+content. The FIFO group keeps the updater the single writer for a family across every worker.
+In-memory versions of every store exist for tests and are registered only on request.
 
 ## 8. Learning plane
 
@@ -461,7 +470,7 @@ public sealed record Outcome(
     string Family, string? StageId, ExecutorRef Executor,
     OutcomeKind Kind, double Weight, DateTimeOffset At);      // Weight: 1, or 0.5 for a Degraded pass
 
-public interface IOutcomeBus
+public interface IOutcomeQueue
 {
     Task PublishAsync(Outcome outcome, CancellationToken ct);
 }
@@ -476,7 +485,7 @@ public sealed record Thresholds(
     double MinSupport = 0.8);         // fraction of runs a stage or edge must appear in
 ```
 
-The updater moves confidence and tiers. The bus partitions by document family and the updater is a single
+The updater moves confidence and tiers. The queue groups outcomes by document family and the updater is a single
 writer per partition, so no row is ever read-modify-written concurrently and no CAS is needed.
 
 ```csharp

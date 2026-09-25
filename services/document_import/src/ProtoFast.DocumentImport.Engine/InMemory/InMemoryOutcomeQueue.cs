@@ -1,0 +1,84 @@
+using System.Threading.Channels;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using ProtoFast.DocumentImport.Engine.Learning;
+
+namespace ProtoFast.DocumentImport.Engine.InMemory;
+
+/// <summary>
+/// One loop per partition makes the updater the single writer for each document family.
+/// Not durable: queued outcomes are lost on shutdown.
+/// </summary>
+public sealed class InMemoryOutcomeQueue : BackgroundService, IOutcomeQueue
+{
+    private readonly Channel<Outcome>[] _partitions;
+    private readonly IPolicyUpdater _updater;
+    private readonly ILogger<InMemoryOutcomeQueue> _logger;
+
+    public InMemoryOutcomeQueue(IPolicyUpdater updater, EngineOptions options, ILogger<InMemoryOutcomeQueue> logger)
+    {
+        _updater = updater;
+        _logger = logger;
+        _partitions = Enumerable.Range(0, Math.Max(1, options.OutcomePartitions))
+            .Select(_ => Channel.CreateUnbounded<Outcome>(new UnboundedChannelOptions { SingleReader = true }))
+            .ToArray();
+    }
+
+    public Task PublishAsync(Outcome outcome, CancellationToken ct)
+    {
+        if (!_partitions[PartitionOf(outcome.Family)].Writer.TryWrite(outcome))
+        {
+            _logger.LogWarning("Outcome queue is closed; dropped {Kind} for {Family}/{StageId}",
+                outcome.Kind, outcome.Family, outcome.StageId);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+        Task.WhenAll(_partitions.Select(p => DrainAsync(p.Reader, stoppingToken)));
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        foreach (var partition in _partitions)
+        {
+            partition.Writer.TryComplete();
+        }
+
+        await base.StopAsync(cancellationToken);
+    }
+
+    private async Task DrainAsync(ChannelReader<Outcome> reader, CancellationToken ct)
+    {
+        try
+        {
+            await foreach (var outcome in reader.ReadAllAsync(ct))
+            {
+                try
+                {
+                    await _updater.ApplyAsync(outcome, ct);
+                }
+                catch (Exception e) when (e is not OperationCanceledException)
+                {
+                    _logger.LogError(e, "Policy update failed for {Kind} on {Family}/{StageId}",
+                        outcome.Kind, outcome.Family, outcome.StageId);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+    }
+
+    // FNV-1a: stable across processes, unlike string.GetHashCode.
+    private int PartitionOf(string family)
+    {
+        var hash = 2166136261u;
+        foreach (var c in family)
+        {
+            hash = (hash ^ c) * 16777619u;
+        }
+
+        return (int)(hash % (uint)_partitions.Length);
+    }
+}
