@@ -367,13 +367,13 @@ ensure_realm_imported() {
 
 # --- keycloak realm reconcile (drift on an ALREADY-EXISTING realm) ---------
 # `kc.sh start --import-realm` only ever CREATES realms: one that already exists
-# is skipped wholesale. So every edit to protofast-realm.json after the realm's
+# is skipped wholesale. So every edit to a realm JSON after the realm's
 # first creation — the required-action priorities that decide whether sign-up
 # verifies the email BEFORE asking for a password, the realm login/registration
 # flags, the password policy — silently never reaches a running deployment.
 # sync_keycloak_config puts the new JSON on the box; this pushes the parts that
 # matter through the Admin API once Keycloak is healthy, so the file in git stays
-# the source of truth instead of drifting away from the live realm.
+# the source of truth instead of drifting away from the live realm (every realm file).
 #
 # Deliberately NARROW: allowlisted realm-level flags and required actions only.
 # It does NOT touch users, clients, authentication flows or the user-profile
@@ -424,6 +424,9 @@ webAuthnPolicyPasswordlessAvoidSameAuthenticatorRegister
 webAuthnPolicyPasswordlessAcceptableAaguids
 webAuthnPolicyPasswordlessPasskeysEnabled webAuthnPolicyPasswordlessMediation"
 
+# Placeholders in KC_REALM_KEYS resolved from the container's env, as the import does; others are skipped.
+KC_REALM_ENV="WEBAUTHN_RP_ID THEPLOT_WEBAUTHN_RP_ID"
+
 # Same idea one level down, for keys that live in the realm's "attributes" map
 # (kcadm addresses a dotted attribute name by quoting it). Action tokens default
 # to a 5-minute life, which is nothing for sign-up mail: every link the sign-up
@@ -462,71 +465,40 @@ kcadm_kc() {
   compose exec -T keycloak /opt/keycloak/bin/kcadm.sh "$@" --config "$KC_KCADM_CONFIG"
 }
 
-reconcile_keycloak_realm() {
-  if [ "${KEYCLOAK_RECONCILE:-1}" != 1 ]; then
-    log "KEYCLOAK_RECONCILE=${KEYCLOAK_RECONCILE}; skipping keycloak realm reconcile"
-    return 0
-  fi
-
-  local realm_file realm secret cid out rc=0
-  realm_file="$(ls -1 "${APP_DIR}"/keycloak/realms/*.json 2>/dev/null | head -n1 || true)"
-  if [ -z "$realm_file" ]; then
-    log "WARNING: no realm JSON under ${APP_DIR}/keycloak/realms; skipping realm reconcile"
-    return 0
-  fi
+# One realm file's worth of reconcile_keycloak_realm; expects kcadm to be logged in.
+reconcile_realm_file() {
+  local realm_file="$1" realm rc=0
   realm="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("realm",""))' \
            "$realm_file" 2>/dev/null || true)"
   if [ -z "$realm" ]; then
-    log "WARNING: $(basename "$realm_file") declares no realm name; skipping realm reconcile"
-    return 0
+    log "WARNING: $(basename "$realm_file") declares no realm name; skipping it"
+    return 1
   fi
+  log "reconciling realm '${realm}' from $(basename "$realm_file")"
 
-  log "reconciling realm '${realm}' from $(basename "$realm_file") via the Admin API"
-
-  # tr -d strips the base64 padding/alphabet chars that would need quoting downstream.
-  secret="$(head -c 24 /dev/urandom | base64 | tr -d '\n=+/')"
-  # Capture rather than discard: this step failing is the ONLY thing standing
-  # between a realm-JSON edit and the live realm, and a bare WARNING with no
-  # output leaves nothing to debug from. The command prints no secrets — the
-  # client secret travels by env, never argv.
-  if ! out="$(compose exec -T \
-        -e KC_RECONCILE_CID="$KC_RECONCILE_CLIENT_ID" \
-        -e KC_RECONCILE_SEC="$secret" \
-        keycloak bash -c '
-          export KC_DB_PASSWORD="$(cat /run/secrets/kc-db-password 2>/dev/null || true)"
-          exec /opt/keycloak/bin/kc.sh bootstrap-admin service \
-            --client-id:env KC_RECONCILE_CID \
-            --client-secret:env KC_RECONCILE_SEC --no-prompt' 2>&1)"; then
-    printf '%s\n' "$out" | tail -n 20
-    log "WARNING: could not create the temporary admin service account; realm config NOT reconciled."
-    log "If a previous run left '${KC_RECONCILE_CLIENT_ID}' behind, delete it from the master realm and re-run."
-    return 0
-  fi
-
-  # Past this point the client EXISTS, so every path has to reach the cleanup below.
-  if ! out="$(compose exec -T -e KC_RECONCILE_SEC="$secret" keycloak bash -c '
-        /opt/keycloak/bin/kcadm.sh config credentials \
-          --server http://localhost:8080 --realm master \
-          --client "'"$KC_RECONCILE_CLIENT_ID"'" --secret "$KC_RECONCILE_SEC" \
-          --config "'"$KC_KCADM_CONFIG"'"' 2>&1)"; then
-    printf '%s\n' "$out" | tail -n 20
-    log "WARNING: temporary admin could not authenticate; realm config NOT reconciled"
-    rc=1
-  fi
-
-  if [ "$rc" -eq 0 ]; then
-    # Realm-level flags, as alternating "-s" / "key=value" lines so a value with
-    # spaces (passwordPolicy) survives without quoting games.
-    local args=()
-    # shellcheck disable=SC2086  # both key lists are intentionally word-split
-    mapfile -t args < <(python3 - "$realm_file" $KC_REALM_KEYS -- $KC_REALM_ATTRS <<'PY'
-import json, sys
+  # Realm-level flags, as alternating "-s" / "key=value" lines so a value with
+  # spaces (passwordPolicy) survives without quoting games.
+  local args=() env_args=() var
+  for var in $KC_REALM_ENV; do
+    env_args+=("${var}=$(compose exec -T keycloak printenv "$var" 2>/dev/null | tr -d '\r\n' || true)")
+  done
+  # shellcheck disable=SC2086  # both key lists are intentionally word-split
+  mapfile -t args < <(env "${env_args[@]}" KC_REALM_ENV="$KC_REALM_ENV" \
+                      python3 - "$realm_file" $KC_REALM_KEYS -- $KC_REALM_ATTRS <<'PY'
+import json, os, re, sys
 realm = json.load(open(sys.argv[1]))
 argv = sys.argv[2:]
 split = argv.index("--")
+resolvable = set(os.environ["KC_REALM_ENV"].split())
+placeholder = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)(?::(.*))?\}$")
 
 
 def emit(name, value):
+    match = placeholder.match(value)
+    if match and match.group(1) in resolvable:
+        value = os.environ.get(match.group(1)) or (match.group(2) or "")
+        if not value:
+            return
     if "${" in value:        # unsubstituted import placeholder — never push it
         return
     print("-s")
@@ -554,31 +526,31 @@ for key in argv[split + 1:]:
     if key in attributes:
         emit(f'attributes."{key}"', str(attributes[key]))
 PY
-    )
-    if [ "${#args[@]}" -gt 0 ]; then
-      if kcadm_kc update "realms/${realm}" "${args[@]}" >/dev/null 2>&1; then
-        log "realm '${realm}': reconciled $(( ${#args[@]} / 2 )) realm-level setting(s)"
-      else
-        log "WARNING: could not reconcile realm-level settings for '${realm}'"
-        rc=1
-      fi
+  )
+  if [ "${#args[@]}" -gt 0 ]; then
+    if kcadm_kc update "realms/${realm}" "${args[@]}" >/dev/null 2>&1; then
+      log "realm '${realm}': reconciled $(( ${#args[@]} / 2 )) realm-level setting(s)"
+    else
+      log "WARNING: could not reconcile realm-level settings for '${realm}'"
+      rc=1
     fi
+  fi
 
-    # Required actions. This is the drift that matters most: the priorities decide
-    # the ORDER required actions run in, and VERIFY_EMAIL must sort before
-    # UPDATE_PASSWORD or sign-up asks for a password before the address is proven.
-    local alias enabled default priority n=0
-    while IFS=$'\t' read -r alias enabled default priority; do
-      [ -n "$alias" ] || continue
-      if kcadm_kc update "authentication/required-actions/${alias}" -r "$realm" \
-           -s "enabled=${enabled}" -s "defaultAction=${default}" -s "priority=${priority}" \
-           >/dev/null 2>&1; then
-        n=$(( n + 1 ))
-      else
-        log "WARNING: could not reconcile required action '${alias}' (not registered in the realm?)"
-        rc=1
-      fi
-    done < <(python3 - "$realm_file" <<'PY'
+  # Required actions. This is the drift that matters most: the priorities decide
+  # the ORDER required actions run in, and VERIFY_EMAIL must sort before
+  # UPDATE_PASSWORD or sign-up asks for a password before the address is proven.
+  local alias enabled default priority n=0
+  while IFS=$'\t' read -r alias enabled default priority; do
+    [ -n "$alias" ] || continue
+    if kcadm_kc update "authentication/required-actions/${alias}" -r "$realm" \
+         -s "enabled=${enabled}" -s "defaultAction=${default}" -s "priority=${priority}" \
+         >/dev/null 2>&1; then
+      n=$(( n + 1 ))
+    else
+      log "WARNING: could not reconcile required action '${alias}' (not registered in the realm?)"
+      rc=1
+    fi
+  done < <(python3 - "$realm_file" <<'PY'
 import json, sys
 for a in json.load(open(sys.argv[1])).get("requiredActions", []):
     alias = a.get("alias")
@@ -591,44 +563,44 @@ for a in json.load(open(sys.argv[1])).get("requiredActions", []):
         str(a.get("priority", 0)),
     ]))
 PY
-    )
-    [ "$n" -gt 0 ] && log "realm '${realm}': reconciled ${n} required action(s)"
+  )
+  [ "$n" -gt 0 ] && log "realm '${realm}': reconciled ${n} required action(s)"
 
-    # Client settings (KC_CLIENT_ATTRS + KC_CLIENT_FIELDS). The realm JSON holds
-    # the import's ${BACKCHANNEL_LOGOUT_URL:} placeholder, never the resolved
-    # value, so read what Keycloak was actually started with out of the container
-    # — deriving it again here is how the import and the reconcile end up
-    # disagreeing. Python emits the kcadm key path already built, so a field and
-    # an attribute differ only in what it printed.
-    local kc_bcl_url c_client c_key c_value c_id="" c_seen="" m=0
-    kc_bcl_url="$(compose exec -T keycloak printenv BACKCHANNEL_LOGOUT_URL 2>/dev/null \
-                  | tr -d '\r\n' || true)"
+  # Client settings (KC_CLIENT_ATTRS + KC_CLIENT_FIELDS). The realm JSON holds
+  # the import's ${BACKCHANNEL_LOGOUT_URL:} placeholder, never the resolved
+  # value, so read what Keycloak was actually started with out of the container
+  # — deriving it again here is how the import and the reconcile end up
+  # disagreeing. Python emits the kcadm key path already built, so a field and
+  # an attribute differ only in what it printed.
+  local kc_bcl_url c_client c_key c_value c_id="" c_seen="" m=0
+  kc_bcl_url="$(compose exec -T keycloak printenv BACKCHANNEL_LOGOUT_URL 2>/dev/null \
+                | tr -d '\r\n' || true)"
 
-    while IFS=$'\t' read -r c_client c_key c_value; do
-      [ -n "$c_client" ] || continue
-      if [ "$c_client" != "$c_seen" ]; then
-        c_seen="$c_client"
-        c_id="$(kcadm_kc get clients -r "$realm" -q "clientId=${c_client}" \
-                --fields id --format csv --noquotes 2>/dev/null | tr -d '\r"' | head -n1 || true)"
-        if [ -z "$c_id" ]; then
-          log "WARNING: client '${c_client}' not in realm '${realm}'; its settings are NOT reconciled"
-          rc=1
-        fi
-      fi
-      [ -n "$c_id" ] || continue
-
-      # kcadm merges -s onto the client it just fetched, so the secret, redirect
-      # URIs and flows it already has ride through untouched.
-      if kcadm_kc update "clients/${c_id}" -r "$realm" \
-           -s "${c_key}=${c_value}" >/dev/null 2>&1; then
-        m=$(( m + 1 ))
-      else
-        log "WARNING: could not set ${c_key} on client '${c_client}' in realm '${realm}'"
+  while IFS=$'\t' read -r c_client c_key c_value; do
+    [ -n "$c_client" ] || continue
+    if [ "$c_client" != "$c_seen" ]; then
+      c_seen="$c_client"
+      c_id="$(kcadm_kc get clients -r "$realm" -q "clientId=${c_client}" \
+              --fields id --format csv --noquotes 2>/dev/null | tr -d '\r"' | head -n1 || true)"
+      if [ -z "$c_id" ]; then
+        log "WARNING: client '${c_client}' not in realm '${realm}'; its settings are NOT reconciled"
         rc=1
       fi
-    # shellcheck disable=SC2086  # both key lists are intentionally word-split
-    done < <(BACKCHANNEL_LOGOUT_URL="$kc_bcl_url" \
-             python3 - "$realm_file" $KC_CLIENT_ATTRS -- $KC_CLIENT_FIELDS <<'PY'
+    fi
+    [ -n "$c_id" ] || continue
+
+    # kcadm merges -s onto the client it just fetched, so the secret, redirect
+    # URIs and flows it already has ride through untouched.
+    if kcadm_kc update "clients/${c_id}" -r "$realm" \
+         -s "${c_key}=${c_value}" >/dev/null 2>&1; then
+      m=$(( m + 1 ))
+    else
+      log "WARNING: could not set ${c_key} on client '${c_client}' in realm '${realm}'"
+      rc=1
+    fi
+  # shellcheck disable=SC2086  # both key lists are intentionally word-split
+  done < <(BACKCHANNEL_LOGOUT_URL="$kc_bcl_url" \
+           python3 - "$realm_file" $KC_CLIENT_ATTRS -- $KC_CLIENT_FIELDS <<'PY'
 import json, os, re, sys
 
 realm = json.load(open(sys.argv[1]))
@@ -669,8 +641,61 @@ for client in realm.get("clients", []):
         if name in client:
             print("\t".join([client_id, name, text(client[name])]))
 PY
-    )
-    [ "$m" -gt 0 ] && log "realm '${realm}': reconciled ${m} client setting(s)"
+  )
+  [ "$m" -gt 0 ] && log "realm '${realm}': reconciled ${m} client setting(s)"
+  return "$rc"
+}
+
+reconcile_keycloak_realm() {
+  if [ "${KEYCLOAK_RECONCILE:-1}" != 1 ]; then
+    log "KEYCLOAK_RECONCILE=${KEYCLOAK_RECONCILE}; skipping keycloak realm reconcile"
+    return 0
+  fi
+
+  local realm_files=() realm_file secret cid out rc=0
+  mapfile -t realm_files < <(ls -1 "${APP_DIR}"/keycloak/realms/*.json 2>/dev/null || true)
+  if [ "${#realm_files[@]}" -eq 0 ]; then
+    log "WARNING: no realm JSON under ${APP_DIR}/keycloak/realms; skipping realm reconcile"
+    return 0
+  fi
+
+  log "reconciling ${#realm_files[@]} realm(s) via the Admin API"
+
+  # tr -d strips the base64 padding/alphabet chars that would need quoting downstream.
+  secret="$(head -c 24 /dev/urandom | base64 | tr -d '\n=+/')"
+  # Capture rather than discard: this step failing is the ONLY thing standing
+  # between a realm-JSON edit and the live realm, and a bare WARNING with no
+  # output leaves nothing to debug from. The command prints no secrets — the
+  # client secret travels by env, never argv.
+  if ! out="$(compose exec -T \
+        -e KC_RECONCILE_CID="$KC_RECONCILE_CLIENT_ID" \
+        -e KC_RECONCILE_SEC="$secret" \
+        keycloak bash -c '
+          export KC_DB_PASSWORD="$(cat /run/secrets/kc-db-password 2>/dev/null || true)"
+          exec /opt/keycloak/bin/kc.sh bootstrap-admin service \
+            --client-id:env KC_RECONCILE_CID \
+            --client-secret:env KC_RECONCILE_SEC --no-prompt' 2>&1)"; then
+    printf '%s\n' "$out" | tail -n 20
+    log "WARNING: could not create the temporary admin service account; realm config NOT reconciled."
+    log "If a previous run left '${KC_RECONCILE_CLIENT_ID}' behind, delete it from the master realm and re-run."
+    return 0
+  fi
+
+  # Past this point the client EXISTS, so every path has to reach the cleanup below.
+  if ! out="$(compose exec -T -e KC_RECONCILE_SEC="$secret" keycloak bash -c '
+        /opt/keycloak/bin/kcadm.sh config credentials \
+          --server http://localhost:8080 --realm master \
+          --client "'"$KC_RECONCILE_CLIENT_ID"'" --secret "$KC_RECONCILE_SEC" \
+          --config "'"$KC_KCADM_CONFIG"'"' 2>&1)"; then
+    printf '%s\n' "$out" | tail -n 20
+    log "WARNING: temporary admin could not authenticate; realm config NOT reconciled"
+    rc=1
+  fi
+
+  if [ "$rc" -eq 0 ]; then
+    for realm_file in "${realm_files[@]}"; do
+      reconcile_realm_file "$realm_file" || rc=1
+    done
   fi
 
   # Drop the throwaway admin LAST — the token above stays valid for the calls that
@@ -688,7 +713,7 @@ PY
   compose exec -T keycloak bash -c "rm -f '${KC_KCADM_CONFIG}'" >/dev/null 2>&1 || true
 
   if [ "$rc" -ne 0 ]; then
-    log "WARNING: realm reconcile finished with errors; the live realm may still differ from $(basename "$realm_file")"
+    log "WARNING: realm reconcile finished with errors; a live realm may still differ from its JSON"
   fi
   return 0
 }
