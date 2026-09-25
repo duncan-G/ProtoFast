@@ -7,9 +7,9 @@ matter. Self-contained.*
 
 | Root | Runs where | Creates |
 |---|---|---|
-| [`infra/bootstrap`](../../infra/bootstrap) | **locally, once**, with admin credentials | the S3 state bucket, the GitHub OIDC provider, the `protofast-infra` and `protofast-deploy` roles, a permissions boundary, and (optionally) the GitHub repo variables and secrets |
-| [`infra/identity-center`](../../infra/identity-center) | locally, once | AWS Identity Center permission sets (platform-admin, developer) and the SES sender IAM user |
-| [`infra/`](../../infra) | GitHub Actions (`infra.yml`) | everything the running system needs |
+| [`infra/bootstrap`](../infra/bootstrap) | **locally, once**, with admin credentials | the S3 state bucket, the GitHub OIDC provider, the `protofast-infra` and `protofast-deploy` roles, a permissions boundary, and (optionally) the GitHub repo variables and secrets |
+| [`infra/identity-center`](../infra/identity-center) | locally, once | AWS Identity Center permission sets (platform-admin, developer) and the SES sender IAM user |
+| [`infra/`](../infra) | GitHub Actions (`infra.yml`) | everything the running system needs |
 
 The split exists because the main root runs in CI, and CI needs a state bucket and
 an OIDC role that nothing has created yet. Bootstrap breaks that cycle from an

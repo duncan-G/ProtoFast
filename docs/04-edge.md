@@ -5,7 +5,7 @@ Self-contained.*
 
 ## Envoy's config is generated at container start
 
-There is no checked-in `envoy.yaml`. [`proxy/entrypoint.sh`](../../proxy/entrypoint.sh)
+There is no checked-in `envoy.yaml`. [`proxy/entrypoint.sh`](../proxy/entrypoint.sh)
 renders one from templates using environment variables, then execs Envoy:
 
 ```

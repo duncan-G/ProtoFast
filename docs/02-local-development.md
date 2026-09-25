@@ -10,7 +10,7 @@ aspire run
 ```
 
 That is the whole thing. It builds and starts every resource declared in
-`[apphost/Program.cs](../../apphost/Program.cs)` and prints the Aspire dashboard
+[`apphost/Program.cs`](../apphost/Program.cs) and prints the Aspire dashboard
 URL. Stop with `Ctrl+C` or `aspire stop`.
 
 Prerequisites (installed idempotently by `bash scripts/setup-dev-dependencies.sh` on Ubuntu 24): .NET 10 SDK, Aspire CLI, Docker Engine, and Node 24.
