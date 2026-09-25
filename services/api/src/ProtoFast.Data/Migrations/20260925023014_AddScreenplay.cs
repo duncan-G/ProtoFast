@@ -41,7 +41,6 @@ namespace ProtoFast.Data.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
-                    user_id = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     story_id = table.Column<Guid>(type: "uuid", nullable: false),
                     position = table.Column<int>(type: "integer", nullable: false),
                     title = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
@@ -67,7 +66,6 @@ namespace ProtoFast.Data.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
-                    user_id = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     story_id = table.Column<Guid>(type: "uuid", nullable: false),
                     name = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     kind = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
@@ -94,7 +92,6 @@ namespace ProtoFast.Data.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
-                    user_id = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     story_id = table.Column<Guid>(type: "uuid", nullable: false),
                     name = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     setting = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
@@ -121,7 +118,6 @@ namespace ProtoFast.Data.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
-                    user_id = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     story_id = table.Column<Guid>(type: "uuid", nullable: false),
                     name = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     date_created = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
@@ -145,7 +141,6 @@ namespace ProtoFast.Data.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
-                    user_id = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     act_id = table.Column<Guid>(type: "uuid", nullable: false),
                     position = table.Column<int>(type: "integer", nullable: false),
                     title = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
@@ -171,7 +166,6 @@ namespace ProtoFast.Data.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
-                    user_id = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     scene_id = table.Column<Guid>(type: "uuid", nullable: false),
                     position = table.Column<int>(type: "integer", nullable: false),
                     type = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
@@ -221,7 +215,6 @@ namespace ProtoFast.Data.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
-                    user_id = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     scene_element_id = table.Column<Guid>(type: "uuid", nullable: false),
                     cast_member_id = table.Column<Guid>(type: "uuid", nullable: true),
                     prop_id = table.Column<Guid>(type: "uuid", nullable: true),

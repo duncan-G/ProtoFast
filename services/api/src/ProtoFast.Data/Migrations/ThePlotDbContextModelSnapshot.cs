@@ -51,12 +51,6 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("title");
 
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("user_id");
-
                     b.HasKey("Id")
                         .HasName("pk_acts");
 
@@ -103,12 +97,6 @@ namespace ProtoFast.Data.Migrations
                     b.Property<Guid>("StoryId")
                         .HasColumnType("uuid")
                         .HasColumnName("story_id");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("user_id");
 
                     b.HasKey("Id")
                         .HasName("pk_cast_members");
@@ -274,12 +262,6 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("story_id");
 
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("user_id");
-
                     b.HasKey("Id")
                         .HasName("pk_locations");
 
@@ -317,12 +299,6 @@ namespace ProtoFast.Data.Migrations
                     b.Property<Guid>("StoryId")
                         .HasColumnType("uuid")
                         .HasColumnName("story_id");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("user_id");
 
                     b.HasKey("Id")
                         .HasName("pk_props");
@@ -362,12 +338,6 @@ namespace ProtoFast.Data.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
                         .HasColumnName("title");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("user_id");
 
                     b.HasKey("Id")
                         .HasName("pk_scenes");
@@ -437,12 +407,6 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("type");
 
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("user_id");
-
                     b.HasKey("Id")
                         .HasName("pk_scene_elements");
 
@@ -495,12 +459,6 @@ namespace ProtoFast.Data.Migrations
                     b.Property<Guid>("SceneElementId")
                         .HasColumnType("uuid")
                         .HasColumnName("scene_element_id");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("user_id");
 
                     b.HasKey("Id")
                         .HasName("pk_scene_element_mentions");

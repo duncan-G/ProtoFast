@@ -12,9 +12,6 @@ public sealed class SceneElementMention
 {
     public Guid Id { get; set; }
 
-    /// <inheritdoc cref="Story.UserId"/>
-    public string UserId { get; set; } = "";
-
     public Guid SceneElementId { get; set; }
 
     public SceneElement SceneElement { get; set; } = null!;

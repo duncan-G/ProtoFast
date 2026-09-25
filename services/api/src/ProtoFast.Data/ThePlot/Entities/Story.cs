@@ -17,6 +17,8 @@ public sealed class Story : IDateStamped
     /// <summary>
     /// The owner's subject from the internal JWT. Stamped from the caller on insert and never
     /// taken from a request; reads are filtered to it and writes for another owner are refused.
+    /// The story owns everything under it, so acts, scenes, elements, mentions and the library
+    /// carry no owner of their own: their query filters follow the foreign keys up to this one.
     /// </summary>
     public string UserId { get; set; } = "";
 

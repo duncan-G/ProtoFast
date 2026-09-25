@@ -6,8 +6,8 @@ namespace ProtoFast.Database;
 
 /// <summary>
 /// Attaches the per-user query filter to every entity in a model. An entity is user-scoped when
-/// it has a string <c>UserId</c> property holding the caller subject, or a navigation path to an
-/// entity that does. Anything else must opt out with <c>HasNoScope()</c>; the model build fails
+/// it has a string <c>UserId</c> property holding the caller subject, or a path of required
+/// foreign keys up to an owning entity that does. Anything else must opt out with <c>HasNoScope()</c>; the model build fails
 /// otherwise, so a table can never be added without deciding who may see it.
 /// </summary>
 public sealed class QueryFilterService
@@ -89,7 +89,7 @@ public sealed class QueryFilterService
 
             foreach (IReadOnlyNavigation navigation in currentEntity.GetNavigations())
             {
-                if (!navigation.IsCollection && !visited.Contains(navigation.TargetEntityType))
+                if (IsPathToOwner(navigation) && !visited.Contains(navigation.TargetEntityType))
                 {
                     queue.Enqueue((navigation.TargetEntityType, [.. currentPath, navigation]));
                 }
@@ -98,4 +98,14 @@ public sealed class QueryFilterService
 
         return null;
     }
+
+    /// <summary>
+    /// Whether a navigation leads from an owned row to its owner: a required foreign key on this
+    /// side, pointing at the principal. An optional reference (a scene element's location, say)
+    /// is null on some rows, so a filter through it would hide those rows; and the principal side
+    /// of a one-to-one may have no dependent at all. Either could still be the shortest path, so
+    /// both are skipped rather than left to the search.
+    /// </summary>
+    private static bool IsPathToOwner(IReadOnlyNavigation navigation) =>
+        !navigation.IsCollection && navigation.IsOnDependent && navigation.ForeignKey.IsRequired;
 }

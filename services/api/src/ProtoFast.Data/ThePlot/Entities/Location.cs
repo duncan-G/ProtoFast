@@ -10,9 +10,6 @@ public sealed class Location : IDateStamped
 {
     public Guid Id { get; set; }
 
-    /// <inheritdoc cref="Story.UserId"/>
-    public string UserId { get; set; } = "";
-
     public Guid StoryId { get; set; }
 
     public Story Story { get; set; } = null!;
