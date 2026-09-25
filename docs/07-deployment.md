@@ -27,7 +27,7 @@ reused. That is also what makes rollback trivial: an old tag is still there.
 | `keycloak`, `postgres`, `redis`, `cloudflared`, `aspire-dashboard` | pinned upstream images | — | compose/config paths |
 
 The first group runs through the reusable workflow
-[`_component-deploy.yml`](../../.github/workflows/_component-deploy.yml); the pinned
+[`_component-deploy.yml`](../.github/workflows/_component-deploy.yml); the pinned
 upstream tiers have their own small workflows because there is nothing to build.
 
 ## The pipeline

@@ -133,7 +133,7 @@ abandoned before verifying their address, instead of being told "email already
 registered" forever.
 
 The full rationale, including which "tidy-ups" silently break the flow, is in
-[`deploy/keycloak/realms/README.md`](../../deploy/keycloak/realms/README.md).
+[`deploy/keycloak/realms/README.md`](../deploy/keycloak/realms/README.md).
 
 ## Changing the realm
 

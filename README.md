@@ -52,7 +52,7 @@ graph TD
 
 Every request goes through Envoy: each client gets its own HTTPS listener, so pages and API calls share one origin. Envoy routes by path prefix — `/payments/*` and `/api/*` to the gRPC services, sign-in and account endpoints to `auth` — and asks `auth` who the caller is (ext_authz) before forwarding anything else. Ports are assigned by Aspire at startup, except the two client listeners, which are pinned because Keycloak's redirect URIs are exact.
 
-For the full picture, including the production topology, see [docs/new/01-topology.md](docs/new/01-topology.md).
+For the full picture, including the production topology, see [docs/01-topology.md](docs/01-topology.md).
 
 ## Requirements
 

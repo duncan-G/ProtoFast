@@ -25,7 +25,7 @@ Auth_Keycloak__Authority
 ## .NET services
 
 All three services call `builder.AddServiceDefaults()`
-([`services/shared/ServiceDefaults`](../../services/shared/ServiceDefaults)), which
+([`services/shared/ServiceDefaults`](../services/shared/ServiceDefaults)), which
 sets up OpenTelemetry (traces, metrics, logs — exported only when
 `OTEL_EXPORTER_OTLP_ENDPOINT` is set), health checks over both HTTP and the gRPC
 Health protocol, and service discovery.
