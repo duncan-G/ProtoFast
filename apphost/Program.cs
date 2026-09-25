@@ -1,6 +1,7 @@
 using ProtoFast.AppHost.Aws;
 using ProtoFast.AppHost.ClientApp;
 using ProtoFast.AppHost.EnvoyProxy;
+using ProtoFast.AppHost.LocalStack;
 using ProtoFast.AppHost.OpenTelemetryCollector;
 using ProtoFast.AppHost.Postgres;
 
@@ -35,7 +36,18 @@ var authDb = postgres
     .AddDatabase("auth-db", databaseName: "auth")
     .WithSchemaMigrations<Projects.ProtoFast_Auth_SchemaMigrations>(builder);
 
+var protofastDb = postgres
+    .AddDatabase("protofast-db", databaseName: "protofast")
+    .WithSchemaMigrations<Projects.ProtoFast_SchemaMigrations>(builder);
+
 var redis = builder.AddRedis("redis");
+
+const string documentUploadBucket = "protofast-document-upload";
+
+var localstack = builder
+    .AddLocalStack("localstack")
+    .WithBuckets([documentUploadBucket])
+    .WithQueues([documentUploadBucket]);
 
 var keycloak = builder.AddKeycloak("keycloak", 8080)
     .WithImageTag("26.7")
@@ -156,6 +168,11 @@ var payments = builder.AddProject<Projects.ProtoFast_Payments_Api>("payments")
 
 // Api
 var api = builder.AddProject<Projects.ProtoFast_Api>("api")
+    .WithReference(redis)
+    .WaitFor(redis)
+    .WithReference(protofastDb, connectionName: "protofast")
+    .WaitFor(protofastDb)
+    .WithLocalStackS3(localstack, envPrefix: "Api_", bucket: documentUploadBucket)
     .WithOtlpCollectorReference(otel)
     .WithSsoProfile();
 
@@ -165,6 +182,9 @@ var proxy = builder.AddEnvoyProxy("envoy", useSsrHost)
     .WaitFor(auth)
     .WaitFor(payments)
     .WaitFor(api);
+
+// Resolved lazily at start, after the WithClient calls below have registered the listeners.
+localstack.WithClientOrigins(proxy.GetClientOrigins);
 
 var otelHttp = otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName);
 

@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+option csharp_namespace = "ProtoFast.Api";
+
+package document;
+
+// A user's documents: the uploads that landed in storage. Every call is confined to the
+// caller the internal JWT names; there is no way to ask for another user's documents.
+service Documents {
+
+    // The caller's documents, newest first.
+    rpc ListDocuments (ListDocumentsRequest) returns (ListDocumentsReply);
+
+}
+
+message Document {
+    // The upload id the document was imported under (a 26-character ULID).
+    string id = 1;
+    // The title shown on the desk, derived from the file name at import.
+    string name = 2;
+    string file_name = 3;
+    int64 size_bytes = 4;
+    string media_type = 5;
+    // With the leading dot: ".docx".
+    string file_extension = 6;
+    int64 created_unix_seconds = 7;
+    int64 last_modified_unix_seconds = 8;
+}
+
+message ListDocumentsRequest {}
+
+message ListDocumentsReply {
+    repeated Document documents = 1;
+}

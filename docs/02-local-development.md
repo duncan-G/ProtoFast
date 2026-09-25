@@ -23,14 +23,15 @@ AWS CLI v2 and an SSO profile named **`developer`** (the Developer permission se
 | Resource                  | Kind                 | Notable dev-only configuration                                                                                   |
 | ------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `otel-collector`          | container            | OTLP gRPC + HTTP receivers; every other resource points at it                                                    |
-| `postgres`                | container            | plus pgAdmin and a data volume (publish mode gets neither); hosts `keycloak` and `auth` databases                |
+| `postgres`                | container            | plus pgAdmin and a data volume (publish mode gets neither); hosts `keycloak`, `auth` and `protofast` databases   |
 | `auth-db`                 | database             | runs `ProtoFast.Auth.SchemaMigrations` before `auth` starts                                                      |
+| `protofast-db`            | database             | runs `ProtoFast.SchemaMigrations` (the ThePlot `plot` schema) alongside `api`                                    |
 | `redis`                   | container            | session, correlation and replay stores                                                                           |
 | `keycloak`                | container (26.7)     | realm import from `infra/keycloak/realms`, themes and provider JAR bind-mounted, tracing + logs to the collector |
 | `smtp4dev`                | container            | local mail catcher; both Keycloak and `auth` are pointed at it                                                   |
 | `auth`, `payments`, `api` | .NET projects        | OTLP reference, Redis/Postgres connection strings; JWT and Keycloak secrets from `protofast/dev`                 |
 | `envoy`                   | Dockerfile container | one HTTPS listener per client, dev certificate, upstream host/port for every service                             |
-| `admin`, `protofast`      | `ng serve`           | `PORT`, `SSL_CERT`, `SSL_KEY`, `SERVER_URL`, OTel endpoints                                                      |
+| `admin`, `protofast`, `theplot` | `ng serve`     | `PORT`, `SSL_CERT`, `SSL_KEY`, `SERVER_URL`, OTel endpoints                                                      |
 
 
 Two details are worth knowing because they explain otherwise-mysterious errors:
@@ -100,8 +101,9 @@ this is for UI work only.
 | Task                              | How                                                                                                                                           |
 | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | Regenerate gRPC client code       | `npm run generate:grpc` in the client (runs automatically on `start`/`build`)                                                                 |
-| Add an EF migration               | `dotnet ef migrations add <Name> -p services/auth/src/ProtoFast.Auth.Data`                                                                    |
-| Apply migrations                  | automatic — `auth-db` runs the migrations project before `auth` starts                                                                        |
+| Add an EF migration (auth)        | `dotnet ef migrations add <Name> -p services/auth/src/ProtoFast.Auth.Data`                                                                    |
+| Add an EF migration (protofast)   | in `services/api/src/ProtoFast.Data`: `dotnet ef migrations add <Name> --startup-project ../ProtoFast.SchemaMigrations`                       |
+| Apply migrations                  | automatic — `auth-db` and `protofast-db` each run their migrations project when the AppHost starts                                            |
 | Rebuild the Keycloak provider JAR | `infra/keycloak/providers/build.sh`, then restart Keycloak                                                                                    |
 | Edit the Keycloak login theme     | edit under `deploy/keycloak/themes/protofast`; `start-dev` disables theme caching, so a refresh is enough                                     |
 | Change the realm                  | edit `infra/keycloak/realms/protofast-realm.json` **and** delete the Keycloak container's data — the import skips a realm that already exists |

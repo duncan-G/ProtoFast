@@ -1,0 +1,204 @@
+<div class="ember flex min-h-screen flex-col antialiased">
+  <!-- ─────────────────────────── top bar ─────────────────────────── -->
+  <header class="flex h-16 flex-none items-stretch border-b border-[var(--color-divider)] bg-[color-mix(in_srgb,var(--color-text)_1.5%,var(--color-bg))]">
+    <a
+      routerLink="/"
+      class="flex items-center border-r border-[var(--color-divider)] px-5 text-[24px] no-underline sm:px-7 sm:pl-10"
+      ><app-theplot-logo
+    /></a>
+
+    <nav class="grid min-w-0 flex-1 grid-cols-3" aria-label="Modes">
+      @for (m of modes; track m) {
+        <button
+          type="button"
+          class="mode-tab border-r border-[var(--color-divider)]"
+          [attr.aria-current]="mode() === m ? 'page' : null"
+          (click)="setMode(m)"
+        >
+          <span>{{ modeInfo[m].label }}</span>
+          @if (counts()[m]; as count) {
+            <span class="mode-tab-count hidden sm:inline">{{ count }}</span>
+          }
+        </button>
+      }
+    </nav>
+
+    <div class="flex items-center px-4 sm:px-6 sm:pr-10">
+      <!-- Account and sign-out live behind the avatar; see shared/account-menu.ts. -->
+      <app-account-menu />
+    </div>
+  </header>
+
+  <main class="flex min-w-0 flex-1 flex-col">
+    <!-- ───────────────────────── page header ───────────────────────── -->
+    <div class="flex flex-wrap items-end gap-4 px-5 pt-7 sm:px-10">
+      <div class="min-w-[200px] flex-1">
+        <h6 class="mb-0">{{ info().eyebrow }}</h6>
+        <h1 class="mt-2.5 mb-0 text-[clamp(36px,5vw,48px)] tracking-[-0.015em]">{{ info().title }}</h1>
+      </div>
+
+      <label class="search">
+        <span aria-hidden="true">⌕</span>
+        <input
+          type="search"
+          [placeholder]="info().searchHint"
+          [attr.aria-label]="info().searchHint"
+          [value]="search()"
+          [disabled]="mode() !== 'write'"
+          (input)="search.set($any($event.target).value)"
+        />
+      </label>
+
+      @if (mode() === 'write') {
+        <button type="button" class="btn btn-secondary" (click)="openImport()">
+          <span class="text-[var(--color-accent-bright)]" aria-hidden="true">↑</span>Import
+        </button>
+      }
+    </div>
+
+    <!-- ──────────────────────────── tabs ──────────────────────────── -->
+    <div
+      class="flex gap-1 overflow-x-auto border-b border-[var(--color-divider)] px-5 pt-[22px] sm:px-10"
+      role="tablist"
+    >
+      @for (label of info().tabs; track label; let i = $index) {
+        <button
+          type="button"
+          class="subtab"
+          role="tab"
+          [attr.aria-selected]="tab() === i"
+          (click)="tab.set(i)"
+        >
+          {{ label }}
+        </button>
+      }
+    </div>
+
+    <!-- ─────────────────────────── content ─────────────────────────── -->
+    <div class="flex-1 px-5 pt-2 pb-[110px] sm:px-10">
+      @if (mode() === 'write') {
+        @if (documentsError()) {
+          <div class="panel-danger rise mt-4 flex flex-wrap items-center gap-3" role="alert">
+            <p class="m-0 min-w-0 flex-1 text-[13px]">{{ documentsError() }}</p>
+            <button type="button" class="btn btn-secondary" (click)="loadDocuments()">Try again</button>
+          </div>
+        }
+
+        @if (tab() === 0 && (pendingRows().length > 0 || deskRows().length > 0)) {
+          <div class="desk-head">
+            <span>Story</span><span>Chapters</span><span>Words</span><span>Adaptation</span><span>Updated</span>
+          </div>
+        }
+
+        @for (row of pendingRows(); track row.job.id) {
+          <div class="desk-row desk-row-pending rise">
+            <div class="flex min-w-0 items-center gap-3.5">
+              <div class="desk-cover desk-cover-pending">
+                <span class="spinner" aria-hidden="true"></span>
+              </div>
+              <div class="flex min-w-0 flex-col gap-1">
+                <span class="font-[family-name:var(--font-heading)] text-[21px] leading-[1.1] text-[var(--color-neutral-300)]">{{ row.title }}</span>
+                <span class="meta truncate">{{ row.file }}</span>
+              </div>
+            </div>
+            <span class="meta desk-cell-md text-[13px]">—</span>
+            <span class="meta desk-cell-md text-[13px]">—</span>
+            <span class="meta text-[var(--color-accent-bright)]">{{ row.status }}</span>
+            <span class="meta desk-cell-md">Importing</span>
+          </div>
+        }
+
+        @for (row of deskRows(); track row.document.id) {
+          <div class="desk-row" [class.desk-row-new]="row.isNew" [class.rise]="row.isNew">
+            <div class="flex min-w-0 items-center gap-3.5">
+              <div class="desk-cover" [style.background]="row.cover" aria-hidden="true"></div>
+              <div class="flex min-w-0 flex-col gap-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="font-[family-name:var(--font-heading)] text-[21px] leading-[1.1]">{{ row.document.name }}</span>
+                  @if (row.isNew) {
+                    <span class="tag tag-imported">Imported</span>
+                  }
+                </div>
+                <span class="meta truncate">{{ row.state }}</span>
+              </div>
+            </div>
+            <span class="meta desk-cell-md text-[13px] text-[var(--color-neutral-300)]">—</span>
+            <span class="meta desk-cell-md text-[13px] text-[var(--color-neutral-300)]">—</span>
+            <span class="desk-cell-md flex items-center gap-2 text-[13px] text-[var(--color-neutral-300)]">
+              <span class="dot"></span>Not adapted
+            </span>
+            <span class="meta">{{ row.updated }}</span>
+          </div>
+        }
+
+        @if (documentsLoading() && documents().length === 0 && pendingRows().length === 0) {
+          <p class="meta mt-8 flex items-center gap-2">
+            <span class="spinner" aria-hidden="true"></span>Loading your desk…
+          </p>
+        } @else if (searchMissed()) {
+          <div class="mt-10 max-w-[460px]">
+            <h2 class="text-[26px]">No story matches “{{ search() }}”.</h2>
+            <p class="m-0 text-muted text-[14px] leading-[1.6]">Try another word, or clear the search.</p>
+          </div>
+        } @else if (!documentsLoading() && !documentsError() && deskRows().length === 0 && pendingRows().length === 0) {
+          <div class="rise mt-10 max-w-[460px]">
+            <h2 class="text-[26px]">{{ emptyState()[0] }}</h2>
+            <p class="m-0 text-muted text-[14px] leading-[1.6] [text-wrap:pretty]">{{ emptyState()[1] }}</p>
+            @if (tab() === 0) {
+              <button type="button" class="btn btn-primary mt-5" (click)="openImport()">
+                <span aria-hidden="true">↑</span>Import a file
+              </button>
+            }
+          </div>
+        }
+      } @else {
+        <div class="rise mt-10 max-w-[460px]">
+          <h2 class="text-[26px]">{{ emptyState()[0] }}</h2>
+          <p class="m-0 text-muted text-[14px] leading-[1.6] [text-wrap:pretty]">{{ emptyState()[1] }}</p>
+        </div>
+      }
+    </div>
+  </main>
+
+  <!-- ─────────────────────────── toast ─────────────────────────── -->
+  @if (toast(); as t) {
+    <div class="toast rise" role="status">
+      <span class="check" aria-hidden="true">✓</span>
+      <div class="flex min-w-0 flex-col gap-0.5">
+        <span class="truncate text-[13px] font-medium">{{ t.title }}</span>
+        <span class="meta truncate text-[11px]">{{ t.sub }}</span>
+      </div>
+      <button type="button" class="btn btn-secondary px-2.5 py-1.5 text-[12px]" (click)="openDocument(t.documentId)">Open</button>
+    </div>
+  }
+
+  <!-- ─────────────────────────── tray ─────────────────────────── -->
+  @if (jobs().length > 0) {
+    <app-import-tray
+      [jobs]="jobs()"
+      [expanded]="trayOpen()"
+      (toggle)="toggleTray()"
+      (open)="openJob($event)"
+      (retry)="retryJob($event)"
+      (cancel)="cancelJob($event)"
+      (dismiss)="dismissJob($event)"
+      (clearAll)="clearFinishedJobs()"
+    />
+  }
+
+  <!-- ─────────────────────────── dialog ─────────────────────────── -->
+  @if (dialogOpen()) {
+    <app-import-dialog
+      [draft]="draft()"
+      [job]="dialogJob()"
+      [formats]="formats()"
+      [formatsError]="formatsError()"
+      (pick)="pickFile($event)"
+      (start)="startImport()"
+      (remove)="removeDraft()"
+      (close)="closeImport()"
+      (cancel)="cancelImport()"
+      (retry)="retryImport()"
+    />
+  }
+</div>

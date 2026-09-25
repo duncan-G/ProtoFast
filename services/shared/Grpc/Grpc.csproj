@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>ProtoFast.Grpc</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Grpc.AspNetCore" Version="2.80.0" />
+        <PackageReference Include="StackExchange.Redis" Version="2.13.1" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Database.Abstractions\Database.Abstractions.csproj" />
+      <ProjectReference Include="..\Exceptions\Exceptions.csproj" />
+      <ProjectReference Include="..\ServiceDefaults\ServiceDefaults.csproj" />
+    </ItemGroup>
+
+</Project>

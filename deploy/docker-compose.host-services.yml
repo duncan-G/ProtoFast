@@ -1,8 +1,9 @@
 # Host Services — SERVICES + STATE compose topology.
 #
 # Runs the three gRPC backends plus the new stateful tier: Keycloak (identity),
-# Postgres (Keycloak's `keycloak` DB + auth's durable `auth` DB, on the
-# persistent EBS volume at /mnt/pgdata), and Redis (in-memory session cache).
+# Postgres (Keycloak's `keycloak` DB, auth's durable `auth` DB and the api's
+# `protofast` DB, on the persistent EBS volume at /mnt/pgdata), and Redis
+# (in-memory session cache + rate limits).
 #
 # Cross-host edges get PUBLISHED ports so Host A's Envoy can dial this host's
 # private IP: auth 8080, payments 8081, api 8082, keycloak 8083. Same-host wiring
@@ -148,11 +149,43 @@ services:
       <<: *dotnet-env
       # Verify the internal JWT with the public key only (auth §6).
       Shared_InternalJwt__PublicKeyPemFile: /run/secrets/internal-jwt-pub
+      # Per-caller rate limits on the document endpoints live in Redis.
+      ConnectionStrings__redis: "redis:6379"
+      # ThePlot data (the `plot` schema of the `protofast` DB). PROTOFAST_DB_PASSWORD is
+      # seeded into .env from Api_DbPassword by deploy.sh ensure_secret_files; the role and
+      # DB are converged by ensure_protofast_db. Same env-var name Aspire injects in dev.
+      ConnectionStrings__protofast: "Host=postgres;Port=5432;Database=protofast;Username=protofast;Password=${PROTOFAST_DB_PASSWORD:-};GSS Encryption Mode=Disable"
+      # Document uploads (infra/documents.tf). Region and credentials come from AWS_REGION
+      # and the instance role, and S3__ServiceUrl stays unset so the SDK talks to real S3.
+      # DOCUMENTS_BUCKET is persisted into .env by deploy.sh from the deploy job; the api
+      # apply refuses to run without it rather than start a service that signs uploads for
+      # a bucket named "".
+      Api_S3__Bucket: "${DOCUMENTS_BUCKET:-}"
     volumes:
       - /usr/local/bin/grpc_health_probe:/usr/local/bin/grpc_health_probe:ro
     secrets:
       - internal-jwt-pub
     healthcheck: *grpc-health
+    depends_on:
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+
+  # One-shot schema-migrations job for the `protofast` DB, the api's counterpart to
+  # auth-migrations: deploy.sh runs it via `compose run --rm api-migrations` BEFORE recreating
+  # api and aborts the api apply on failure (fail-closed).
+  api-migrations:
+    image: ${ECR}/protofast-api-migrations:${API_MIGRATIONS_TAG}
+    profiles: ["jobs"]
+    restart: "no"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production          # hard-blocks --rebuild-schema
+      DOTNET_ENVIRONMENT: Production
+      ConnectionStrings__protofast: "Host=postgres;Port=5432;Database=protofast;Username=protofast;Password=${PROTOFAST_DB_PASSWORD:-};GSS Encryption Mode=Disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   postgres:
     # Pinned upstream image via POSTGRES_TAG (versions.env). Major-version bumps
@@ -169,7 +202,7 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - /mnt/pgdata:/var/lib/postgresql/data            # persistent EBS (infra §4.2)
-      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro  # creates `auth` DB + auth role (first init only)
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro  # `auth` + `protofast` DBs and roles (deploy.sh re-runs them)
     secrets:
       - kc-db-password
       - auth-db-password

@@ -8,7 +8,7 @@
 # Usage:  deploy.sh apply <component>=<tag> [<component>=<tag> ...]
 #
 #   component ∈ auth | payments | api | envoy | otel-collector | clients-host
-#               | aspire-dashboard
+#               | auth-migrations | api-migrations | aspire-dashboard
 #               | client-<name>            (e.g. client-admin, client-protofast)
 #
 # Contract (docs/independent-deployment-plan.md §5):
@@ -152,6 +152,12 @@ PY
   # The same first-boot abort can leave AUTH_DB_PASSWORD out of .env (interpolated
   # into auth's ConnectionStrings__auth); re-assert it from the same value.
   set_env "$ENV_FILE" AUTH_DB_PASSWORD "$auth"
+  # The api's `protofast` role (ConnectionStrings__protofast, ensure_protofast_db). Optional
+  # here so a secret that predates the key cannot abort unrelated Host B deploys; the api
+  # apply itself fails closed on it (run_api_migrations).
+  local api_db
+  api_db="$(_secret_get Api_DbPassword || true)"
+  if [ -n "$api_db" ]; then set_env "$ENV_FILE" PROTOFAST_DB_PASSWORD "$api_db"; fi
 
   # Auth-svc + Keycloak realm secrets (single SM secret, Auth_/Shared_ prefixes — auth §8.2).
   #
@@ -758,6 +764,60 @@ ensure_auth_db() {
   compose exec -T postgres /docker-entrypoint-initdb.d/01-auth.sh
 }
 
+# The api's `protofast` role+DB, same shape as auth's above. Keep the body in sync with
+# deploy/postgres/initdb/02-protofast.sh. The password reaches the script through
+# `compose exec -e` rather than a mounted secret, so the running Postgres container needs
+# no recreate to pick it up; on a first init the variable is absent and the script skips.
+write_protofast_initdb() {
+  mkdir -p "${APP_DIR}/postgres/initdb"
+  cat > "${APP_DIR}/postgres/initdb/02-protofast.sh" << 'SCRIPT'
+#!/bin/sh
+# Creates (or re-asserts) the api's `protofast` DB + owning `protofast` role.
+set -eu
+
+if [ -z "${PROTOFAST_DB_PASSWORD:-}" ]; then
+  echo "02-protofast.sh: PROTOFAST_DB_PASSWORD not set; skipping (deploy.sh ensure_protofast_db creates it)"
+  exit 0
+fi
+
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+  --set=pw="$PROTOFAST_DB_PASSWORD" <<'SQL'
+SELECT format('CREATE ROLE protofast LOGIN PASSWORD %L', :'pw')
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'protofast')
+UNION ALL
+SELECT format('ALTER ROLE protofast WITH PASSWORD %L', :'pw')
+WHERE EXISTS (SELECT FROM pg_roles WHERE rolname = 'protofast');
+\gexec
+
+SELECT format('CREATE DATABASE protofast OWNER protofast')
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'protofast');
+\gexec
+SQL
+SCRIPT
+  chmod 755 "${APP_DIR}/postgres/initdb/02-protofast.sh"
+}
+
+ensure_protofast_db() {
+  write_protofast_initdb
+  local pw; pw="$(get_env "$ENV_FILE" PROTOFAST_DB_PASSWORD)"
+  if [ -z "$pw" ]; then
+    log "ensure_protofast_db: Api_DbPassword is not in ${APP_SECRET_ID}; run scripts/populate-secrets.sh --prod"
+    return 1
+  fi
+  local i
+  for i in $(seq 1 30); do
+    postgres_ok && break
+    sleep 2
+  done
+  if ! postgres_ok; then
+    log "ensure_protofast_db: postgres is not accepting connections"
+    return 1
+  fi
+  log "ensuring Postgres role+database 'protofast' exist"
+  PROTOFAST_DB_PASSWORD="$pw" compose exec -T -e PROTOFAST_DB_PASSWORD \
+    postgres /docker-entrypoint-initdb.d/02-protofast.sh
+}
+
 # Uppercase a component/client name into its manifest-key form: 'client-admin'
 # stays a name; the caller composes CLIENT_<UPPER>_TAG. '-' -> '_'.
 upper() { printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_'; }
@@ -778,6 +838,9 @@ resolve() {
       # Not a long-running container — applying it only publishes the image + pins the tag; the
       # migration RUN happens as a pre-step of the auth apply (run_auth_migrations).
       KEY="AUTH_MIGRATIONS_TAG"; SVC="auth-migrations"; KIND="migrations" ;;
+    api-migrations)
+      # Same shape for the api's `protofast` DB: the RUN is a pre-step of the api apply.
+      KEY="API_MIGRATIONS_TAG"; SVC="api-migrations"; KIND="migrations" ;;
     envoy)
       KEY="ENVOY_TAG"; SVC="envoy"; KIND="envoy" ;;
     otel-collector)
@@ -890,7 +953,7 @@ health_once() {
     service)
       grpc_ok "$SVC" || { rc=1; log "grpc health not serving: ${SVC}"; } ;;
     migrations)
-      : ;; # one-shot job: no long-running container to probe; the auth apply runs and gates it
+      : ;; # one-shot job: no long-running container to probe; the auth/api apply runs and gates it
     envoy)
       # Envoy-scoped: the listener is up and every client vhost is loaded in the
       # route config. Deliberately does NOT traverse to the SSR upstream — an
@@ -978,22 +1041,49 @@ run_auth_migrations() {
   log "auth schema migrations applied"
 }
 
+# The api's counterpart: converge the `protofast` role+DB, then run the pinned
+# API_MIGRATIONS_TAG job before api is recreated. Fail-closed the same way, and also on a
+# missing DOCUMENTS_BUCKET — an api without one starts healthy and signs every upload for
+# a bucket named "", which is a worse failure than not deploying.
+run_api_migrations() {
+  if [ -z "$(get_env "$ENV_FILE" DOCUMENTS_BUCKET)" ]; then
+    log "DOCUMENTS_BUCKET unset — the deploy job passes it from the DOCUMENTS_BUCKET repo variable"
+    log "(infra/bootstrap). Aborting api apply."
+    return 1
+  fi
+  local tag; tag="$(get_env "$VERSIONS_FILE" API_MIGRATIONS_TAG)"
+  if [ -z "$tag" ]; then
+    log "API_MIGRATIONS_TAG unset — deploy-api normally applies api-migrations first in this same"
+    log "invocation; run 'deploy.sh apply api-migrations=<tag> api=<tag>'. Aborting api apply."
+    return 1
+  fi
+  ensure_protofast_db || return 1
+  log "running api schema migrations (api-migrations=${tag})"
+  compose pull api-migrations || true
+  if ! compose run --rm api-migrations; then
+    log "migrations FAILED — aborting api apply (api not recreated)"
+    return 1
+  fi
+  log "api schema migrations applied"
+}
+
 apply_kind() {
   case "$KIND" in
     service|envoy|otel|aspire|edge)
       log "pulling ${SVC}"
       compose pull "$SVC"
       # Gate the auth apply on a successful schema migration (rc 4 → manifest restored upstream).
-      if [ "$SVC" = auth ]; then
-        run_auth_migrations || return 4
-      fi
+      case "$SVC" in
+        auth) run_auth_migrations || return 4 ;;
+        api)  run_api_migrations  || return 4 ;;
+      esac
       log "recreating ${SVC}${RECREATE:+ (forced)}"
       # shellcheck disable=SC2086  # RECREATE is intentionally word-split (flag or empty)
       compose up -d --no-deps $RECREATE "$SVC" ;;
     migrations)
-      # Publish the image + pin AUTH_MIGRATIONS_TAG only (the manifest line is written by the apply
-      # loop). The migration RUN is the auth apply's fail-closed pre-step — not here.
-      log "pulling ${SVC} (image only; migrations run during the auth apply)"
+      # Publish the image + pin the *_MIGRATIONS_TAG only (the manifest line is written by the
+      # apply loop). The migration RUN is the auth/api apply's fail-closed pre-step — not here.
+      log "pulling ${SVC} (image only; migrations run during the ${SVC%-migrations} apply)"
       compose pull "$SVC" ;;
     host)
       log "pulling ${SVC} (clients-host)"
@@ -1034,6 +1124,7 @@ apply_kind() {
       # password rotation (initdb.d does not re-run).
       if [ "$SVC" = postgres ]; then
         ensure_auth_db || return 1
+        ensure_protofast_db || log "WARN: ensure_protofast_db failed; the next api apply will retry"
       fi ;;
   esac
 }
@@ -1090,8 +1181,8 @@ prune_old_images() {
   local ecr
   ecr="$(get_env "$ENV_FILE" ECR)"
   [ -n "$ecr" ] || return 0
-  for repo in protofast-envoy protofast-clients-host protofast-auth \
-              protofast-payments protofast-api protofast-otel-collector; do
+  for repo in protofast-envoy protofast-clients-host protofast-auth protofast-auth-migrations \
+              protofast-payments protofast-api protofast-api-migrations protofast-otel-collector; do
     docker image ls "${ecr}/${repo}" --format '{{.CreatedAt}}\t{{.Repository}}:{{.Tag}}' \
       | sort -r \
       | awk -v keep="$KEEP_RELEASES" 'NR>keep {print $NF}' \
@@ -1174,6 +1265,7 @@ bootstrap() {
   # but the script errors; skip when the compose file has no postgres service).
   if compose ps -aq postgres >/dev/null 2>&1 && [ -n "$(compose ps -aq postgres 2>/dev/null)" ]; then
     ensure_auth_db || log "WARN: ensure_auth_db failed during bootstrap; next auth apply will retry"
+    ensure_protofast_db || log "WARN: ensure_protofast_db failed during bootstrap; next api apply will retry"
   fi
   # A replaced instance re-attaches the durable pgdata volume, so the realm is
   # already there and --import-realm skips it exactly as it does on a config-only
@@ -1258,6 +1350,13 @@ if [ -n "${ASSETS_BUCKET:-}" ]; then
   set_env "$ENV_FILE" ASSETS_BUCKET "$ASSETS_BUCKET"
 fi
 
+# Documents bucket (the api's S3__Bucket, interpolated by the services compose). cloud-init
+# does not seed it — Host B's user_data is not re-run on an existing box — so the deploy job
+# passes it on every apply and it is persisted here, where bootstrap on a rebuilt box finds it.
+if [ -n "${DOCUMENTS_BUCKET:-}" ]; then
+  set_env "$ENV_FILE" DOCUMENTS_BUCKET "$DOCUMENTS_BUCKET"
+fi
+
 # Cross-host peer IP, same self-sufficiency rationale as ECR above. cloud-init
 # seeds it into .env at first boot (HOST_A_IP on Host B / HOST_B_IP on Host A), but
 # Host B is pinned against re-provisioning (user_data_replace_on_change=false, to
@@ -1281,6 +1380,7 @@ if [ -n "${HOST_B_IP:-}" ]; then set_env "$ENV_FILE" HOST_B_IP "$HOST_B_IP"; fi
 if grep -q 'kc-db-password' "$COMPOSE_FILE" 2>/dev/null; then
   ensure_secret_files
   write_auth_initdb
+  write_protofast_initdb
   sync_keycloak_config
 fi
 
@@ -1405,7 +1505,7 @@ for pair in "$@"; do
     continue
   fi
   if [ "$apply_rc" -eq 4 ]; then
-    log "restoring manifest: ${COMPONENT} stays at ${CUR_TAG:-<unset>} (auth migrations failed; auth not recreated)"
+    log "restoring manifest: ${COMPONENT} stays at ${CUR_TAG:-<unset>} (${SVC} pre-apply migrations failed; ${SVC} not recreated)"
     [ -f "$VERSIONS_PREV" ] && cp "$VERSIONS_PREV" "$VERSIONS_FILE"
     RC=1
     continue

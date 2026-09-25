@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "services/api/**"
+      - "services/document_import/**"
       - "services/shared/**"
       - ".github/workflows/deploy-api.yml"
       - ".github/workflows/_component-deploy.yml"
@@ -32,7 +33,15 @@ jobs:
       build: dotnet
       target: protofast-api
       kind: service
-      hash_paths: "services/api services/shared"
+      # document_import is a project reference of the api (source formats, storage keys), so a
+      # change there must rebuild the api too.
+      hash_paths: "services/api services/document_import services/shared"
       project: services/api/src/ProtoFast.Api
       tag: ${{ inputs.tag }}
+      # The `protofast` DB migrations runner ships WITH the api, exactly as auth-migrations
+      # does with auth: same content tag, applied immediately before api in one deploy.sh
+      # invocation, so run_api_migrations always reads an API_MIGRATIONS_TAG that matches.
+      companion: api-migrations
+      companion_target: protofast-api-migrations
+      companion_project: services/api/src/ProtoFast.SchemaMigrations
     secrets: inherit

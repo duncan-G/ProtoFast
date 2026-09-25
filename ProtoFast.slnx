@@ -1,8 +1,12 @@
 <Solution>
   <Folder Name="/services/" />
-  <Folder Name="/services/api/">
+  <Folder Name="/services/api/" />
+  <Folder Name="/services/api/src/">
     <Project Path="services/api/src/ProtoFast.Api/ProtoFast.Api.csproj" />
+    <Project Path="services/api/src/ProtoFast.Data/ProtoFast.Data.csproj" />
+    <Project Path="services/api/src/ProtoFast.SchemaMigrations/ProtoFast.SchemaMigrations.csproj" />
   </Folder>
+  <Folder Name="/services/api/tests/" />
   <Folder Name="/services/auth/" />
   <Folder Name="/services/auth/src/">
     <Project Path="services/auth/src/ProtoFast.Auth.Api/ProtoFast.Auth.Api.csproj" />
@@ -13,14 +17,26 @@
     <Project Path="services/auth/tests/ProtoFast.Auth.IntegrationTests/ProtoFast.Auth.IntegrationTests.csproj" />
     <Project Path="services/auth/tests/ProtoFast.Auth.UnitTests/ProtoFast.Auth.UnitTests.csproj" />
   </Folder>
-  <Folder Name="/services/payments/">
+  <Folder Name="/services/document_import/" />
+  <Folder Name="/services/document_import/src/">
+    <Project Path="services/document_import/src/ProtoFast.DocumentImport.Core/ProtoFast.DocumentImport.Core.csproj" />
+    <Project Path="services/document_import/src/ProtoFast.DocumentImport.Storage/ProtoFast.DocumentImport.Storage.csproj" />
+    <Project Path="services/document_import/src/ProtoFast.DocumentImport.Worker/ProtoFast.DocumentImport.Worker.csproj" />
+  </Folder>
+  <Folder Name="/services/document_import/tests/" />
+  <Folder Name="/services/payments/" />
+  <Folder Name="/services/payments/src/">
     <Project Path="services/payments/src/ProtoFast.Payments.Api/ProtoFast.Payments.Api.csproj" />
   </Folder>
+  <Folder Name="/services/payments/tests/" />
   <Folder Name="/services/shared/">
     <Project Path="services/shared/Database.Abstractions/Database.Abstractions.csproj" />
     <Project Path="services/shared/Database/Database.csproj" />
     <Project Path="services/shared/Exceptions/Exceptions.csproj" />
+    <Project Path="services/shared/Grpc/Grpc.csproj" />
     <Project Path="services/shared/ServiceDefaults/ServiceDefaults.csproj" />
+    <Project Path="services/shared/Storage.Abstractions/Storage.Abstractions.csproj" />
+    <Project Path="services/shared/Storage/Storage.csproj" />
   </Folder>
   <Project Path="apphost/ProtoFast.AppHost.csproj" />
 </Solution>

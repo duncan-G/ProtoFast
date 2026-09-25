@@ -43,6 +43,11 @@ output "assets_bucket" {
   value       = aws_s3_bucket.assets.id
 }
 
+output "documents_bucket" {
+  description = "S3 bucket holding user document uploads (the api's S3:Bucket)."
+  value       = aws_s3_bucket.documents.id
+}
+
 output "hostnames" {
   description = "Public hostnames served through the tunnel."
   value       = values(local.tunnel_hostnames)

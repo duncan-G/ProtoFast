@@ -1,0 +1,43 @@
+name: deploy-api-migrations
+
+# MANUAL ONLY — pinning/rolling back API_MIGRATIONS_TAG on its own.
+#
+# The normal path is deploy-api, which builds this image as a companion (same
+# content tag) and applies api-migrations immediately before api in ONE deploy.sh
+# invocation. No push trigger, for the same reason as deploy-auth-migrations: two
+# workflows firing on the same paths have no ordering, and deploy-api could win and
+# run the PREVIOUS migrations image against the new api.
+#
+# Applying this component only pulls the image and pins the tag; the migration RUN
+# is always the api apply's fail-closed pre-step (deploy.sh run_api_migrations).
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing artifact tag to (re)deploy or roll back to. Blank = build current source."
+        required: false
+        type: string
+
+# Shares deploy-api's group: a manual migrations pin must never run concurrently
+# with an api deploy that is about to read API_MIGRATIONS_TAG.
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_component-deploy.yml
+    with:
+      component: api-migrations
+      host: services
+      build: dotnet
+      target: protofast-api-migrations
+      kind: service
+      hash_paths: "services/api services/document_import services/shared"
+      project: services/api/src/ProtoFast.SchemaMigrations
+      tag: ${{ inputs.tag }}
+    secrets: inherit

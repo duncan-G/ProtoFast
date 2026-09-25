@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+import "document.proto";
+
+option csharp_namespace = "ProtoFast.Api";
+
+package document_upload;
+
+service DocumentUpload {
+
+    // Step 1: validates the file's name, type and size and mints a presigned POST for it.
+    rpc CreateDocumentUploadUrl (CreateDocumentUploadUrlRequest) returns (CreateDocumentUploadUrlReply);
+
+    // Step 3, after the browser has posted the file to storage: confirms the object landed and
+    // records the document. Idempotent — completing the same upload twice returns the same
+    // document.
+    rpc CompleteDocumentUpload (CompleteDocumentUploadRequest) returns (CompleteDocumentUploadReply);
+
+    rpc ListSourceFormats (ListSourceFormatsRequest) returns (ListSourceFormatsReply);
+
+}
+
+message CreateDocumentUploadUrlRequest {
+    string file_name = 1;
+    int64 size_bytes = 2;
+    string content_type = 3;
+}
+
+message CreateDocumentUploadUrlReply {
+    string upload_id = 1;
+    int64 expires_unix_seconds = 2;
+    string post_url = 3;
+    int64 max_bytes = 4;
+    map<string, string> fields = 5;
+}
+
+message CompleteDocumentUploadRequest {
+    string upload_id = 1;
+}
+
+message CompleteDocumentUploadReply {
+    document.Document document = 1;
+}
+
+message ListSourceFormatsRequest {}
+
+message ListSourceFormatsReply {
+    repeated SourceFormat formats = 1;
+    int64 max_bytes = 2;
+}
+
+message SourceFormat {
+    string extension = 1;               // ".pdf"
+    string media_type = 2;              // "application/pdf"
+    string label = 3;                   // "PDF"
+    bool produces_layout = 4;
+    bool ocr_capable = 5;
+}

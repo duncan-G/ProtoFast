@@ -10,15 +10,24 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Protobuf Include="Protos\greet.proto" GrpcServices="Server" />
+    <Protobuf Include="Protos\document.proto" ProtoRoot="Protos" GrpcServices="Server" />
+    <Protobuf Include="Protos\document_upload.proto" ProtoRoot="Protos" GrpcServices="Server" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Aspire.Npgsql" Version="13.5.4" />
     <PackageReference Include="Grpc.AspNetCore" Version="2.80.0" />
+    <PackageReference Include="Aspire.StackExchange.Redis" Version="13.5.3" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\..\document_import\src\ProtoFast.DocumentImport.Core\ProtoFast.DocumentImport.Core.csproj" />
+    <ProjectReference Include="..\..\..\document_import\src\ProtoFast.DocumentImport.Storage\ProtoFast.DocumentImport.Storage.csproj" />
+    <ProjectReference Include="..\..\..\shared\Grpc\Grpc.csproj" />
     <ProjectReference Include="..\..\..\shared\ServiceDefaults\ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\..\shared\Storage.Abstractions\Storage.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\shared\Storage\Storage.csproj" />
+    <ProjectReference Include="..\ProtoFast.Data\ProtoFast.Data.csproj" />
   </ItemGroup>
 
 </Project>

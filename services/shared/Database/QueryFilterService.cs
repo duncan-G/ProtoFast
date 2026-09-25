@@ -1,103 +1,97 @@
 using System.Linq.Expressions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
-using ProtoFast.Database.Abstractions;
 
 namespace ProtoFast.Database;
 
-public sealed class QueryFilterService()
+/// <summary>
+/// Attaches the per-user query filter to every entity in a model. An entity is user-scoped when
+/// it has a string <c>UserId</c> property holding the caller subject, or a navigation path to an
+/// entity that does. Anything else must opt out with <c>HasNoScope()</c>; the model build fails
+/// otherwise, so a table can never be added without deciding who may see it.
+/// </summary>
+public sealed class QueryFilterService
 {
-    public Expression<Func<TEntity, bool>>? GetUserFilter<TEntity>(IEntityType entityType, UserContext userContext) where TEntity : class
+    public const string UserIdPropertyName = "UserId";
+
+    public void AddUserFilters(ModelBuilder modelBuilder, DbContextBase dbContext)
+    {
+        foreach (IMutableEntityType entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            if (entityType.IsOwned())
+            {
+                continue; // owned types take the filter of their owner
+            }
+
+            if (GetUserFilter(entityType, dbContext) is { } filter)
+            {
+                modelBuilder.Entity(entityType.ClrType).HasQueryFilter(filter);
+            }
+        }
+    }
+
+    public LambdaExpression? GetUserFilter(IReadOnlyEntityType entityType, DbContextBase dbContext)
     {
         if (entityType.HasNoScope())
         {
             return null;
         }
 
-        if (userContext.CurrentUserId == null)
+        List<IReadOnlyNavigation> path = FindShortestPathToUserScoped(entityType)
+                                         ?? throw new InvalidOperationException(
+                                             $"Entity {entityType.DisplayName()} has no {UserIdPropertyName} and no navigation path to an entity that does. " +
+                                             "Add one, or mark the entity HasNoScope() if it is genuinely shared.");
+
+        ParameterExpression parameter = Expression.Parameter(entityType.ClrType, "e");
+        Expression owner = parameter;
+        foreach (IReadOnlyNavigation navigation in path)
         {
-            return null;
+            owner = Expression.Property(owner, navigation.Name);
         }
 
-        // Check if entity directly has UserId
-        if (entityType.FindProperty("UserId") != null)
-        {
-            return CreateDirectUserFilter<TEntity>(userContext);
-        }
-
-        // Find the shortest path to a user-scoped entity
-        List<INavigation>? path = FindShortestPathToUserScoped(entityType);
-
-        if (path == null)
+        MemberExpression userId = Expression.Property(owner, UserIdPropertyName);
+        if (userId.Type != typeof(string))
         {
             throw new InvalidOperationException(
-                $"Entity {entityType.Name} is not user-scoped and has no navigation path to a user-scoped entity");
+                $"{userId.Member.DeclaringType?.Name}.{UserIdPropertyName} must be a string: it holds the caller subject from the internal JWT.");
         }
 
-        return CreateNavigationUserFilter<TEntity>(userContext, path);
+        // Read the caller through the context instance rather than capturing its value: EF swaps
+        // the captured context for the one running the query and turns the member access into a
+        // parameter, so the filter follows the current call instead of freezing the first user
+        // seen into the cached model. A null user compares equal to nothing, which fails closed.
+        MemberExpression currentUserId = Expression.Property(
+            Expression.Constant(dbContext, dbContext.GetType()),
+            nameof(DbContextBase.CurrentUserId));
+
+        return Expression.Lambda(Expression.Equal(userId, currentUserId), parameter);
     }
 
-    private Expression<Func<TEntity, bool>> CreateDirectUserFilter<TEntity>(UserContext userContext)
+    private static List<IReadOnlyNavigation>? FindShortestPathToUserScoped(IReadOnlyEntityType startEntity)
     {
-        ParameterExpression parameter = Expression.Parameter(typeof(TEntity), "e");
-        MemberExpression userIdProperty = Expression.Property(parameter, "UserId");
-        ConstantExpression userIdValue = Expression.Constant(userContext.CurrentUserId);
-        BinaryExpression equals = Expression.Equal(userIdProperty, userIdValue);
-        return Expression.Lambda<Func<TEntity, bool>>(equals, parameter);
-    }
-
-    private Expression<Func<TEntity, bool>> CreateNavigationUserFilter<TEntity>(UserContext userContext, List<INavigation> path)
-    {
-        ParameterExpression parameter = Expression.Parameter(typeof(TEntity), "e");
-        Expression navigation = parameter;
-
-        // Build the navigation chain
-        foreach (INavigation nav in path)
-        {
-            navigation = Expression.Property(navigation, nav.Name);
-        }
-
-        // Add the UserId property at the end
-        MemberExpression userIdProperty = Expression.Property(navigation, "user_id");
-        ConstantExpression userIdValue = Expression.Constant(userContext.CurrentUserId);
-        BinaryExpression equals = Expression.Equal(userIdProperty, userIdValue);
-
-        return Expression.Lambda<Func<TEntity, bool>>(equals, parameter);
-    }
-
-    private List<INavigation>? FindShortestPathToUserScoped(IEntityType startEntity)
-    {
-        HashSet<IEntityType> visited = new();
-        Queue<(IEntityType Entity, List<INavigation> Path)> queue = new();
+        HashSet<IReadOnlyEntityType> visited = [];
+        Queue<(IReadOnlyEntityType Entity, List<IReadOnlyNavigation> Path)> queue = new();
         queue.Enqueue((startEntity, []));
 
         while (queue.Count > 0)
         {
-            (IEntityType currentEntity, List<INavigation> currentPath) = queue.Dequeue();
+            (IReadOnlyEntityType currentEntity, List<IReadOnlyNavigation> currentPath) = queue.Dequeue();
 
-            if (!visited.Add(currentEntity))
+            if (!visited.Add(currentEntity) || currentEntity.HasNoScope())
             {
                 continue;
             }
 
-            // Skip entities marked as having no scope
-            if (currentEntity.HasNoScope())
-            {
-                continue;
-            }
-
-            // Check if current entity has UserId
-            if (currentEntity.FindProperty("user_id") != null)
+            if (currentEntity.FindProperty(UserIdPropertyName) != null)
             {
                 return currentPath;
             }
 
-            // Add all unvisited navigations to queue
-            foreach (INavigation navigation in currentEntity.GetNavigations())
+            foreach (IReadOnlyNavigation navigation in currentEntity.GetNavigations())
             {
-                if (!visited.Contains(navigation.TargetEntityType))
+                if (!navigation.IsCollection && !visited.Contains(navigation.TargetEntityType))
                 {
-                    List<INavigation> newPath = new(currentPath) { navigation };
-                    queue.Enqueue((navigation.TargetEntityType, newPath));
+                    queue.Enqueue((navigation.TargetEntityType, [.. currentPath, navigation]));
                 }
             }
         }

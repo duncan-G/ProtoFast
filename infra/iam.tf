@@ -109,6 +109,37 @@ resource "aws_iam_role_policy" "instance_assets" {
   policy = data.aws_iam_policy_document.instance_assets.json
 }
 
+# The api's document storage (documents.tf). The instance role is what signs the
+# presigned POST, so S3 authorises the browser's upload against THIS policy:
+# PutObject is what makes the upload work at all. GetObject covers the HEAD the
+# api does before recording a document (and presigned downloads). ListBucket is
+# what makes a missing object answer 404 rather than 403 — without it the api's
+# "has the file arrived?" check throws instead of reporting "not yet".
+data "aws_iam_policy_document" "instance_documents" {
+  statement {
+    sid       = "DocumentsList"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.documents.arn]
+  }
+  statement {
+    sid    = "DocumentsObjects"
+    effect = "Allow"
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+    ]
+    resources = ["${aws_s3_bucket.documents.arn}/*"]
+  }
+}
+
+resource "aws_iam_role_policy" "instance_documents" {
+  name   = "${var.project}-instance-documents"
+  role   = aws_iam_role.instance.id
+  policy = data.aws_iam_policy_document.instance_documents.json
+}
+
 data "aws_iam_policy_document" "instance_secrets" {
   statement {
     sid       = "ReadAppSecret"

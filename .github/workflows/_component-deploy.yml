@@ -10,7 +10,7 @@
 #     `deploy.sh apply <component>=<tag>`, which recreates only that component
 #     and runs its scoped health check (reverting that one component on failure).
 #
-# Repo VARIABLES (set by infra/bootstrap): AWS_REGION, ASSETS_BUCKET.
+# Repo VARIABLES (set by infra/bootstrap): AWS_REGION, ASSETS_BUCKET, DOCUMENTS_BUCKET.
 # Repo SECRETS (set by infra/bootstrap): AWS_DEPLOY_ROLE_ARN, ECR_REGISTRY.
 name: _component-deploy
 
@@ -70,6 +70,9 @@ env:
   AWS_REGION: ${{ vars.AWS_REGION }}
   ECR: ${{ secrets.ECR_REGISTRY }}
   ASSETS_BUCKET: ${{ vars.ASSETS_BUCKET }}
+  # The api's document bucket (infra/documents.tf). Handed to deploy.sh on every apply,
+  # which persists it into .env for the services compose to interpolate.
+  DOCUMENTS_BUCKET: ${{ vars.DOCUMENTS_BUCKET }}
   ARCH: arm64 # matches the t4g (ARM) instance
   INSTANCE_TAG_KEY: "protofast:role"
   INSTANCE_TAG_VALUE: "app-server"
@@ -401,7 +404,7 @@ jobs:
               \"echo $COMPOSE_B64 | base64 -d | gzip -d > /opt/protofast/.docker-compose.yml.tmp && mv /opt/protofast/.docker-compose.yml.tmp /opt/protofast/docker-compose.yml\",
               \"echo $DEPLOY_B64 | base64 -d | gzip -d > /opt/protofast/.deploy.sh.tmp && mv /opt/protofast/.deploy.sh.tmp /opt/protofast/deploy.sh\",
               \"chmod +x /opt/protofast/deploy.sh\",
-              \"ECR=${ECR} AWS_REGION=${AWS_REGION} ${{ steps.route.outputs.peer_var }}=${{ steps.peer.outputs.ip }} /opt/protofast/deploy.sh apply ${APPLY_ARGS}\"
+              \"ECR=${ECR} AWS_REGION=${AWS_REGION} DOCUMENTS_BUCKET=${DOCUMENTS_BUCKET} ${{ steps.route.outputs.peer_var }}=${{ steps.peer.outputs.ip }} /opt/protofast/deploy.sh apply ${APPLY_ARGS}\"
             ]" \
             --query 'Command.CommandId' --output text)
 

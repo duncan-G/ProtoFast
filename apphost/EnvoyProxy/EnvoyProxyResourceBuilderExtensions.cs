@@ -141,6 +141,21 @@ public static class EnvoyProxyResourceBuilderExtensions
         return expression.Build();
     }
 
+    public static IReadOnlyList<string> GetClientOrigins(this IResourceBuilder<ContainerResource> envoy)
+    {
+        if (envoy.ApplicationBuilder.ExecutionContext.IsPublishMode)
+        {
+            return [];
+        }
+
+        var clients = envoy.Resource.Annotations
+            .OfType<EnvoyClientsAnnotation>()
+            .Single()
+            .Clients;
+
+        return [.. clients.Select((_, i) => $"https://localhost:{FirstClientListenerPort + i}")];
+    }
+
     public static IResourceBuilder<ContainerResource> WithUpstreamEndpoint(
         this IResourceBuilder<ContainerResource> envoy,
         string name,
