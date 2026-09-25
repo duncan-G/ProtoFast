@@ -43,6 +43,8 @@ export class SceneEditorStore implements OnDestroy {
 
   readonly editingId = signal<string | null>(null);
   readonly libraryTab = signal<LibraryTab>('characters');
+  /** Only has an effect on phones, where the library is a drawer. */
+  readonly libraryOpen = signal(false);
   /** For the library's "@ Insert". */
   readonly caret = signal<number | null>(null);
   readonly caretRequest = signal<CaretRequest | null>(null);

@@ -183,6 +183,7 @@ export class LibraryPanel {
 
   protected addLine(character: Character): void {
     this.store.insertElement(this.store.elements().length, 'Dialogue', { speakerId: character.id });
+    this.store.libraryOpen.set(false);
   }
 
   protected addHeading(location: Location): void {
@@ -190,6 +191,7 @@ export class LibraryPanel {
       locationId: location.id,
       timeOfDay: 'DAY',
     });
+    this.store.libraryOpen.set(false);
   }
 
   protected insertProp(prop: Prop): void {

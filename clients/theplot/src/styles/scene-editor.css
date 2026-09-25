@@ -206,6 +206,10 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .se-crumb-menu {
+    position: relative;
+    display: inline-flex;
+  }
   .se-crumb-btn {
     display: inline-flex;
     align-items: center;
@@ -274,6 +278,16 @@
     .se-hint {
       display: none;
     }
+  }
+  .se-tools {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 14px;
+  }
+  .se-library-toggle,
+  .se-scrim {
+    display: none;
   }
 
   /* — popovers — */
@@ -1412,8 +1426,189 @@
     position: relative;
   }
 
+  /* — phones: the header stacks, the side panels become drawers and rows lose the label column — */
+  @media (max-width: 767px) {
+    .scene-editor {
+      height: calc(100dvh / var(--page-zoom, 1));
+    }
+
+    .se-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+        'logo tools'
+        'crumbs nav'
+        'title title';
+      gap: 4px 12px;
+      height: auto;
+      padding: 8px 16px 6px;
+    }
+    .se-logo {
+      grid-area: logo;
+      justify-self: start;
+      padding: 0;
+      border-right: 0;
+      font-size: 20px;
+    }
+    .se-tools {
+      grid-area: tools;
+      gap: 6px;
+    }
+    .se-library-toggle {
+      display: inline-flex;
+    }
+    .se-btn-label {
+      display: none;
+    }
+    /* The container menu hangs from the crumbs so it stays on screen. */
+    .se-crumbs {
+      position: relative;
+      grid-area: crumbs;
+    }
+    .se-crumb-menu {
+      position: static;
+    }
+    .se-menu {
+      width: min(300px, calc(100vw - 32px));
+    }
+    .se-scene-nav {
+      grid-area: nav;
+    }
+    .se-title-input {
+      grid-area: title;
+      min-width: 0;
+      padding: 2px 0 4px;
+      font-size: 19px;
+    }
+
+    .se-body {
+      position: relative;
+    }
+    .se-library,
+    .se-overview {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      z-index: 40;
+      width: min(320px, 86vw);
+      box-shadow: var(--se-shadow);
+    }
+    .se-library {
+      left: 0;
+      visibility: hidden;
+      transform: translateX(-100%);
+      transition:
+        transform 0.2s ease,
+        visibility 0s 0.2s;
+    }
+    .se-library.is-open {
+      visibility: visible;
+      transform: none;
+      transition: transform 0.2s ease;
+    }
+    .se-overview {
+      right: 0;
+    }
+    .se-scrim {
+      display: block;
+      position: absolute;
+      inset: 0;
+      z-index: 35;
+      background: rgba(0, 0, 0, 0.45);
+    }
+
+    .se-main {
+      padding: 12px 8px 96px;
+    }
+    .se-page {
+      padding: 14px 0 20px;
+    }
+    .se-page-top {
+      padding: 0 8px 12px;
+    }
+    .se-grid {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 2px;
+      padding: 0 8px;
+    }
+    .se-handle {
+      display: none;
+    }
+    .se-insert-line {
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+    .se-insert-menu {
+      padding: 8px;
+    }
+    .se-heading {
+      padding-top: 9px;
+      padding-bottom: 9px;
+    }
+    .se-transition {
+      padding-top: 8px;
+      padding-bottom: 8px;
+    }
+    /* The rail runs down the whole beat now that the label sits above the text. */
+    .se-beat {
+      position: relative;
+    }
+    .se-beat > .se-rail {
+      padding: 10px 0 0 13px;
+      border-left: 0;
+    }
+    .se-beat > .se-rail::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 8px;
+      width: 3px;
+      background: var(--se-line);
+    }
+    .se-beat > .se-rail.has-hue::before {
+      background: oklch(var(--se-hue-rail) var(--hue));
+    }
+    .se-beat-body {
+      padding: 2px 0 10px 13px;
+    }
+    .se-dialogue {
+      padding: 0 0 0 6%;
+    }
+    .se-speaker {
+      padding-left: 14%;
+    }
+    .se-paren {
+      padding-left: 7%;
+    }
+    .se-narration {
+      padding-left: 0;
+      font-size: 17px;
+    }
+    .se-editing-label {
+      padding-top: 8px;
+    }
+    .se-ac {
+      right: 8px;
+      width: auto;
+    }
+    .se-continue {
+      margin: 4px 8px 0;
+      padding-top: 14px;
+      gap: 8px;
+    }
+    .se-end {
+      margin: 28px 8px 0;
+    }
+    .se-scene-cards {
+      margin: 18px 8px 4px;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    .se-row {
+    .se-row,
+    .se-library,
+    .se-library.is-open {
       transition: none;
     }
   }
