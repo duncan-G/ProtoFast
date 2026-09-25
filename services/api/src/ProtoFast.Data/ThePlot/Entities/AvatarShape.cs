@@ -6,4 +6,12 @@ public enum AvatarShape
     Square,
     Squircle,
     Teardrop,
+    Pill,
+    Diamond,
+    Triangle,
+    Pentagon,
+    Hexagon,
+    Octagon,
+    Star,
+    Shield,
 }
