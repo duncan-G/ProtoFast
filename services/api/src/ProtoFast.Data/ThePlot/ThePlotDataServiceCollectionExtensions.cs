@@ -46,15 +46,6 @@ public static class ThePlotDataServiceCollectionExtensions
         services.AddQueryFactory<Prop, IPropQuery, PropQuery>();
         services.AddScoped<IPropRepository, PropRepository>();
 
-        services.AddQueryFactory<TimeOfDay, ITimeOfDayQuery, TimeOfDayQuery>();
-        services.AddScoped<ITimeOfDayRepository, TimeOfDayRepository>();
-
-        services.AddQueryFactory<Transition, ITransitionQuery, TransitionQuery>();
-        services.AddScoped<ITransitionRepository, TransitionRepository>();
-
-        services.AddQueryFactory<CharacterKind, ICharacterKindQuery, CharacterKindQuery>();
-        services.AddScoped<ICharacterKindRepository, CharacterKindRepository>();
-
         return services;
     }
 }

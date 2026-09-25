@@ -16,10 +16,7 @@ public interface IStoryQuery : IQuery<Story>
     /// <summary>Case-insensitive.</summary>
     IStoryQuery TitleContains(string text);
 
-    /// <summary>
-    /// Includes the characters, locations and props by name, and the times of day, transitions
-    /// and character kinds in order.
-    /// </summary>
+    /// <summary>Includes the characters, locations and props, each ordered by name.</summary>
     IStoryQuery WithLibrary();
 
     /// <summary>Includes the containers and their scenes in order, without the scenes' elements.</summary>

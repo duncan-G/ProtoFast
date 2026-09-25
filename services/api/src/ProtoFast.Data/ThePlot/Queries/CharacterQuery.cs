@@ -31,9 +31,9 @@ public sealed class CharacterQuery : Query<Character>, ICharacterQuery
         return this;
     }
 
-    public ICharacterQuery OfKind(Guid kindId)
+    public ICharacterQuery OfKind(string kind)
     {
-        Where(c => c.KindId == kindId);
+        Where(c => c.Kind == kind);
         return this;
     }
 

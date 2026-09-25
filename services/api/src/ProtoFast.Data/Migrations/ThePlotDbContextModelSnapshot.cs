@@ -42,9 +42,11 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("hue");
 
-                    b.Property<Guid?>("KindId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("kind_id");
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("kind");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -65,9 +67,6 @@ namespace ProtoFast.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_characters");
 
-                    b.HasIndex("KindId")
-                        .HasDatabaseName("ix_characters_kind_id");
-
                     b.HasIndex("StoryId", "Name")
                         .IsUnique()
                         .HasDatabaseName("ix_characters_story_id_name");
@@ -76,57 +75,6 @@ namespace ProtoFast.Data.Migrations
                         {
                             t.HasCheckConstraint("ck_characters_hue", "hue BETWEEN 0 AND 359");
                         });
-                });
-
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.CharacterKind", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("AvatarShape")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("avatar_shape");
-
-                    b.Property<DateTime>("DateCreated")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("date_created");
-
-                    b.Property<DateTime>("DateLastModified")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("date_last_modified");
-
-                    b.Property<string>("Label")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("label");
-
-                    b.Property<int>("Position")
-                        .HasColumnType("integer")
-                        .HasColumnName("position");
-
-                    b.Property<Guid>("StoryId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("story_id");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_character_kinds");
-
-                    b.HasIndex("StoryId", "Label")
-                        .IsUnique()
-                        .HasDatabaseName("ix_character_kinds_story_id_label");
-
-                    b.ToTable("character_kinds", "plot");
                 });
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Container", b =>
@@ -474,13 +422,15 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("text");
 
-                    b.Property<Guid?>("TimeOfDayId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("time_of_day_id");
+                    b.Property<string>("TimeOfDay")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("time_of_day");
 
-                    b.Property<Guid?>("TransitionId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("transition_id");
+                    b.Property<string>("Transition")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("transition");
 
                     b.Property<string>("Type")
                         .IsRequired()
@@ -503,12 +453,6 @@ namespace ProtoFast.Data.Migrations
                     b.HasIndex("SpeakerId")
                         .HasDatabaseName("ix_scene_elements_speaker_id");
 
-                    b.HasIndex("TimeOfDayId")
-                        .HasDatabaseName("ix_scene_elements_time_of_day_id");
-
-                    b.HasIndex("TransitionId")
-                        .HasDatabaseName("ix_scene_elements_transition_id");
-
                     b.HasIndex("SceneId", "Position")
                         .HasDatabaseName("ix_scene_elements_scene_id_position");
 
@@ -516,13 +460,13 @@ namespace ProtoFast.Data.Migrations
                         {
                             t.HasCheckConstraint("ck_scene_elements_dialogue_columns", "type = 'Dialogue' OR (speaker_id IS NULL AND parenthetical IS NULL)");
 
-                            t.HasCheckConstraint("ck_scene_elements_heading_columns", "type = 'Heading' OR (location_id IS NULL AND time_of_day_id IS NULL)");
+                            t.HasCheckConstraint("ck_scene_elements_heading_columns", "type = 'Heading' OR (location_id IS NULL AND time_of_day IS NULL)");
 
                             t.HasCheckConstraint("ck_scene_elements_position_non_negative", "position >= 0");
 
                             t.HasCheckConstraint("ck_scene_elements_text_columns", "(type IN ('Heading', 'Transition')) = (text IS NULL)");
 
-                            t.HasCheckConstraint("ck_scene_elements_transition_columns", "type = 'Transition' OR transition_id IS NULL");
+                            t.HasCheckConstraint("ck_scene_elements_transition_columns", "type = 'Transition' OR transition IS NULL");
                         });
                 });
 
@@ -624,124 +568,14 @@ namespace ProtoFast.Data.Migrations
                     b.ToTable("stories", "plot");
                 });
 
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.TimeOfDay", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime>("DateCreated")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("date_created");
-
-                    b.Property<DateTime>("DateLastModified")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("date_last_modified");
-
-                    b.Property<string>("Label")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("label");
-
-                    b.Property<int>("Position")
-                        .HasColumnType("integer")
-                        .HasColumnName("position");
-
-                    b.Property<Guid>("StoryId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("story_id");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_times_of_day");
-
-                    b.HasIndex("StoryId", "Label")
-                        .IsUnique()
-                        .HasDatabaseName("ix_times_of_day_story_id_label");
-
-                    b.ToTable("times_of_day", "plot");
-                });
-
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Transition", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime>("DateCreated")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("date_created");
-
-                    b.Property<DateTime>("DateLastModified")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("date_last_modified");
-
-                    b.Property<string>("Label")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("label");
-
-                    b.Property<int>("Position")
-                        .HasColumnType("integer")
-                        .HasColumnName("position");
-
-                    b.Property<Guid>("StoryId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("story_id");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_transitions");
-
-                    b.HasIndex("StoryId", "Label")
-                        .IsUnique()
-                        .HasDatabaseName("ix_transitions_story_id_label");
-
-                    b.ToTable("transitions", "plot");
-                });
-
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Character", b =>
                 {
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.CharacterKind", "Kind")
-                        .WithMany()
-                        .HasForeignKey("KindId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_characters_character_kinds_kind_id");
-
                     b.HasOne("ProtoFast.Data.ThePlot.Entities.Story", "Story")
                         .WithMany("Characters")
                         .HasForeignKey("StoryId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_characters_stories_story_id");
-
-                    b.Navigation("Kind");
-
-                    b.Navigation("Story");
-                });
-
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.CharacterKind", b =>
-                {
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Story", "Story")
-                        .WithMany("CharacterKinds")
-                        .HasForeignKey("StoryId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_character_kinds_stories_story_id");
 
                     b.Navigation("Story");
                 });
@@ -825,27 +659,11 @@ namespace ProtoFast.Data.Migrations
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_scene_elements_characters_speaker_id");
 
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.TimeOfDay", "TimeOfDay")
-                        .WithMany()
-                        .HasForeignKey("TimeOfDayId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_scene_elements_times_of_day_time_of_day_id");
-
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Transition", "Transition")
-                        .WithMany()
-                        .HasForeignKey("TransitionId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_scene_elements_transitions_transition_id");
-
                     b.Navigation("Location");
 
                     b.Navigation("Scene");
 
                     b.Navigation("Speaker");
-
-                    b.Navigation("TimeOfDay");
-
-                    b.Navigation("Transition");
                 });
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.SceneElementMention", b =>
@@ -891,30 +709,57 @@ namespace ProtoFast.Data.Migrations
                         .HasForeignKey("SourceDocumentId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_stories_documents_source_document_id");
-                });
 
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.TimeOfDay", b =>
-                {
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Story", "Story")
-                        .WithMany("TimesOfDay")
-                        .HasForeignKey("StoryId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_times_of_day_stories_story_id");
+                    b.OwnsOne("ProtoFast.Data.ThePlot.Entities.StoryVocabulary", "Vocabulary", b1 =>
+                        {
+                            b1.Property<Guid>("StoryId");
 
-                    b.Navigation("Story");
-                });
+                            b1.PrimitiveCollection<string>("TimesOfDay")
+                                .IsRequired();
 
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Transition", b =>
-                {
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Story", "Story")
-                        .WithMany("Transitions")
-                        .HasForeignKey("StoryId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_transitions_stories_story_id");
+                            b1.PrimitiveCollection<string>("Transitions")
+                                .IsRequired();
 
-                    b.Navigation("Story");
+                            b1.HasKey("StoryId");
+
+                            b1.ToTable("stories", "plot");
+
+                            b1
+                                .ToJson("vocabulary")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("StoryId")
+                                .HasConstraintName("fk_stories_stories_id");
+
+                            b1.OwnsMany("ProtoFast.Data.ThePlot.Entities.CharacterKind", "CharacterKinds", b2 =>
+                                {
+                                    b2.Property<Guid>("StoryVocabularyStoryId");
+
+                                    b2.Property<int>("__synthesizedOrdinal")
+                                        .ValueGeneratedOnAdd();
+
+                                    b2.Property<string>("AvatarShape")
+                                        .IsRequired();
+
+                                    b2.Property<string>("Label")
+                                        .IsRequired();
+
+                                    b2.HasKey("StoryVocabularyStoryId", "__synthesizedOrdinal")
+                                        .HasName("pk_stories");
+
+                                    b2.ToTable("stories", "plot");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("StoryVocabularyStoryId")
+                                        .HasConstraintName("fk_stories_stories_story_vocabulary_story_id");
+                                });
+
+                            b1.Navigation("CharacterKinds");
+                        });
+
+                    b.Navigation("Vocabulary")
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Container", b =>
@@ -934,8 +779,6 @@ namespace ProtoFast.Data.Migrations
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Story", b =>
                 {
-                    b.Navigation("CharacterKinds");
-
                     b.Navigation("Characters");
 
                     b.Navigation("Containers");
@@ -943,10 +786,6 @@ namespace ProtoFast.Data.Migrations
                     b.Navigation("Locations");
 
                     b.Navigation("Props");
-
-                    b.Navigation("TimesOfDay");
-
-                    b.Navigation("Transitions");
                 });
 #pragma warning restore 612, 618
         }

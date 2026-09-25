@@ -19,7 +19,7 @@ public interface ISceneQuery : IQuery<Scene>
 
     ISceneQuery AtOrAfterPosition(int position);
 
-    /// <summary>Includes the elements in order, with their mentions, speaker, location, time of day and transition.</summary>
+    /// <summary>Includes the elements in order, with their mentions, speaker and location.</summary>
     ISceneQuery WithElements();
 
     /// <summary>By container, then by position within the container.</summary>
