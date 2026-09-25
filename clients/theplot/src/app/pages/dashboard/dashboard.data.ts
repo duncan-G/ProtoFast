@@ -49,11 +49,10 @@ export const MODES: Record<DeskMode, ModeInfo> = {
     eyebrow: 'Watch',
     title: 'Screening room',
     searchHint: 'Search screenings…',
-    tabs: ['All', 'Continue watching', 'New scenes', 'Watchlist'],
+    tabs: ['All', 'Continue watching', 'Watchlist'],
     empty: [
       ['The room is dark.', 'Adaptations play here once a story has been turned into scenes.'],
-      ['Nothing to continue.', 'Start a screening and it keeps your place here.'],
-      ['No new scenes.', 'Fresh scenes from stories you follow show up here.'],
+      ['Nothing to continue.', 'Screenings you’ve started, and new scenes in them, wait here.'],
       ['Your watchlist is empty.', 'Save a screening for later and it waits here.'],
     ],
   },
