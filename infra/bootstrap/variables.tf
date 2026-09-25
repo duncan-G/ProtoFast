@@ -31,6 +31,7 @@ variable "ecr_repositories" {
     "protofast-payments",
     "protofast-api",
     "protofast-api-migrations",
+    "protofast-conversion",
     "protofast-otel-collector",
   ]
 }

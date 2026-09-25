@@ -1,6 +1,6 @@
 # Host Services — SERVICES + STATE compose topology.
 #
-# Runs the three gRPC backends plus the new stateful tier: Keycloak (identity),
+# Runs the three gRPC backends, the document-conversion service, and the stateful tier: Keycloak (identity),
 # Postgres (Keycloak's `keycloak` DB, auth's durable `auth` DB and the api's
 # `protofast` DB, on the persistent EBS volume at /mnt/pgdata), and Redis
 # (in-memory session cache + rate limits).
@@ -8,7 +8,7 @@
 # Cross-host edges get PUBLISHED ports so Host A's Envoy can dial this host's
 # private IP: auth 8080, payments 8081, api 8082, keycloak 8083. Same-host wiring
 # stays name-based over this compose network (auth → redis/postgres/keycloak,
-# keycloak → postgres). Redis/Postgres are NOT published (internal only). The
+# keycloak → postgres). Redis/Postgres/conversion are NOT published (internal only). The
 # self-referencing SG (infra §4.3) admits only the sibling instance on 8080-8083.
 #
 # Services export telemetry to Host A's otel-collector at ${HOST_A_IP}:4317.
@@ -186,6 +186,37 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+
+  # Document → Markdown conversion. No published port: only callers on this host's compose
+  # network reach it, at http://conversion:8090.
+  conversion:
+    image: ${ECR}/protofast-conversion:${CONVERSION_TAG}
+    restart: unless-stopped
+    environment:
+      # Reads uploads from and writes Markdown to the api's document bucket. No
+      # CONVERSION_S3_ENDPOINT and no credentials: boto3 uses real S3 and the instance role.
+      CONVERSION_BUCKET: "${DOCUMENTS_BUCKET:-}"
+      AWS_REGION: ${AWS_REGION}
+      AWS_DEFAULT_REGION: ${AWS_REGION}
+      CONVERSION_MAX_SOURCE_BYTES: "${CONVERSION_MAX_SOURCE_BYTES:-10485760}"
+      CONVERSION_MAX_OUTPUT_BYTES: "${CONVERSION_MAX_OUTPUT_BYTES:-26214400}"
+      CONVERSION_TIMEOUT_SECONDS: "${CONVERSION_TIMEOUT_SECONDS:-480}"
+      CONVERSION_OCR_LANGUAGES: "${CONVERSION_OCR_LANGUAGES:-eng}"
+      CONVERSION_OCR_MIN_CONFIDENCE: "${CONVERSION_OCR_MIN_CONFIDENCE:-60}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://${HOST_A_IP}:4317"
+    # Sandbox for the document-parser attack surface (XXE, zip-slip, PDF JS, font exploits).
+    mem_limit: 1g
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8090/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
 
   postgres:
     # Pinned upstream image via POSTGRES_TAG (versions.env). Major-version bumps

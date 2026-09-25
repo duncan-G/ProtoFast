@@ -1,0 +1,107 @@
+name: deploy-conversion
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/conversion/**"
+      # The parity test reads the api's allowlist, so a change there must re-run the guard.
+      - "services/document_import/src/ProtoFast.DocumentImport.Core/SourceFormats.cs"
+      - ".github/workflows/deploy-conversion.yml"
+      - ".github/workflows/_component-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing artifact tag to (re)deploy or roll back to. Blank = build current source."
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-conversion
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Lint and unit tests
+        working-directory: services/conversion
+        run: |
+          python -m pip install --quiet --upgrade pip
+          # MarkItDown, pdfplumber and pytesseract are imported lazily and stubbed by the tests.
+          python -m pip install --quiet pytest pydantic fastapi httpx boto3 ruff
+          python -m ruff check .
+          python -m pytest -q
+
+      - name: Build the image
+        run: docker build -t protofast-conversion:ci services/conversion
+
+      - name: No LLM client, no cloud document AI, no GPU
+        run: |
+          set -euo pipefail
+          packages="$(docker run --rm protofast-conversion:ci pip list --format=freeze)"
+
+          # Listed by name so adding one is a deliberate, reviewed change.
+          for forbidden in openai anthropic torch torchvision transformers \
+                           azure-ai-formrecognizer azure-ai-documentintelligence \
+                           SpeechRecognition pydub youtube-transcript-api; do
+            if printf '%s\n' "$packages" | grep -iq "^${forbidden}=="; then
+              echo "FORBIDDEN dependency in the converter image: ${forbidden}" >&2
+              echo "Conversion must stay local and CPU-only." >&2
+              exit 1
+            fi
+          done
+          echo "no forbidden packages found"
+
+          if docker run --rm protofast-conversion:ci test -d /usr/local/cuda; then
+            echo "FORBIDDEN: the converter image contains a CUDA runtime" >&2
+            exit 1
+          fi
+          echo "no CUDA runtime found"
+
+      - name: Tesseract and OCRmyPDF are runnable
+        run: |
+          set -euo pipefail
+          docker run --rm protofast-conversion:ci tesseract --version
+          docker run --rm protofast-conversion:ci ocrmypdf --version
+
+      - name: Starts under the production sandbox
+        run: |
+          set -euo pipefail
+          docker run -d --name conversion-ci --read-only --tmpfs /tmp:size=512m \
+            --cap-drop ALL --security-opt no-new-privileges:true --memory 1g \
+            -e OTEL_TRACES_EXPORTER=none -e OTEL_METRICS_EXPORTER=none -e OTEL_LOGS_EXPORTER=none \
+            protofast-conversion:ci
+          for _ in $(seq 1 30); do
+            if docker exec conversion-ci python -c \
+                 "import urllib.request;urllib.request.urlopen('http://localhost:8090/health')"; then
+              echo "healthy"; exit 0
+            fi
+            sleep 2
+          done
+          docker logs conversion-ci >&2
+          exit 1
+
+  deploy:
+    needs: guard
+    uses: ./.github/workflows/_component-deploy.yml
+    with:
+      component: conversion
+      host: services
+      build: buildx
+      target: protofast-conversion
+      kind: service
+      hash_paths: "services/conversion"
+      project: services/conversion
+      tag: ${{ inputs.tag }}
+    secrets: inherit

@@ -13,6 +13,7 @@
 | `envoy`            | The edge proxy: TLS, routing, CORS, identity annotation  | `proxy/`                            |
 | `auth`             | BFF: sign-in, sessions, account management, ext_authz    | `services/auth`                     |
 | `payments`, `api`  | gRPC services behind the internal JWT                    | `services/payments`, `services/api` |
+| `conversion`       | Document → Markdown (MarkItDown, CPU OCR), HTTP, internal | `services/conversion`               |
 | Keycloak           | Identity provider (realm `protofast`)                    | `infra/keycloak`, `deploy/keycloak` |
 | Postgres           | Keycloak's `keycloak` DB + auth's `auth` DB              | upstream image                      |
 | Redis              | Session / correlation / replay cache (in-memory only)    | upstream image                      |
@@ -77,6 +78,7 @@ graph TD
         AuthB["auth :8080"]
         PayB["payments :8081"]
         ApiB["api :8082"]
+        ConvB["conversion (internal)"]
         KCB["keycloak :8083"]
         PGB["postgres (EBS /mnt/pgdata)"]
         RedisB["redis"]
@@ -86,6 +88,7 @@ graph TD
     Envoy -->|private IP| AuthB & PayB & ApiB & KCB
     AuthB --> RedisB & PGB & KCB
     KCB --> PGB
+    ConvB -->|S3| Docs[(documents bucket)]
     HostB -->|OTLP| OtelA
     OtelA --> Dash
 ```
