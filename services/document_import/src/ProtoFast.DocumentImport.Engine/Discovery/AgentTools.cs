@@ -1,0 +1,376 @@
+using System.Collections.Concurrent;
+
+namespace ProtoFast.DocumentImport.Engine;
+
+/// <summary>
+/// Optional check on an executor the agent defines, beyond the structural rules
+/// <see cref="AgentTools.DefineExecutor"/> applies itself: that a Codified assembly builds, that a
+/// playbook's prompt is well-formed. Throw <see cref="ArgumentException"/> to reject.
+/// </summary>
+public interface IExecutorSpecValidator
+{
+    Task ValidateAsync(ExecutorSpec spec, CancellationToken ct);
+}
+
+public sealed class AgentToolsFactory(
+    IArtifactStore artifacts,
+    IRunLedger ledger,
+    IRegistry registry,
+    IBucketCatalog catalog,
+    VerifierRunner verifiers,
+    StageAttempts attempts,
+    IOutcomeBus outcomes,
+    TimeProvider time,
+    EngineOptions options,
+    IEnumerable<IExecutorSpecValidator> validators)
+{
+    /// <summary>Tools for a discovery run: the agent owns control flow, every write and delegation is recorded.</summary>
+    public AgentTools ForRun(string runId, Signature signature, ArtifactRef input, TraceRef trace, CancellationToken ct) =>
+        new(this, runId, signature, input, trace, scope: null, ct);
+
+    /// <summary>
+    /// Tools for the stage-scoped agent loop that is a scheduled run's Orchestrator executor. It can
+    /// only write its own stage's output, and its writes are not recorded as attempts: the
+    /// scheduler records the attempt the loop as a whole makes.
+    /// </summary>
+    public AgentTools ForStage(StageRequest request, TraceRef trace, CancellationToken ct) =>
+        new(this, request.RunId, request.Signature, request.Inputs[0], trace, scope: request, ct);
+
+    internal IArtifactStore Artifacts => artifacts;
+    internal IRunLedger Ledger => ledger;
+    internal IRegistry Registry => registry;
+    internal IBucketCatalog Catalog => catalog;
+    internal VerifierRunner Verifiers => verifiers;
+    internal StageAttempts Attempts => attempts;
+    internal IOutcomeBus Outcomes => outcomes;
+    internal TimeProvider Time => time;
+    internal EngineOptions Options => options;
+    internal IEnumerable<IExecutorSpecValidator> Validators => validators;
+}
+
+/// <summary>
+/// The engine's primitives as agent tools. See <see cref="IAgentTools"/>; the rules enforced here:
+///
+/// <list type="bullet">
+/// <item>Every write and delegation names a stage, and the inputs it names become the stage's
+/// recorded dependency edges.</item>
+/// <item>A stage's verifiers are the bucket's <see cref="VerifierSpec"/>s for it. Failures are
+/// returned to the agent, never escalated: in discovery the agent is the escalation.</item>
+/// <item>A write is a <see cref="StageRecord"/> at Orchestrator with the agent loop as executor; a
+/// delegation is one at the delegate's tier, and is also recorded as a
+/// <see cref="Decision"/> keyed <c>executor:{stageId}</c>.</item>
+/// <item>An agent-defined executor is usable only in the bucket that defined it.</item>
+/// </list>
+/// </summary>
+public sealed class AgentTools : IAgentTools
+{
+    private readonly AgentToolsFactory _engine;
+    private readonly string _runId;
+    private readonly Signature _signature;
+    private readonly ArtifactRef _input;
+    private readonly TraceRef _trace;
+    private readonly StageRequest? _scope;
+    private readonly CancellationToken _ct;
+
+    private readonly ConcurrentDictionary<string, ContractRef> _contracts = new(StringComparer.Ordinal);
+    private readonly ConcurrentQueue<Decision> _scopedDecisions = new();
+
+    internal AgentTools(
+        AgentToolsFactory engine, string runId, Signature signature, ArtifactRef input, TraceRef trace,
+        StageRequest? scope, CancellationToken ct)
+    {
+        _engine = engine;
+        _runId = runId;
+        _signature = signature;
+        _input = input;
+        _trace = trace;
+        _scope = scope;
+        _ct = ct;
+    }
+
+    private string Bucket => _signature.Bucket;
+
+    /// <summary>Stage-scoped only: the last output written, or last delegated output that passed.</summary>
+    public ArtifactRef? ScopedOutput { get; private set; }
+
+    /// <summary>Stage-scoped only: the loop's decisions, which become the executor result's.</summary>
+    public IReadOnlyList<Decision> ScopedDecisions => _scopedDecisions.ToList();
+
+    public async Task<BucketContext> Context()
+    {
+        var runs = await _engine.Ledger.RecentAsync(Bucket, RunMode.Discovery, _engine.Options.ContextRuns, _ct);
+        var verifiers = await _engine.Catalog.VerifiersAsync(Bucket, _ct);
+        var records = runs.SelectMany(r => r.Stages).ToList();
+
+        var stageIds = records.Select(r => r.StageId).Concat(verifiers.Select(v => v.StageId)).Distinct().ToList();
+
+        var executorRefs = (await _engine.Catalog.ExecutorsAsync(Bucket, _ct))
+            .Concat(records.Where(r => r.Tier != Tier.Orchestrator).Select(r => r.Executor))
+            .Distinct()
+            .ToList();
+        var executors = new List<ExecutorSpec>(executorRefs.Count);
+        foreach (var executor in executorRefs)
+        {
+            try
+            {
+                executors.Add(await _engine.Registry.ResolveAsync(executor, _ct));
+            }
+            catch (KeyNotFoundException)
+            {
+                // A record can outlive a registry entry; there is nothing to offer for it.
+            }
+        }
+
+        if (_scope is { } scope)
+        {
+            stageIds = [scope.Stage.Id];
+            verifiers = verifiers.Where(v => v.StageId == scope.Stage.Id).ToList();
+        }
+
+        return new BucketContext(stageIds, executors, verifiers);
+    }
+
+    public Task<Stream> ReadArtifact(ArtifactRef reference) => _engine.Artifacts.GetAsync(reference, _ct);
+
+    public async Task<WriteResult> WriteArtifact(
+        string stageId, Stream content, ContractRef contract, IReadOnlyList<ArtifactRef>? inputs = null)
+    {
+        EnsureWritable(stageId);
+        inputs ??= _scope?.Inputs ?? [];
+        EnsureInputsBelongToRun(inputs);
+
+        if (_scope is { } scope)
+        {
+            if (contract != scope.Stage.Output)
+            {
+                throw new ArgumentException(
+                    $"Stage '{stageId}' must produce {scope.Stage.Output}, not {contract}.", nameof(contract));
+            }
+
+            var scopedOutput = await _engine.Artifacts.PutAsync(_runId, stageId, content, contract, _ct);
+            var scopedVerdicts = await _engine.Verifiers.RunAsync(
+                scope, new StageResult(scopedOutput, _trace, Cost.Zero, []), Tier.Orchestrator, _ct);
+            ScopedOutput = scopedOutput;
+            return new WriteResult(scopedOutput, scopedVerdicts);
+        }
+
+        var output = await _engine.Artifacts.PutAsync(_runId, stageId, content, contract, _ct);
+        _contracts[stageId] = contract;
+
+        var stage = await RecordedStageAsync(stageId, inputs, contract);
+        var request = new StageRequest(_runId, stage, _signature, inputs);
+        var result = new StageResult(output, _trace, Cost.Zero, []);
+        var verdicts = await _engine.Verifiers.RunAsync(request, result, Tier.Orchestrator, _ct);
+
+        var record = new StageRecord(
+            _runId, stage, inputs, _engine.Options.Orchestrator, Tier.Orchestrator, result, verdicts, IsShadow: false);
+        await _engine.Ledger.RecordAsync(record, _ct);
+        await _engine.Outcomes.PublishAsync(Outcome.From(record, Bucket, _engine.Time.GetUtcNow()), _ct);
+
+        return new WriteResult(output, verdicts);
+    }
+
+    public async Task<ExecutorRef> DefineExecutor(ExecutorSpec spec)
+    {
+        ValidateStructure(spec);
+        if (spec.Playbook is { } playbook)
+        {
+            try
+            {
+                await _engine.Registry.ResolveAsync(playbook, _ct);
+            }
+            catch (KeyNotFoundException)
+            {
+                throw new ArgumentException($"Playbook {playbook.Id}@{playbook.Version} does not exist.", nameof(spec));
+            }
+        }
+
+        foreach (var validator in _engine.Validators)
+        {
+            await validator.ValidateAsync(spec, _ct);
+        }
+
+        // The registry applies the human gate: promoted now at an agent tier, not with code.
+        var published = await _engine.Registry.PublishAsync(spec with { Origin = ExecutorOrigin.AgentDefined }, _ct);
+        await _engine.Catalog.AddExecutorAsync(Bucket, published, _ct);
+        return published;
+    }
+
+    public async Task<string> DefineVerifier(VerifierSpec spec)
+    {
+        if (string.IsNullOrWhiteSpace(spec.Id) || string.IsNullOrWhiteSpace(spec.Rubric))
+        {
+            throw new ArgumentException("A verifier needs an id and a rubric.", nameof(spec));
+        }
+
+        EnsureWritable(spec.StageId);
+
+        var existing = (await _engine.Catalog.VerifiersAsync(Bucket, _ct)).FirstOrDefault(v => v.Id == spec.Id);
+        if (existing is not null)
+        {
+            // Reuse before redefine: the same spec is a no-op, a different one under the same id
+            // would silently change what earlier records were judged against.
+            return existing == spec
+                ? spec.Id
+                : throw new ArgumentException($"Verifier '{spec.Id}' is already defined differently in this bucket.", nameof(spec));
+        }
+
+        await _engine.Catalog.AddVerifierAsync(Bucket, spec, _ct);
+        return spec.Id;
+    }
+
+    public async Task<StageRecord> Delegate(
+        string stageId, ExecutorRef executor, IReadOnlyList<ArtifactRef> inputs, ContractRef? output = null)
+    {
+        EnsureWritable(stageId);
+        EnsureInputsBelongToRun(inputs);
+
+        var spec = await _engine.Registry.ResolveAsync(executor, _ct);
+        if (spec.Tier == Tier.Orchestrator)
+        {
+            throw new ArgumentException("The agent loop is the Orchestrator; delegate to a lower tier.", nameof(executor));
+        }
+
+        if (spec.Origin == ExecutorOrigin.AgentDefined
+            && !(await _engine.Catalog.ExecutorsAsync(Bucket, _ct)).Contains(executor))
+        {
+            throw new ArgumentException($"Executor {executor} was defined in another bucket.", nameof(executor));
+        }
+
+        StageDefinition stage;
+        if (_scope is { } scope)
+        {
+            if (output is { } requested && requested != scope.Stage.Output)
+            {
+                throw new ArgumentException($"Stage '{stageId}' must produce {scope.Stage.Output}.", nameof(output));
+            }
+
+            stage = scope.Stage;
+        }
+        else
+        {
+            var contract = output
+                ?? (_contracts.TryGetValue(stageId, out var known) ? known : await LastRecordedContractAsync(stageId))
+                ?? throw new ArgumentException(
+                    $"Stage '{stageId}' has no recorded output contract in this bucket; pass one.", nameof(output));
+            _contracts[stageId] = contract;
+            stage = await RecordedStageAsync(stageId, inputs, contract);
+        }
+
+        await Record(new Decision($"executor:{stageId}", executor.ToString(), "Delegated by the agent loop.", 1));
+
+        var record = await _engine.Attempts.RunAsync(
+            new StageRequest(_runId, stage, _signature, inputs), executor, isShadow: false, _ct);
+
+        if (_scope is not null && record.Passed)
+        {
+            ScopedOutput = record.Output;
+        }
+
+        return record;
+    }
+
+    public Task Record(Decision decision)
+    {
+        if (_scope is not null)
+        {
+            _scopedDecisions.Enqueue(decision);
+            return Task.CompletedTask;
+        }
+
+        return _engine.Ledger.RecordAsync(_runId, decision, _ct);
+    }
+
+    private void ValidateStructure(ExecutorSpec spec)
+    {
+        if (string.IsNullOrWhiteSpace(spec.Ref.Id))
+        {
+            throw new ArgumentException("An executor needs an id.", nameof(spec));
+        }
+
+        switch (spec.Tier)
+        {
+            case Tier.Orchestrator:
+                throw new ArgumentException("The agent loop is the only Orchestrator executor.", nameof(spec));
+
+            case Tier.Codified:
+                if (string.IsNullOrWhiteSpace(spec.CodeAssembly)
+                    || spec.ModelClass is not null || spec.Playbook is not null || spec.Tools.Count > 0)
+                {
+                    throw new ArgumentException(
+                        "A Codified executor has an assembly and no model class, playbook or tools.", nameof(spec));
+                }
+
+                break;
+
+            default:
+                if (spec.ModelClass != ModelClasses.For(spec.Tier) || spec.Playbook is null || spec.CodeAssembly is not null)
+                {
+                    throw new ArgumentException(
+                        $"A {spec.Tier} executor runs on the '{ModelClasses.For(spec.Tier)}' model class with a playbook and no assembly.",
+                        nameof(spec));
+                }
+
+                if (_engine.Options.AgentToolNames is { } allowed && spec.Tools.FirstOrDefault(t => !allowed.Contains(t)) is { } tool)
+                {
+                    throw new ArgumentException($"Tool '{tool}' is not available to executors.", nameof(spec));
+                }
+
+                break;
+        }
+    }
+
+    private void EnsureWritable(string stageId)
+    {
+        if (string.IsNullOrWhiteSpace(stageId) || stageId == ArtifactRef.InputStageId)
+        {
+            throw new ArgumentException($"'{stageId}' is not a usable stage id.", nameof(stageId));
+        }
+
+        if (_scope is { } scope && stageId != scope.Stage.Id)
+        {
+            throw new ArgumentException($"This loop can only write stage '{scope.Stage.Id}'.", nameof(stageId));
+        }
+    }
+
+    private void EnsureInputsBelongToRun(IReadOnlyList<ArtifactRef> inputs)
+    {
+        foreach (var input in inputs)
+        {
+            if (input != _input && input.RunId != _runId && _scope?.Inputs.Contains(input) != true)
+            {
+                throw new ArgumentException($"Artifact {input} is not the run input or an artifact of this run.", nameof(inputs));
+            }
+        }
+    }
+
+    /// <summary>
+    /// The stage definition a discovery attempt is recorded against. Its dependencies are the
+    /// stages that produced its inputs; its input contract is the first input's.
+    /// </summary>
+    private async Task<StageDefinition> RecordedStageAsync(string stageId, IReadOnlyList<ArtifactRef> inputs, ContractRef output)
+    {
+        var dependsOn = inputs
+            .Select(i => i.StageId)
+            .Where(id => id != ArtifactRef.InputStageId)
+            .Distinct()
+            .ToList();
+        var input = await _engine.Artifacts.ContractOfAsync(inputs.Count > 0 ? inputs[0] : _input, _ct);
+        var verifiers = (await _engine.Catalog.VerifiersAsync(Bucket, _ct))
+            .Where(v => v.StageId == stageId)
+            .Select(v => v.Id)
+            .ToList();
+
+        return new StageDefinition(stageId, dependsOn, input, output, verifiers, _engine.Options.DiscoveryBudget);
+    }
+
+    private async Task<ContractRef?> LastRecordedContractAsync(string stageId)
+    {
+        var runs = await _engine.Ledger.RecentAsync(Bucket, RunMode.Discovery, _engine.Options.ContextRuns, _ct);
+        return runs
+            .SelectMany(r => r.Stages)
+            .Where(s => s.StageId == stageId)
+            .Select(s => (ContractRef?)s.Stage.Output)
+            .FirstOrDefault();
+    }
+}
