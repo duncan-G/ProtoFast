@@ -4,6 +4,10 @@ namespace ProtoFast.Data.ThePlot.Entities;
 /// One <c>@Name</c> reference inside a beat's <see cref="SceneElement.Text"/>, resolved to the
 /// cast member or prop it names. Written alongside the text: saving a beat replaces its mentions.
 ///
+/// <para>Owned by its beat: a mention is only ever read or written through its
+/// <see cref="SceneElement"/>, so it has no <c>UserId</c>, repository or query of its own, and the
+/// user filter reaches the owner through <see cref="SceneElement"/>.</para>
+///
 /// <para>Stored rather than re-parsed on read so the library can answer "where is this used"
 /// (the per-character mention counts, "Props in play", unused props) without scanning prose, and
 /// so a rename can rewrite each reference at its recorded span.</para>

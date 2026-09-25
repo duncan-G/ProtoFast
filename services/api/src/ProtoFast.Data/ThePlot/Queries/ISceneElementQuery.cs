@@ -29,6 +29,13 @@ public interface ISceneElementQuery : IQuery<SceneElement>
     /// </summary>
     ISceneElementQuery InPositionRange(int from, int to = int.MaxValue);
 
+    /// <summary>Beats that mention the cast member: the editor's "N mentions" count, and a rename's rewrite set.</summary>
+    ISceneElementQuery MentioningCastMember(Guid castMemberId);
+
+    /// <summary>Beats that reference the prop: "Props in play", and a rename's rewrite set.</summary>
+    ISceneElementQuery MentioningProp(Guid propId);
+
+    /// <summary>Loads each beat's mentions. Saving a beat replaces this collection.</summary>
     ISceneElementQuery WithMentions();
 
     /// <summary>Scene order, ties broken by id.</summary>

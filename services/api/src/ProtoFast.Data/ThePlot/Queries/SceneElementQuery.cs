@@ -48,6 +48,18 @@ public sealed class SceneElementQuery : Query<SceneElement>, ISceneElementQuery
         return this;
     }
 
+    public ISceneElementQuery MentioningCastMember(Guid castMemberId)
+    {
+        Where(e => e.Mentions.Any(m => m.CastMemberId == castMemberId));
+        return this;
+    }
+
+    public ISceneElementQuery MentioningProp(Guid propId)
+    {
+        Where(e => e.Mentions.Any(m => m.PropId == propId));
+        return this;
+    }
+
     public ISceneElementQuery WithMentions()
     {
         Apply(q => q.Include(e => e.Mentions.OrderBy(m => m.Offset)));

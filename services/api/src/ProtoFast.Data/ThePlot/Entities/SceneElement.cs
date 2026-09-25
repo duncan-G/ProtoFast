@@ -15,6 +15,9 @@ public sealed class SceneElement : IDateStamped
 {
     public Guid Id { get; set; }
 
+    /// <inheritdoc cref="Story.UserId"/>
+    public string UserId { get; set; } = "";
+
     public Guid SceneId { get; set; }
 
     public Scene Scene { get; set; } = null!;

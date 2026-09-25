@@ -10,6 +10,9 @@ public sealed class Scene : IDateStamped
 {
     public Guid Id { get; set; }
 
+    /// <inheritdoc cref="Story.UserId"/>
+    public string UserId { get; set; } = "";
+
     public Guid ActId { get; set; }
 
     public Act Act { get; set; } = null!;

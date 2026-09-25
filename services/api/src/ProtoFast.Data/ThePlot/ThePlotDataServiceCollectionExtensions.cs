@@ -37,9 +37,6 @@ public static class ThePlotDataServiceCollectionExtensions
         services.AddQueryFactory<SceneElement, ISceneElementQuery, SceneElementQuery>();
         services.AddScoped<ISceneElementRepository, SceneElementRepository>();
 
-        services.AddQueryFactory<SceneElementMention, ISceneElementMentionQuery, SceneElementMentionQuery>();
-        services.AddScoped<ISceneElementMentionRepository, SceneElementMentionRepository>();
-
         services.AddQueryFactory<CastMember, ICastMemberQuery, CastMemberQuery>();
         services.AddScoped<ICastMemberRepository, CastMemberRepository>();
 

@@ -92,9 +92,11 @@ public sealed class ThePlotDbContext(
     }
 
     /// <summary>
-    /// The screenplay tree: story → act → scene → element. Only the story carries a <c>UserId</c>;
-    /// everything below is owned by it, and the shared query filter reaches the owner by following
-    /// each row's required foreign key up the tree. Deleting a parent takes its subtree with it.
+    /// The screenplay tree: story → act → scene → element. Every row the API reads or writes on its
+    /// own carries its own <c>UserId</c>, like <see cref="Document"/>, so its user filter is a column
+    /// compare. A mention is only reached through its element, so it is owned: no <c>UserId</c>, and
+    /// its filter follows the required foreign key to the element. Deleting a parent takes its
+    /// subtree with it.
     /// </summary>
     private static void ConfigureScreenplay(ModelBuilder modelBuilder)
     {
@@ -118,6 +120,7 @@ public sealed class ThePlotDbContext(
         modelBuilder.Entity<Act>(entity =>
         {
             entity.HasKey(a => a.Id);
+            entity.Property(a => a.UserId).IsRequired().HasMaxLength(UserIdLength);
             entity.Property(a => a.Title).HasMaxLength(NameLength);
 
             entity.HasOne(a => a.Story)
@@ -132,6 +135,7 @@ public sealed class ThePlotDbContext(
         modelBuilder.Entity<Scene>(entity =>
         {
             entity.HasKey(s => s.Id);
+            entity.Property(s => s.UserId).IsRequired().HasMaxLength(UserIdLength);
             entity.Property(s => s.Title).IsRequired().HasMaxLength(NameLength);
 
             entity.HasOne(s => s.Act)
@@ -146,6 +150,7 @@ public sealed class ThePlotDbContext(
         modelBuilder.Entity<SceneElement>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.UserId).IsRequired().HasMaxLength(UserIdLength);
             entity.Property(e => e.Type).HasConversion<string>().HasMaxLength(EnumLength);
             entity.Property(e => e.TimeOfDay).HasConversion<string>().HasMaxLength(EnumLength);
             entity.Property(e => e.TransitionKind).HasConversion<string>().HasMaxLength(EnumLength);
@@ -240,6 +245,7 @@ public sealed class ThePlotDbContext(
         modelBuilder.Entity<CastMember>(entity =>
         {
             entity.HasKey(c => c.Id);
+            entity.Property(c => c.UserId).IsRequired().HasMaxLength(UserIdLength);
             entity.Property(c => c.Name).IsRequired().HasMaxLength(NameLength);
             entity.Property(c => c.Kind).HasConversion<string>().HasMaxLength(EnumLength);
 
@@ -255,6 +261,7 @@ public sealed class ThePlotDbContext(
         modelBuilder.Entity<Location>(entity =>
         {
             entity.HasKey(l => l.Id);
+            entity.Property(l => l.UserId).IsRequired().HasMaxLength(UserIdLength);
             entity.Property(l => l.Name).IsRequired().HasMaxLength(NameLength);
             entity.Property(l => l.Setting).HasConversion<string>().HasMaxLength(EnumLength);
 
@@ -270,6 +277,7 @@ public sealed class ThePlotDbContext(
         modelBuilder.Entity<Prop>(entity =>
         {
             entity.HasKey(p => p.Id);
+            entity.Property(p => p.UserId).IsRequired().HasMaxLength(UserIdLength);
             entity.Property(p => p.Name).IsRequired().HasMaxLength(NameLength);
 
             entity.HasOne(p => p.Story)
