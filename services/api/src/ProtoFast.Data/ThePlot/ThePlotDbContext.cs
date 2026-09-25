@@ -34,7 +34,7 @@ public sealed class ThePlotDbContext(
 
     public DbSet<Story> Stories => Set<Story>();
 
-    public DbSet<Act> Acts => Set<Act>();
+    public DbSet<Container> Containers => Set<Container>();
 
     public DbSet<Scene> Scenes => Set<Scene>();
 
@@ -109,20 +109,20 @@ public sealed class ThePlotDbContext(
             entity.HasIndex(s => s.SourceDocumentId);
         });
 
-        modelBuilder.Entity<Act>(entity =>
+        modelBuilder.Entity<Container>(entity =>
         {
-            entity.HasKey(a => a.Id);
-            entity.Property(a => a.UserId).IsRequired().HasMaxLength(UserIdLength);
-            entity.Property(a => a.Title).HasMaxLength(NameLength);
+            entity.HasKey(c => c.Id);
+            entity.Property(c => c.UserId).IsRequired().HasMaxLength(UserIdLength);
+            entity.Property(c => c.Label).IsRequired().HasMaxLength(NameLength);
 
-            entity.HasOne(a => a.Story)
-                .WithMany(s => s.Acts)
-                .HasForeignKey(a => a.StoryId)
+            entity.HasOne(c => c.Story)
+                .WithMany(s => s.Containers)
+                .HasForeignKey(c => c.StoryId)
                 .OnDelete(DeleteBehavior.Cascade);
 
             // Positions are not unique, so a reorder can rewrite them in any order in one save.
-            entity.HasIndex(a => new { a.StoryId, a.Position });
-            entity.ToTable(t => t.HasCheckConstraint("ck_acts_position_non_negative", "position >= 0"));
+            entity.HasIndex(c => new { c.StoryId, c.Position });
+            entity.ToTable(t => t.HasCheckConstraint("ck_containers_position_non_negative", "position >= 0"));
         });
 
         modelBuilder.Entity<Scene>(entity =>
@@ -131,12 +131,12 @@ public sealed class ThePlotDbContext(
             entity.Property(s => s.UserId).IsRequired().HasMaxLength(UserIdLength);
             entity.Property(s => s.Title).IsRequired().HasMaxLength(NameLength);
 
-            entity.HasOne(s => s.Act)
-                .WithMany(a => a.Scenes)
-                .HasForeignKey(s => s.ActId)
+            entity.HasOne(s => s.Container)
+                .WithMany(c => c.Scenes)
+                .HasForeignKey(s => s.ContainerId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasIndex(s => new { s.ActId, s.Position });
+            entity.HasIndex(s => new { s.ContainerId, s.Position });
             entity.ToTable(t => t.HasCheckConstraint("ck_scenes_position_non_negative", "position >= 0"));
         });
 

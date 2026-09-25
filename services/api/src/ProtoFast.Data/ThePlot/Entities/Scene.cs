@@ -8,9 +8,9 @@ public sealed class Scene : IDateStamped
 
     public string UserId { get; set; } = "";
 
-    public Guid ActId { get; set; }
+    public Guid ContainerId { get; set; }
 
-    public Act Act { get; set; } = null!;
+    public Container Container { get; set; } = null!;
 
     public int Position { get; set; }
 

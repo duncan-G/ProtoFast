@@ -11,7 +11,7 @@ public interface ISceneQuery : IQuery<Scene>
 {
     ISceneQuery WithId(Guid id);
 
-    ISceneQuery InAct(Guid actId);
+    ISceneQuery InContainer(Guid containerId);
 
     ISceneQuery InStory(Guid storyId);
 
@@ -22,6 +22,6 @@ public interface ISceneQuery : IQuery<Scene>
     /// <summary>Includes the elements in order, with their mentions, speaker and location.</summary>
     ISceneQuery WithElements();
 
-    /// <summary>By act, then by position within the act.</summary>
+    /// <summary>By container, then by position within the container.</summary>
     ISceneQuery InOrder();
 }

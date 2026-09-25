@@ -4,5 +4,5 @@ using ProtoFast.Database.Abstractions;
 
 namespace ProtoFast.Data.ThePlot.Repositories;
 
-public sealed class ActRepository(PagingTokenHelper pagingTokenHelper)
-    : Repository<Act, Guid>(pagingTokenHelper), IActRepository;
+public sealed class ContainerRepository(PagingTokenHelper pagingTokenHelper)
+    : Repository<Container, Guid>(pagingTokenHelper), IContainerRepository;

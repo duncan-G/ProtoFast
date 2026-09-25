@@ -13,7 +13,7 @@ public sealed class Story : IDateStamped
     /// <summary>The imported document the story was adapted from, if any.</summary>
     public string? SourceDocumentId { get; set; }
 
-    public List<Act> Acts { get; set; } = [];
+    public List<Container> Containers { get; set; } = [];
 
     public List<CastMember> Cast { get; set; } = [];
 

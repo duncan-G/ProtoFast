@@ -2,7 +2,7 @@ using ProtoFast.Database.Abstractions;
 
 namespace ProtoFast.Data.ThePlot.Entities;
 
-public sealed class Act : IDateStamped
+public sealed class Container : IDateStamped
 {
     public Guid Id { get; set; }
 
@@ -14,8 +14,8 @@ public sealed class Act : IDateStamped
 
     public int Position { get; set; }
 
-    /// <summary>Null displays the act's numeral ("Act I").</summary>
-    public string? Title { get; set; }
+    /// <summary>What the editor shows for the container: "Act I", "Part One", "Episode 3".</summary>
+    public required string Label { get; set; }
 
     public List<Scene> Scenes { get; set; } = [];
 

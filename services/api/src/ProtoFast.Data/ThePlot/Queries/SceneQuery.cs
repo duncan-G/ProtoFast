@@ -12,15 +12,15 @@ public sealed class SceneQuery : Query<Scene>, ISceneQuery
         return this;
     }
 
-    public ISceneQuery InAct(Guid actId)
+    public ISceneQuery InContainer(Guid containerId)
     {
-        Where(s => s.ActId == actId);
+        Where(s => s.ContainerId == containerId);
         return this;
     }
 
     public ISceneQuery InStory(Guid storyId)
     {
-        Where(s => s.Act.StoryId == storyId);
+        Where(s => s.Container.StoryId == storyId);
         return this;
     }
 
@@ -49,7 +49,7 @@ public sealed class SceneQuery : Query<Scene>, ISceneQuery
 
     public ISceneQuery InOrder()
     {
-        Apply(q => q.OrderBy(s => s.Act.Position).ThenBy(s => s.Position).ThenBy(s => s.Id));
+        Apply(q => q.OrderBy(s => s.Container.Position).ThenBy(s => s.Position).ThenBy(s => s.Id));
         return this;
     }
 }

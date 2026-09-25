@@ -12,7 +12,7 @@ using ProtoFast.Data.ThePlot;
 namespace ProtoFast.Data.Migrations
 {
     [DbContext(typeof(ThePlotDbContext))]
-    [Migration("20260925023527_AddScreenplay")]
+    [Migration("20260925024224_AddScreenplay")]
     partial class AddScreenplay
     {
         /// <inheritdoc />
@@ -25,52 +25,6 @@ namespace ProtoFast.Data.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Act", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime>("DateCreated")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("date_created");
-
-                    b.Property<DateTime>("DateLastModified")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("date_last_modified");
-
-                    b.Property<int>("Position")
-                        .HasColumnType("integer")
-                        .HasColumnName("position");
-
-                    b.Property<Guid>("StoryId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("story_id");
-
-                    b.Property<string>("Title")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("title");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_acts");
-
-                    b.HasIndex("StoryId", "Position")
-                        .HasDatabaseName("ix_acts_story_id_position");
-
-                    b.ToTable("acts", "plot", t =>
-                        {
-                            t.HasCheckConstraint("ck_acts_position_non_negative", "position >= 0");
-                        });
-                });
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.CastMember", b =>
                 {
@@ -123,6 +77,53 @@ namespace ProtoFast.Data.Migrations
                     b.ToTable("cast_members", "plot", t =>
                         {
                             t.HasCheckConstraint("ck_cast_members_hue", "hue BETWEEN 0 AND 359");
+                        });
+                });
+
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Container", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("DateCreated")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("date_created");
+
+                    b.Property<DateTime>("DateLastModified")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("date_last_modified");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("label");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<Guid>("StoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("story_id");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_containers");
+
+                    b.HasIndex("StoryId", "Position")
+                        .HasDatabaseName("ix_containers_story_id_position");
+
+                    b.ToTable("containers", "plot", t =>
+                        {
+                            t.HasCheckConstraint("ck_containers_position_non_negative", "position >= 0");
                         });
                 });
 
@@ -344,9 +345,9 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<Guid>("ActId")
+                    b.Property<Guid>("ContainerId")
                         .HasColumnType("uuid")
-                        .HasColumnName("act_id");
+                        .HasColumnName("container_id");
 
                     b.Property<DateTime>("DateCreated")
                         .HasColumnType("timestamp with time zone")
@@ -375,8 +376,8 @@ namespace ProtoFast.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_scenes");
 
-                    b.HasIndex("ActId", "Position")
-                        .HasDatabaseName("ix_scenes_act_id_position");
+                    b.HasIndex("ContainerId", "Position")
+                        .HasDatabaseName("ix_scenes_container_id_position");
 
                     b.ToTable("scenes", "plot", t =>
                         {
@@ -563,18 +564,6 @@ namespace ProtoFast.Data.Migrations
                     b.ToTable("stories", "plot");
                 });
 
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Act", b =>
-                {
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Story", "Story")
-                        .WithMany("Acts")
-                        .HasForeignKey("StoryId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_acts_stories_story_id");
-
-                    b.Navigation("Story");
-                });
-
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.CastMember", b =>
                 {
                     b.HasOne("ProtoFast.Data.ThePlot.Entities.Story", "Story")
@@ -583,6 +572,18 @@ namespace ProtoFast.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_cast_members_stories_story_id");
+
+                    b.Navigation("Story");
+                });
+
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Container", b =>
+                {
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Story", "Story")
+                        .WithMany("Containers")
+                        .HasForeignKey("StoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_containers_stories_story_id");
 
                     b.Navigation("Story");
                 });
@@ -623,14 +624,14 @@ namespace ProtoFast.Data.Migrations
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Scene", b =>
                 {
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Act", "Act")
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Container", "Container")
                         .WithMany("Scenes")
-                        .HasForeignKey("ActId")
+                        .HasForeignKey("ContainerId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_scenes_acts_act_id");
+                        .HasConstraintName("fk_scenes_containers_container_id");
 
-                    b.Navigation("Act");
+                    b.Navigation("Container");
                 });
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.SceneElement", b =>
@@ -698,7 +699,7 @@ namespace ProtoFast.Data.Migrations
                         .HasConstraintName("fk_stories_documents_source_document_id");
                 });
 
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Act", b =>
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Container", b =>
                 {
                     b.Navigation("Scenes");
                 });
@@ -715,9 +716,9 @@ namespace ProtoFast.Data.Migrations
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Story", b =>
                 {
-                    b.Navigation("Acts");
-
                     b.Navigation("Cast");
+
+                    b.Navigation("Containers");
 
                     b.Navigation("Locations");
 

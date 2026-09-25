@@ -38,8 +38,8 @@ public sealed class StoryQuery : Query<Story>, IStoryQuery
     public IStoryQuery WithOutline()
     {
         Apply(q => q
-            .Include(s => s.Acts.OrderBy(a => a.Position).ThenBy(a => a.Id))
-            .ThenInclude(a => a.Scenes.OrderBy(sc => sc.Position).ThenBy(sc => sc.Id))
+            .Include(s => s.Containers.OrderBy(c => c.Position).ThenBy(c => c.Id))
+            .ThenInclude(c => c.Scenes.OrderBy(sc => sc.Position).ThenBy(sc => sc.Id))
             .AsSplitQuery());
         return this;
     }

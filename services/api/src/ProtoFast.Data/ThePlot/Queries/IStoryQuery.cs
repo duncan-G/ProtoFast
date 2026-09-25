@@ -19,7 +19,7 @@ public interface IStoryQuery : IQuery<Story>
     /// <summary>Includes the cast, locations and props, each ordered by name.</summary>
     IStoryQuery WithLibrary();
 
-    /// <summary>Includes the acts and their scenes in order, without the scenes' elements.</summary>
+    /// <summary>Includes the containers and their scenes in order, without the scenes' elements.</summary>
     IStoryQuery WithOutline();
 
     IStoryQuery RecentlyModifiedFirst();

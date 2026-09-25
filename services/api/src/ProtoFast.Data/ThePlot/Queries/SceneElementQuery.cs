@@ -20,7 +20,7 @@ public sealed class SceneElementQuery : Query<SceneElement>, ISceneElementQuery
 
     public ISceneElementQuery InStory(Guid storyId)
     {
-        Where(e => e.Scene.Act.StoryId == storyId);
+        Where(e => e.Scene.Container.StoryId == storyId);
         return this;
     }
 

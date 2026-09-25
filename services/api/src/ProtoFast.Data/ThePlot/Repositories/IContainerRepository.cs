@@ -3,4 +3,4 @@ using ProtoFast.Database.Abstractions;
 
 namespace ProtoFast.Data.ThePlot.Repositories;
 
-public interface IActRepository : IRepository<Act, Guid>;
+public interface IContainerRepository : IRepository<Container, Guid>;
