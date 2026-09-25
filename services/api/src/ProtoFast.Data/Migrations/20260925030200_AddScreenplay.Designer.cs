@@ -12,7 +12,7 @@ using ProtoFast.Data.ThePlot;
 namespace ProtoFast.Data.Migrations
 {
     [DbContext(typeof(ThePlotDbContext))]
-    [Migration("20260925025321_AddScreenplay")]
+    [Migration("20260925030200_AddScreenplay")]
     partial class AddScreenplay
     {
         /// <inheritdoc />
@@ -87,6 +87,12 @@ namespace ProtoFast.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<string>("AvatarShape")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("avatar_shape");
 
                     b.Property<DateTime>("DateCreated")
                         .HasColumnType("timestamp with time zone")

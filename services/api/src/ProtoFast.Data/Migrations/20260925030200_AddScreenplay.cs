@@ -44,6 +44,7 @@ namespace ProtoFast.Data.Migrations
                     user_id = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     story_id = table.Column<Guid>(type: "uuid", nullable: false),
                     label = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    avatar_shape = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
                     position = table.Column<int>(type: "integer", nullable: false),
                     date_created = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     date_last_modified = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)

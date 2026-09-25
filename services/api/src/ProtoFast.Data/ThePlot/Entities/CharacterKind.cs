@@ -15,6 +15,9 @@ public sealed class CharacterKind : IDateStamped
 
     public required string Label { get; set; }
 
+    /// <summary>The avatar shape of characters of this kind.</summary>
+    public AvatarShape AvatarShape { get; set; }
+
     public int Position { get; set; }
 
     public DateTime DateCreated { get; set; }

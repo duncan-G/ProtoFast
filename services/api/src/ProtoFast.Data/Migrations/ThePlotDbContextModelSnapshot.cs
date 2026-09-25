@@ -85,6 +85,12 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("AvatarShape")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("avatar_shape");
+
                     b.Property<DateTime>("DateCreated")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("date_created");

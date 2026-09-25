@@ -284,6 +284,7 @@ public sealed class ThePlotDbContext(
             entity.HasKey(k => k.Id);
             entity.Property(k => k.UserId).IsRequired().HasMaxLength(UserIdLength);
             entity.Property(k => k.Label).IsRequired().HasMaxLength(LabelLength);
+            entity.Property(k => k.AvatarShape).HasConversion<string>().HasMaxLength(EnumLength);
 
             entity.HasOne(k => k.Story)
                 .WithMany(s => s.CharacterKinds)
