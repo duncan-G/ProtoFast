@@ -19,7 +19,7 @@ public interface ICharacterQuery : IQuery<Character>
     /// <summary>Case-insensitive.</summary>
     ICharacterQuery NameContains(string text);
 
-    ICharacterQuery OfKind(CharacterKind kind);
+    ICharacterQuery OfKind(Guid kindId);
 
     ICharacterQuery ByName();
 }

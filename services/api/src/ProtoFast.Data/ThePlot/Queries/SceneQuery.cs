@@ -43,6 +43,8 @@ public sealed class SceneQuery : Query<Scene>, ISceneQuery
             .ThenInclude(e => e.Mentions.OrderBy(m => m.Offset))
             .Include(s => s.Elements).ThenInclude(e => e.Speaker)
             .Include(s => s.Elements).ThenInclude(e => e.Location)
+            .Include(s => s.Elements).ThenInclude(e => e.TimeOfDay)
+            .Include(s => s.Elements).ThenInclude(e => e.Transition)
             .AsSplitQuery());
         return this;
     }

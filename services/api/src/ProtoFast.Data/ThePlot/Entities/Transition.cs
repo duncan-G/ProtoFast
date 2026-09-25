@@ -2,8 +2,8 @@ using ProtoFast.Database.Abstractions;
 
 namespace ProtoFast.Data.ThePlot.Entities;
 
-/// <summary>A time of day a heading can use ("NIGHT", "MORNING"). Each story keeps its own list.</summary>
-public sealed class TimeOfDay : IDateStamped
+/// <summary>A cut a transition can use ("CUT TO", "DISSOLVE TO"). Each story keeps its own list.</summary>
+public sealed class Transition : IDateStamped
 {
     public Guid Id { get; set; }
 

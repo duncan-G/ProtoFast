@@ -21,6 +21,12 @@ public sealed class Story : IDateStamped
 
     public List<Prop> Props { get; set; } = [];
 
+    public List<TimeOfDay> TimesOfDay { get; set; } = [];
+
+    public List<Transition> Transitions { get; set; } = [];
+
+    public List<CharacterKind> CharacterKinds { get; set; } = [];
+
     public DateTime DateCreated { get; set; }
 
     public DateTime DateLastModified { get; set; }

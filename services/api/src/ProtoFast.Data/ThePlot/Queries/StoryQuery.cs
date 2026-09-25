@@ -31,6 +31,9 @@ public sealed class StoryQuery : Query<Story>, IStoryQuery
             .Include(s => s.Characters.OrderBy(c => c.Name))
             .Include(s => s.Locations.OrderBy(l => l.Name))
             .Include(s => s.Props.OrderBy(p => p.Name))
+            .Include(s => s.TimesOfDay.OrderBy(t => t.Position).ThenBy(t => t.Id))
+            .Include(s => s.Transitions.OrderBy(t => t.Position).ThenBy(t => t.Id))
+            .Include(s => s.CharacterKinds.OrderBy(k => k.Position).ThenBy(k => k.Id))
             .AsSplitQuery());
         return this;
     }

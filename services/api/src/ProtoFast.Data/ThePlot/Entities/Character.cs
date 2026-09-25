@@ -14,7 +14,9 @@ public sealed class Character : IDateStamped
 
     public required string Name { get; set; }
 
-    public CharacterKind Kind { get; set; }
+    public Guid? KindId { get; set; }
+
+    public CharacterKind? Kind { get; set; }
 
     /// <summary>Avatar colour as an OKLCH hue, 0–359.</summary>
     public int Hue { get; set; }

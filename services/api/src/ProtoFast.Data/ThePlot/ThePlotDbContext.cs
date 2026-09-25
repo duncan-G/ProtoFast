@@ -25,6 +25,8 @@ public sealed class ThePlotDbContext(
 
     private const int NameLength = 255;
 
+    private const int LabelLength = 64;
+
     /// <summary>Enums are stored by name, so renaming a member needs a data migration.</summary>
     private const int EnumLength = 32;
 
@@ -47,6 +49,12 @@ public sealed class ThePlotDbContext(
     public DbSet<Location> Locations => Set<Location>();
 
     public DbSet<Prop> Props => Set<Prop>();
+
+    public DbSet<TimeOfDay> TimesOfDay => Set<TimeOfDay>();
+
+    public DbSet<Transition> Transitions => Set<Transition>();
+
+    public DbSet<CharacterKind> CharacterKinds => Set<CharacterKind>();
 
     protected override void ConfigureModel(ModelBuilder modelBuilder)
     {
@@ -89,6 +97,7 @@ public sealed class ThePlotDbContext(
 
         ConfigureScreenplay(modelBuilder);
         ConfigureStoryLibrary(modelBuilder);
+        ConfigureStoryVocabulary(modelBuilder);
     }
 
     private static void ConfigureScreenplay(ModelBuilder modelBuilder)
@@ -145,8 +154,6 @@ public sealed class ThePlotDbContext(
             entity.HasKey(e => e.Id);
             entity.Property(e => e.UserId).IsRequired().HasMaxLength(UserIdLength);
             entity.Property(e => e.Type).HasConversion<string>().HasMaxLength(EnumLength);
-            entity.Property(e => e.TimeOfDay).HasConversion<string>().HasMaxLength(EnumLength);
-            entity.Property(e => e.TransitionKind).HasConversion<string>().HasMaxLength(EnumLength);
             entity.Property(e => e.Parenthetical).HasMaxLength(NameLength);
 
             entity.HasOne(e => e.Scene)
@@ -154,7 +161,7 @@ public sealed class ThePlotDbContext(
                 .HasForeignKey(e => e.SceneId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // Deleting a location or character leaves the heading or line unassigned.
+            // Deleting a library or vocabulary entry leaves the element's reference unassigned.
             entity.HasOne(e => e.Location)
                 .WithMany()
                 .HasForeignKey(e => e.LocationId)
@@ -165,19 +172,31 @@ public sealed class ThePlotDbContext(
                 .HasForeignKey(e => e.SpeakerId)
                 .OnDelete(DeleteBehavior.SetNull);
 
+            entity.HasOne(e => e.TimeOfDay)
+                .WithMany()
+                .HasForeignKey(e => e.TimeOfDayId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(e => e.Transition)
+                .WithMany()
+                .HasForeignKey(e => e.TransitionId)
+                .OnDelete(DeleteBehavior.SetNull);
+
             entity.HasIndex(e => new { e.SceneId, e.Position });
             entity.HasIndex(e => e.LocationId);
             entity.HasIndex(e => e.SpeakerId);
+            entity.HasIndex(e => e.TimeOfDayId);
+            entity.HasIndex(e => e.TransitionId);
 
             entity.ToTable(t =>
             {
                 t.HasCheckConstraint("ck_scene_elements_position_non_negative", "position >= 0");
                 t.HasCheckConstraint(
                     "ck_scene_elements_heading_columns",
-                    "(type = 'Heading') = (time_of_day IS NOT NULL) AND (location_id IS NULL OR type = 'Heading')");
+                    "type = 'Heading' OR (location_id IS NULL AND time_of_day_id IS NULL)");
                 t.HasCheckConstraint(
                     "ck_scene_elements_transition_columns",
-                    "(type = 'Transition') = (transition_kind IS NOT NULL)");
+                    "type = 'Transition' OR transition_id IS NULL");
                 t.HasCheckConstraint(
                     "ck_scene_elements_dialogue_columns",
                     "type = 'Dialogue' OR (speaker_id IS NULL AND parenthetical IS NULL)");
@@ -229,6 +248,52 @@ public sealed class ThePlotDbContext(
         });
     }
 
+    /// <summary>The labels a story offers for times of day, transitions and character kinds.</summary>
+    private static void ConfigureStoryVocabulary(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<TimeOfDay>(entity =>
+        {
+            entity.HasKey(t => t.Id);
+            entity.Property(t => t.UserId).IsRequired().HasMaxLength(UserIdLength);
+            entity.Property(t => t.Label).IsRequired().HasMaxLength(LabelLength);
+
+            entity.HasOne(t => t.Story)
+                .WithMany(s => s.TimesOfDay)
+                .HasForeignKey(t => t.StoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(t => new { t.StoryId, t.Label }).IsUnique();
+        });
+
+        modelBuilder.Entity<Transition>(entity =>
+        {
+            entity.HasKey(t => t.Id);
+            entity.Property(t => t.UserId).IsRequired().HasMaxLength(UserIdLength);
+            entity.Property(t => t.Label).IsRequired().HasMaxLength(LabelLength);
+
+            entity.HasOne(t => t.Story)
+                .WithMany(s => s.Transitions)
+                .HasForeignKey(t => t.StoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(t => new { t.StoryId, t.Label }).IsUnique();
+        });
+
+        modelBuilder.Entity<CharacterKind>(entity =>
+        {
+            entity.HasKey(k => k.Id);
+            entity.Property(k => k.UserId).IsRequired().HasMaxLength(UserIdLength);
+            entity.Property(k => k.Label).IsRequired().HasMaxLength(LabelLength);
+
+            entity.HasOne(k => k.Story)
+                .WithMany(s => s.CharacterKinds)
+                .HasForeignKey(k => k.StoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(k => new { k.StoryId, k.Label }).IsUnique();
+        });
+    }
+
     /// <summary>Names are unique per story because <c>@Name</c> references resolve by them.</summary>
     private static void ConfigureStoryLibrary(ModelBuilder modelBuilder)
     {
@@ -237,12 +302,18 @@ public sealed class ThePlotDbContext(
             entity.HasKey(c => c.Id);
             entity.Property(c => c.UserId).IsRequired().HasMaxLength(UserIdLength);
             entity.Property(c => c.Name).IsRequired().HasMaxLength(NameLength);
-            entity.Property(c => c.Kind).HasConversion<string>().HasMaxLength(EnumLength);
 
             entity.HasOne(c => c.Story)
                 .WithMany(s => s.Characters)
                 .HasForeignKey(c => c.StoryId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(c => c.Kind)
+                .WithMany()
+                .HasForeignKey(c => c.KindId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(c => c.KindId);
 
             entity.HasIndex(c => new { c.StoryId, c.Name }).IsUnique();
             entity.ToTable(t => t.HasCheckConstraint("ck_characters_hue", "hue BETWEEN 0 AND 359"));

@@ -27,6 +27,8 @@ public sealed class SceneElement : IDateStamped
 
     public Location? Location { get; set; }
 
+    public Guid? TimeOfDayId { get; set; }
+
     public TimeOfDay? TimeOfDay { get; set; }
 
     public Guid? SpeakerId { get; set; }
@@ -35,7 +37,9 @@ public sealed class SceneElement : IDateStamped
 
     public string? Parenthetical { get; set; }
 
-    public TransitionKind? TransitionKind { get; set; }
+    public Guid? TransitionId { get; set; }
+
+    public Transition? Transition { get; set; }
 
     public List<SceneElementMention> Mentions { get; set; } = [];
 
