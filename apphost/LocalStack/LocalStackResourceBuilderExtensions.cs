@@ -43,16 +43,25 @@ public static class LocalStackResourceBuilderExtensions
         return localstack;
     }
 
+    /// <summary>
+    /// Adds the browser origins that may call LocalStack directly (presigned S3 uploads) to its
+    /// CORS allow-list. <paramref name="origins"/> is resolved when the container's environment
+    /// is built, not when this is called, so it can be wired before the clients that produce
+    /// the origins are registered — an eager list would be empty at that point and the variable
+    /// silently skipped.
+    /// </summary>
     public static IResourceBuilder<LocalStackResource> WithClientOrigins(
         this IResourceBuilder<LocalStackResource> localstack,
-        IReadOnlyList<string> origins)
+        Func<IReadOnlyList<string>> origins)
     {
-        if (origins.Count == 0)
+        return localstack.WithEnvironment(ctx =>
         {
-            return localstack;
-        }
-
-        return localstack.WithEnvironment("EXTRA_CORS_ALLOWED_ORIGINS", string.Join(',', origins));
+            var resolved = origins();
+            if (resolved.Count > 0)
+            {
+                ctx.EnvironmentVariables["EXTRA_CORS_ALLOWED_ORIGINS"] = string.Join(',', resolved);
+            }
+        });
     }
 
     public static IResourceBuilder<LocalStackResource> WithBuckets(

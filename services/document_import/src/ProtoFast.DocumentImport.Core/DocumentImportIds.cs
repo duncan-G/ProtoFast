@@ -14,6 +14,32 @@ public static class DocumentImportIds
     /// </summary>
     public static string New() => New(DateTimeOffset.UtcNow, RandomNumberGenerator.GetBytes(10));
 
+    /// <summary>The length of an id <see cref="New"/> mints: 128 bits in base 32.</summary>
+    public const int Length = 26;
+
+    /// <summary>
+    /// Whether a value has the shape <see cref="New"/> produces: exactly 26 characters from the
+    /// lowercase Crockford alphabet. A client-supplied id is checked against this before it is
+    /// used in a query or a storage key.
+    /// </summary>
+    public static bool IsValid(string? id)
+    {
+        if (id is null || id.Length != Length)
+        {
+            return false;
+        }
+
+        foreach (var c in id)
+        {
+            if (CrockfordAlphabet.IndexOf(c) < 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static string New(DateTimeOffset now, ReadOnlySpan<byte> randomness)
     {
         Span<byte> bytes = stackalloc byte[16];

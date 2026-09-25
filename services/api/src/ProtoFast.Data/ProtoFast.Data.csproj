@@ -8,6 +8,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Design-time only: IDesignTimeDbContextFactory for `dotnet ef migrations add`. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.5">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\..\shared\Database.Abstractions\Database.Abstractions.csproj" />
     <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
   </ItemGroup>

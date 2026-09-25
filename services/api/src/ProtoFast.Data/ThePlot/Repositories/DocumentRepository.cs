@@ -5,4 +5,4 @@ using ProtoFast.Database.Abstractions;
 namespace ProtoFast.Data.ThePlot.Repositories;
 
 public sealed class DocumentRepository(PagingTokenHelper pagingTokenHelper)
-    : Repository<Document, Guid>(pagingTokenHelper), IDocumentRepository;
+    : Repository<Document, string>(pagingTokenHelper), IDocumentRepository;

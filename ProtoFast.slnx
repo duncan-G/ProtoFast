@@ -4,6 +4,7 @@
   <Folder Name="/services/api/src/">
     <Project Path="services/api/src/ProtoFast.Api/ProtoFast.Api.csproj" />
     <Project Path="services/api/src/ProtoFast.Data/ProtoFast.Data.csproj" />
+    <Project Path="services/api/src/ProtoFast.SchemaMigrations/ProtoFast.SchemaMigrations.csproj" />
   </Folder>
   <Folder Name="/services/api/tests/" />
   <Folder Name="/services/auth/" />

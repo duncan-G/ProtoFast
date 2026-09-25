@@ -9,7 +9,10 @@ namespace ProtoFast.Data.ThePlot.Queries;
 /// </summary>
 public interface IDocumentQuery : IQuery<Document>
 {
-    IDocumentQuery WithId(Guid id);
+    IDocumentQuery WithId(string id);
 
     IDocumentQuery WithName(string name);
+
+    /// <summary>Most recently created first, ties broken by id (which itself sorts by creation time).</summary>
+    IDocumentQuery NewestFirst();
 }

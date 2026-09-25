@@ -36,7 +36,9 @@ var authDb = postgres
     .AddDatabase("auth-db", databaseName: "auth")
     .WithSchemaMigrations<Projects.ProtoFast_Auth_SchemaMigrations>(builder);
 
-var protofastDb = postgres.AddDatabase("protofast-db", databaseName: "protofast");
+var protofastDb = postgres
+    .AddDatabase("protofast-db", databaseName: "protofast")
+    .WithSchemaMigrations<Projects.ProtoFast_SchemaMigrations>(builder);
 
 var redis = builder.AddRedis("redis");
 
@@ -181,7 +183,8 @@ var proxy = builder.AddEnvoyProxy("envoy", useSsrHost)
     .WaitFor(payments)
     .WaitFor(api);
 
-localstack.WithClientOrigins(proxy.GetClientOrigins());
+// Resolved lazily at start, after the WithClient calls below have registered the listeners.
+localstack.WithClientOrigins(proxy.GetClientOrigins);
 
 var otelHttp = otel.GetEndpoint(OpenTelemetryCollectorResource.OtlpHttpEndpointName);
 

@@ -15,6 +15,7 @@
     <ProjectReference Include="../services/auth/src/ProtoFast.Auth.SchemaMigrations/ProtoFast.Auth.SchemaMigrations.csproj" />
     <ProjectReference Include="../services/payments/src/ProtoFast.Payments.Api/ProtoFast.Payments.Api.csproj" />
     <ProjectReference Include="../services/api/src/ProtoFast.Api/ProtoFast.Api.csproj" />
+    <ProjectReference Include="../services/api/src/ProtoFast.SchemaMigrations/ProtoFast.SchemaMigrations.csproj" />
   </ItemGroup>
 
   <ItemGroup>

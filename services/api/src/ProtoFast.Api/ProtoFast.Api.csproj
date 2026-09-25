@@ -10,7 +10,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Protobuf Include="Protos\document_upload.proto" GrpcServices="Server" />
+    <Protobuf Include="Protos\document.proto" ProtoRoot="Protos" GrpcServices="Server" />
+    <Protobuf Include="Protos\document_upload.proto" ProtoRoot="Protos" GrpcServices="Server" />
   </ItemGroup>
 
   <ItemGroup>
