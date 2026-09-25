@@ -35,6 +35,15 @@ public sealed class StoryQuery : Query<Story>, IStoryQuery
         return this;
     }
 
+    public IStoryQuery WithOutline()
+    {
+        Apply(q => q
+            .Include(s => s.Acts.OrderBy(a => a.Position).ThenBy(a => a.Id))
+            .ThenInclude(a => a.Scenes.OrderBy(sc => sc.Position).ThenBy(sc => sc.Id))
+            .AsSplitQuery());
+        return this;
+    }
+
     public IStoryQuery RecentlyModifiedFirst()
     {
         Apply(q => q.OrderByDescending(s => s.DateLastModified).ThenByDescending(s => s.Id));

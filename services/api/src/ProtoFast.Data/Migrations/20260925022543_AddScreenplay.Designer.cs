@@ -12,7 +12,7 @@ using ProtoFast.Data.ThePlot;
 namespace ProtoFast.Data.Migrations
 {
     [DbContext(typeof(ThePlotDbContext))]
-    [Migration("20260925021752_AddScreenplay")]
+    [Migration("20260925022543_AddScreenplay")]
     partial class AddScreenplay
     {
         /// <inheritdoc />
@@ -41,13 +41,13 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("date_last_modified");
 
-                    b.Property<Guid>("DraftId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("draft_id");
-
                     b.Property<int>("Position")
                         .HasColumnType("integer")
                         .HasColumnName("position");
+
+                    b.Property<Guid>("StoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("story_id");
 
                     b.Property<string>("Title")
                         .HasMaxLength(255)
@@ -63,8 +63,8 @@ namespace ProtoFast.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_acts");
 
-                    b.HasIndex("DraftId", "Position")
-                        .HasDatabaseName("ix_acts_draft_id_position");
+                    b.HasIndex("StoryId", "Position")
+                        .HasDatabaseName("ix_acts_story_id_position");
 
                     b.ToTable("acts", "plot", t =>
                         {
@@ -240,53 +240,6 @@ namespace ProtoFast.Data.Migrations
                         .HasDatabaseName("ix_document_uploads_user_id");
 
                     b.ToTable("document_uploads", "plot");
-                });
-
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Draft", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime>("DateCreated")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("date_created");
-
-                    b.Property<DateTime>("DateLastModified")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("date_last_modified");
-
-                    b.Property<string>("Name")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("name");
-
-                    b.Property<int>("Number")
-                        .HasColumnType("integer")
-                        .HasColumnName("number");
-
-                    b.Property<Guid>("StoryId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("story_id");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_drafts");
-
-                    b.HasIndex("StoryId", "Number")
-                        .IsUnique()
-                        .HasDatabaseName("ix_drafts_story_id_number");
-
-                    b.ToTable("drafts", "plot", t =>
-                        {
-                            t.HasCheckConstraint("ck_drafts_number_positive", "number >= 1");
-                        });
                 });
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Location", b =>
@@ -618,14 +571,14 @@ namespace ProtoFast.Data.Migrations
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Act", b =>
                 {
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Draft", "Draft")
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Story", "Story")
                         .WithMany("Acts")
-                        .HasForeignKey("DraftId")
+                        .HasForeignKey("StoryId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_acts_drafts_draft_id");
+                        .HasConstraintName("fk_acts_stories_story_id");
 
-                    b.Navigation("Draft");
+                    b.Navigation("Story");
                 });
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.CastMember", b =>
@@ -648,18 +601,6 @@ namespace ProtoFast.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_documents_document_uploads_id");
-                });
-
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Draft", b =>
-                {
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Story", "Story")
-                        .WithMany("Drafts")
-                        .HasForeignKey("StoryId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_drafts_stories_story_id");
-
-                    b.Navigation("Story");
                 });
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Location", b =>
@@ -768,11 +709,6 @@ namespace ProtoFast.Data.Migrations
                     b.Navigation("Scenes");
                 });
 
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Draft", b =>
-                {
-                    b.Navigation("Acts");
-                });
-
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Scene", b =>
                 {
                     b.Navigation("Elements");
@@ -785,9 +721,9 @@ namespace ProtoFast.Data.Migrations
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Story", b =>
                 {
-                    b.Navigation("Cast");
+                    b.Navigation("Acts");
 
-                    b.Navigation("Drafts");
+                    b.Navigation("Cast");
 
                     b.Navigation("Locations");
 

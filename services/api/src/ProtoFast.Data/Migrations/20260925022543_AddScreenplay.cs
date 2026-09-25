@@ -36,6 +36,32 @@ namespace ProtoFast.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "acts",
+                schema: "plot",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    user_id = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
+                    story_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    position = table.Column<int>(type: "integer", nullable: false),
+                    title = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
+                    date_created = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    date_last_modified = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_acts", x => x.id);
+                    table.CheckConstraint("ck_acts_position_non_negative", "position >= 0");
+                    table.ForeignKey(
+                        name: "fk_acts_stories_story_id",
+                        column: x => x.story_id,
+                        principalSchema: "plot",
+                        principalTable: "stories",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "cast_members",
                 schema: "plot",
                 columns: table => new
@@ -55,32 +81,6 @@ namespace ProtoFast.Data.Migrations
                     table.CheckConstraint("ck_cast_members_hue", "hue BETWEEN 0 AND 359");
                     table.ForeignKey(
                         name: "fk_cast_members_stories_story_id",
-                        column: x => x.story_id,
-                        principalSchema: "plot",
-                        principalTable: "stories",
-                        principalColumn: "id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "drafts",
-                schema: "plot",
-                columns: table => new
-                {
-                    id = table.Column<Guid>(type: "uuid", nullable: false),
-                    user_id = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
-                    story_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    number = table.Column<int>(type: "integer", nullable: false),
-                    name = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
-                    date_created = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    date_last_modified = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("pk_drafts", x => x.id);
-                    table.CheckConstraint("ck_drafts_number_positive", "number >= 1");
-                    table.ForeignKey(
-                        name: "fk_drafts_stories_story_id",
                         column: x => x.story_id,
                         principalSchema: "plot",
                         principalTable: "stories",
@@ -135,32 +135,6 @@ namespace ProtoFast.Data.Migrations
                         column: x => x.story_id,
                         principalSchema: "plot",
                         principalTable: "stories",
-                        principalColumn: "id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "acts",
-                schema: "plot",
-                columns: table => new
-                {
-                    id = table.Column<Guid>(type: "uuid", nullable: false),
-                    user_id = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
-                    draft_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    position = table.Column<int>(type: "integer", nullable: false),
-                    title = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
-                    date_created = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    date_last_modified = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("pk_acts", x => x.id);
-                    table.CheckConstraint("ck_acts_position_non_negative", "position >= 0");
-                    table.ForeignKey(
-                        name: "fk_acts_drafts_draft_id",
-                        column: x => x.draft_id,
-                        principalSchema: "plot",
-                        principalTable: "drafts",
                         principalColumn: "id",
                         onDelete: ReferentialAction.Cascade);
                 });
@@ -283,23 +257,16 @@ namespace ProtoFast.Data.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "ix_acts_draft_id_position",
+                name: "ix_acts_story_id_position",
                 schema: "plot",
                 table: "acts",
-                columns: new[] { "draft_id", "position" });
+                columns: new[] { "story_id", "position" });
 
             migrationBuilder.CreateIndex(
                 name: "ix_cast_members_story_id_name",
                 schema: "plot",
                 table: "cast_members",
                 columns: new[] { "story_id", "name" },
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "ix_drafts_story_id_number",
-                schema: "plot",
-                table: "drafts",
-                columns: new[] { "story_id", "number" },
                 unique: true);
 
             migrationBuilder.CreateIndex(
@@ -400,10 +367,6 @@ namespace ProtoFast.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "acts",
-                schema: "plot");
-
-            migrationBuilder.DropTable(
-                name: "drafts",
                 schema: "plot");
 
             migrationBuilder.DropTable(

@@ -4,7 +4,7 @@ namespace ProtoFast.Data.ThePlot.Entities;
 
 /// <summary>
 /// Anyone or anything with a voice in a story — people, robots, animals. Part of the story
-/// library: a cast member can speak dialogue beats and be <c>@</c>-mentioned in any draft.
+/// library: a cast member can speak dialogue beats and be <c>@</c>-mentioned in any scene.
 /// </summary>
 public sealed class CastMember : IDateStamped
 {

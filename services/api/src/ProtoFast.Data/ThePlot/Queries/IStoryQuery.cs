@@ -20,6 +20,12 @@ public interface IStoryQuery : IQuery<Story>
     /// <summary>Loads the story library: cast, locations and props, each by name.</summary>
     IStoryQuery WithLibrary();
 
+    /// <summary>
+    /// Loads the story's outline: its acts and each act's scenes, in order, without the scenes'
+    /// elements. Enough for the breadcrumb, scene navigation and the "next scene" preview's title.
+    /// </summary>
+    IStoryQuery WithOutline();
+
     /// <summary>Most recently modified first, ties broken by id.</summary>
     IStoryQuery RecentlyModifiedFirst();
 }

@@ -18,9 +18,9 @@ public sealed class SceneElementQuery : Query<SceneElement>, ISceneElementQuery
         return this;
     }
 
-    public ISceneElementQuery InDraft(Guid draftId)
+    public ISceneElementQuery InStory(Guid storyId)
     {
-        Where(e => e.Scene.Act.DraftId == draftId);
+        Where(e => e.Scene.Act.StoryId == storyId);
         return this;
     }
 

@@ -34,8 +34,6 @@ public sealed class ThePlotDbContext(
 
     public DbSet<Story> Stories => Set<Story>();
 
-    public DbSet<Draft> Drafts => Set<Draft>();
-
     public DbSet<Act> Acts => Set<Act>();
 
     public DbSet<Scene> Scenes => Set<Scene>();
@@ -94,7 +92,7 @@ public sealed class ThePlotDbContext(
     }
 
     /// <summary>
-    /// The screenplay tree: story → draft → act → scene → element. Every row carries its own
+    /// The screenplay tree: story → act → scene → element. Every row carries its own
     /// <c>UserId</c>, like <see cref="Document"/>, so the user filter is a column compare rather than
     /// a join up the tree. Deleting a parent takes its subtree with it.
     /// </summary>
@@ -117,33 +115,18 @@ public sealed class ThePlotDbContext(
             entity.HasIndex(s => s.SourceDocumentId);
         });
 
-        modelBuilder.Entity<Draft>(entity =>
-        {
-            entity.HasKey(d => d.Id);
-            entity.Property(d => d.UserId).IsRequired().HasMaxLength(UserIdLength);
-            entity.Property(d => d.Name).HasMaxLength(NameLength);
-
-            entity.HasOne(d => d.Story)
-                .WithMany(s => s.Drafts)
-                .HasForeignKey(d => d.StoryId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasIndex(d => new { d.StoryId, d.Number }).IsUnique();
-            entity.ToTable(t => t.HasCheckConstraint("ck_drafts_number_positive", "number >= 1"));
-        });
-
         modelBuilder.Entity<Act>(entity =>
         {
             entity.HasKey(a => a.Id);
             entity.Property(a => a.UserId).IsRequired().HasMaxLength(UserIdLength);
             entity.Property(a => a.Title).HasMaxLength(NameLength);
 
-            entity.HasOne(a => a.Draft)
-                .WithMany(d => d.Acts)
-                .HasForeignKey(a => a.DraftId)
+            entity.HasOne(a => a.Story)
+                .WithMany(s => s.Acts)
+                .HasForeignKey(a => a.StoryId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasIndex(a => new { a.DraftId, a.Position });
+            entity.HasIndex(a => new { a.StoryId, a.Position });
             entity.ToTable(t => t.HasCheckConstraint("ck_acts_position_non_negative", "position >= 0"));
         });
 
@@ -251,7 +234,7 @@ public sealed class ThePlotDbContext(
     }
 
     /// <summary>
-    /// The story library: the cast, locations and props every draft of a story shares. Names are
+    /// The story library: the cast, locations and props every scene of a story shares. Names are
     /// unique per story because <c>@Name</c> references resolve by them. The index compares
     /// exactly; the queries that check for a clash before an insert compare case-insensitively,
     /// as the editor does.

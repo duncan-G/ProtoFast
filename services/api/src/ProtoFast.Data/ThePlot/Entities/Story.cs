@@ -4,9 +4,11 @@ namespace ProtoFast.Data.ThePlot.Entities;
 
 /// <summary>
 /// A story a writer is adapting into scenes: the root of the screenplay tree
-/// (<see cref="Draft"/> → <see cref="Act"/> → <see cref="Scene"/> → <see cref="SceneElement"/>) and
-/// the owner of the story library — the <see cref="CastMember"/>s, <see cref="Location"/>s and
-/// <see cref="Prop"/>s every draft of it shares.
+/// (<see cref="Act"/> → <see cref="Scene"/> → <see cref="SceneElement"/>) and the owner of the
+/// story library — the <see cref="CastMember"/>s, <see cref="Location"/>s and <see cref="Prop"/>s
+/// its scenes speak, stand in and reference.
+///
+/// <para>A story holds one screenplay. There is no versioning yet: edits change it in place.</para>
 /// </summary>
 public sealed class Story : IDateStamped
 {
@@ -26,7 +28,7 @@ public sealed class Story : IDateStamped
     /// </summary>
     public string? SourceDocumentId { get; set; }
 
-    public List<Draft> Drafts { get; set; } = [];
+    public List<Act> Acts { get; set; } = [];
 
     public List<CastMember> Cast { get; set; } = [];
 

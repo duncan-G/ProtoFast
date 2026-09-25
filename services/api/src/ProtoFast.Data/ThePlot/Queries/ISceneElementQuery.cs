@@ -13,7 +13,7 @@ public interface ISceneElementQuery : IQuery<SceneElement>
 
     ISceneElementQuery InScene(Guid sceneId);
 
-    ISceneElementQuery InDraft(Guid draftId);
+    ISceneElementQuery InStory(Guid storyId);
 
     ISceneElementQuery OfType(SceneElementType type);
 

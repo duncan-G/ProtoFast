@@ -11,9 +11,9 @@ public sealed class ActQuery : Query<Act>, IActQuery
         return this;
     }
 
-    public IActQuery InDraft(Guid draftId)
+    public IActQuery InStory(Guid storyId)
     {
-        Where(a => a.DraftId == draftId);
+        Where(a => a.StoryId == storyId);
         return this;
     }
 

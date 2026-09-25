@@ -11,11 +11,11 @@ public interface IActQuery : IQuery<Act>
 {
     IActQuery WithId(Guid id);
 
-    IActQuery InDraft(Guid draftId);
+    IActQuery InStory(Guid storyId);
 
     /// <summary>Acts at or after a position: the ones to shift when inserting or removing one.</summary>
     IActQuery AtOrAfterPosition(int position);
 
-    /// <summary>Draft order, ties broken by id.</summary>
+    /// <summary>Story order, ties broken by id.</summary>
     IActQuery InOrder();
 }

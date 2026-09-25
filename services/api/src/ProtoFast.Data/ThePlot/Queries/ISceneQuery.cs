@@ -13,7 +13,7 @@ public interface ISceneQuery : IQuery<Scene>
 
     ISceneQuery InAct(Guid actId);
 
-    ISceneQuery InDraft(Guid draftId);
+    ISceneQuery InStory(Guid storyId);
 
     ISceneQuery AtPosition(int position);
 
@@ -26,6 +26,6 @@ public interface ISceneQuery : IQuery<Scene>
     /// </summary>
     ISceneQuery WithElements();
 
-    /// <summary>Draft order — by act, then position within the act — ties broken by id.</summary>
+    /// <summary>Story order — by act, then position within the act — ties broken by id.</summary>
     ISceneQuery InOrder();
 }

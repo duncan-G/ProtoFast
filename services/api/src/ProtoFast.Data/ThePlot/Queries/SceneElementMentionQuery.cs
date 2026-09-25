@@ -17,9 +17,9 @@ public sealed class SceneElementMentionQuery : Query<SceneElementMention>, IScen
         return this;
     }
 
-    public ISceneElementMentionQuery InDraft(Guid draftId)
+    public ISceneElementMentionQuery InStory(Guid storyId)
     {
-        Where(m => m.SceneElement.Scene.Act.DraftId == draftId);
+        Where(m => m.SceneElement.Scene.Act.StoryId == storyId);
         return this;
     }
 

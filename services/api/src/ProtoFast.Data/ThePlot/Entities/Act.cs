@@ -2,7 +2,7 @@ using ProtoFast.Database.Abstractions;
 
 namespace ProtoFast.Data.ThePlot.Entities;
 
-/// <summary>An ordered act within a draft ("Act I" in the editor's breadcrumb).</summary>
+/// <summary>An ordered act within a story ("Act I" in the editor's breadcrumb).</summary>
 public sealed class Act : IDateStamped
 {
     public Guid Id { get; set; }
@@ -10,12 +10,12 @@ public sealed class Act : IDateStamped
     /// <inheritdoc cref="Story.UserId"/>
     public string UserId { get; set; } = "";
 
-    public Guid DraftId { get; set; }
+    public Guid StoryId { get; set; }
 
-    public Draft Draft { get; set; } = null!;
+    public Story Story { get; set; } = null!;
 
     /// <summary>
-    /// 0-based order within the draft. Not unique, so a reorder can rewrite positions in any
+    /// 0-based order within the story. Not unique, so a reorder can rewrite positions in any
     /// order inside one save; readers order by it and break ties by id.
     /// </summary>
     public int Position { get; set; }

@@ -14,7 +14,7 @@ public interface ISceneElementMentionQuery : IQuery<SceneElementMention>
 
     ISceneElementMentionQuery InScene(Guid sceneId);
 
-    ISceneElementMentionQuery InDraft(Guid draftId);
+    ISceneElementMentionQuery InStory(Guid storyId);
 
     /// <summary>Where a cast member is mentioned: the editor's "N mentions" count, and a rename's rewrite set.</summary>
     ISceneElementMentionQuery OfCastMember(Guid castMemberId);

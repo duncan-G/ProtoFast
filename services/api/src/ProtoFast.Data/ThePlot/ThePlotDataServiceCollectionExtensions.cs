@@ -28,9 +28,6 @@ public static class ThePlotDataServiceCollectionExtensions
         services.AddQueryFactory<Story, IStoryQuery, StoryQuery>();
         services.AddScoped<IStoryRepository, StoryRepository>();
 
-        services.AddQueryFactory<Draft, IDraftQuery, DraftQuery>();
-        services.AddScoped<IDraftRepository, DraftRepository>();
-
         services.AddQueryFactory<Act, IActQuery, ActQuery>();
         services.AddScoped<IActRepository, ActRepository>();
 
