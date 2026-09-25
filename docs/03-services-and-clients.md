@@ -89,13 +89,18 @@ there is no `environment.prod.ts` fork.
 | `BROWSER_OTEL_ENDPOINT` | browser telemetry | where the browser posts spans — `/otlp` in prod, routed by Envoy |
 | `PORT`, `SSL_CERT`, `SSL_KEY` | `ng serve` (dev only) | Aspire-assigned port and dev certificate |
 
-Two behaviours live in the SSR server itself rather than in config:
+Three behaviours live in the SSR server itself rather than in config:
 
 - **The protected-area gate.** `/app` and `/subscribe` require an `x-user-id`
   header (set by Envoy's ext_authz); without it SSR issues a server-side redirect
   to `/signin?returnUrl=…`, and those responses are marked `private, no-store`.
 - **Static assets** are served with `max-age=1y` because Angular hashes their
   filenames.
+- **Page-load tracing.** Each render runs inside a server span
+  (`src/lib/telemetry.ssr.ts`) and the page carries that span's traceparent in
+  `<meta name="traceparent">`, so the browser's `documentLoad` span, the render and
+  any backend calls it makes share one trace. Requests the app makes after the page
+  has loaded each start their own trace.
 
 gRPC service stubs are generated from the services' `.proto` files by `buf`
 (`buf.gen.yaml` → `src/lib/gen`) as part of `npm start` / `npm run build`. `auth`
