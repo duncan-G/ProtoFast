@@ -25,6 +25,33 @@ public static class ThePlotDataServiceCollectionExtensions
         services.AddQueryFactory<DocumentUpload, IDocumentUploadQuery, DocumentUploadQuery>();
         services.AddScoped<IDocumentUploadRepository, DocumentUploadRepository>();
 
+        services.AddQueryFactory<Story, IStoryQuery, StoryQuery>();
+        services.AddScoped<IStoryRepository, StoryRepository>();
+
+        services.AddQueryFactory<Draft, IDraftQuery, DraftQuery>();
+        services.AddScoped<IDraftRepository, DraftRepository>();
+
+        services.AddQueryFactory<Act, IActQuery, ActQuery>();
+        services.AddScoped<IActRepository, ActRepository>();
+
+        services.AddQueryFactory<Scene, ISceneQuery, SceneQuery>();
+        services.AddScoped<ISceneRepository, SceneRepository>();
+
+        services.AddQueryFactory<SceneElement, ISceneElementQuery, SceneElementQuery>();
+        services.AddScoped<ISceneElementRepository, SceneElementRepository>();
+
+        services.AddQueryFactory<SceneElementMention, ISceneElementMentionQuery, SceneElementMentionQuery>();
+        services.AddScoped<ISceneElementMentionRepository, SceneElementMentionRepository>();
+
+        services.AddQueryFactory<CastMember, ICastMemberQuery, CastMemberQuery>();
+        services.AddScoped<ICastMemberRepository, CastMemberRepository>();
+
+        services.AddQueryFactory<Location, ILocationQuery, LocationQuery>();
+        services.AddScoped<ILocationRepository, LocationRepository>();
+
+        services.AddQueryFactory<Prop, IPropQuery, PropQuery>();
+        services.AddScoped<IPropRepository, PropRepository>();
+
         return services;
     }
 }
