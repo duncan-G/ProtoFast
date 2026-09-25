@@ -42,7 +42,7 @@ public sealed class ThePlotDbContext(
 
     public DbSet<SceneElementMention> SceneElementMentions => Set<SceneElementMention>();
 
-    public DbSet<CastMember> CastMembers => Set<CastMember>();
+    public DbSet<Character> Characters => Set<Character>();
 
     public DbSet<Location> Locations => Set<Location>();
 
@@ -154,7 +154,7 @@ public sealed class ThePlotDbContext(
                 .HasForeignKey(e => e.SceneId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // Deleting a location or cast member leaves the heading or line unassigned.
+            // Deleting a location or character leaves the heading or line unassigned.
             entity.HasOne(e => e.Location)
                 .WithMany()
                 .HasForeignKey(e => e.LocationId)
@@ -196,10 +196,10 @@ public sealed class ThePlotDbContext(
                 .HasForeignKey(m => m.SceneElementId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // Deleting a cast member, prop or location drops its mentions; the "@Name" stays in the text.
-            entity.HasOne(m => m.CastMember)
+            // Deleting a character, prop or location drops its mentions; the "@Name" stays in the text.
+            entity.HasOne(m => m.Character)
                 .WithMany()
-                .HasForeignKey(m => m.CastMemberId)
+                .HasForeignKey(m => m.CharacterId)
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(m => m.Prop)
@@ -213,7 +213,7 @@ public sealed class ThePlotDbContext(
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(m => m.SceneElementId);
-            entity.HasIndex(m => m.CastMemberId);
+            entity.HasIndex(m => m.CharacterId);
             entity.HasIndex(m => m.PropId);
             entity.HasIndex(m => m.LocationId);
 
@@ -221,7 +221,7 @@ public sealed class ThePlotDbContext(
             {
                 t.HasCheckConstraint(
                     "ck_scene_element_mentions_one_target",
-                    "num_nonnulls(cast_member_id, prop_id, location_id) = 1");
+                    "num_nonnulls(character_id, prop_id, location_id) = 1");
                 t.HasCheckConstraint(
                     "ck_scene_element_mentions_span",
                     "\"offset\" >= 0 AND length >= 2");
@@ -232,7 +232,7 @@ public sealed class ThePlotDbContext(
     /// <summary>Names are unique per story because <c>@Name</c> references resolve by them.</summary>
     private static void ConfigureStoryLibrary(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<CastMember>(entity =>
+        modelBuilder.Entity<Character>(entity =>
         {
             entity.HasKey(c => c.Id);
             entity.Property(c => c.UserId).IsRequired().HasMaxLength(UserIdLength);
@@ -240,12 +240,12 @@ public sealed class ThePlotDbContext(
             entity.Property(c => c.Kind).HasConversion<string>().HasMaxLength(EnumLength);
 
             entity.HasOne(c => c.Story)
-                .WithMany(s => s.Cast)
+                .WithMany(s => s.Characters)
                 .HasForeignKey(c => c.StoryId)
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(c => new { c.StoryId, c.Name }).IsUnique();
-            entity.ToTable(t => t.HasCheckConstraint("ck_cast_members_hue", "hue BETWEEN 0 AND 359"));
+            entity.ToTable(t => t.HasCheckConstraint("ck_characters_hue", "hue BETWEEN 0 AND 359"));
         });
 
         modelBuilder.Entity<Location>(entity =>

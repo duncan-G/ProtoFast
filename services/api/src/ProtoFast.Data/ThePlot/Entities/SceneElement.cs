@@ -31,7 +31,7 @@ public sealed class SceneElement : IDateStamped
 
     public Guid? SpeakerId { get; set; }
 
-    public CastMember? Speaker { get; set; }
+    public Character? Speaker { get; set; }
 
     public string? Parenthetical { get; set; }
 

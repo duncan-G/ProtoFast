@@ -28,7 +28,7 @@ public sealed class StoryQuery : Query<Story>, IStoryQuery
     public IStoryQuery WithLibrary()
     {
         Apply(q => q
-            .Include(s => s.Cast.OrderBy(c => c.Name))
+            .Include(s => s.Characters.OrderBy(c => c.Name))
             .Include(s => s.Locations.OrderBy(l => l.Name))
             .Include(s => s.Props.OrderBy(p => p.Name))
             .AsSplitQuery());

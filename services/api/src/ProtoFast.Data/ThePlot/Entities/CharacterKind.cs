@@ -1,6 +1,6 @@
 namespace ProtoFast.Data.ThePlot.Entities;
 
-public enum CastMemberKind
+public enum CharacterKind
 {
     Human,
     Robot,

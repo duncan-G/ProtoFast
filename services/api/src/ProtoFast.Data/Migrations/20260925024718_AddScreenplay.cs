@@ -36,7 +36,7 @@ namespace ProtoFast.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "cast_members",
+                name: "characters",
                 schema: "plot",
                 columns: table => new
                 {
@@ -51,10 +51,10 @@ namespace ProtoFast.Data.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("pk_cast_members", x => x.id);
-                    table.CheckConstraint("ck_cast_members_hue", "hue BETWEEN 0 AND 359");
+                    table.PrimaryKey("pk_characters", x => x.id);
+                    table.CheckConstraint("ck_characters_hue", "hue BETWEEN 0 AND 359");
                     table.ForeignKey(
-                        name: "fk_cast_members_stories_story_id",
+                        name: "fk_characters_stories_story_id",
                         column: x => x.story_id,
                         principalSchema: "plot",
                         principalTable: "stories",
@@ -193,10 +193,10 @@ namespace ProtoFast.Data.Migrations
                     table.CheckConstraint("ck_scene_elements_text_columns", "(type IN ('Heading', 'Transition')) = (text IS NULL)");
                     table.CheckConstraint("ck_scene_elements_transition_columns", "(type = 'Transition') = (transition_kind IS NOT NULL)");
                     table.ForeignKey(
-                        name: "fk_scene_elements_cast_members_speaker_id",
+                        name: "fk_scene_elements_characters_speaker_id",
                         column: x => x.speaker_id,
                         principalSchema: "plot",
-                        principalTable: "cast_members",
+                        principalTable: "characters",
                         principalColumn: "id",
                         onDelete: ReferentialAction.SetNull);
                     table.ForeignKey(
@@ -222,7 +222,7 @@ namespace ProtoFast.Data.Migrations
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
                     scene_element_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    cast_member_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    character_id = table.Column<Guid>(type: "uuid", nullable: true),
                     prop_id = table.Column<Guid>(type: "uuid", nullable: true),
                     location_id = table.Column<Guid>(type: "uuid", nullable: true),
                     offset = table.Column<int>(type: "integer", nullable: false),
@@ -231,13 +231,13 @@ namespace ProtoFast.Data.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("pk_scene_element_mentions", x => x.id);
-                    table.CheckConstraint("ck_scene_element_mentions_one_target", "num_nonnulls(cast_member_id, prop_id, location_id) = 1");
+                    table.CheckConstraint("ck_scene_element_mentions_one_target", "num_nonnulls(character_id, prop_id, location_id) = 1");
                     table.CheckConstraint("ck_scene_element_mentions_span", "\"offset\" >= 0 AND length >= 2");
                     table.ForeignKey(
-                        name: "fk_scene_element_mentions_cast_members_cast_member_id",
-                        column: x => x.cast_member_id,
+                        name: "fk_scene_element_mentions_characters_character_id",
+                        column: x => x.character_id,
                         principalSchema: "plot",
-                        principalTable: "cast_members",
+                        principalTable: "characters",
                         principalColumn: "id",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
@@ -264,9 +264,9 @@ namespace ProtoFast.Data.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "ix_cast_members_story_id_name",
+                name: "ix_characters_story_id_name",
                 schema: "plot",
-                table: "cast_members",
+                table: "characters",
                 columns: new[] { "story_id", "name" },
                 unique: true);
 
@@ -291,10 +291,10 @@ namespace ProtoFast.Data.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "ix_scene_element_mentions_cast_member_id",
+                name: "ix_scene_element_mentions_character_id",
                 schema: "plot",
                 table: "scene_element_mentions",
-                column: "cast_member_id");
+                column: "character_id");
 
             migrationBuilder.CreateIndex(
                 name: "ix_scene_element_mentions_location_id",
@@ -367,7 +367,7 @@ namespace ProtoFast.Data.Migrations
                 schema: "plot");
 
             migrationBuilder.DropTable(
-                name: "cast_members",
+                name: "characters",
                 schema: "plot");
 
             migrationBuilder.DropTable(

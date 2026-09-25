@@ -30,9 +30,9 @@ public sealed class SceneElementQuery : Query<SceneElement>, ISceneElementQuery
         return this;
     }
 
-    public ISceneElementQuery SpokenBy(Guid castMemberId)
+    public ISceneElementQuery SpokenBy(Guid characterId)
     {
-        Where(e => e.SpeakerId == castMemberId);
+        Where(e => e.SpeakerId == characterId);
         return this;
     }
 
@@ -48,9 +48,9 @@ public sealed class SceneElementQuery : Query<SceneElement>, ISceneElementQuery
         return this;
     }
 
-    public ISceneElementQuery MentioningCastMember(Guid castMemberId)
+    public ISceneElementQuery MentioningCharacter(Guid characterId)
     {
-        Where(e => e.Mentions.Any(m => m.CastMemberId == castMemberId));
+        Where(e => e.Mentions.Any(m => m.CharacterId == characterId));
         return this;
     }
 

@@ -1,7 +1,7 @@
 namespace ProtoFast.Data.ThePlot.Entities;
 
 /// <summary>
-/// An <c>@Name</c> in a beat's text, pointing at a cast member, prop or location. Owned by its
+/// An <c>@Name</c> in a beat's text, pointing at a character, prop or location. Owned by its
 /// <see cref="SceneElement"/>: it has no <c>UserId</c> and is only read and written through it.
 /// </summary>
 public sealed class SceneElementMention
@@ -12,9 +12,9 @@ public sealed class SceneElementMention
 
     public SceneElement SceneElement { get; set; } = null!;
 
-    public Guid? CastMemberId { get; set; }
+    public Guid? CharacterId { get; set; }
 
-    public CastMember? CastMember { get; set; }
+    public Character? Character { get; set; }
 
     public Guid? PropId { get; set; }
 

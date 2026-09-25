@@ -12,7 +12,7 @@ using ProtoFast.Data.ThePlot;
 namespace ProtoFast.Data.Migrations
 {
     [DbContext(typeof(ThePlotDbContext))]
-    [Migration("20260925024408_AddScreenplay")]
+    [Migration("20260925024718_AddScreenplay")]
     partial class AddScreenplay
     {
         /// <inheritdoc />
@@ -26,7 +26,7 @@ namespace ProtoFast.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.CastMember", b =>
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Character", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -68,15 +68,15 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
-                        .HasName("pk_cast_members");
+                        .HasName("pk_characters");
 
                     b.HasIndex("StoryId", "Name")
                         .IsUnique()
-                        .HasDatabaseName("ix_cast_members_story_id_name");
+                        .HasDatabaseName("ix_characters_story_id_name");
 
-                    b.ToTable("cast_members", "plot", t =>
+                    b.ToTable("characters", "plot", t =>
                         {
-                            t.HasCheckConstraint("ck_cast_members_hue", "hue BETWEEN 0 AND 359");
+                            t.HasCheckConstraint("ck_characters_hue", "hue BETWEEN 0 AND 359");
                         });
                 });
 
@@ -480,9 +480,9 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<Guid?>("CastMemberId")
+                    b.Property<Guid?>("CharacterId")
                         .HasColumnType("uuid")
-                        .HasColumnName("cast_member_id");
+                        .HasColumnName("character_id");
 
                     b.Property<int>("Length")
                         .HasColumnType("integer")
@@ -507,8 +507,8 @@ namespace ProtoFast.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_scene_element_mentions");
 
-                    b.HasIndex("CastMemberId")
-                        .HasDatabaseName("ix_scene_element_mentions_cast_member_id");
+                    b.HasIndex("CharacterId")
+                        .HasDatabaseName("ix_scene_element_mentions_character_id");
 
                     b.HasIndex("LocationId")
                         .HasDatabaseName("ix_scene_element_mentions_location_id");
@@ -521,7 +521,7 @@ namespace ProtoFast.Data.Migrations
 
                     b.ToTable("scene_element_mentions", "plot", t =>
                         {
-                            t.HasCheckConstraint("ck_scene_element_mentions_one_target", "num_nonnulls(cast_member_id, prop_id, location_id) = 1");
+                            t.HasCheckConstraint("ck_scene_element_mentions_one_target", "num_nonnulls(character_id, prop_id, location_id) = 1");
 
                             t.HasCheckConstraint("ck_scene_element_mentions_span", "\"offset\" >= 0 AND length >= 2");
                         });
@@ -571,14 +571,14 @@ namespace ProtoFast.Data.Migrations
                     b.ToTable("stories", "plot");
                 });
 
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.CastMember", b =>
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Character", b =>
                 {
                     b.HasOne("ProtoFast.Data.ThePlot.Entities.Story", "Story")
-                        .WithMany("Cast")
+                        .WithMany("Characters")
                         .HasForeignKey("StoryId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_cast_members_stories_story_id");
+                        .HasConstraintName("fk_characters_stories_story_id");
 
                     b.Navigation("Story");
                 });
@@ -656,11 +656,11 @@ namespace ProtoFast.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_scene_elements_scenes_scene_id");
 
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.CastMember", "Speaker")
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Character", "Speaker")
                         .WithMany()
                         .HasForeignKey("SpeakerId")
                         .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_scene_elements_cast_members_speaker_id");
+                        .HasConstraintName("fk_scene_elements_characters_speaker_id");
 
                     b.Navigation("Location");
 
@@ -671,11 +671,11 @@ namespace ProtoFast.Data.Migrations
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.SceneElementMention", b =>
                 {
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.CastMember", "CastMember")
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Character", "Character")
                         .WithMany()
-                        .HasForeignKey("CastMemberId")
+                        .HasForeignKey("CharacterId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .HasConstraintName("fk_scene_element_mentions_cast_members_cast_member_id");
+                        .HasConstraintName("fk_scene_element_mentions_characters_character_id");
 
                     b.HasOne("ProtoFast.Data.ThePlot.Entities.Location", "Location")
                         .WithMany()
@@ -696,7 +696,7 @@ namespace ProtoFast.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_scene_element_mentions_scene_elements_scene_element_id");
 
-                    b.Navigation("CastMember");
+                    b.Navigation("Character");
 
                     b.Navigation("Location");
 
@@ -731,7 +731,7 @@ namespace ProtoFast.Data.Migrations
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Story", b =>
                 {
-                    b.Navigation("Cast");
+                    b.Navigation("Characters");
 
                     b.Navigation("Containers");
 

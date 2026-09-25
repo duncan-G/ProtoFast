@@ -17,14 +17,14 @@ public interface ISceneElementQuery : IQuery<SceneElement>
 
     ISceneElementQuery OfType(SceneElementType type);
 
-    ISceneElementQuery SpokenBy(Guid castMemberId);
+    ISceneElementQuery SpokenBy(Guid characterId);
 
     ISceneElementQuery AtLocation(Guid locationId);
 
     /// <summary>Positions in <c>[from, to)</c>.</summary>
     ISceneElementQuery InPositionRange(int from, int to = int.MaxValue);
 
-    ISceneElementQuery MentioningCastMember(Guid castMemberId);
+    ISceneElementQuery MentioningCharacter(Guid characterId);
 
     ISceneElementQuery MentioningProp(Guid propId);
 

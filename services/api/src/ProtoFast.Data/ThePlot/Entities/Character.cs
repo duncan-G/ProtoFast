@@ -2,7 +2,7 @@ using ProtoFast.Database.Abstractions;
 
 namespace ProtoFast.Data.ThePlot.Entities;
 
-public sealed class CastMember : IDateStamped
+public sealed class Character : IDateStamped
 {
     public Guid Id { get; set; }
 
@@ -14,7 +14,7 @@ public sealed class CastMember : IDateStamped
 
     public required string Name { get; set; }
 
-    public CastMemberKind Kind { get; set; }
+    public CharacterKind Kind { get; set; }
 
     /// <summary>Avatar colour as an OKLCH hue, 0–359.</summary>
     public int Hue { get; set; }

@@ -15,7 +15,7 @@ public sealed class Story : IDateStamped
 
     public List<Container> Containers { get; set; } = [];
 
-    public List<CastMember> Cast { get; set; } = [];
+    public List<Character> Characters { get; set; } = [];
 
     public List<Location> Locations { get; set; } = [];
 

@@ -3,4 +3,4 @@ using ProtoFast.Database.Abstractions;
 
 namespace ProtoFast.Data.ThePlot.Repositories;
 
-public interface ICastMemberRepository : IRepository<CastMember, Guid>;
+public interface ICharacterRepository : IRepository<Character, Guid>;
