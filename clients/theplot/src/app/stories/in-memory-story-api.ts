@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { forgetInElement, renameInElement } from './element-references';
-import { nameProblem } from './library-names';
+import { NAME_MAX, nameProblem } from './library-names';
 import type { StoryApi } from './story-api';
 import { Character } from './model/character';
 import { Container } from './model/container';
@@ -11,6 +11,7 @@ import { Scene } from './model/scene';
 import { SceneElement } from './model/scene-element';
 import { SceneSummary } from './model/scene-summary';
 import { Story } from './model/story';
+import { StorySummary } from './model/story-summary';
 import { StoryVocabulary } from './model/story-vocabulary';
 import { sampleScenes, sampleStory } from './sample-story';
 
@@ -19,13 +20,81 @@ import { sampleScenes, sampleStory } from './sample-story';
 export class InMemoryStoryApi implements StoryApi {
   private readonly stories = new Map<string, Story>();
   private readonly scenes = new Map<string, Scene>();
+  private readonly dates = new Map<string, { createdAt: Date; lastModifiedAt: Date }>();
 
   constructor() {
     const story = sampleStory();
     this.stories.set(story.id, story);
+    this.dates.set(story.id, { createdAt: new Date(), lastModifiedAt: new Date() });
     for (const scene of sampleScenes()) {
       this.scenes.set(scene.id, scene);
     }
+  }
+
+  async listStories(): Promise<StorySummary[]> {
+    return [...this.stories.values()]
+      .map((s) => ({ id: s.id, title: s.title, ...this.dates.get(s.id)! }))
+      .sort((a, b) => b.lastModifiedAt.getTime() - a.lastModifiedAt.getTime());
+  }
+
+  async createStory(title: string): Promise<Story> {
+    const id = crypto.randomUUID();
+    const container: Container = {
+      id: crypto.randomUUID(),
+      storyId: id,
+      position: 0,
+      label: 'Act I',
+      scenes: [],
+    };
+    this.stories.set(id, {
+      id,
+      title: requireTitle(title),
+      vocabulary: { timesOfDay: [], transitions: [], characterKinds: [] },
+      containers: [container],
+      characters: [],
+      locations: [],
+      props: [],
+    });
+    this.dates.set(id, { createdAt: new Date(), lastModifiedAt: new Date() });
+    const sceneId = crypto.randomUUID();
+    this.scenes.set(sceneId, {
+      id: sceneId,
+      containerId: container.id,
+      position: 0,
+      title: 'Untitled scene',
+      elements: [
+        {
+          id: crypto.randomUUID(),
+          sceneId,
+          position: 0,
+          type: 'Heading',
+          text: null,
+          locationId: null,
+          timeOfDay: null,
+          speakerId: null,
+          parenthetical: null,
+          transition: null,
+          mentions: [],
+        },
+      ],
+    });
+    return this.getStory(id);
+  }
+
+  async updateStory(storyId: string, title: string): Promise<void> {
+    this.story(storyId).title = requireTitle(title);
+    this.touch(storyId);
+  }
+
+  async deleteStory(storyId: string): Promise<void> {
+    const containerIds = new Set(this.story(storyId).containers.map((c) => c.id));
+    for (const scene of [...this.scenes.values()]) {
+      if (containerIds.has(scene.containerId)) {
+        this.scenes.delete(scene.id);
+      }
+    }
+    this.stories.delete(storyId);
+    this.dates.delete(storyId);
   }
 
   async getStory(storyId: string): Promise<Story> {
@@ -45,6 +114,7 @@ export class InMemoryStoryApi implements StoryApi {
 
   async saveScene(scene: Scene): Promise<void> {
     const stored = this.scene(scene.id);
+    this.touch(this.container(stored.containerId).storyId);
     const title = scene.title.trim() || 'Untitled scene';
     this.scenes.set(scene.id, {
       ...structuredClone(scene),
@@ -60,7 +130,7 @@ export class InMemoryStoryApi implements StoryApi {
   }
 
   async createScene(scene: Scene): Promise<Scene> {
-    this.container(scene.containerId);
+    this.touch(this.container(scene.containerId).storyId);
     const siblings = [...this.scenes.values()].filter((s) => s.containerId === scene.containerId);
     const position = Math.max(0, Math.min(scene.position, siblings.length));
     for (const sibling of siblings) {
@@ -83,11 +153,14 @@ export class InMemoryStoryApi implements StoryApi {
       scenes: [],
     };
     story.containers.push(container);
+    this.touch(storyId);
     return structuredClone(container);
   }
 
   async renameContainer(containerId: string, label: string): Promise<void> {
-    this.container(containerId).label = requireLabel(label);
+    const container = this.container(containerId);
+    container.label = requireLabel(label);
+    this.touch(container.storyId);
   }
 
   async createCharacter(
@@ -102,6 +175,7 @@ export class InMemoryStoryApi implements StoryApi {
       name: checkName(story.characters, draft.name, 'character'),
     };
     story.characters.push(character);
+    this.touch(storyId);
     return structuredClone(character);
   }
 
@@ -129,6 +203,7 @@ export class InMemoryStoryApi implements StoryApi {
       name: checkName(story.locations, draft.name, 'location'),
     };
     story.locations.push(location);
+    this.touch(storyId);
     return structuredClone(location);
   }
 
@@ -150,6 +225,7 @@ export class InMemoryStoryApi implements StoryApi {
       name: checkName(story.props, draft.name, 'prop'),
     };
     story.props.push(prop);
+    this.touch(storyId);
     return structuredClone(prop);
   }
 
@@ -164,6 +240,7 @@ export class InMemoryStoryApi implements StoryApi {
 
   async saveVocabulary(storyId: string, vocabulary: StoryVocabulary): Promise<void> {
     this.story(storyId).vocabulary = structuredClone(vocabulary);
+    this.touch(storyId);
   }
 
   private replaceEntry<T extends { id: string; storyId: string; name: string }>(
@@ -180,6 +257,7 @@ export class InMemoryStoryApi implements StoryApi {
       this.updateScenesOf(entry.storyId, (e) => renameInElement(e, { kind, id: entry.id }, name));
     }
     list[index] = { ...structuredClone(entry), name };
+    this.touch(entry.storyId);
   }
 
   private deleteEntry(list: (story: Story) => { id: string }[], target: ReferenceTarget): void {
@@ -189,6 +267,7 @@ export class InMemoryStoryApi implements StoryApi {
       if (index >= 0) {
         entries.splice(index, 1);
         this.updateScenesOf(story.id, (e) => forgetInElement(e, target));
+        this.touch(story.id);
         return;
       }
     }
@@ -200,6 +279,13 @@ export class InMemoryStoryApi implements StoryApi {
       if (containerIds.has(scene.containerId)) {
         scene.elements = scene.elements.map(update);
       }
+    }
+  }
+
+  private touch(storyId: string): void {
+    const dates = this.dates.get(storyId);
+    if (dates) {
+      dates.lastModifiedAt = new Date();
     }
   }
 
@@ -258,6 +344,17 @@ function checkName<T extends { id: string; name: string }>(
     throw new Error(problem);
   }
   return name.trim();
+}
+
+function requireTitle(title: string): string {
+  const trimmed = title.trim();
+  if (!trimmed) {
+    throw new Error('A story needs a title.');
+  }
+  if (trimmed.length > NAME_MAX) {
+    throw new Error(`Titles are limited to ${NAME_MAX} characters.`);
+  }
+  return trimmed;
 }
 
 function requireLabel(label: string): string {
