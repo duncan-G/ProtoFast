@@ -1,0 +1,291 @@
+<div class="se-library-head">
+  <span class="se-kicker">Story library</span>
+  <div class="se-tabs" role="tablist">
+    @for (t of tabs; track t.tab) {
+      <button
+        type="button"
+        class="se-tab"
+        role="tab"
+        [attr.aria-selected]="store.libraryTab() === t.tab"
+        (click)="selectTab(t.tab)"
+      >
+        {{ t.label }}<span class="se-tab-count">{{ counts()[t.tab] }}</span>
+      </button>
+    }
+  </div>
+  <p class="se-library-hint">{{ info().hint }}</p>
+</div>
+
+<div class="se-library-list" role="tabpanel">
+  @switch (store.libraryTab()) {
+    @case ('characters') {
+      @for (character of store.characters(); track character.id) {
+        <div class="se-entry">
+          <app-avatar
+            [shape]="store.kindOf(character).avatarShape"
+            [hue]="character.hue"
+            [initials]="initialsOf(character.name)"
+            [size]="34"
+          />
+          <div class="se-entry-main">
+            <div class="se-entry-name-row">
+              <input
+                #name
+                class="se-entry-name"
+                aria-label="Character name"
+                [attr.maxlength]="nameMax"
+                [value]="character.name"
+                [title]="character.name"
+                (input)="
+                  checkRename(
+                    { kind: 'character', id: character.id },
+                    store.characters(),
+                    name.value
+                  )
+                "
+                (keydown)="renameKey($event, name, character.name)"
+                (blur)="commitRename({ kind: 'character', id: character.id }, name, character.name)"
+              />
+              <button
+                type="button"
+                class="se-entry-del"
+                title="Remove from library"
+                aria-label="Remove {{ character.name }}"
+                (click)="confirming.set(character.id)"
+              >
+                ×
+              </button>
+            </div>
+            @if (renameError()?.id === character.id) {
+              <p class="se-error">{{ renameError()!.message }}</p>
+            }
+            <div class="se-entry-meta">
+              <button
+                #kindChip
+                type="button"
+                class="se-entry-sub"
+                title="Change kind"
+                [attr.aria-expanded]="kindOpen() === character.id"
+                (click)="kindOpen.set(kindOpen() === character.id ? null : character.id)"
+              >
+                <app-avatar
+                  [shape]="store.kindOf(character).avatarShape"
+                  [outline]="true"
+                  [size]="11"
+                />{{ character.kind }} ▾
+              </button>
+              <span class="whitespace-nowrap">{{ characterMeta(character) }}</span>
+              <button
+                type="button"
+                class="se-entry-act"
+                title="Add a line of dialogue at the end"
+                (mousedown)="$event.preventDefault(); addLine(character)"
+              >
+                + Line
+              </button>
+            </div>
+          </div>
+          @if (kindOpen() === character.id) {
+            <app-kind-picker
+              [character]="character"
+              [anchor]="kindChip"
+              (close)="kindOpen.set(null)"
+            />
+          }
+          @if (confirming() === character.id) {
+            <div class="se-confirm rise" role="alert">
+              <span
+                >Remove “{{ character.name }}”? Their lines lose their speaker and their
+                &#64;mentions turn to plain text, in every scene.</span
+              >
+              <div class="flex gap-1.5">
+                <button
+                  type="button"
+                  class="se-btn se-btn-danger"
+                  (click)="remove({ kind: 'character', id: character.id })"
+                >
+                  Remove
+                </button>
+                <button type="button" class="se-btn" (click)="confirming.set(null)">Keep</button>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    }
+    @case ('locations') {
+      @for (location of store.locations(); track location.id) {
+        <div class="se-entry">
+          <span
+            class="se-location-badge hue-fill"
+            [style.--hue]="location.hue"
+            aria-hidden="true"
+            >{{ settingLabel(location) }}</span
+          >
+          <div class="se-entry-main">
+            <div class="se-entry-name-row">
+              <input
+                #name
+                class="se-entry-name"
+                aria-label="Location name"
+                [attr.maxlength]="nameMax"
+                [value]="location.name"
+                [title]="location.name"
+                (input)="
+                  checkRename({ kind: 'location', id: location.id }, store.locations(), name.value)
+                "
+                (keydown)="renameKey($event, name, location.name)"
+                (blur)="commitRename({ kind: 'location', id: location.id }, name, location.name)"
+              />
+              <button
+                type="button"
+                class="se-entry-del"
+                title="Remove from library"
+                aria-label="Remove {{ location.name }}"
+                (click)="confirming.set(location.id)"
+              >
+                ×
+              </button>
+            </div>
+            @if (renameError()?.id === location.id) {
+              <p class="se-error">{{ renameError()!.message }}</p>
+            }
+            <div class="se-entry-meta">
+              <button
+                type="button"
+                class="se-entry-sub pl-2"
+                title="Switch interior / exterior"
+                (click)="
+                  store.setLocationSetting(
+                    location.id,
+                    location.setting === 'Interior' ? 'Exterior' : 'Interior'
+                  )
+                "
+              >
+                {{ location.setting }}
+              </button>
+              <span class="whitespace-nowrap">{{ locationMeta(location) }}</span>
+              <button
+                type="button"
+                class="se-entry-act"
+                title="Add a heading here at the end of the scene"
+                (mousedown)="$event.preventDefault(); addHeading(location)"
+              >
+                + Heading
+              </button>
+            </div>
+          </div>
+          @if (confirming() === location.id) {
+            <div class="se-confirm rise" role="alert">
+              <span
+                >Remove “{{ location.name }}”? Headings set there lose their location and its
+                &#64;mentions turn to plain text, in every scene.</span
+              >
+              <div class="flex gap-1.5">
+                <button
+                  type="button"
+                  class="se-btn se-btn-danger"
+                  (click)="remove({ kind: 'location', id: location.id })"
+                >
+                  Remove
+                </button>
+                <button type="button" class="se-btn" (click)="confirming.set(null)">Keep</button>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    }
+    @case ('props') {
+      @for (prop of store.props(); track prop.id) {
+        <div class="se-entry">
+          <span class="se-prop-badge" aria-hidden="true">◆</span>
+          <div class="se-entry-main">
+            <div class="se-entry-name-row">
+              <input
+                #name
+                class="se-entry-name"
+                aria-label="Prop name"
+                [attr.maxlength]="nameMax"
+                [value]="prop.name"
+                [title]="prop.name"
+                (input)="checkRename({ kind: 'prop', id: prop.id }, store.props(), name.value)"
+                (keydown)="renameKey($event, name, prop.name)"
+                (blur)="commitRename({ kind: 'prop', id: prop.id }, name, prop.name)"
+              />
+              <button
+                type="button"
+                class="se-entry-del"
+                title="Remove from library"
+                aria-label="Remove {{ prop.name }}"
+                (click)="confirming.set(prop.id)"
+              >
+                ×
+              </button>
+            </div>
+            @if (renameError()?.id === prop.id) {
+              <p class="se-error">{{ renameError()!.message }}</p>
+            }
+            <div class="se-entry-meta">
+              <span class="se-entry-sub is-static">Prop</span>
+              <span class="whitespace-nowrap">{{ propMeta(prop) }}</span>
+              <button
+                type="button"
+                class="se-entry-act"
+                [disabled]="!editingText()"
+                [title]="
+                  editingText() ? 'Insert into the beat you’re editing' : 'Open a beat to insert'
+                "
+                (mousedown)="$event.preventDefault(); insertProp(prop)"
+              >
+                &#64; Insert
+              </button>
+            </div>
+          </div>
+          @if (confirming() === prop.id) {
+            <div class="se-confirm rise" role="alert">
+              <span
+                >Remove “{{ prop.name }}”? Its &#64;mentions turn to plain text, in every
+                scene.</span
+              >
+              <div class="flex gap-1.5">
+                <button
+                  type="button"
+                  class="se-btn se-btn-danger"
+                  (click)="remove({ kind: 'prop', id: prop.id })"
+                >
+                  Remove
+                </button>
+                <button type="button" class="se-btn" (click)="confirming.set(null)">Keep</button>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    }
+  }
+</div>
+
+<form class="se-library-add" (submit)="$event.preventDefault(); add()">
+  <div>
+    <input
+      class="se-field"
+      [class.is-invalid]="draftProblem() || addError()"
+      [attr.aria-label]="info().placeholder"
+      [placeholder]="info().placeholder"
+      [attr.maxlength]="nameMax"
+      [value]="draft()"
+      (input)="draft.set($any($event.target).value); addError.set('')"
+    />
+    <button
+      type="submit"
+      class="se-btn se-btn-primary"
+      [disabled]="!draft().trim() || !!draftProblem()"
+    >
+      Add
+    </button>
+  </div>
+  @if (draftProblem() ?? addError(); as problem) {
+    <p class="se-error">{{ problem }}</p>
+  }
+</form>
