@@ -10,7 +10,7 @@ aspire run
 ```
 
 That is the whole thing. It builds and starts every resource declared in
-`[apphost/Program.cs](../../apphost/Program.cs)` and prints the Aspire dashboard
+[`apphost/Program.cs`](../apphost/Program.cs) and prints the Aspire dashboard
 URL. Stop with `Ctrl+C` or `aspire stop`.
 
 Prerequisites (installed idempotently by `bash scripts/setup-dev-dependencies.sh` on Ubuntu 24): .NET 10 SDK, Aspire CLI, Docker Engine, and Node 24.
@@ -30,6 +30,7 @@ AWS CLI v2 and an SSO profile named **`developer`** (the Developer permission se
 | `keycloak`                | container (26.7)     | realm import from `infra/keycloak/realms`, themes and provider JAR bind-mounted, tracing + logs to the collector |
 | `smtp4dev`                | container            | local mail catcher; both Keycloak and `auth` are pointed at it                                                   |
 | `auth`, `payments`, `api` | .NET projects        | OTLP reference, Redis/Postgres connection strings; JWT and Keycloak secrets from `protofast/dev`                 |
+| `conversion`              | Dockerfile container | document → Markdown; LocalStack S3 by container DNS, the upload bucket, OTLP to the collector                    |
 | `envoy`                   | Dockerfile container | one HTTPS listener per client, dev certificate, upstream host/port for every service                             |
 | `admin`, `protofast`, `theplot` | `ng serve`     | `PORT`, `SSL_CERT`, `SSL_KEY`, `SERVER_URL`, OTel endpoints                                                      |
 

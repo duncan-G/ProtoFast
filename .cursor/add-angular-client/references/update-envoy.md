@@ -12,7 +12,7 @@ client assets and has no per-client loader map. At runtime it reads the
 from S3 (`clients/<name>/<tag>/`) and imports
 `/assets/<name>/server/server.mjs`. So registering a new client is
 **not** a code edit to the host — it is a deploy-pipeline + config
-change (docs/independent-deployment-plan.md §7).
+change (docs/03-services-and-clients.md, "The unified SSR host").
 
 You do **not** edit `clients/host/server.mjs` or `clients/host/Dockerfile`
 anymore. Instead do the three things below.

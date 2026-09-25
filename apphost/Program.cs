@@ -1,5 +1,6 @@
 using ProtoFast.AppHost.Aws;
 using ProtoFast.AppHost.ClientApp;
+using ProtoFast.AppHost.Conversion;
 using ProtoFast.AppHost.EnvoyProxy;
 using ProtoFast.AppHost.LocalStack;
 using ProtoFast.AppHost.OpenTelemetryCollector;
@@ -178,6 +179,12 @@ var api = builder.AddProject<Projects.ProtoFast_Api>("api")
     .WithLocalStackS3(localstack, envPrefix: "Api_", bucket: documentUploadBucket)
     .WithOtlpCollectorReference(otel)
     .WithSsoProfile();
+
+// Document → Markdown conversion. Reads uploads from and writes Markdown to the same bucket.
+builder
+    .AddConversionService("conversion", documentUploadBucket)
+    .WithLocalStack(localstack)
+    .WithOtelCollector(otel);
 
 // Envoy Proxy
 var proxy = builder.AddEnvoyProxy("envoy", useSsrHost)

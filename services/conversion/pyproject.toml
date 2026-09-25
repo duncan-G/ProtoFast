@@ -1,0 +1,54 @@
+[project]
+name = "protofast-conversion"
+version = "0.1.0"
+description = "Document-to-Markdown conversion for ThePlot: MarkItDown, CPU OCR, layout extraction."
+requires-python = ">=3.12"
+
+dependencies = [
+  "fastapi==0.141.1",
+  "uvicorn[standard]==0.53.0",
+  "pydantic==2.13.5",
+  "boto3==1.43.97",
+  # Never `markitdown[all]`: its audio, YouTube and Azure extras send content off the box.
+  # deploy-conversion.yml fails the build if their packages appear.
+  "markitdown[pdf,docx,pptx,xlsx,xls,outlook]==0.1.7",
+  "pdfplumber==0.11.10",
+  "pytesseract==0.3.13",
+  "pillow==12.3.0",
+  "ocrmypdf==17.12.1",
+  "defusedxml==0.7.1",
+  "opentelemetry-distro==0.65b0",
+  "opentelemetry-exporter-otlp==1.44.0",
+  "opentelemetry-instrumentation-fastapi==0.65b0",
+  "opentelemetry-instrumentation-botocore==0.65b0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.1.1",
+  "httpx==0.28.1",
+  "ruff==0.16.8",
+]
+
+[project.scripts]
+conversion = "conversion.main:main"
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "S", "PL"]
+# S101: pytest is assertions. The rest are test-shaped patterns, not production ones.
+per-file-ignores = { "tests/*" = ["S101", "PLR2004"] }

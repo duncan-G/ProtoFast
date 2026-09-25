@@ -36,10 +36,9 @@ export const MODES: Record<DeskMode, ModeInfo> = {
     eyebrow: 'Write',
     title: 'Your desk',
     searchHint: 'Search your stories…',
-    tabs: ['All', 'Drafts', 'Published', 'Adapting'],
+    tabs: ['All', 'Published', 'Adapting'],
     empty: [
-      ['Your desk is clear.', 'Import a file and it lands here, kept exactly as you sent it.'],
-      ['No drafts yet.', 'The chapter editor is on its way; imported files sit under All for now.'],
+      ['Your desk is clear.', 'Start a story, or import a file and it lands here as you sent it.'],
       ['Nothing published yet.', 'Publishing opens once the chapter editor lands.'],
       ['Nothing adapting yet.', 'Adaptation turns a published story into scenes. It isn’t built yet.'],
     ],

@@ -1,4 +1,5 @@
 using ProtoFast.Api.Services;
+using ProtoFast.Api.Services.Screenplays;
 using ProtoFast.Data.ThePlot;
 using ProtoFast.Grpc;
 using ProtoFast.ServiceDefaults;
@@ -28,6 +29,8 @@ builder.Services.AddGrpc(options =>
 
 builder.AddNpgsqlDataSource("protofast"); // NpgsqlDataSource for the ThePlotDbContext
 builder.Services.AddThePlotData();
+builder.Services.AddScoped<StoryScope>();
+builder.Services.AddScoped<StoryLibrary>();
 
 builder.Services.AddS3ObjectStorage(options => builder.Configuration.GetSection("S3").Bind(options));
 
@@ -39,6 +42,7 @@ app.MapDefaultEndpoints();
 
 app.MapGrpcService<DocumentUploadService>();
 app.MapGrpcService<DocumentService>();
+app.MapGrpcService<StoryService>();
 app.MapGet("/", () => "Communication with gRPC endpoints must be made through a gRPC client. To learn how to create a client, visit: https://go.microsoft.com/fwlink/?linkid=2086909");
 
 app.Run();

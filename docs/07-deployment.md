@@ -19,6 +19,7 @@ reused. That is also what makes rollback trivial: an old tag is still there.
 | `auth` (+ `auth-migrations`) | B | ECR image | `services/auth services/shared` |
 | `payments` | B | ECR image | `services/payments services/shared` |
 | `api` (+ `api-migrations`) | B | ECR image | `services/api services/document_import services/shared` |
+| `conversion` | B | ECR image | `services/conversion` |
 | `envoy` | A | ECR image | `proxy` |
 | `otel-collector` | A | ECR image | `otel-collector` |
 | `clients-host` | A | ECR image | `clients/host` |
@@ -26,7 +27,7 @@ reused. That is also what makes rollback trivial: an old tag is still there.
 | `keycloak`, `postgres`, `redis`, `cloudflared`, `aspire-dashboard` | pinned upstream images | — | compose/config paths |
 
 The first group runs through the reusable workflow
-[`_component-deploy.yml`](../../.github/workflows/_component-deploy.yml); the pinned
+[`_component-deploy.yml`](../.github/workflows/_component-deploy.yml); the pinned
 upstream tiers have their own small workflows because there is nothing to build.
 
 ## The pipeline

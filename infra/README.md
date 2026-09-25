@@ -102,7 +102,7 @@ shred -u jwt-private.pem jwt-public.pem
 
 Keycloak's `--import-realm` and auth-svc must agree on the client secret values (`PROTOFAST_WEB_CLIENT_SECRET` / `ADMIN_CLIENT_SECRET` / `ACCOUNT_ADMIN_CLIENT_SECRET` in `.env`), so always rotate all three keys together.
 
-`Auth_Keycloak__AdminClientSecret` is the `account-admin` service account behind account management (passkey removal, email change, account deletion — [docs/account-management.md](../docs/account-management.md)). It differs from the other two at bootstrap: the realm import only ever creates realms, so on a realm that already exists the client never appears and the secret has nowhere to land — run [scripts/keycloak-apply-account-admin-client.py](../scripts/keycloak-apply-account-admin-client.py) once against the live realm to create it and set the secret on it. Missing or mismatched, sign-in is unaffected and the `/account/*` endpoints answer 503.
+`Auth_Keycloak__AdminClientSecret` is the `account-admin` service account behind account management (passkey removal, email change, account deletion — [docs/05-identity.md](../docs/05-identity.md#the-three-realm-clients)). It differs from the other two at bootstrap: the realm import only ever creates realms, so on a realm that already exists the client never appears and the secret has nowhere to land — run [scripts/keycloak-apply-account-admin-client.py](../scripts/keycloak-apply-account-admin-client.py) once against the live realm to create it and set the secret on it. Missing or mismatched, sign-in is unaffected and the `/account/*` endpoints answer 503.
 
 ### 4.2 SES SMTP (Keycloak email)
 

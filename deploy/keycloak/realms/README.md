@@ -121,7 +121,7 @@ never turns the next sign-up into "already registered".
 
 ## Account management
 
-Two things in this file exist for the account page (`docs/account-management.md`), not for
+Two things in this file exist for the account page (`docs/05-identity.md`), not for
 sign-in:
 
 - **`account-admin`** is a confidential client with service accounts on and every browser flow

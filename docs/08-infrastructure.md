@@ -7,9 +7,9 @@ matter. Self-contained.*
 
 | Root | Runs where | Creates |
 |---|---|---|
-| [`infra/bootstrap`](../../infra/bootstrap) | **locally, once**, with admin credentials | the S3 state bucket, the GitHub OIDC provider, the `protofast-infra` and `protofast-deploy` roles, a permissions boundary, and (optionally) the GitHub repo variables and secrets |
-| [`infra/identity-center`](../../infra/identity-center) | locally, once | AWS Identity Center permission sets (platform-admin, developer) and the SES sender IAM user |
-| [`infra/`](../../infra) | GitHub Actions (`infra.yml`) | everything the running system needs |
+| [`infra/bootstrap`](../infra/bootstrap) | **locally, once**, with admin credentials | the S3 state bucket, the GitHub OIDC provider, the `protofast-infra` and `protofast-deploy` roles, a permissions boundary, and (optionally) the GitHub repo variables and secrets |
+| [`infra/identity-center`](../infra/identity-center) | locally, once | AWS Identity Center permission sets (platform-admin, developer) and the SES sender IAM user |
+| [`infra/`](../infra) | GitHub Actions (`infra.yml`) | everything the running system needs |
 
 The split exists because the main root runs in CI, and CI needs a state bucket and
 an OIDC role that nothing has created yet. Bootstrap breaks that cycle from an
@@ -39,7 +39,7 @@ profile:
 | | Host A (`Role=edge`) | Host B (`Role=services`) |
 |---|---|---|
 | Default type | `t4g.small` | `t4g.medium` |
-| Runs | cloudflared, Envoy, clients host, otel-collector, Aspire dashboard | auth, payments, api, Keycloak, Postgres, Redis |
+| Runs | cloudflared, Envoy, clients host, otel-collector, Aspire dashboard | auth, payments, api, conversion, Keycloak, Postgres, Redis |
 | Private IP | static, `cidrhost(subnet, 10)` | static, `cidrhost(subnet, 11)` |
 | AMI | floats with the latest AL2023 | **pinned** (`ignore_changes = [ami]`) |
 | `user_data_replace_on_change` | `true` — pure cattle | `false` — it holds state |

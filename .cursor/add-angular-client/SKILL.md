@@ -110,7 +110,7 @@ builds to S3 and deploys independently), and (2) register `«clientname»`
 in the `CLIENTS` env var (the instance seed in `infra/`; the first deploy
 also self-registers it on a running box). The host discovers clients from
 `CLIENTS` and pulls each pinned build from S3 at start
-(docs/independent-deployment-plan.md §7).
+(docs/03-services-and-clients.md, "The unified SSR host").
 
 If `clients/host/` does not exist yet (mid-bootstrap), skip this step —
 the orchestrator creates the unified host with the full client set.

@@ -53,6 +53,9 @@
         <button type="button" class="btn btn-secondary" (click)="openImport()">
           <span class="text-[var(--color-accent-bright)]" aria-hidden="true">↑</span>Import
         </button>
+        <button type="button" class="btn btn-primary" (click)="openNewStory()">
+          <span aria-hidden="true">+</span>New story
+        </button>
       }
     </div>
 
@@ -77,11 +80,47 @@
     <!-- ─────────────────────────── content ─────────────────────────── -->
     <div class="flex-1 px-5 pt-2 pb-[110px] sm:px-10">
       @if (mode() === 'write') {
-        @if (documentsError()) {
+        @if (deskError()) {
           <div class="panel-danger rise mt-4 flex flex-wrap items-center gap-3" role="alert">
-            <p class="m-0 min-w-0 flex-1 text-[13px]">{{ documentsError() }}</p>
-            <button type="button" class="btn btn-secondary" (click)="loadDocuments()">Try again</button>
+            <p class="m-0 min-w-0 flex-1 text-[13px]">{{ deskError() }}</p>
+            <button type="button" class="btn btn-secondary" (click)="loadDesk()">Try again</button>
           </div>
+        }
+
+        @if (newStoryOpen()) {
+          <form class="panel rise mt-4 max-w-[560px]" (submit)="$event.preventDefault(); createStory()">
+            <div class="field">
+              <label for="new-story-title">Title</label>
+              <input
+                #newStoryField
+                id="new-story-title"
+                class="input"
+                autocomplete="off"
+                maxlength="255"
+                placeholder="Working title"
+                [value]="newStoryTitle()"
+                [disabled]="creatingStory()"
+                (input)="newStoryTitle.set($any($event.target).value); newStoryError.set('')"
+                (keydown.escape)="closeNewStory()"
+              />
+            </div>
+            <p class="meta mt-2 mb-0 text-[12px]">It opens on Act I with one untitled scene.</p>
+            @if (newStoryError()) {
+              <p class="mt-3 mb-0 text-[13px] text-[var(--color-danger-300)]" role="alert">{{ newStoryError() }}</p>
+            }
+            <div class="mt-5 flex flex-wrap gap-2">
+              <button type="submit" class="btn btn-primary" [disabled]="creatingStory()">
+                @if (creatingStory()) {
+                  <span class="spinner" aria-hidden="true"></span>Creating…
+                } @else {
+                  Create story
+                }
+              </button>
+              <button type="button" class="btn btn-ghost text-[var(--color-text)]" [disabled]="creatingStory()" (click)="closeNewStory()">
+                Cancel
+              </button>
+            </div>
+          </form>
         }
 
         @if (tab() === 0 && (pendingRows().length > 0 || deskRows().length > 0)) {
@@ -108,13 +147,21 @@
           </div>
         }
 
-        @for (row of deskRows(); track row.document.id) {
+        @for (row of deskRows(); track row.kind + row.id) {
           <div class="desk-row" [class.desk-row-new]="row.isNew" [class.rise]="row.isNew">
             <div class="flex min-w-0 items-center gap-3.5">
               <div class="desk-cover" [style.background]="row.cover" aria-hidden="true"></div>
               <div class="flex min-w-0 flex-col gap-1">
                 <div class="flex flex-wrap items-center gap-2">
-                  <span class="font-[family-name:var(--font-heading)] text-[21px] leading-[1.1]">{{ row.document.name }}</span>
+                  @if (row.kind === 'story') {
+                    <a
+                      class="font-[family-name:var(--font-heading)] text-[21px] leading-[1.1] text-[var(--color-text)] no-underline hover:text-[var(--color-accent-bright)]"
+                      [routerLink]="['/app/stories', row.id]"
+                      >{{ row.title }}</a
+                    >
+                  } @else {
+                    <span class="font-[family-name:var(--font-heading)] text-[21px] leading-[1.1]">{{ row.title }}</span>
+                  }
                   @if (row.isNew) {
                     <span class="tag tag-imported">Imported</span>
                   }
@@ -127,11 +174,36 @@
             <span class="desk-cell-md flex items-center gap-2 text-[13px] text-[var(--color-neutral-300)]">
               <span class="dot"></span>Not adapted
             </span>
-            <span class="meta">{{ row.updated }}</span>
+            <span class="flex items-center justify-between gap-2">
+              <span class="meta">{{ row.updated }}</span>
+              @if (row.kind === 'story') {
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-danger px-2 py-1 text-[13px]"
+                  [attr.aria-label]="'Delete “' + row.title + '”'"
+                  (click)="confirmingDeleteId.set(row.id)"
+                >
+                  ×
+                </button>
+              }
+            </span>
           </div>
+          @if (confirmingDeleteId() === row.id) {
+            <div class="strip-danger rise flex flex-wrap items-center gap-3 px-[17px] py-3">
+              <p class="m-0 min-w-0 flex-[1_1_210px] text-[13px] leading-[1.5]">
+                Delete “{{ row.title }}”? Its scenes, characters, locations and props go with it.
+              </p>
+              <div class="flex gap-2">
+                <button type="button" class="btn btn-danger" (click)="deleteStory(row.id)">Delete story</button>
+                <button type="button" class="btn btn-ghost text-[var(--color-text)]" (click)="confirmingDeleteId.set(null)">
+                  Keep
+                </button>
+              </div>
+            </div>
+          }
         }
 
-        @if (documentsLoading() && documents().length === 0 && pendingRows().length === 0) {
+        @if (deskLoading() && deskRows().length === 0 && pendingRows().length === 0) {
           <p class="meta mt-8 flex items-center gap-2">
             <span class="spinner" aria-hidden="true"></span>Loading your desk…
           </p>
@@ -140,14 +212,19 @@
             <h2 class="text-[26px]">No story matches “{{ search() }}”.</h2>
             <p class="m-0 text-muted text-[14px] leading-[1.6]">Try another word, or clear the search.</p>
           </div>
-        } @else if (!documentsLoading() && !documentsError() && deskRows().length === 0 && pendingRows().length === 0) {
+        } @else if (!deskLoading() && !deskError() && !newStoryOpen() && deskRows().length === 0 && pendingRows().length === 0) {
           <div class="rise mt-10 max-w-[460px]">
             <h2 class="text-[26px]">{{ emptyState()[0] }}</h2>
             <p class="m-0 text-muted text-[14px] leading-[1.6] [text-wrap:pretty]">{{ emptyState()[1] }}</p>
             @if (tab() === 0) {
-              <button type="button" class="btn btn-primary mt-5" (click)="openImport()">
-                <span aria-hidden="true">↑</span>Import a file
-              </button>
+              <div class="mt-5 flex flex-wrap gap-2">
+                <button type="button" class="btn btn-primary" (click)="openNewStory()">
+                  <span aria-hidden="true">+</span>New story
+                </button>
+                <button type="button" class="btn btn-secondary" (click)="openImport()">
+                  <span aria-hidden="true">↑</span>Import a file
+                </button>
+              </div>
             }
           </div>
         }

@@ -18,7 +18,7 @@ on:
   workflow_call:
     inputs:
       component:
-        description: "Component id: auth|payments|api|envoy|otel-collector|clients-host|client-admin|client-protofast"
+        description: "Component id: auth|payments|api|conversion|envoy|otel-collector|clients-host|client-admin|client-protofast"
         required: true
         type: string
       host:
@@ -124,7 +124,7 @@ jobs:
           npm run generate:grpc
           npm test -- --watch=false
 
-      # buildx components (envoy, otel-collector, clients-host) have no unit tests.
+      # buildx components have no unit tests here; conversion runs its own in deploy-conversion.yml.
       - if: inputs.build == 'buildx'
         run: echo "no unit tests for ${{ inputs.component }} (build=buildx)"
 
