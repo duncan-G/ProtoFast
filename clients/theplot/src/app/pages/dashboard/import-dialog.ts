@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -59,6 +60,7 @@ const STEP_INDEX: Record<DialogState, number> = {
  */
 @Component({
   selector: 'app-import-dialog',
+  imports: [NgTemplateOutlet],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '(document:keydown.escape)': 'close.emit()' },
   template: `
@@ -166,18 +168,6 @@ const STEP_INDEX: Record<DialogState, number> = {
             </div>
           }
 
-          @if (state() === 'ready') {
-            @if (formats()) {
-              <div class="flex flex-wrap gap-[18px] text-[13px] text-[var(--color-success)]">
-                <span>✓ Supported format</span><span>✓ Under {{ limit() }}</span>
-              </div>
-            } @else {
-              <!-- The accepted-format table never arrived, so nothing was checked here; the API
-                   checks type and size before it signs anything. -->
-              <div class="text-[13px] text-muted">Type and size are checked when you start.</div>
-            }
-          }
-
           @if (state() === 'rejected') {
             <div class="panel-danger" role="alert">
               <div class="text-[14px] font-medium text-[var(--color-danger-200)]">{{ rejectionTitle() }}</div>
@@ -187,55 +177,80 @@ const STEP_INDEX: Record<DialogState, number> = {
             </div>
           }
 
-          @if (state() === 'presign' || state() === 'saving') {
-            <div class="flex flex-col gap-2" role="status">
-              <div class="progress"><div class="progress-indeterminate"></div></div>
-              <div class="meta flex justify-between">
-                <span>{{ state() === 'presign' ? 'Requesting a secure upload link…' : 'Adding it to your desk…' }}</span>
-                <span>Step {{ state() === 'presign' ? 1 : 3 }} of 3</span>
+          <!-- From a picked file to a finished import, what sits under the file card changes at
+               every step. It all shares one cell, held open by a hidden copy of the finished
+               panel (the tallest of them), so the dialog keeps its height and its place on
+               screen as the steps go by. -->
+          @if (state() !== 'empty' && state() !== 'rejected') {
+            <div class="dialog-stage">
+              <div class="panel-success invisible flex items-start gap-3.5" aria-hidden="true">
+                <ng-container *ngTemplateOutlet="finished; context: { $implicit: fileName() }" />
               </div>
-            </div>
-          }
 
-          @if (state() === 'uploading') {
-            <div class="flex flex-col gap-2" role="status">
-              <div class="progress">
-                <div class="progress-bar" [style.width.%]="job()?.progress ?? 0"></div>
-              </div>
-              <div class="meta flex justify-between">
-                <span>{{ uploadText() }}</span><span>{{ job()?.progress ?? 0 }}%</span>
-              </div>
-              <div class="text-[12px] text-[var(--color-neutral-600)]">
-                Keep this tab open until the upload finishes. You can close this window.
-              </div>
-            </div>
-          }
-
-          @if (state() === 'done') {
-            <div class="panel-success rise flex items-start gap-3.5" role="status">
-              <div class="check check-lg">✓</div>
-              <div class="flex flex-col gap-1.5">
-                <div class="font-[family-name:var(--font-heading)] text-[22px] leading-[1.15]">On your desk</div>
-                <div class="text-[13px] leading-[1.55] text-[var(--color-neutral-300)] [text-wrap:pretty]">
-                  “{{ job()?.document?.name }}” is uploaded and listed in
-                  <b class="font-medium text-[var(--color-text)]">Write</b>.
-                </div>
-              </div>
-            </div>
-          }
-
-          @if (state() === 'failed') {
-            <div class="panel-danger" role="alert">
-              <div class="text-[14px] font-medium text-[var(--color-danger-200)]">The import didn’t finish</div>
-              <div class="mt-1 text-[13px] leading-[1.5] text-[var(--color-neutral-300)] [text-wrap:pretty]">
-                {{ job()?.error }}
-              </div>
+              @switch (state()) {
+                @case ('ready') {
+                  @if (formats()) {
+                    <div class="flex flex-wrap gap-[18px] text-[13px] text-[var(--color-success)]">
+                      <span>✓ Supported format</span><span>✓ Under {{ limit() }}</span>
+                    </div>
+                  } @else {
+                    <!-- The accepted-format table never arrived, so nothing was checked here; the
+                         API checks type and size before it signs anything. -->
+                    <div class="text-[13px] text-muted">Type and size are checked when you start.</div>
+                  }
+                }
+                @case ('done') {
+                  <div class="panel-success rise flex items-start gap-3.5" role="status">
+                    <ng-container *ngTemplateOutlet="finished; context: { $implicit: job()?.document?.name }" />
+                  </div>
+                }
+                @case ('failed') {
+                  <div class="panel-danger" role="alert">
+                    <div class="text-[14px] font-medium text-[var(--color-danger-200)]">The import didn’t finish</div>
+                    <div class="mt-1 text-[13px] leading-[1.5] text-[var(--color-neutral-300)] [text-wrap:pretty]">
+                      {{ job()?.error }}
+                    </div>
+                  </div>
+                }
+                @default {
+                  <!-- One block for all three steps, so the bar and its labels stay put and only
+                       their text moves on. -->
+                  <div class="flex flex-col gap-2" role="status">
+                    <div class="progress">
+                      @if (state() === 'uploading') {
+                        <div class="progress-bar" [style.width.%]="job()?.progress ?? 0"></div>
+                      } @else {
+                        <div class="progress-indeterminate"></div>
+                      }
+                    </div>
+                    <div class="meta flex justify-between gap-3">
+                      <span>{{ progressText() }}</span><span class="flex-none">{{ progressAside() }}</span>
+                    </div>
+                    <div class="text-[12px] text-[var(--color-neutral-600)]">
+                      Keep this tab open until the import finishes. You can close this window.
+                    </div>
+                  </div>
+                }
+              }
             </div>
           }
         </div>
 
-        <div class="dialog-foot">
-          <div class="meta min-w-0 flex-1 text-[var(--color-neutral-600)]">{{ footNote() }}</div>
+        <ng-template #finished let-name>
+          <div class="check check-lg">✓</div>
+          <div class="flex flex-col gap-1.5">
+            <div class="font-[family-name:var(--font-heading)] text-[22px] leading-[1.15]">On your desk</div>
+            <div class="text-[13px] leading-[1.55] text-[var(--color-neutral-300)] [text-wrap:pretty]">
+              “{{ name }}” is uploaded and listed in
+              <b class="font-medium text-[var(--color-text)]">Write</b>.
+            </div>
+          </div>
+        </ng-template>
+
+        <!-- On a phone the pair of buttons doesn't fit beside the note; squeezed, their labels
+             wrap to a height that changes with every step, so they stack full width instead. -->
+        <div class="dialog-foot max-sm:flex-col-reverse max-sm:items-stretch">
+          <div class="meta min-w-0 flex-1 text-[var(--color-neutral-600)] max-sm:hidden">{{ footNote() }}</div>
           @switch (state()) {
             @case ('empty') {
               <button type="button" class="btn btn-secondary" (click)="close.emit()">Cancel</button>
@@ -332,12 +347,27 @@ export class ImportDialog {
     }
   });
 
-  protected readonly uploadText = computed(() => {
+  protected readonly progressText = computed(() => {
     const job = this.job();
-    if (!job) {
-      return 'Uploading…';
+    switch (this.state()) {
+      case 'presign':
+        return 'Requesting a secure upload link…';
+      case 'uploading':
+        return job ? `${formatBytes(job.loadedBytes)} of ${formatBytes(job.sizeBytes)}` : 'Uploading…';
+      default:
+        return 'Adding it to your desk…';
     }
-    return `${formatBytes(job.loadedBytes)} of ${formatBytes(job.sizeBytes)}`;
+  });
+
+  protected readonly progressAside = computed(() => {
+    switch (this.state()) {
+      case 'presign':
+        return 'Step 1 of 3';
+      case 'uploading':
+        return `${this.job()?.progress ?? 0}%`;
+      default:
+        return 'Step 3 of 3';
+    }
   });
 
   protected readonly rejectionTitle = computed(() =>

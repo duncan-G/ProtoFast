@@ -773,12 +773,17 @@
     color: var(--color-neutral-600);
   }
 
-  /* The filter strip under a mode's title. */
+  /* The filter strip under a mode's title. It scrolls sideways on a phone, and a scroller clips
+     on both axes, so its divider is an inset shadow the active tab's underline can cover from
+     inside — a tab hanging over a real border would overflow by a pixel and raise a vertical
+     scrollbar. */
+  .subtabs {
+    box-shadow: inset 0 -1px 0 var(--color-divider);
+  }
   .subtab {
     padding: 0 12px 12px;
     border: 0;
     border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
     background: transparent;
     color: var(--color-neutral-500);
     font: 500 13px var(--font-body);
@@ -921,6 +926,15 @@
     padding: 14px 24px;
     border-top: 1px solid var(--color-divider);
     background: var(--color-bg);
+  }
+  /* Stacks its children in one grid cell: the cell takes the tallest, so swapping which one
+     shows never changes the height. */
+  .dialog-stage {
+    display: grid;
+    align-items: start;
+  }
+  .dialog-stage > * {
+    grid-area: 1 / 1;
   }
   .dropzone {
     display: flex;
