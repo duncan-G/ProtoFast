@@ -312,6 +312,8 @@ services:
       PROTOFAST_WEB_BASE_URL: "${PROTOFAST_WEB_BASE_URL:-https://protofast.dev}"
       ADMIN_BASE_URL: "${ADMIN_BASE_URL:-https://admin.protofast.dev}"
       THEPLOT_WEB_BASE_URL: "${THEPLOT_WEB_BASE_URL:-https://theplot.protofast.dev}"
+      # WebAuthn needs the RP ID to be the passkey page's host or a parent — that page is Keycloak's.
+      THEPLOT_WEBAUTHN_RP_ID: "${KEYCLOAK_DOMAIN:-auth.example.com}"
       # Where Keycloak POSTs the logout token when an SSO session ends (both clients share the
       # endpoint; the token's `aud` says which one it is for). Same-host compose DNS, never the
       # public edge — Envoy's vhost routes only the browser OIDC paths to auth, so this URL is

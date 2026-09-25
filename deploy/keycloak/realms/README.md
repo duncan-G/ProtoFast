@@ -188,12 +188,14 @@ this file only affects a brand-new realm. For a running deployment:
 Do **not** fork this file. A tenant realm differs from `protofast` in exactly
 three things:
 
-1. **`webAuthnPolicyPasswordlessRpId`.** It is `protofast.dev` here, which
-   correctly covers `protofast.dev` and `admin.protofast.dev`. A browser will
-   also offer that passkey on `myfitness.protofast.dev`, and although Keycloak
-   rejects it — different realm — its appearance in the picker leaks that the
-   user has a ProtoFast account. Give every tenant realm its own RP ID before
-   launch.
+1. **`webAuthnPolicyPasswordlessRpId`.** It is `protofast.dev` here. Give every
+   tenant realm its own RP ID before launch, or the tenant's picker offers
+   ProtoFast passkeys that Keycloak then rejects — different realm — leaking that
+   the user has a ProtoFast account. The RP ID must be the host of the page that
+   runs the ceremony, or a parent of it, and that page is Keycloak's
+   (`auth.protofast.dev`), not the tenant app's: `theplot.protofast.dev` makes
+   the browser refuse every registration outright. `theplot` uses
+   `auth.protofast.dev`, the one other valid value.
 2. **Identity provider credentials.** Google and Apple are configured per realm.
 3. **`loginTheme` / `emailTheme`**, if the tenant is branded.
 
