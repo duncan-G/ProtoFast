@@ -667,9 +667,11 @@ reconcile_keycloak_realm() {
   # between a realm-JSON edit and the live realm, and a bare WARNING with no
   # output leaves nothing to debug from. The command prints no secrets — the
   # client secret travels by env, never argv.
+  # bootstrap-admin boots a second Keycloak in the container; move its management port off the live 9000.
   if ! out="$(compose exec -T \
         -e KC_RECONCILE_CID="$KC_RECONCILE_CLIENT_ID" \
         -e KC_RECONCILE_SEC="$secret" \
+        -e KC_HTTP_MANAGEMENT_PORT=9001 \
         keycloak bash -c '
           export KC_DB_PASSWORD="$(cat /run/secrets/kc-db-password 2>/dev/null || true)"
           exec /opt/keycloak/bin/kc.sh bootstrap-admin service \
