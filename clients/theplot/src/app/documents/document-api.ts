@@ -120,15 +120,12 @@ function toSummary(message: DocumentMessage): DocumentSummary {
 
 /**
  * The message to show for a failed call: the API's own status message when it sent one that
- * means something to a person, the caller's fallback otherwise. An expired session is its own
- * case, since the only useful answer is to sign in again.
+ * means something to a person, the caller's fallback otherwise. An unauthenticated call is
+ * already on its way to sign-in (see grpc-transport.ts).
  */
 export function describeError(err: unknown, fallback: string): string {
   if (err instanceof ConnectError) {
     switch (err.code) {
-      case Code.Unauthenticated:
-      case Code.PermissionDenied:
-        return 'Your session has expired. Sign in again to continue.';
       case Code.InvalidArgument:
       case Code.AlreadyExists:
       case Code.FailedPrecondition:

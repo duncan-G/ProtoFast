@@ -21,7 +21,12 @@ public sealed class RedisSessionStore(
     /// every host the browser signed into shares one <c>sid</c>.</summary>
     private const string IndexPrefix = "kcsid:";
 
-    // Old ids linger briefly after rotation so concurrent in-flight requests don't fail.
+    /// <summary>Old id → the id a refresh rotated it into, for the rotation grace.</summary>
+    private const string SuccessorPrefix = "sess-next:";
+
+    private const string RefreshLockPrefix = "sess-refresh:";
+
+    // Requests already in flight with the old cookie follow it to the new id for this long.
     private static readonly TimeSpan RotationGrace = TimeSpan.FromSeconds(30);
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -107,19 +112,39 @@ public sealed class RedisSessionStore(
 
         var newId = SessionIds.Generate();
         await _db.StringSetAsync(Key(newId), Serialize(data), TtlFor(data.CreatedAt));
-
-        // The old id keeps serving in-flight requests for RotationGrace but leaves the index now,
-        // so a logout landing inside that window can miss it. Thirty seconds of a session that is
-        // already being replaced beats carrying every id a long-lived session ever had.
         await ReindexAsync(data, add: newId, remove: oldSessionId);
 
         if (!string.IsNullOrEmpty(oldSessionId))
         {
-            await _db.KeyExpireAsync(Key(oldSessionId), RotationGrace);
+            // The pointer goes in before the old record comes out, so a request that misses the
+            // record always finds the pointer. Keeping the old record instead would leave its
+            // spent tokens for the next request to refresh again, which Keycloak refuses.
+            await _db.StringSetAsync(SuccessorKey(oldSessionId), newId, RotationGrace);
+            await _db.KeyDeleteAsync(Key(oldSessionId));
         }
 
         return newId;
     }
+
+    public async Task<string?> GetSuccessorAsync(string sessionId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            return null;
+        }
+
+        var successor = await _db.StringGetAsync(SuccessorKey(sessionId));
+        return successor.IsNullOrEmpty ? null : successor.ToString();
+    }
+
+    public async Task<string?> TryLockRefreshAsync(string sessionId, TimeSpan expiry, CancellationToken ct = default)
+    {
+        var lockToken = Guid.NewGuid().ToString("N");
+        return await _db.LockTakeAsync(RefreshLockKey(sessionId), lockToken, expiry) ? lockToken : null;
+    }
+
+    public Task ReleaseRefreshLockAsync(string sessionId, string lockToken, CancellationToken ct = default) =>
+        _db.LockReleaseAsync(RefreshLockKey(sessionId), lockToken);
 
     /// <summary>
     /// Points the SSO-session index at the session's current id. Expiry tracks the absolute cap
@@ -154,6 +179,10 @@ public sealed class RedisSessionStore(
     }
 
     private static string Key(string sessionId) => KeyPrefix + sessionId;
+
+    private static string SuccessorKey(string sessionId) => SuccessorPrefix + sessionId;
+
+    private static string RefreshLockKey(string sessionId) => RefreshLockPrefix + sessionId;
 
     private static string IndexKey(string realm, string kcSessionId) =>
         $"{IndexPrefix}{realm}:{kcSessionId}";

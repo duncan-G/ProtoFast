@@ -51,4 +51,13 @@ internal sealed class StubSessionStore : ISessionStore
         _sessions.Remove(oldSessionId);
         return Task.FromResult(Seed(data));
     }
+
+    public Task<string?> GetSuccessorAsync(string sessionId, CancellationToken ct = default) =>
+        Task.FromResult<string?>(null);
+
+    public Task<string?> TryLockRefreshAsync(string sessionId, TimeSpan expiry, CancellationToken ct = default) =>
+        Task.FromResult<string?>("lock");
+
+    public Task ReleaseRefreshLockAsync(string sessionId, string lockToken, CancellationToken ct = default) =>
+        Task.CompletedTask;
 }
