@@ -36,6 +36,12 @@ public sealed class SessionResolver(
     // Re-mint the internal JWT a little before it lapses so the upstream never sees an expired one.
     private static readonly TimeSpan ReMintSkew = TimeSpan.FromSeconds(30);
 
+    // How long a request waits on a sibling's refresh before giving up as anonymous; the lock
+    // outlives it so a waiter never takes over from a holder that is merely slow.
+    private static readonly TimeSpan RefreshWait = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan RefreshLockExpiry = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan RefreshPollInterval = TimeSpan.FromMilliseconds(50);
+
     private readonly SessionPolicyOptions _session = sessionOptions.Value;
     private readonly JwtSecurityTokenHandler _handler = new();
 
@@ -54,7 +60,9 @@ public sealed class SessionResolver(
         var session = await sessionStore.GetAsync(sessionId, ct).ConfigureAwait(false);
         if (session is null)
         {
-            return null; // missing, idle-expired, or past the absolute cap
+            // Missing, idle-expired, past the absolute cap — or rotated away by a refresh this
+            // request raced, which leaves a pointer to the new id.
+            return await FollowSuccessorAsync(sessionId, host, ct).ConfigureAwait(false);
         }
 
         // The cookie is host-only, but defend in depth: the Host-resolved tenant must match the
@@ -64,25 +72,59 @@ public sealed class SessionResolver(
             return null;
         }
 
-        var now = clock.GetUtcNow();
-        SessionData current;
-        string? rotatedId = null;
-
         if (await IsAccessTokenValidAsync(session, tenant, ct).ConfigureAwait(false))
         {
-            current = session;
-            if (NeedsFreshJwt(current, now))
-            {
-                current = WithFreshJwt(current, now);
-                await sessionStore.UpdateAsync(sessionId, current, ct).ConfigureAwait(false);
-            }
+            return await LiveIdentityAsync(sessionId, session, ct).ConfigureAwait(false);
         }
-        else
+
+        // Access token is expired/invalid — try a silent refresh with the stored refresh token.
+        if (session.RefreshExpiresAt <= clock.GetUtcNow())
         {
-            // Access token is expired/invalid — try a silent refresh with the stored refresh token.
-            if (session.RefreshExpiresAt <= now)
+            return await DropAsync(sessionId, ct).ConfigureAwait(false);
+        }
+
+        return await RefreshAsync(sessionId, session, tenant, host, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Refreshes the session's Keycloak tokens, once. A page fires several requests together, and
+    /// they all find the same expired access token; Keycloak honours a refresh token exactly once
+    /// (<c>refreshTokenMaxReuse: 0</c>), so every request but the first would be refused and read
+    /// as a dead session. Instead the first takes the lock and the rest wait for its result.
+    /// </summary>
+    private async Task<ResolvedIdentity?> RefreshAsync(
+        string sessionId,
+        SessionData stale,
+        TenantConfig tenant,
+        string? host,
+        CancellationToken ct)
+    {
+        var deadline = clock.GetUtcNow() + RefreshWait;
+        string? lockToken;
+        while ((lockToken = await sessionStore.TryLockRefreshAsync(sessionId, RefreshLockExpiry, ct).ConfigureAwait(false)) is null)
+        {
+            if (clock.GetUtcNow() >= deadline)
             {
-                return await DropAsync(sessionId, ct).ConfigureAwait(false);
+                // Whoever holds the lock is stuck on Keycloak: transient, so leave the session be.
+                logger.LogWarning("Timed out waiting on a concurrent refresh for realm {Realm}", stale.Realm);
+                return null;
+            }
+
+            await Task.Delay(RefreshPollInterval, clock, ct).ConfigureAwait(false);
+        }
+
+        try
+        {
+            // The holder we waited on has usually done this refresh already.
+            var session = await sessionStore.GetAsync(sessionId, ct).ConfigureAwait(false);
+            if (session is null)
+            {
+                return await FollowSuccessorAsync(sessionId, host, ct).ConfigureAwait(false);
+            }
+
+            if (session.RefreshToken != stale.RefreshToken)
+            {
+                return await LiveIdentityAsync(sessionId, session, ct).ConfigureAwait(false);
             }
 
             KeycloakTokens refreshed;
@@ -103,7 +145,7 @@ public sealed class SessionResolver(
             }
 
             var identity = KeycloakClaims.Read(refreshed.AccessToken, refreshed.IdToken);
-            current = session with
+            var current = session with
             {
                 AccessToken = refreshed.AccessToken,
                 RefreshToken = refreshed.RefreshToken,
@@ -116,19 +158,45 @@ public sealed class SessionResolver(
                 // back-channel logout index.
                 KcSessionId = identity.SessionId ?? session.KcSessionId,
             };
-            current = WithFreshJwt(current, now); // roles may have changed — always re-mint
+            current = WithFreshJwt(current, clock.GetUtcNow()); // roles may have changed — always re-mint
 
             var newId = await sessionStore.ReplaceAsync(sessionId, current, ct).ConfigureAwait(false);
-            rotatedId = newId == sessionId ? null : newId;
+            return ToIdentity(current, newId == sessionId ? null : newId);
+        }
+        finally
+        {
+            await sessionStore.ReleaseRefreshLockAsync(sessionId, lockToken, CancellationToken.None).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Resolves the id a refresh rotated this one into, re-issuing it as the cookie so
+    /// the browser stops sending the old one.</summary>
+    private async Task<ResolvedIdentity?> FollowSuccessorAsync(string sessionId, string? host, CancellationToken ct)
+    {
+        var successor = await sessionStore.GetSuccessorAsync(sessionId, ct).ConfigureAwait(false);
+        if (successor is null)
+        {
+            return null;
         }
 
-        return new ResolvedIdentity(
-            current.Sub,
-            current.Realm,
-            current.Roles,
-            current.CachedInternalJwt!,
-            rotatedId);
+        var identity = await ResolveSessionAsync(successor, host, ct).ConfigureAwait(false);
+        return identity is null ? null : identity with { RotatedSessionId = identity.RotatedSessionId ?? successor };
     }
+
+    private async Task<ResolvedIdentity> LiveIdentityAsync(string sessionId, SessionData session, CancellationToken ct)
+    {
+        var now = clock.GetUtcNow();
+        if (NeedsFreshJwt(session, now))
+        {
+            session = WithFreshJwt(session, now);
+            await sessionStore.UpdateAsync(sessionId, session, ct).ConfigureAwait(false);
+        }
+
+        return ToIdentity(session, rotatedSessionId: null);
+    }
+
+    private static ResolvedIdentity ToIdentity(SessionData session, string? rotatedSessionId) =>
+        new(session.Sub, session.Realm, session.Roles, session.CachedInternalJwt!, rotatedSessionId);
 
     /// <summary>
     /// Erases a session that can never resolve again, and reports it as anonymous. Leaving the
