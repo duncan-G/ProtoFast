@@ -503,7 +503,7 @@
   .se-tab {
     display: flex;
     flex: 1;
-    align-items: baseline;
+    align-items: center;
     justify-content: center;
     gap: 6px;
     padding: 0 6px 10px;
@@ -521,6 +521,10 @@
   .se-tab[aria-selected='true'] {
     color: var(--se-ink);
     border-bottom-color: var(--se-accent);
+  }
+  .se-tab-icon {
+    width: 18px;
+    height: 18px;
   }
   .se-tab-count {
     font: 400 11px var(--font-mono);
@@ -1066,12 +1070,6 @@
   @media (max-width: 1099px) {
     .se-library {
       width: 236px;
-    }
-    .se-tab {
-      padding-inline: 2px;
-    }
-    .se-tab-count {
-      display: none;
     }
   }
   .se-library-head {
