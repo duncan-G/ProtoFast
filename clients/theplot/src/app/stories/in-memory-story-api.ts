@@ -143,6 +143,17 @@ export class InMemoryStoryApi implements StoryApi {
     return structuredClone(created);
   }
 
+  async deleteScene(sceneId: string): Promise<void> {
+    const scene = this.scene(sceneId);
+    this.touch(this.container(scene.containerId).storyId);
+    this.scenes.delete(sceneId);
+    for (const sibling of this.scenes.values()) {
+      if (sibling.containerId === scene.containerId && sibling.position > scene.position) {
+        sibling.position--;
+      }
+    }
+  }
+
   async createContainer(storyId: string, label: string): Promise<Container> {
     const story = this.story(storyId);
     const container: Container = {

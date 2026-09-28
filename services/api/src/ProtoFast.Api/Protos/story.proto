@@ -29,6 +29,9 @@ service Stories {
     // Inserts at the scene's position in its container, moving later scenes down one.
     rpc CreateScene (CreateSceneRequest) returns (CreateSceneReply);
 
+    // Moves later scenes in its container up one.
+    rpc DeleteScene (DeleteSceneRequest) returns (DeleteSceneReply);
+
     rpc CreateContainer (CreateContainerRequest) returns (CreateContainerReply);
 
     rpc RenameContainer (RenameContainerRequest) returns (RenameContainerReply);
@@ -261,6 +264,12 @@ message CreateSceneRequest {
 message CreateSceneReply {
     Scene scene = 1;
 }
+
+message DeleteSceneRequest {
+    string scene_id = 1;
+}
+
+message DeleteSceneReply {}
 
 message CreateContainerRequest {
     string story_id = 1;

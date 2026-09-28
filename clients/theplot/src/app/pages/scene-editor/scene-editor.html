@@ -110,7 +110,36 @@
             <button type="button" class="se-btn se-dashed ml-auto" (click)="store.addScene(false)">
               + Scene before
             </button>
+            <button
+              type="button"
+              class="se-btn se-btn-danger"
+              [title]="
+                store.canDeleteScene() ? 'Delete this scene' : 'A story keeps at least one scene'
+              "
+              [attr.aria-expanded]="confirmingDelete()"
+              [disabled]="!store.canDeleteScene()"
+              (click)="confirmingDelete.set(true)"
+            >
+              Delete scene
+            </button>
           </div>
+
+          @if (confirmingDelete()) {
+            <div class="se-confirm se-page-confirm rise" role="alert">
+              <span
+                >Delete “{{ scene.title }}”? Everything written in it goes too, and the scenes after
+                it in {{ store.place()?.container?.label }} move up one.</span
+              >
+              <div class="flex gap-1.5">
+                <button type="button" class="se-btn se-btn-danger" (click)="deleteScene()">
+                  Delete scene
+                </button>
+                <button type="button" class="se-btn" (click)="confirmingDelete.set(false)">
+                  Keep
+                </button>
+              </div>
+            </div>
+          }
 
           @if (insertAt() === 0) {
             <app-insert-menu

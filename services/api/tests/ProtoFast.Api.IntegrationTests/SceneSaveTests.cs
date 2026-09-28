@@ -164,6 +164,23 @@ public class SceneSaveTests(StoryDatabase database)
         Assert.Equal(middle.Elements[0].Id, (await _writer.GetSceneAsync(middle.Id)).Elements[0].Id);
     }
 
+    [Fact]
+    public async Task Deleting_a_scene_takes_its_rows_and_moves_later_scenes_up()
+    {
+        var story = await _writer.CreateStoryAsync();
+        var act = story.Containers[0];
+        var middle = await _writer.CreateSceneAsync(act.Id, 1, "Middle", Heading(), Action("Mara listens."));
+        var last = await _writer.CreateSceneAsync(act.Id, 2, "Last", Heading());
+
+        await _writer.Call((s, c) => s.DeleteScene(new DeleteSceneRequest { SceneId = middle.Id }, c));
+
+        var outline = (await _writer.GetStoryAsync(story.Id)).Containers[0].Scenes;
+        Assert.Equal([act.Scenes[0].Id, last.Id], outline.Select(s => s.Id));
+        Assert.Equal([0, 1], outline.Select(s => s.Position));
+        var gone = await Assert.ThrowsAsync<RpcException>(() => _writer.GetSceneAsync(middle.Id));
+        Assert.Equal(StatusCode.NotFound, gone.StatusCode);
+    }
+
     private static T With<T>(T value, Action<T> change)
     {
         change(value);

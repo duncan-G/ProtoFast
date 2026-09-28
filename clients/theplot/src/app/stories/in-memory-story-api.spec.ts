@@ -114,4 +114,14 @@ describe('InMemoryStoryApi', () => {
     expect((await api.listStories()).map((s) => s.id)).toEqual([SAMPLE_STORY_ID]);
     await expect(api.getScene(sceneId)).rejects.toThrow('That scene could not be found.');
   });
+
+  it('deletes a scene and moves the later scenes in its container up one', async () => {
+    const before = (await api.getStory(SAMPLE_STORY_ID)).containers[0].scenes;
+    await api.deleteScene(before[1].id);
+    const after = (await api.getStory(SAMPLE_STORY_ID)).containers[0].scenes;
+    expect(after.map((s) => [s.id, s.position])).toEqual(
+      [before[0], ...before.slice(2)].map((s, i) => [s.id, i]),
+    );
+    await expect(api.getScene(before[1].id)).rejects.toThrow('That scene could not be found.');
+  });
 });
