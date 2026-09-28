@@ -23,6 +23,7 @@ public class OwnershipTests(StoryDatabase database)
             _stranger.GetSceneAsync(scene.Id),
             _stranger.SaveSceneAsync(scene),
             _stranger.CreateSceneAsync(container.Id, 0, "Mine now", Heading()),
+            _stranger.Call((s, c) => s.DeleteScene(new DeleteSceneRequest { SceneId = scene.Id }, c)),
             _stranger.CreateCharacterAsync(story.Id, "Bolt"),
             _stranger.Call((s, c) => s.UpdateCharacter(
                 new UpdateCharacterRequest { CharacterId = mara.Id, Name = "Stolen", Kind = "Human", Hue = 1 }, c)),
@@ -43,6 +44,7 @@ public class OwnershipTests(StoryDatabase database)
         var intact = await _owner.GetStoryAsync(story.Id);
         Assert.Equal("Mara", Assert.Single(intact.Characters).Name);
         Assert.Equal("Act I", intact.Containers[0].Label);
+        Assert.Equal(scene.Id, Assert.Single(intact.Containers[0].Scenes).Id);
     }
 
     [Fact]

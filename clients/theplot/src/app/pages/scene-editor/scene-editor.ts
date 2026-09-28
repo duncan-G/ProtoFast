@@ -65,6 +65,7 @@ export class SceneEditor {
 
   /** A gap index, 0…rows. */
   protected readonly insertAt = signal<number | null>(null);
+  protected readonly confirmingDelete = signal(false);
   protected readonly dragFrom = signal<number | null>(null);
   protected readonly dropAt = signal<number | null>(null);
   private readonly dragLength = computed(() => {
@@ -131,6 +132,7 @@ export class SceneEditor {
         this.shownSceneId = id;
         this.scroller()?.nativeElement.scrollTo({ top: 0 });
         this.insertAt.set(null);
+        this.confirmingDelete.set(false);
       }
       if (this.store.titleRequest()) {
         const field = this.titleField()?.nativeElement;
@@ -179,6 +181,11 @@ export class SceneEditor {
     return place.container.id === this.store.place()?.container.id
       ? scene
       : `${place.container.label.toUpperCase()} · ${scene}`;
+  }
+
+  protected async deleteScene(): Promise<void> {
+    this.confirmingDelete.set(false);
+    await this.store.deleteScene();
   }
 
   protected insert(at: number, type: SceneElementType): void {

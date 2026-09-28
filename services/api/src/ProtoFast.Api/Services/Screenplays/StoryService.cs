@@ -212,6 +212,32 @@ public class StoryService(
         return new CreateSceneReply { Scene = StoryMessages.ToMessage(scene) };
     }
 
+    public override async Task<DeleteSceneReply> DeleteScene(DeleteSceneRequest request, ServerCallContext context)
+    {
+        var sceneId = StoryIds.Existing(request.SceneId, StoryErrors.SceneNotFound);
+        var cancellationToken = context.CancellationToken;
+
+        using var unitOfWork = unitOfWorkFactory.CreateReadWrite(nameof(DeleteScene));
+        var storyId = await sceneRepository.GetFirstByQueryAsync(
+                          sceneQueries.Create().WithId(sceneId), s => (Guid?)s.Container.StoryId, cancellationToken)
+                      ?? throw StoryErrors.NotFound(StoryErrors.SceneNotFound);
+        await storyScope.LockAsync(storyId, cancellationToken);
+
+        var scene = await sceneRepository.GetFirstByQueryAsync(
+                        sceneQueries.Create().WithId(sceneId),
+                        s => new { s.ContainerId, s.Position },
+                        cancellationToken)
+                    ?? throw StoryErrors.NotFound(StoryErrors.SceneNotFound);
+        await sceneRepository.DeleteByQueryAsync(sceneQueries.Create().WithId(sceneId), cancellationToken);
+        await sceneRepository.UpdateByQueryAsync(
+            sceneQueries.Create().InContainer(scene.ContainerId).AtOrAfterPosition(scene.Position + 1),
+            s => s.SetProperty(later => later.Position, later => later.Position - 1),
+            cancellationToken);
+
+        await unitOfWork.CommitAsync(cancellationToken);
+        return new DeleteSceneReply();
+    }
+
     public override async Task<CreateContainerReply> CreateContainer(
         CreateContainerRequest request,
         ServerCallContext context)
