@@ -108,6 +108,10 @@ export class ConnectStoryApi implements StoryApi {
     return toScene(required(reply.scene));
   }
 
+  async deleteScene(sceneId: string): Promise<void> {
+    await this.client.deleteScene({ sceneId });
+  }
+
   async createContainer(storyId: string, label: string): Promise<Container> {
     const reply = await this.client.createContainer({ storyId, label });
     return toContainer(required(reply.container));

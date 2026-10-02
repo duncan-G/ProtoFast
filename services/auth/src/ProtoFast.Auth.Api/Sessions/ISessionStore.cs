@@ -26,6 +26,21 @@ public interface ISessionStore
     Task UpdateAsync(string sessionId, SessionData data, CancellationToken ct = default);
 
     /// <summary>Rewrites a session after a token refresh. When rotation is enabled, writes under a
-    /// new id (returned) and lets the old id lapse after a short grace; otherwise updates in place.</summary>
+    /// new id (returned), removes the old one and leaves a short-lived pointer from it to the new
+    /// one (<see cref="GetSuccessorAsync"/>); otherwise updates in place.</summary>
     Task<string> ReplaceAsync(string oldSessionId, SessionData data, CancellationToken ct = default);
+
+    /// <summary>The id a refresh rotated <paramref name="sessionId"/> into, while the rotation
+    /// grace lasts — for requests that were already carrying the old cookie.</summary>
+    Task<string?> GetSuccessorAsync(string sessionId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Takes the session's refresh lock, so one request refreshes and its siblings wait for the
+    /// result instead of spending the same single-use refresh token. Returns the token to release
+    /// it with, or null while someone else holds it. The lock expires on its own after
+    /// <paramref name="expiry"/> in case its holder dies.
+    /// </summary>
+    Task<string?> TryLockRefreshAsync(string sessionId, TimeSpan expiry, CancellationToken ct = default);
+
+    Task ReleaseRefreshLockAsync(string sessionId, string lockToken, CancellationToken ct = default);
 }

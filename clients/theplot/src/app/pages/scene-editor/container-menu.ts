@@ -15,7 +15,7 @@ import { SceneEditorStore } from './scene-editor-store';
   selector: 'app-container-menu',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
-    class: 'relative inline-flex',
+    class: 'se-crumb-menu',
     '(document:mousedown)': 'onDocumentDown($event)',
     '(keydown.escape)': 'open.set(false)',
   },

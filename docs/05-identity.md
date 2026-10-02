@@ -97,7 +97,7 @@ Keycloak is configured by four things:
    | `BACKCHANNEL_LOGOUT_URL` | where Keycloak posts logout tokens |
    | `SMTP_HOST/PORT/FROM/USER/PASSWORD/AUTH/STARTTLS/SSL` | the realm's mail server |
    | `GOOGLE_*`, `APPLE_*` | social sign-in (both providers ship **disabled**) |
-   | `WEBAUTHN_RP_ID` / `THEPLOT_WEBAUTHN_RP_ID` | `localhost` in dev; `protofast.dev` / `theplot.protofast.dev` in prod — one per realm, so a tenant's passkeys never surface in another tenant's picker |
+   | `WEBAUTHN_RP_ID` / `THEPLOT_WEBAUTHN_RP_ID` | `localhost` in dev; `protofast.dev` / `KEYCLOAK_DOMAIN` (`auth.protofast.dev`) in prod — one per realm, so a tenant's passkeys never surface in another tenant's picker. Each must be Keycloak's host or a parent of it, since Keycloak serves the passkey pages |
 
 2. **The theme** — `deploy/keycloak/themes/protofast` (login + email), bind-mounted
    in both environments; the realm's `loginTheme` names it.

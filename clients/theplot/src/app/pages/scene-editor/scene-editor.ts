@@ -30,6 +30,8 @@ import { TransitionRow } from './transition-row';
 
 const THEME_KEY = 'theplot.editor.theme';
 const OVERVIEW_MIN_WIDTH = 1200;
+/** Keep in step with the 767px breakpoint in scene-editor.css. */
+const DRAWER_MAX_WIDTH = 767;
 
 /** Loads in the browser only, like the dashboard: the real API needs the session cookie. */
 @Component({
@@ -63,6 +65,7 @@ export class SceneEditor {
 
   /** A gap index, 0…rows. */
   protected readonly insertAt = signal<number | null>(null);
+  protected readonly confirmingDelete = signal(false);
   protected readonly dragFrom = signal<number | null>(null);
   protected readonly dropAt = signal<number | null>(null);
   private readonly dragLength = computed(() => {
@@ -129,6 +132,7 @@ export class SceneEditor {
         this.shownSceneId = id;
         this.scroller()?.nativeElement.scrollTo({ top: 0 });
         this.insertAt.set(null);
+        this.confirmingDelete.set(false);
       }
       if (this.store.titleRequest()) {
         const field = this.titleField()?.nativeElement;
@@ -152,7 +156,24 @@ export class SceneEditor {
   }
 
   protected toggleOverview(): void {
-    this.overviewChoice.set(!this.showOverview());
+    const open = !this.showOverview();
+    this.overviewChoice.set(open);
+    if (open) {
+      this.store.libraryOpen.set(false);
+    }
+  }
+
+  protected toggleLibrary(): void {
+    const open = !this.store.libraryOpen();
+    this.store.libraryOpen.set(open);
+    if (open) {
+      this.overviewChoice.set(false);
+    }
+  }
+
+  protected closeDrawers(): void {
+    this.store.libraryOpen.set(false);
+    this.overviewChoice.set(false);
   }
 
   protected placeLabel(place: ScenePlace): string {
@@ -160,6 +181,11 @@ export class SceneEditor {
     return place.container.id === this.store.place()?.container.id
       ? scene
       : `${place.container.label.toUpperCase()} · ${scene}`;
+  }
+
+  protected async deleteScene(): Promise<void> {
+    this.confirmingDelete.set(false);
+    await this.store.deleteScene();
   }
 
   protected insert(at: number, type: SceneElementType): void {
@@ -175,6 +201,9 @@ export class SceneEditor {
   }
 
   protected jump(elementId: string): void {
+    if (this.width() <= DRAWER_MAX_WIDTH) {
+      this.overviewChoice.set(false);
+    }
     const row = document.getElementById(`row-${elementId}`);
     this.scroller()?.nativeElement.scrollTo({
       top: (row?.offsetTop ?? 0) - 20,

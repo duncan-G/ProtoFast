@@ -37,7 +37,7 @@
   "webAuthnPolicyPasswordlessRpEntityName": "ThePlot",
   "webAuthnPolicyPasswordlessPasskeysEnabled": true,
   "webAuthnPolicyPasswordlessMediation": "conditional",
-  "webAuthnPolicyPasswordlessRpId": "${THEPLOT_WEBAUTHN_RP_ID:theplot.protofast.dev}",
+  "webAuthnPolicyPasswordlessRpId": "${THEPLOT_WEBAUTHN_RP_ID:auth.protofast.dev}",
   "webAuthnPolicyPasswordlessSignatureAlgorithms": [
     "ES256",
     "RS256"

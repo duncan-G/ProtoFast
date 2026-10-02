@@ -43,6 +43,8 @@ export class SceneEditorStore implements OnDestroy {
 
   readonly editingId = signal<string | null>(null);
   readonly libraryTab = signal<LibraryTab>('characters');
+  /** Only has an effect on phones, where the library is a drawer. */
+  readonly libraryOpen = signal(false);
   /** For the library's "@ Insert". */
   readonly caret = signal<number | null>(null);
   readonly caretRequest = signal<CaretRequest | null>(null);
@@ -133,6 +135,8 @@ export class SceneEditorStore implements OnDestroy {
   readonly place = computed(() => this.places()[this.placeIndex()] ?? null);
   readonly previous = computed(() => this.places()[this.placeIndex() - 1] ?? null);
   readonly next = computed(() => this.places()[this.placeIndex() + 1] ?? null);
+  /** A story keeps at least one scene for the editor to open. */
+  readonly canDeleteScene = computed(() => this.places().length > 1);
 
   ngOnDestroy(): void {
     this.flushSave();
@@ -376,6 +380,27 @@ export class SceneEditorStore implements OnDestroy {
       await this.refreshOutline();
       this.openNew(scene);
     }, 'The scene could not be added.');
+  }
+
+  /** Opens the next scene, or the previous one when this was the last. */
+  async deleteScene(): Promise<void> {
+    const scene = this.scene();
+    const then = this.next() ?? this.previous();
+    if (!scene || !then) {
+      return;
+    }
+    if (this.saveTimer !== null) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    await this.run(async () => {
+      await this.saving;
+      await this.api.deleteScene(scene.id);
+      this.scene.set(null);
+      this.editingId.set(null);
+      await this.refreshOutline();
+      this.go(then.summary.id, true);
+    }, 'The scene could not be deleted.');
   }
 
   async createContainer(label: string): Promise<void> {

@@ -91,6 +91,52 @@ public class SessionResolverTests
     }
 
     [Fact]
+    public async Task Concurrent_requests_on_an_expired_token_share_one_refresh()
+    {
+        // A page load sends several requests on the same cookie just after the access token
+        // lapses. Keycloak takes the refresh token once; a second refresh would be refused and
+        // read as a dead session.
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var store = new FakeSessionStore();
+        var sessionId = store.Seed(DeadAccessTokenSession());
+        var keycloak = SingleUseRefreshTokens(key, release, entered);
+        var resolver = Resolver(store, keycloak);
+
+        var first = resolver.ResolveSessionAsync(sessionId, Host, CancellationToken.None);
+        await entered.Task;
+        var second = resolver.ResolveSessionAsync(sessionId, Host, CancellationToken.None);
+        release.SetResult();
+
+        var identities = await Task.WhenAll(first, second);
+
+        Assert.All(identities, identity => Assert.NotNull(identity));
+        Assert.NotNull(identities[0]!.RotatedSessionId);
+        Assert.Equal(identities[0]!.RotatedSessionId, identities[1]!.RotatedSessionId);
+        Assert.Equal(1, keycloak.RefreshCount);
+    }
+
+    [Fact]
+    public async Task Old_id_follows_the_rotation_instead_of_refreshing_again()
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var release = new TaskCompletionSource();
+        release.SetResult();
+        var store = new FakeSessionStore();
+        var sessionId = store.Seed(DeadAccessTokenSession());
+        var keycloak = SingleUseRefreshTokens(key, release, new TaskCompletionSource());
+        var resolver = Resolver(store, keycloak);
+
+        var refreshed = await resolver.ResolveSessionAsync(sessionId, Host, CancellationToken.None);
+        var late = await resolver.ResolveSessionAsync(sessionId, Host, CancellationToken.None);
+
+        Assert.NotNull(late);
+        Assert.Equal(refreshed!.RotatedSessionId, late!.RotatedSessionId);
+        Assert.Equal(1, keycloak.RefreshCount);
+    }
+
+    [Fact]
     public async Task Unknown_session_id_resolves_to_anonymous()
     {
         var resolver = Resolver(new FakeSessionStore(), Rejects(HttpStatusCode.BadRequest));
@@ -139,36 +185,86 @@ public class SessionResolverTests
     private static FakeKeycloakGateway Rejects(HttpStatusCode status) =>
         new(() => throw new KeycloakException($"Keycloak token endpoint returned {(int)status}.", status));
 
+    /// <summary>Keycloak with <c>refreshTokenMaxReuse: 0</c>: each refresh token works once, and
+    /// every refresh is held until <see cref="Release"/> so tests can pile requests up behind it.</summary>
+    private static FakeKeycloakGateway SingleUseRefreshTokens(ECDsa key, TaskCompletionSource release, TaskCompletionSource entered)
+    {
+        var spent = new HashSet<string>(StringComparer.Ordinal);
+        var issued = 0;
+        return new FakeKeycloakGateway(async refreshToken =>
+        {
+            lock (spent)
+            {
+                if (!spent.Add(refreshToken))
+                {
+                    throw new KeycloakException("Keycloak token endpoint returned 400.", HttpStatusCode.BadRequest);
+                }
+            }
+
+            entered.TrySetResult();
+            await release.Task;
+            return new KeycloakTokens(
+                SignedAccessToken(key, azp: "admin"),
+                $"refresh-token-{Interlocked.Increment(ref issued)}",
+                null,
+                DateTimeOffset.UtcNow.AddMinutes(5),
+                DateTimeOffset.UtcNow.AddMinutes(30));
+        })
+        {
+            SigningKey = new ECDsaSecurityKey(key),
+        };
+    }
+
+    /// <summary>Rotates on refresh the way the Redis store does: the old record goes, a pointer to
+    /// the new id stays.</summary>
     private sealed class FakeSessionStore : ISessionStore
     {
         private readonly Dictionary<string, SessionData> _sessions = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, string> _successors = new(StringComparer.Ordinal);
+        private readonly HashSet<string> _refreshLocks = new(StringComparer.Ordinal);
 
         public string Seed(SessionData data)
         {
             var id = SessionIds.Generate();
-            _sessions[id] = data;
+            lock (_sessions)
+            {
+                _sessions[id] = data;
+            }
+
             return id;
         }
 
         public Task<string> CreateAsync(SessionData data, CancellationToken ct = default) =>
             Task.FromResult(Seed(data));
 
-        public Task<SessionData?> GetAsync(string sessionId, CancellationToken ct = default) =>
-            Task.FromResult(_sessions.GetValueOrDefault(sessionId));
+        public Task<SessionData?> GetAsync(string sessionId, CancellationToken ct = default)
+        {
+            lock (_sessions)
+            {
+                return Task.FromResult(_sessions.GetValueOrDefault(sessionId));
+            }
+        }
 
         public Task DeleteAsync(string sessionId, CancellationToken ct = default)
         {
-            _sessions.Remove(sessionId);
+            lock (_sessions)
+            {
+                _sessions.Remove(sessionId);
+            }
+
             return Task.CompletedTask;
         }
 
         public Task DeleteByKeycloakSessionAsync(string realm, string kcSessionId, CancellationToken ct = default)
         {
-            foreach (var (id, data) in _sessions.ToArray())
+            lock (_sessions)
             {
-                if (data.Realm == realm && data.KcSessionId == kcSessionId)
+                foreach (var (id, data) in _sessions.ToArray())
                 {
-                    _sessions.Remove(id);
+                    if (data.Realm == realm && data.KcSessionId == kcSessionId)
+                    {
+                        _sessions.Remove(id);
+                    }
                 }
             }
 
@@ -177,20 +273,63 @@ public class SessionResolverTests
 
         public Task UpdateAsync(string sessionId, SessionData data, CancellationToken ct = default)
         {
-            _sessions[sessionId] = data;
+            lock (_sessions)
+            {
+                _sessions[sessionId] = data;
+            }
+
             return Task.CompletedTask;
         }
 
         public Task<string> ReplaceAsync(string oldSessionId, SessionData data, CancellationToken ct = default)
         {
-            _sessions.Remove(oldSessionId);
-            return Task.FromResult(Seed(data));
+            var newId = Seed(data);
+            lock (_sessions)
+            {
+                _successors[oldSessionId] = newId;
+                _sessions.Remove(oldSessionId);
+            }
+
+            return Task.FromResult(newId);
+        }
+
+        public Task<string?> GetSuccessorAsync(string sessionId, CancellationToken ct = default)
+        {
+            lock (_sessions)
+            {
+                return Task.FromResult(_successors.GetValueOrDefault(sessionId));
+            }
+        }
+
+        public Task<string?> TryLockRefreshAsync(string sessionId, TimeSpan expiry, CancellationToken ct = default)
+        {
+            lock (_refreshLocks)
+            {
+                return Task.FromResult(_refreshLocks.Add(sessionId) ? sessionId : null);
+            }
+        }
+
+        public Task ReleaseRefreshLockAsync(string sessionId, string lockToken, CancellationToken ct = default)
+        {
+            lock (_refreshLocks)
+            {
+                _refreshLocks.Remove(sessionId);
+            }
+
+            return Task.CompletedTask;
         }
     }
 
-    private sealed class FakeKeycloakGateway(Func<KeycloakTokens> refresh) : IKeycloakGateway
+    private sealed class FakeKeycloakGateway(Func<string, Task<KeycloakTokens>> refresh) : IKeycloakGateway
     {
-        public int RefreshCount { get; private set; }
+        private int _refreshCount;
+
+        public FakeKeycloakGateway(Func<KeycloakTokens> refresh)
+            : this(_ => Task.FromResult(refresh()))
+        {
+        }
+
+        public int RefreshCount => _refreshCount;
 
         public SecurityKey? SigningKey { get; set; }
 
@@ -201,8 +340,8 @@ public class SessionResolverTests
 
         public Task<KeycloakTokens> RefreshAsync(TenantConfig tenant, string refreshToken, CancellationToken ct = default)
         {
-            RefreshCount++;
-            return Task.FromResult(refresh());
+            Interlocked.Increment(ref _refreshCount);
+            return refresh(refreshToken);
         }
 
         public string BuildEndSessionUrl(TenantConfig tenant, string? idTokenHint, string postLogoutRedirectUri) => "";

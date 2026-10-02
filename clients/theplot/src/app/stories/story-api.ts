@@ -32,6 +32,9 @@ export abstract class StoryApi {
   /** Inserts at `scene.position`, moving later scenes down one. */
   abstract createScene(scene: Scene): Promise<Scene>;
 
+  /** Moves later scenes in its container up one. */
+  abstract deleteScene(sceneId: string): Promise<void>;
+
   abstract createContainer(storyId: string, label: string): Promise<Container>;
 
   abstract renameContainer(containerId: string, label: string): Promise<void>;

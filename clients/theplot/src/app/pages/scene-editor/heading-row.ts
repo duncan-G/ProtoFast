@@ -71,7 +71,7 @@ import { plural, slugline } from './format';
           <button
             type="button"
             class="se-btn se-btn-text self-start"
-            (click)="store.libraryTab.set('locations')"
+            (click)="store.libraryTab.set('locations'); store.libraryOpen.set(true)"
           >
             Manage locations in library →
           </button>

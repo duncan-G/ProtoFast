@@ -79,6 +79,37 @@ public class RedisSessionStoreIndexTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Rotation_leaves_a_pointer_in_place_of_the_old_record()
+    {
+        // A request still carrying the old cookie must reach the refreshed tokens, not the spent
+        // ones: refreshing those again is refused by Keycloak.
+        var store = Store();
+        var original = await store.CreateAsync(Session("admin", NewSid()), Ct);
+
+        var rotated = await store.ReplaceAsync(original, Session("admin", NewSid()), Ct);
+
+        Assert.Null(await store.GetAsync(original, Ct));
+        Assert.Equal(rotated, await store.GetSuccessorAsync(original, Ct));
+        Assert.Null(await store.GetSuccessorAsync(rotated, Ct));
+    }
+
+    [Fact]
+    public async Task Refresh_lock_has_one_holder_at_a_time()
+    {
+        var store = Store();
+        var id = await store.CreateAsync(Session("admin", NewSid()), Ct);
+
+        var held = await store.TryLockRefreshAsync(id, TimeSpan.FromSeconds(5), Ct);
+        Assert.NotNull(held);
+        Assert.Null(await store.TryLockRefreshAsync(id, TimeSpan.FromSeconds(5), Ct));
+
+        await store.ReleaseRefreshLockAsync(id, held!, Ct);
+        var next = await store.TryLockRefreshAsync(id, TimeSpan.FromSeconds(5), Ct);
+        Assert.NotNull(next);
+        await store.ReleaseRefreshLockAsync(id, next!, Ct);
+    }
+
+    [Fact]
     public async Task Session_without_a_keycloak_session_id_is_left_out_of_the_index()
     {
         // Sessions minted before the index existed. They keep the old behaviour — lapsing at the

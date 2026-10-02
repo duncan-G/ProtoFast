@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import { redirectToSignIn } from '../auth/sign-in-redirect';
 
 /** One WebAuthn credential on the account, as `/account/me` reports it. */
 export interface AccountPasskey {
@@ -120,12 +121,13 @@ export class AccountApi {
 }
 
 /**
- * The endpoint's own message when it sent one, the caller's fallback otherwise. A 401 is its own
- * case: the session lapsed while the page sat open, and the only useful answer is to sign in again.
+ * The endpoint's own message when it sent one, the caller's fallback otherwise. A 401 means the
+ * session lapsed while the page sat open, so it goes straight to sign-in instead.
  */
 async function toError(response: Response, fallback: string): Promise<Error> {
   if (response.status === 401) {
-    return new Error('Your session has expired. Sign in again to manage your account.');
+    redirectToSignIn();
+    return new Error(fallback);
   }
 
   try {
