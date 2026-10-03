@@ -18,7 +18,9 @@ public class DocumentUploadService(
     IUnitOfWorkFactory unitOfWorkFactory,
     IDocumentUploadRepository documentUploadRepository,
     IQueryFactory<DocumentUploadRecord, IDocumentUploadQuery> documentUploadQueries,
-    IDocumentRepository documentRepository) : DocumentUpload.DocumentUploadBase
+    IDocumentRepository documentRepository,
+    [FromKeyedServices(DocumentImportQueues.ImportQueueKey)] IMessageQueue importQueue,
+    ILogger<DocumentUploadService> logger) : DocumentUpload.DocumentUploadBase
 {
     // Each minted URL is a standing permission to write into the bucket, so the budget per caller
     // stays deliberately small.
@@ -102,8 +104,8 @@ public class DocumentUploadService(
     /// <summary>
     /// Turns a landed upload into a document. The browser posts straight to storage, so this is
     /// the only place the API learns the bytes arrived: it checks the object under the key the
-    /// policy was signed for, then records the document under the same id. Nothing is done to the
-    /// file beyond that.
+    /// policy was signed for, records the document under the same id, then queues it for the
+    /// import worker.
     /// </summary>
     public override async Task<CompleteDocumentUploadReply> CompleteDocumentUpload(
         CompleteDocumentUploadRequest request,
@@ -131,7 +133,8 @@ public class DocumentUploadService(
         var existing = await documentRepository.GetByKeyAsync(upload.UploadId, context.CancellationToken);
         if (existing is not null)
         {
-            return new CompleteDocumentUploadReply { Document = DocumentService.ToMessage(existing) };
+            // Progress is left for the client to poll; the document itself is what this call confirms.
+            return new CompleteDocumentUploadReply { Document = DocumentService.ToMessage(existing, progress: null) };
         }
 
         var storageKey = ArtifactKeys.UploadSource(caller.Subject, upload.UploadId, upload.FileExtension);
@@ -156,7 +159,29 @@ public class DocumentUploadService(
         await documentRepository.AddAsync(document, context.CancellationToken);
         await unitOfWork.CommitAsync(context.CancellationToken);
 
-        return new CompleteDocumentUploadReply { Document = DocumentService.ToMessage(document) };
+        await QueueImportAsync(caller.Subject, document, context.CancellationToken);
+
+        return new CompleteDocumentUploadReply { Document = DocumentService.ToMessage(document, progress: null) };
+    }
+
+    /// <summary>
+    /// Queued after the commit, so a message never names a document that was rolled back. A send
+    /// that fails leaves the document on the desk and is logged; nothing retries it yet.
+    /// </summary>
+    private async Task QueueImportAsync(string subject, DocumentRecord document, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await importQueue.SendAsync(
+                new DocumentImportRequested(
+                    document.Id, subject, document.StorageKey, document.FileName, document.MediaType, document.FileExtension),
+                groupId: subject,
+                cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            logger.LogError(e, "Document {DocumentId} was saved but could not be queued for import", document.Id);
+        }
     }
 
     public override Task<ListSourceFormatsReply> ListSourceFormats(

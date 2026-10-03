@@ -45,13 +45,16 @@ var redis = builder.AddRedis("redis");
 
 const string documentUploadBucket = "protofast-document-upload";
 
+// Completed uploads, from the api to the document-import worker. Named after the bucket it drains.
+const string documentImportQueue = "protofast-document-upload";
+
 // FIFO, grouped by document family, so each family's policy has one writer at a time.
 const string workflowOutcomesQueue = "protofast-workflow-outcomes.fifo";
 
 var localstack = builder
     .AddLocalStack("localstack")
     .WithBuckets([documentUploadBucket])
-    .WithQueues([documentUploadBucket, workflowOutcomesQueue]);
+    .WithQueues([documentImportQueue, workflowOutcomesQueue]);
 
 var keycloak = builder.AddKeycloak("keycloak", 8080)
     .WithImageTag("26.7")
@@ -191,14 +194,27 @@ var api = builder.AddProject<Projects.ProtoFast_Api>("api")
     .WithReference(protofastDb, connectionName: "protofast")
     .WaitFor(protofastDb)
     .WithLocalStackS3(localstack, envPrefix: "Api_", bucket: documentUploadBucket)
+    .WithLocalStackSqs(localstack, envPrefix: "Api_", section: "DocumentImport", queue: documentImportQueue)
     .WithOtlpCollectorReference(otel)
     .WithSsoProfile();
 
 // Document → Markdown conversion. Reads uploads from and writes Markdown to the same bucket.
-builder
+var conversion = builder
     .AddConversionService("conversion", documentUploadBucket)
     .WithLocalStack(localstack)
     .WithOtelCollector(otel);
+
+// Document import: drains the upload queue, runs the agent workflow engine over each document and
+// saves the resulting story. Shares the api's bucket, database and model API keys.
+builder.AddProject<Projects.ProtoFast_DocumentImport_Worker>("document-import")
+    .WithReference(protofastDb, connectionName: "protofast")
+    .WaitFor(protofastDb)
+    .WithLocalStackS3(localstack, envPrefix: "DocumentImport_", bucket: documentUploadBucket)
+    .WithLocalStackSqs(localstack, envPrefix: "DocumentImport_", section: "DocumentImport", queue: documentImportQueue)
+    .WithLocalStackSqs(localstack, envPrefix: "DocumentImport_", section: "WorkflowOutcomes", queue: workflowOutcomesQueue)
+    .WithEnvironment("DocumentImport_Conversion__BaseUrl", conversion.GetEndpoint("http"))
+    .WithOtlpCollectorReference(otel)
+    .WithSsoProfile();
 
 // Envoy Proxy
 var proxy = builder.AddEnvoyProxy("envoy", useSsrHost)

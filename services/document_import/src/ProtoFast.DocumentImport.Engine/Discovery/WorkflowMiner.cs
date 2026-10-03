@@ -14,7 +14,7 @@ public sealed class WorkflowMiner(EngineOptions options, TimeProvider time) : IW
 
     private MinedWorkflow? Mine(string family, IReadOnlyList<RunSummary> runs)
     {
-        runs = runs.Where(r => r.Mode == RunMode.Discovery && r.Signature.Family == family).ToList();
+        runs = runs.Where(r => r.Mode == RunMode.Discovery && r.DocumentSignature.Family == family).ToList();
         if (runs.Count == 0)
         {
             return null;

@@ -6,5 +6,5 @@ namespace ProtoFast.DocumentImport.Engine.Executors;
 public sealed record StageRequest(
     string RunId,
     StageDefinition Stage,
-    Signature Signature,
+    DocumentSignature DocumentSignature,
     IReadOnlyList<ArtifactRef> Inputs);

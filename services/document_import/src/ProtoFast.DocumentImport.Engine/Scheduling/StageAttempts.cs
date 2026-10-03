@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
+using ProtoFast.DocumentImport.Core;
 using ProtoFast.DocumentImport.Engine.Executors;
 using ProtoFast.DocumentImport.Engine.Learning;
 using ProtoFast.DocumentImport.Engine.Storage;
@@ -17,7 +19,19 @@ public sealed class StageAttempts(
     public async Task<StageRecord> RunAsync(
         StageRequest request, ExecutorRef executorRef, bool isShadow, CancellationToken ct)
     {
+        using var activity = DocumentImportTelemetry.Source.StartActivity($"stage {request.Stage.Id}");
+        activity?.SetTag("document_import.run_id", request.RunId);
+        activity?.SetTag("document_import.stage_id", request.Stage.Id);
+        activity?.SetTag("document_import.executor", executorRef.ToString());
+        activity?.SetTag("document_import.shadow", isShadow);
+
+        if (!isShadow)
+        {
+            await ledger.BeginStageAsync(request.RunId, request.Stage.Id, ct);
+        }
+
         var executor = await resolver.ResolveAsync(executorRef, ct);
+        activity?.SetTag("document_import.tier", executor.Tier.ToString());
         var budget = request.Stage.Budget.MaxDuration;
         var started = time.GetTimestamp();
 
@@ -44,6 +58,7 @@ public sealed class StageAttempts(
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
+                activity?.AddException(e);
                 logger.LogWarning(e, "Executor {Executor} faulted on stage {StageId} of run {RunId}",
                     executorRef, request.Stage.Id, request.RunId);
                 result = Empty(time.GetElapsedTime(started));
@@ -53,8 +68,17 @@ public sealed class StageAttempts(
 
         var record = new StageRecord(
             request.RunId, request.Stage, request.Inputs, executorRef, executor.Tier, result, verdicts, isShadow);
+        activity?.SetTag("document_import.passed", record.Passed);
+        activity?.SetTag("document_import.degraded", record.Degraded);
+        if (!record.Passed)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, string.Join(" ", verdicts
+                .Where(v => v.Verdict == Verdict.Fail)
+                .Select(v => $"{v.VerifierId}: {v.Reason}")));
+        }
+
         await ledger.RecordAsync(record, ct);
-        await outcomes.PublishAsync(Outcome.From(record, request.Signature.Family, time.GetUtcNow()), ct);
+        await outcomes.PublishAsync(Outcome.From(record, request.DocumentSignature.Family, time.GetUtcNow()), ct);
         return record;
     }
 

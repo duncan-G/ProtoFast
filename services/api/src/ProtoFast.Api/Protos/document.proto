@@ -11,6 +11,10 @@ service Documents {
     // The caller's documents, newest first.
     rpc ListDocuments (ListDocumentsRequest) returns (ListDocumentsReply);
 
+    // Where the import of each named upload stands. Ids that are not the caller's, or that were
+    // never completed as a document, are left out.
+    rpc GetImportProgress (GetImportProgressRequest) returns (GetImportProgressReply);
+
 }
 
 message Document {
@@ -25,6 +29,46 @@ message Document {
     string file_extension = 6;
     int64 created_unix_seconds = 7;
     int64 last_modified_unix_seconds = 8;
+    // A document is on the desk only until its import turns it into a story.
+    ImportProgress import = 9;
+}
+
+enum ImportState {
+    IMPORT_STATE_UNSPECIFIED = 0;
+    // Waiting for the import worker to pick it up.
+    IMPORT_STATE_QUEUED = 1;
+    // Extracting the text from the file.
+    IMPORT_STATE_READING = 2;
+    // The workflow engine is working through its stages; see ImportProgress.stage.
+    IMPORT_STATE_ANALYSING = 3;
+    // Saving the story it became.
+    IMPORT_STATE_SAVING = 4;
+    // An attempt failed and the import will be tried again.
+    IMPORT_STATE_RETRYING = 5;
+    IMPORT_STATE_FAILED = 6;
+    // The document is now a story; see ImportProgress.story_id.
+    IMPORT_STATE_DONE = 7;
+}
+
+message ImportProgress {
+    string upload_id = 1;
+    ImportState state = 2;
+    // The engine stage being worked while ANALYSING: "library", "scenes" or "story" for a screenplay.
+    string stage = 3;
+    // For the person: what went wrong while RETRYING or once FAILED.
+    string message = 4;
+    // Set once DONE.
+    string story_id = 5;
+    // US dollars spent on model calls for this upload so far, across every attempt, in millionths.
+    int64 cost_usd_micros = 6;
+}
+
+message GetImportProgressRequest {
+    repeated string upload_ids = 1;
+}
+
+message GetImportProgressReply {
+    repeated ImportProgress imports = 1;
 }
 
 message ListDocumentsRequest {}

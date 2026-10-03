@@ -9,7 +9,7 @@ using ProtoFast.DocumentImport.Engine.Workflows;
 namespace ProtoFast.DocumentImport.Engine.Scheduling;
 
 public sealed class Scheduler(
-    IClassifier classifier,
+    DocumentSignatures documentSignatures,
     IPolicyStore store,
     PolicyGate gate,
     StageAttempts attempts,
@@ -20,51 +20,52 @@ public sealed class Scheduler(
 {
     public async Task<RunSummary> RunAsync(WorkflowDefinition workflow, ArtifactRef input, CancellationToken ct)
     {
-        var signature = await classifier.ClassifyAsync(input, ct);
-        return await RunAsync(workflow, input, signature, ct);
+        var signature = await documentSignatures.ClassifyAsync(input, ct);
+        return await RunAsync(workflow, input, signature, reportsProgress: true, ct);
     }
 
+    /// <param name="reportsProgress">False for a shadow run, which must not move the source's progress.</param>
     public async Task<RunSummary> RunAsync(
-        WorkflowDefinition workflow, ArtifactRef input, Signature signature, CancellationToken ct)
+        WorkflowDefinition workflow, ArtifactRef input, DocumentSignature documentSignature, bool reportsProgress, CancellationToken ct)
     {
         StageGraph.Validate(workflow);
 
         var runId = DocumentImportIds.New();
-        var policy = await FreezePolicyAsync(workflow, signature.Family, ct);
+        var policy = await FreezePolicyAsync(workflow, documentSignature.Family, ct);
         var outputs = new ConcurrentDictionary<string, ArtifactRef>(StringComparer.Ordinal);
         var shadows = new ConcurrentBag<Task>();
 
-        await ledger.OpenAsync(runId, signature, RunMode.Scheduled, ct);
+        using var run = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+        await ledger.OpenAsync(runId, documentSignature, RunMode.Scheduled, ct);
         try
         {
-            using var run = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            try
+            if (reportsProgress)
             {
-                await workflow.Stages.RunDagAsync(onError: run.Cancel, body: async stage =>
+                await ledger.ReportAsync(input.RunId, new RunProgress(RunPhase.Running, runId), ct);
+            }
+
+            await workflow.Stages.RunDagAsync(onError: run.Cancel, body: async stage =>
+            {
+                var row = policy[stage.Id];
+                IReadOnlyList<ArtifactRef> inputs = stage.DependsOn.Count == 0
+                    ? [input]
+                    : stage.DependsOn.Select(id => outputs[id]).ToList();
+                var request = new StageRequest(runId, stage, documentSignature, inputs);
+
+                var record = await ExecuteWithEscalationAsync(request, row, run.Token);
+                outputs[stage.Id] = record.Output;
+
+                if (row.Shadow is { } shadow && sampler.Take(options.Thresholds.ShadowSampleRate))
                 {
-                    var row = policy[stage.Id];
-                    IReadOnlyList<ArtifactRef> inputs = stage.DependsOn.Count == 0
-                        ? [input]
-                        : stage.DependsOn.Select(id => outputs[id]).ToList();
-                    var request = new StageRequest(runId, stage, signature, inputs);
-
-                    var record = await ExecuteWithEscalationAsync(request, row, run.Token);
-                    outputs[stage.Id] = record.Output;
-
-                    if (row.Shadow is { } shadow && sampler.Take(options.Thresholds.ShadowSampleRate))
-                    {
-                        shadows.Add(QuietAsync(attempts.RunAsync(request, row.Ladder[shadow], isShadow: true, run.Token)));
-                    }
-                });
-            }
-            finally
-            {
-                // Awaited on failure too, so no shadow outlives `run`.
-                await Task.WhenAll(shadows);
-            }
+                    shadows.Add(QuietAsync(attempts.RunAsync(request, row.Ladder[shadow], isShadow: true, run.Token)));
+                }
+            });
         }
         finally
         {
+            // Awaited on failure too, so no shadow outlives `run`; QuietAsync never throws, so the close always runs.
+            await Task.WhenAll(shadows);
             await ledger.CloseAsync(runId, null, CancellationToken.None);
         }
 

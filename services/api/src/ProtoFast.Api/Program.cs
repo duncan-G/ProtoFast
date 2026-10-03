@@ -1,6 +1,8 @@
 using ProtoFast.Api.Services;
 using ProtoFast.Api.Services.Screenplays;
 using ProtoFast.Data.ThePlot;
+using ProtoFast.DocumentImport.Core;
+using ProtoFast.DocumentImport.Data;
 using ProtoFast.Grpc;
 using ProtoFast.ServiceDefaults;
 using ProtoFast.ServiceDefaults.InternalAuth;
@@ -29,10 +31,17 @@ builder.Services.AddGrpc(options =>
 
 builder.AddNpgsqlDataSource("protofast"); // NpgsqlDataSource for the ThePlotDbContext
 builder.Services.AddThePlotData();
+
+// Import progress is read from the document import engine's run ledger, in the same database.
+builder.Services.AddDurableRunLedger();
 builder.Services.AddScoped<StoryScope>();
 builder.Services.AddScoped<StoryLibrary>();
 
 builder.Services.AddS3ObjectStorage(options => builder.Configuration.GetSection("S3").Bind(options));
+
+// Completed uploads are handed to the document-import worker over this queue.
+builder.Services.AddSqsQueue(
+    DocumentImportQueues.ImportQueueKey, options => builder.Configuration.GetSection("Sqs:DocumentImport").Bind(options));
 
 builder.AddRedisClient("redis");
 

@@ -19,12 +19,12 @@ public sealed class AgentToolsFactory(
     EngineOptions options,
     IEnumerable<IExecutorSpecValidator> validators)
 {
-    public AgentTools ForRun(string runId, Signature signature, ArtifactRef input, TraceRef trace, CancellationToken ct) =>
-        new(this, runId, signature, input, trace, scope: null, ct);
+    public AgentTools ForRun(string runId, DocumentSignature documentSignature, ArtifactRef input, TraceRef trace, CancellationToken ct) =>
+        new(this, runId, documentSignature, input, trace, scope: null, ct);
 
     /// <summary>Writes are not recorded: the scheduler records the whole loop as one attempt.</summary>
     public AgentTools ForStage(StageRequest request, TraceRef trace, CancellationToken ct) =>
-        new(this, request.RunId, request.Signature, request.Inputs[0], trace, scope: request, ct);
+        new(this, request.RunId, request.DocumentSignature, request.Inputs[0], trace, scope: request, ct);
 
     internal IArtifactStore Artifacts => artifacts;
     internal IRunLedger Ledger => ledger;

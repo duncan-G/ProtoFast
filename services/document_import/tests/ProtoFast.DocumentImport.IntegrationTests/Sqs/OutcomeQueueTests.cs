@@ -18,7 +18,7 @@ public class OutcomeQueueTests(LocalStackFixture localStack) : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         var services = new ServiceCollection().AddLogging();
-        localStack.AddQueue(services, SqsOutcomeQueue.QueueKey, await localStack.CreateFifoQueueAsync(TimeSpan.FromSeconds(1)));
+        localStack.AddQueue(services, SqsOutcomeQueue.QueueKey, await localStack.CreateFifoQueueAsync(TimeSpan.FromSeconds(1)), TimeSpan.FromSeconds(1));
         services.AddSingleton<IPolicyUpdater>(_updater);
         services.AddSingleton<SqsOutcomeQueue>();
         services.AddSingleton<OutcomeQueueConsumer>();

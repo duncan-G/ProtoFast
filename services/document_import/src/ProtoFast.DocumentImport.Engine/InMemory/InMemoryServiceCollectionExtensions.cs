@@ -17,6 +17,7 @@ public static class InMemoryServiceCollectionExtensions
         services.AddSingleton<IPolicyStore, InMemoryPolicyStore>();
         services.AddSingleton<IDocumentFamilyPolicyStore, InMemoryDocumentFamilyPolicyStore>();
         services.AddSingleton<IDocumentFamilyCatalog, InMemoryDocumentFamilyCatalog>();
+        services.AddSingleton<IDocumentFamilyGenerations, InMemoryDocumentFamilyGenerations>();
         services.AddSingleton<IMinedWorkflowStore, InMemoryMinedWorkflowStore>();
 
         services.AddSingleton<InMemoryOutcomeQueue>();

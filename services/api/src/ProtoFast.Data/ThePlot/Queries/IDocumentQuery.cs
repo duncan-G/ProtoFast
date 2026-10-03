@@ -11,6 +11,8 @@ public interface IDocumentQuery : IQuery<Document>
 {
     IDocumentQuery WithId(string id);
 
+    IDocumentQuery WithIds(IReadOnlyCollection<string> ids);
+
     IDocumentQuery WithName(string name);
 
     /// <summary>Most recently created first, ties broken by id (which itself sorts by creation time).</summary>

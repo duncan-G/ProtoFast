@@ -18,6 +18,7 @@ public sealed class WorkflowEngineStartupCheck(IServiceProviderIsService service
         typeof(IPolicyStore),
         typeof(IDocumentFamilyPolicyStore),
         typeof(IDocumentFamilyCatalog),
+        typeof(IDocumentFamilyGenerations),
         typeof(IMinedWorkflowStore),
         typeof(IOutcomeQueue),
     ];

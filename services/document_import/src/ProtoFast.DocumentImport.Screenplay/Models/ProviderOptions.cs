@@ -1,0 +1,26 @@
+namespace ProtoFast.DocumentImport.Screenplay.Models;
+
+/// <summary>Bound from <c>Providers:{name}</c>; the API key arrives from Secrets Manager under the same path.</summary>
+public sealed class ProviderOptions
+{
+    public string? ApiKey { get; set; }
+
+    /// <summary>Model ids per engine model class.</summary>
+    public string Large { get; set; } = "";
+
+    public string Medium { get; set; } = "";
+
+    public string Small { get; set; } = "";
+
+    /// <summary>USD per million tokens, keyed by model id; missing models cost 0.</summary>
+    public Dictionary<string, decimal> InputPricePerMillion { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public Dictionary<string, decimal> OutputPricePerMillion { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public decimal PriceOf(string modelId, long inputTokens, long outputTokens)
+    {
+        InputPricePerMillion.TryGetValue(modelId, out var input);
+        OutputPricePerMillion.TryGetValue(modelId, out var output);
+        return (input * inputTokens + output * outputTokens) / 1_000_000m;
+    }
+}

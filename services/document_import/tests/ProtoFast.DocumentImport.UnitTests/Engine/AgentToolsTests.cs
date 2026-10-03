@@ -19,8 +19,8 @@ public class AgentToolsTests
     {
         var runId = DocumentImport.Core.DocumentImportIds.New();
         var input = await _h.InputAsync();
-        await _h.Ledger.OpenAsync(runId, _h.Signature, RunMode.Discovery, Ct);
-        return (runId, input, _h.Get<AgentToolsFactory>().ForRun(runId, _h.Signature, input, new TraceRef(runId), Ct));
+        await _h.Ledger.OpenAsync(runId, _h.DocumentSignature, RunMode.Discovery, Ct);
+        return (runId, input, _h.Get<AgentToolsFactory>().ForRun(runId, _h.DocumentSignature, input, new TraceRef(runId), Ct));
     }
 
     [Fact]
@@ -179,8 +179,8 @@ public class AgentToolsTests
     public async Task A_stage_scoped_loop_can_only_write_its_own_stage_and_its_writes_are_not_recorded()
     {
         var runId = DocumentImport.Core.DocumentImportIds.New();
-        await _h.Ledger.OpenAsync(runId, _h.Signature, RunMode.Scheduled, Ct);
-        var request = new StageRequest(runId, Stage("extract"), _h.Signature, [await _h.InputAsync()]);
+        await _h.Ledger.OpenAsync(runId, _h.DocumentSignature, RunMode.Scheduled, Ct);
+        var request = new StageRequest(runId, Stage("extract"), _h.DocumentSignature, [await _h.InputAsync()]);
         var tools = _h.Get<AgentToolsFactory>().ForStage(request, new TraceRef("t"), Ct);
 
         await Assert.ThrowsAsync<ArgumentException>(() => tools.WriteArtifact("other", Utf8("x"), Markdown));
@@ -189,5 +189,19 @@ public class AgentToolsTests
 
         Assert.Equal(written.Ref, tools.ScopedOutput);
         Assert.Empty((await _h.Ledger.SummariseAsync(runId, Ct)).Stages);
+    }
+
+    [Fact]
+    public async Task What_a_stage_scoped_loop_spends_on_its_writes_adds_up_for_the_attempt()
+    {
+        var runId = DocumentImport.Core.DocumentImportIds.New();
+        await _h.Ledger.OpenAsync(runId, _h.DocumentSignature, RunMode.Scheduled, Ct);
+        var request = new StageRequest(runId, Stage("extract"), _h.DocumentSignature, [await _h.InputAsync()]);
+        var tools = _h.Get<AgentToolsFactory>().ForStage(request, new TraceRef("t"), Ct);
+
+        await tools.WriteArtifact("extract", Utf8("x"), Markdown, cost: new Cost(0.25m, TimeSpan.Zero));
+        await tools.WriteArtifact("extract", Utf8("y"), Markdown, cost: new Cost(0.5m, TimeSpan.Zero));
+
+        Assert.Equal(0.75m, tools.ScopedCost);
     }
 }

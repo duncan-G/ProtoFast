@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Amazon.Runtime;
@@ -16,18 +17,25 @@ internal sealed class SqsMessageQueue : IMessageQueue, IDisposable
         Converters = { new JsonStringEnumConverter() },
     };
 
+    // W3C trace context, carried as message attributes so a consumer can continue the sender's trace.
+    private const string TraceParentAttribute = "traceparent";
+    private const string TraceStateAttribute = "tracestate";
+
     private readonly SqsQueueOptions _options;
     private readonly ILogger<SqsMessageQueue> _logger;
     private readonly AmazonSQSClient _sqs;
-    private readonly Lazy<Task<string>> _queueUrl;
+    private string? _queueUrl;
+    private int? _maxReceiveCount;
+    private bool _maxReceiveCountRead;
 
     public SqsMessageQueue(SqsQueueOptions options, ILogger<SqsMessageQueue> logger)
     {
         _options = options;
         _logger = logger;
         _sqs = CreateClient(options);
-        _queueUrl = new Lazy<Task<string>>(async () => (await _sqs.GetQueueUrlAsync(options.QueueName)).QueueUrl);
     }
+
+    public string Name => _options.QueueName;
 
     private bool IsFifo => _options.QueueName.EndsWith(".fifo", StringComparison.Ordinal);
 
@@ -35,8 +43,9 @@ internal sealed class SqsMessageQueue : IMessageQueue, IDisposable
     {
         var request = new SendMessageRequest
         {
-            QueueUrl = await _queueUrl.Value,
+            QueueUrl = await QueueUrlAsync(ct),
             MessageBody = JsonSerializer.Serialize(message, Json),
+            MessageAttributes = TraceAttributes(Activity.Current),
         };
 
         if (IsFifo)
@@ -54,10 +63,15 @@ internal sealed class SqsMessageQueue : IMessageQueue, IDisposable
     {
         var response = await _sqs.ReceiveMessageAsync(new ReceiveMessageRequest
         {
-            QueueUrl = await _queueUrl.Value,
+            QueueUrl = await QueueUrlAsync(ct),
             MaxNumberOfMessages = _options.MaxMessages,
             WaitTimeSeconds = (int)_options.WaitTime.TotalSeconds,
+            VisibilityTimeout = (int)_options.VisibilityTimeout.TotalSeconds,
+            MessageAttributeNames = [TraceParentAttribute, TraceStateAttribute],
+            MessageSystemAttributeNames = [MessageSystemAttributeName.ApproximateReceiveCount],
         }, ct);
+
+        var maxReceiveCount = response.Messages is { Count: > 0 } ? await MaxReceiveCountAsync(ct) : null;
 
         var messages = new List<QueueMessage<T>>();
         foreach (var message in response.Messages ?? [])
@@ -76,7 +90,12 @@ internal sealed class SqsMessageQueue : IMessageQueue, IDisposable
 
             if (body is not null)
             {
-                messages.Add(new QueueMessage<T>(body, message.ReceiptHandle));
+                messages.Add(new QueueMessage<T>(
+                    body,
+                    message.ReceiptHandle,
+                    _options.VisibilityTimeout,
+                    TraceParent(message),
+                    IsLastDelivery(message, maxReceiveCount)));
             }
         }
 
@@ -84,9 +103,87 @@ internal sealed class SqsMessageQueue : IMessageQueue, IDisposable
     }
 
     public async Task DeleteAsync(string receiptHandle, CancellationToken ct = default) =>
-        await _sqs.DeleteMessageAsync(await _queueUrl.Value, receiptHandle, ct);
+        await _sqs.DeleteMessageAsync(await QueueUrlAsync(ct), receiptHandle, ct);
+
+    public async Task ExtendVisibilityAsync(string receiptHandle, TimeSpan timeout, CancellationToken ct = default) =>
+        await _sqs.ChangeMessageVisibilityAsync(
+            await QueueUrlAsync(ct), receiptHandle, (int)Math.Ceiling(timeout.TotalSeconds), ct);
 
     public void Dispose() => _sqs.Dispose();
+
+    // Only a successful lookup is cached, so a queue that did not exist yet is looked up again.
+    private async Task<string> QueueUrlAsync(CancellationToken ct) =>
+        _queueUrl ??= (await _sqs.GetQueueUrlAsync(_options.QueueName, ct)).QueueUrl;
+
+    /// <summary>The redrive policy's receive limit, or null for a queue with no dead-letter queue.</summary>
+    private async Task<int?> MaxReceiveCountAsync(CancellationToken ct)
+    {
+        // Only a successful lookup is cached, as for the queue URL.
+        if (_maxReceiveCountRead)
+        {
+            return _maxReceiveCount;
+        }
+
+        var attributes = await _sqs.GetQueueAttributesAsync(
+            await QueueUrlAsync(ct), [QueueAttributeName.RedrivePolicy], ct);
+        _maxReceiveCount = attributes.Attributes?.GetValueOrDefault(QueueAttributeName.RedrivePolicy) is { Length: > 0 } policy
+            ? ParseMaxReceiveCount(policy)
+            : null;
+        _maxReceiveCountRead = true;
+        return _maxReceiveCount;
+    }
+
+    // SQS returns the count as a number; LocalStack echoes the string it was given.
+    private static int? ParseMaxReceiveCount(string redrivePolicy)
+    {
+        using var json = JsonDocument.Parse(redrivePolicy);
+        if (!json.RootElement.TryGetProperty("maxReceiveCount", out var count))
+        {
+            return null;
+        }
+
+        var text = count.ValueKind == JsonValueKind.String ? count.GetString() : count.GetRawText();
+        return int.TryParse(text, out var max) ? max : null;
+    }
+
+    private static bool IsLastDelivery(Message message, int? maxReceiveCount) =>
+        maxReceiveCount is { } max
+        && message.Attributes?.GetValueOrDefault(MessageSystemAttributeName.ApproximateReceiveCount) is { } received
+        && int.TryParse(received, out var count)
+        && count >= max;
+
+    private static Dictionary<string, MessageAttributeValue>? TraceAttributes(Activity? activity)
+    {
+        if (activity is null || activity.IdFormat != ActivityIdFormat.W3C)
+        {
+            return null;
+        }
+
+        var attributes = new Dictionary<string, MessageAttributeValue>
+        {
+            [TraceParentAttribute] = new() { DataType = "String", StringValue = activity.Id },
+        };
+        if (!string.IsNullOrEmpty(activity.TraceStateString))
+        {
+            attributes[TraceStateAttribute] = new() { DataType = "String", StringValue = activity.TraceStateString };
+        }
+
+        return attributes;
+    }
+
+    private static ActivityContext TraceParent(Message message)
+    {
+        var attributes = message.MessageAttributes;
+        if (attributes is null || !attributes.TryGetValue(TraceParentAttribute, out var traceParent))
+        {
+            return default;
+        }
+
+        var traceState = attributes.GetValueOrDefault(TraceStateAttribute)?.StringValue;
+        return ActivityContext.TryParse(traceParent.StringValue, traceState, isRemote: true, out var context)
+            ? context
+            : default;
+    }
 
     private static AmazonSQSClient CreateClient(SqsQueueOptions options)
     {

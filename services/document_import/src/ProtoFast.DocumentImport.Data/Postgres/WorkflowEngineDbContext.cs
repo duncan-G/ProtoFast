@@ -21,15 +21,23 @@ public sealed class WorkflowEngineDbContext(DbContextOptions<WorkflowEngineDbCon
 
     public DbSet<DocumentFamilyVerifier> DocumentFamilyVerifiers => Set<DocumentFamilyVerifier>();
 
+    public DbSet<DocumentFamilySkill> DocumentFamilySkills => Set<DocumentFamilySkill>();
+
     public DbSet<RunEntry> Runs => Set<RunEntry>();
 
     public DbSet<StageRecordEntry> StageRecords => Set<StageRecordEntry>();
 
     public DbSet<RunDecisionEntry> RunDecisions => Set<RunDecisionEntry>();
 
+    public DbSet<RunMessageEntry> RunMessages => Set<RunMessageEntry>();
+
+    public DbSet<RunProgressEntry> RunProgress => Set<RunProgressEntry>();
+
     public DbSet<StagePolicyEntry> StagePolicies => Set<StagePolicyEntry>();
 
     public DbSet<DocumentFamilyPolicyEntry> DocumentFamilyPolicies => Set<DocumentFamilyPolicyEntry>();
+
+    public DbSet<DocumentFamilyGenerationEntry> DocumentFamilyGenerations => Set<DocumentFamilyGenerationEntry>();
 
     public DbSet<MinedWorkflowDraftEntry> MinedWorkflowDrafts => Set<MinedWorkflowDraftEntry>();
 
@@ -61,6 +69,13 @@ public sealed class WorkflowEngineDbContext(DbContextOptions<WorkflowEngineDbCon
             entity.Property(e => e.VerifierId).HasMaxLength(IdLength);
             entity.Property(e => e.StageId).IsRequired().HasMaxLength(IdLength);
             entity.Property(e => e.Rubric).IsRequired();
+        });
+
+        modelBuilder.Entity<DocumentFamilySkill>(entity =>
+        {
+            entity.HasKey(e => new { e.Family, e.SkillId, e.SkillVersion });
+            entity.Property(e => e.Family).HasMaxLength(IdLength);
+            entity.Property(e => e.SkillId).HasMaxLength(IdLength);
         });
 
         modelBuilder.Entity<RunEntry>(entity =>
@@ -97,6 +112,28 @@ public sealed class WorkflowEngineDbContext(DbContextOptions<WorkflowEngineDbCon
             entity.HasIndex(e => new { e.RunId, e.Sequence });
         });
 
+        // The key is what makes a resumed run's re-append of the same message a no-op.
+        modelBuilder.Entity<RunMessageEntry>(entity =>
+        {
+            entity.HasKey(e => new { e.RunId, e.Sequence });
+            entity.Property(e => e.RunId).HasMaxLength(IdLength);
+            entity.Property(e => e.Message).IsRequired().HasColumnType("jsonb");
+            entity.HasOne<RunEntry>().WithMany().HasForeignKey(e => e.RunId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Not keyed to a run: a source outlives the runs that fail on it.
+        modelBuilder.Entity<RunProgressEntry>(entity =>
+        {
+            entity.HasKey(e => e.SourceId);
+            entity.Property(e => e.SourceId).HasMaxLength(IdLength);
+            entity.Property(e => e.Phase).HasConversion<string>().HasMaxLength(EnumLength);
+            entity.Property(e => e.RunId).HasMaxLength(IdLength);
+            entity.Property(e => e.StageId).HasMaxLength(IdLength);
+            entity.Property(e => e.ResultId).HasMaxLength(IdLength);
+            entity.Property(e => e.Cost).HasPrecision(18, 6);
+            entity.HasIndex(e => e.RunId);
+        });
+
         modelBuilder.Entity<StagePolicyEntry>(entity =>
         {
             entity.HasKey(e => new { e.Family, e.StageId });
@@ -113,6 +150,12 @@ public sealed class WorkflowEngineDbContext(DbContextOptions<WorkflowEngineDbCon
             entity.Property(e => e.Family).HasMaxLength(IdLength);
             entity.Property(e => e.Mode).HasConversion<string>().HasMaxLength(EnumLength);
             entity.Property(e => e.WorkflowId).HasMaxLength(IdLength);
+        });
+
+        modelBuilder.Entity<DocumentFamilyGenerationEntry>(entity =>
+        {
+            entity.HasKey(e => e.Family);
+            entity.Property(e => e.Family).HasMaxLength(IdLength);
         });
 
         modelBuilder.Entity<MinedWorkflowDraftEntry>(entity =>

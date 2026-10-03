@@ -11,6 +11,8 @@ public interface IDocumentUploadQuery : IQuery<DocumentUpload>
 {
     IDocumentUploadQuery WithUploadId(string uploadId);
 
+    IDocumentUploadQuery WithUploadIds(IReadOnlyCollection<string> uploadIds);
+
     IDocumentUploadQuery WithFileName(string fileName);
 
     IDocumentUploadQuery WithMediaType(string mediaType);

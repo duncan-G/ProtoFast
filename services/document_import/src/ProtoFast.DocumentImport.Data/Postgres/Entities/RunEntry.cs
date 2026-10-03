@@ -17,4 +17,8 @@ public sealed class RunEntry
     public DateTimeOffset OpenedAt { get; set; }
 
     public DateTimeOffset? ClosedAt { get; set; }
+
+    public DateTimeOffset? AbandonedAt { get; set; }
+
+    public string? Failure { get; set; }
 }

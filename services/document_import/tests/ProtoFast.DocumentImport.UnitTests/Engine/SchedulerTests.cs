@@ -3,6 +3,7 @@ using ProtoFast.DocumentImport.Engine.Executors;
 using ProtoFast.DocumentImport.Engine.Learning;
 using ProtoFast.DocumentImport.Engine.Policy;
 using ProtoFast.DocumentImport.Engine.Scheduling;
+using ProtoFast.DocumentImport.Engine.Storage;
 using ProtoFast.DocumentImport.Engine.Verification;
 using ProtoFast.DocumentImport.Engine.Workflows;
 using Xunit;
@@ -43,6 +44,29 @@ public class SchedulerTests
         Assert.Equal(small, record.Executor);
         Assert.Equal("good", await h.ReadAsync(record.Output));
         Assert.Equal(OutcomeKind.VerifierPass, Assert.Single(h.Outcomes.Published).Kind);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Only_a_run_that_reports_progress_moves_its_source(bool reportsProgress)
+    {
+        var h = new EngineHarness();
+        var small = await h.DelegateAsync("small", Tier.DelegateSmall, _ => "good");
+        await SetRowAsync(h, "extract", Tier.DelegateSmall, null, (Tier.DelegateSmall, small));
+        var input = await h.InputAsync();
+
+        var summary = await h.Get<Scheduler>().RunAsync(Workflow(Stage("extract")), input, h.DocumentSignature, reportsProgress, Ct);
+
+        var progress = await h.Ledger.ProgressAsync([input.RunId], Ct);
+        if (reportsProgress)
+        {
+            Assert.Equal(new RunProgress(RunPhase.Running, summary.RunId, "extract", Cost: 1), progress[input.RunId]);
+        }
+        else
+        {
+            Assert.Empty(progress);
+        }
     }
 
     [Fact]

@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\document_import\src\ProtoFast.DocumentImport.Core\ProtoFast.DocumentImport.Core.csproj" />
+    <ProjectReference Include="..\..\..\document_import\src\ProtoFast.DocumentImport.Data\ProtoFast.DocumentImport.Data.csproj" />
     <ProjectReference Include="..\..\..\document_import\src\ProtoFast.DocumentImport.Storage\ProtoFast.DocumentImport.Storage.csproj" />
     <ProjectReference Include="..\..\..\shared\Grpc\Grpc.csproj" />
     <ProjectReference Include="..\..\..\shared\ServiceDefaults\ServiceDefaults.csproj" />

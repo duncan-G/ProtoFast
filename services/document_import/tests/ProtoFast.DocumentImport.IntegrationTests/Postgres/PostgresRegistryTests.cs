@@ -2,6 +2,7 @@ using System.Text;
 using ProtoFast.DocumentImport.Data.Postgres;
 using ProtoFast.DocumentImport.IntegrationTests.Fixtures;
 using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Skills;
 using ProtoFast.DocumentImport.Engine.Storage;
 using ProtoFast.DocumentImport.Engine.Workflows;
 using Xunit;
@@ -34,6 +35,23 @@ public class PostgresRegistryTests(PostgresFixture postgres)
         var resolved = await Registry.ResolveAsync(second, Ct);
         Assert.Equal(["read", "write"], resolved.Tools);
         Assert.Equal((second, true), (resolved.Ref, resolved.Promoted));
+    }
+
+    [Fact]
+    public async Task A_skill_is_versioned_with_its_scripts()
+    {
+        var id = UniqueId("split-scenes");
+        var code = await Registry.PublishCodeAsync(new MemoryStream(Encoding.UTF8.GetBytes("public static class Script { }")), Ct);
+        var skill = new Skill(new SkillRef(id, 0), "Split a screenplay into scenes.", "Run `split`.", []);
+
+        var first = await Registry.PublishAsync(skill, Ct);
+        var second = await Registry.PublishAsync(skill with { Scripts = [new SkillScript("split", "{ text } -> scenes", code)] }, Ct);
+
+        Assert.Equal((new SkillRef(id, 1), new SkillRef(id, 2)), (first, second));
+        Assert.Empty((await Registry.ResolveAsync(first, Ct)).Scripts);
+        var resolved = await Registry.ResolveAsync(second, Ct);
+        Assert.Equal(second, resolved.Ref);
+        Assert.Equal(code, Assert.Single(resolved.Scripts).CodeHash);
     }
 
     [Fact]

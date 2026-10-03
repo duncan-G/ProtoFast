@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using ProtoFast.DocumentImport.Core;
 using ProtoFast.DocumentImport.Engine.Executors;
@@ -11,7 +12,7 @@ namespace ProtoFast.DocumentImport.Engine.Discovery;
 
 /// <summary>Hands each run to exactly one owner: the discovery agent or the scheduler.</summary>
 public sealed class RunDispatcher(
-    IClassifier classifier,
+    DocumentSignatures documentSignatures,
     IDocumentFamilyPolicyStore families,
     IRegistry registry,
     Scheduler scheduler,
@@ -29,62 +30,114 @@ public sealed class RunDispatcher(
     /// <param name="input">Already stored under <see cref="ArtifactRef.InputStageId"/>.</param>
     public async Task<RunSummary> RunAsync(ArtifactRef input, CancellationToken ct)
     {
-        var signature = await classifier.ClassifyAsync(input, ct);
-        var family = await families.GetAsync(signature.Family, ct);
+        var documentSignature = await documentSignatures.ClassifyAsync(input, ct);
+        var family = await families.GetAsync(documentSignature.Family, ct);
         var workflow = family.Workflow is { } promoted && await registry.IsPromotedAsync(promoted, ct)
             ? await registry.ResolveAsync(promoted, ct)
             : null;
 
         if (family.Mode == RunMode.Scheduled && workflow is not null)
         {
-            return await RunScheduledAsync(workflow, input, signature, ct);
+            return await RunScheduledAsync(workflow, input, documentSignature, reportsProgress: true, ct);
         }
 
         var shadow = workflow is not null && sampler.Take(options.Thresholds.ShadowSampleRate)
-            ? QuietAsync(RunScheduledAsync(workflow, input, signature, ct))
+            ? QuietAsync(RunScheduledAsync(workflow, input, documentSignature, reportsProgress: false, ct))
             : Task.CompletedTask;
 
         RunSummary summary;
         try
         {
-            summary = await RunDiscoveryAsync(input, signature, ct);
+            summary = await RunDiscoveryAsync(input, documentSignature, ct);
         }
         finally
         {
             await shadow;
         }
 
-        await MineIfDueAsync(signature.Family, ct);
+        await MineIfDueAsync(documentSignature.Family, ct);
         return summary;
     }
 
-    private async Task<RunSummary> RunDiscoveryAsync(ArtifactRef input, Signature signature, CancellationToken ct)
+    private async Task<RunSummary> RunDiscoveryAsync(ArtifactRef input, DocumentSignature documentSignature, CancellationToken ct)
     {
-        var runId = DocumentImportIds.New();
+        var resumed = await ResumableAsync(input, documentSignature, ct);
+        var runId = resumed?.RunId ?? DocumentImportIds.New();
         var trace = new TraceRef(runId);
+        using var activity = StartRun(RunMode.Discovery, documentSignature);
+        activity?.SetTag("document_import.run_id", runId);
+        activity?.SetTag("document_import.resumed", resumed is not null);
 
-        await ledger.OpenAsync(runId, signature, RunMode.Discovery, ct);
-        await agent.RunAsync(input, tools.ForRun(runId, signature, input, trace, ct), trace, ct);
+        try
+        {
+            if (resumed is null)
+            {
+                await ledger.OpenAsync(runId, documentSignature, RunMode.Discovery, ct);
+            }
+            else
+            {
+                logger.LogInformation(
+                    "Resuming discovery run {RunId} for source {SourceId} with {Stages} stage attempts recorded",
+                    runId, input.RunId, resumed.Stages.Count);
+            }
 
-        // Only finished runs are closed, so only finished runs are mined.
-        await ledger.CloseAsync(runId, trace, ct);
-        return await ledger.SummariseAsync(runId, ct);
+            await ledger.ReportAsync(input.RunId, new RunProgress(RunPhase.Running, runId), ct);
+            await agent.RunAsync(input, tools.ForRun(runId, documentSignature, input, trace, ct), trace, ct);
+
+            // Only finished runs are closed, so only finished runs are mined.
+            await ledger.CloseAsync(runId, trace, ct);
+            return await ledger.SummariseAsync(runId, ct);
+        }
+        catch (DiscoveryFailedException e)
+        {
+            // The run, not the infrastructure, failed: a redelivery must not resume it.
+            activity.Fail(e);
+            await ledger.AbandonAsync(runId, e.Message, CancellationToken.None);
+            throw;
+        }
+        catch (Exception e)
+        {
+            activity.Fail(e);
+            throw;
+        }
+    }
+
+    /// <summary>The source's last run, when it is an open discovery run of the same family.</summary>
+    private async Task<RunSummary?> ResumableAsync(ArtifactRef input, DocumentSignature documentSignature, CancellationToken ct)
+    {
+        var progress = (await ledger.ProgressAsync([input.RunId], ct)).GetValueOrDefault(input.RunId);
+        if (progress?.RunId is not { } runId)
+        {
+            return null;
+        }
+
+        var open = await ledger.FindOpenAsync(runId, ct);
+        return open is { Mode: RunMode.Discovery } && open.DocumentSignature.Family == documentSignature.Family ? open : null;
     }
 
     private async Task<RunSummary> RunScheduledAsync(
-        WorkflowDefinition workflow, ArtifactRef input, Signature signature, CancellationToken ct)
+        WorkflowDefinition workflow, ArtifactRef input, DocumentSignature documentSignature, bool reportsProgress, CancellationToken ct)
     {
+        using var activity = StartRun(RunMode.Scheduled, documentSignature);
+        activity?.SetTag("document_import.workflow", $"{workflow.Ref.Id}@{workflow.Ref.Version}");
+
         RunSummary summary;
         try
         {
-            summary = await scheduler.RunAsync(workflow, input, signature, ct);
+            summary = await scheduler.RunAsync(workflow, input, documentSignature, reportsProgress, ct);
         }
-        catch (StageFailedException)
+        catch (Exception e)
         {
-            await outcomes.PublishAsync(
-                Outcome.ForWorkflow(signature.Family, workflow.Ref, passed: false, degraded: false, time.GetUtcNow()), ct);
+            activity.Fail(e);
+            if (e is StageFailedException)
+            {
+                await PublishOutcomeAsync(documentSignature.Family, workflow, passed: false, degraded: false, ct);
+            }
+
             throw;
         }
+
+        activity?.SetTag("document_import.run_id", summary.RunId);
 
         // Reaching here means every stage passed.
         var terminal = workflow.TerminalStages.Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
@@ -93,9 +146,20 @@ public sealed class RunDispatcher(
             .GroupBy(s => s.StageId)
             .Any(g => g.Last().Degraded);
 
-        await outcomes.PublishAsync(
-            Outcome.ForWorkflow(signature.Family, workflow.Ref, passed: true, degraded, time.GetUtcNow()), ct);
+        await PublishOutcomeAsync(documentSignature.Family, workflow, passed: true, degraded, ct);
         return summary;
+    }
+
+    private Task PublishOutcomeAsync(
+        string family, WorkflowDefinition workflow, bool passed, bool degraded, CancellationToken ct) =>
+        outcomes.PublishAsync(Outcome.ForWorkflow(family, workflow.Ref, passed, degraded, time.GetUtcNow()), ct);
+
+    private static Activity? StartRun(RunMode mode, DocumentSignature documentSignature)
+    {
+        var activity = DocumentImportTelemetry.Source.StartActivity($"{mode.ToString().ToLowerInvariant()} run");
+        activity?.SetTag("document_import.mode", mode.ToString());
+        activity?.SetTag("document_import.family", documentSignature.Family);
+        return activity;
     }
 
     private async Task MineIfDueAsync(string family, CancellationToken ct)

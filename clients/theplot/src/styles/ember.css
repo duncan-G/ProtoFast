@@ -859,7 +859,15 @@
       transparent 60%
     );
   }
-  /* A document that arrived this session. */
+  /* An import that stopped: the same wash in danger. */
+  .desk-row-failed {
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--color-danger-300) 7%, transparent),
+      transparent 60%
+    );
+  }
+  /* A story an import produced this session. */
   .desk-row-new {
     background: color-mix(in srgb, var(--color-success) 5%, transparent);
   }
@@ -874,6 +882,10 @@
     justify-content: center;
     border: 1px dashed color-mix(in srgb, var(--color-accent) 50%, transparent);
     color: var(--color-accent);
+  }
+  .desk-cover-failed {
+    border-color: color-mix(in srgb, var(--color-danger-300) 50%, transparent);
+    color: var(--color-danger-300);
   }
   @media (max-width: 767px) {
     .desk-head {

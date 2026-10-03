@@ -87,35 +87,23 @@ describe('ImportDialog', () => {
     expect(bar.style.width).toBe('64%');
   });
 
-  it('marks every step done and names the document once it is on the desk', async () => {
-    fixture.componentRef.setInput(
-      'job',
-      job({
-        phase: 'done',
-        progress: 100,
-        document: {
-          id: '01j8x4m2c9k7p1q3r5s7t9v1w3',
-          name: 'The Quiet Year',
-          fileName: 'the-quiet-year.docx',
-          sizeBytes: 2.4 * 1024 * 1024,
-          mediaType: 'application/x-docx',
-          fileExtension: '.docx',
-          createdAt: new Date(),
-          lastModifiedAt: new Date(),
-        },
-      }),
-    );
+  it('hands the upload on to be read once the bytes are in storage', async () => {
+    fixture.componentRef.setInput('job', job({ phase: 'saving', progress: 100 }));
     await fixture.whenStable();
-    expect(text()).toContain('On your desk');
-    expect(text()).toContain('“The Quiet Year” is uploaded');
-    expect(fixture.nativeElement.querySelectorAll('.step.is-done').length).toBe(3);
-    expect(text()).toContain('Continue working');
+    expect(text()).toContain('Handing it on to be read…');
+    expect(text()).toContain('Queued to be read');
+    expect(fixture.nativeElement.querySelectorAll('.step.is-done').length).toBe(2);
+    expect(text()).not.toContain('On your desk');
   });
 
   it('shows why an import failed and offers a retry', async () => {
     fixture.componentRef.setInput(
       'job',
-      job({ phase: 'failed', failedAt: 'uploading', error: 'Storage refused the upload (HTTP 403).' }),
+      job({
+        phase: 'failed',
+        failedAt: 'uploading',
+        error: 'Storage refused the upload (HTTP 403).',
+      }),
     );
     await fixture.whenStable();
     expect(text()).toContain('The import didn’t finish');

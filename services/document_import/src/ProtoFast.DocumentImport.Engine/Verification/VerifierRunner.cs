@@ -12,7 +12,7 @@ public sealed class VerifierRunner(VerifierCatalog catalog)
             return [rejected];
         }
 
-        var verifiers = await catalog.ResolveAsync(request.Signature.Family, request.Stage.Verifiers, ct);
+        var verifiers = await catalog.ResolveAsync(request.DocumentSignature.Family, request.Stage.Verifiers, ct);
         var results = new List<VerifierResult>(verifiers.Count);
 
         // OrderBy is stable, so declared order holds within each group.

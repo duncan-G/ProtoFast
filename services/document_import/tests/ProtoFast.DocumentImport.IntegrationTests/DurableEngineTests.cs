@@ -27,8 +27,8 @@ public class DurableEngineTests(PostgresFixture postgres, LocalStackFixture loca
         var services = new ServiceCollection().AddLogging();
         services.AddSingleton(postgres.DataSource);
         localStack.AddObjectStorage(services, await localStack.CreateBucketAsync());
-        localStack.AddQueue(services, SqsOutcomeQueue.QueueKey, await localStack.CreateFifoQueueAsync(TimeSpan.FromSeconds(5)));
-        services.AddSingleton<IClassifier>(new FixedFamily(_family));
+        localStack.AddQueue(services, SqsOutcomeQueue.QueueKey, await localStack.CreateFifoQueueAsync(TimeSpan.FromSeconds(5)), TimeSpan.FromSeconds(5));
+        services.AddSingleton<IDocumentClassifier>(new FixedFamily(_family));
         services.AddSingleton<IDiscoveryAgent, WritingAgent>();
         services.AddAgentWorkflowEngine();
         services.AddDurableWorkflowEngineStores();
@@ -78,10 +78,10 @@ public class DurableEngineTests(PostgresFixture postgres, LocalStackFixture loca
         }
     }
 
-    private sealed class FixedFamily(string family) : IClassifier
+    private sealed class FixedFamily(string family) : IDocumentClassifier
     {
-        public Task<Signature> ClassifyAsync(ArtifactRef input, CancellationToken ct) =>
-            Task.FromResult(new Signature(family, new Dictionary<string, string>()));
+        public Task<DocumentSignature> ClassifyAsync(ArtifactRef input, CancellationToken ct) =>
+            Task.FromResult(new DocumentSignature(family, new Dictionary<string, string>()));
     }
 
     private sealed class WritingAgent : IDiscoveryAgent

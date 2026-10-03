@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Skills;
 using ProtoFast.DocumentImport.Engine.Storage;
 using ProtoFast.DocumentImport.Engine.Workflows;
 
@@ -12,6 +13,7 @@ public sealed class InMemoryRegistry : IRegistry
     private readonly Dictionary<string, List<Playbook>> _playbooks = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<ExecutorSpec>> _executors = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<WorkflowDefinition>> _workflows = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<Skill>> _skills = new(StringComparer.Ordinal);
     private readonly HashSet<WorkflowRef> _promotedWorkflows = [];
     private readonly ConcurrentDictionary<string, byte[]> _code = new(StringComparer.Ordinal);
 
@@ -23,6 +25,9 @@ public sealed class InMemoryRegistry : IRegistry
 
     public Task<WorkflowDefinition> ResolveAsync(WorkflowRef reference, CancellationToken ct) =>
         Task.FromResult(Find(_workflows, reference.Id, reference.Version, $"Workflow {reference.Id}@{reference.Version}"));
+
+    public Task<Skill> ResolveAsync(SkillRef reference, CancellationToken ct) =>
+        Task.FromResult(Find(_skills, reference.Id, reference.Version, $"Skill {reference}"));
 
     public Task<PlaybookRef> PublishAsync(Playbook playbook, CancellationToken ct)
     {
@@ -53,6 +58,17 @@ public sealed class InMemoryRegistry : IRegistry
             var versions = VersionsOf(_workflows, workflow.Ref.Id);
             var reference = new WorkflowRef(workflow.Ref.Id, versions.Count + 1);
             versions.Add(workflow with { Ref = reference });
+            return Task.FromResult(reference);
+        }
+    }
+
+    public Task<SkillRef> PublishAsync(Skill skill, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            var versions = VersionsOf(_skills, skill.Ref.Id);
+            var reference = new SkillRef(skill.Ref.Id, versions.Count + 1);
+            versions.Add(skill with { Ref = reference });
             return Task.FromResult(reference);
         }
     }

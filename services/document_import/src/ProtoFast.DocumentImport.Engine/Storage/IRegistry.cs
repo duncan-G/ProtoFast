@@ -1,4 +1,5 @@
 using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Skills;
 using ProtoFast.DocumentImport.Engine.Workflows;
 
 namespace ProtoFast.DocumentImport.Engine.Storage;
@@ -8,11 +9,13 @@ public interface IRegistry
     Task<Playbook>           ResolveAsync(PlaybookRef reference, CancellationToken ct);
     Task<ExecutorSpec>       ResolveAsync(ExecutorRef reference, CancellationToken ct);
     Task<WorkflowDefinition> ResolveAsync(WorkflowRef reference, CancellationToken ct);
+    Task<Skill>              ResolveAsync(SkillRef reference, CancellationToken ct);
 
     // Assigns the next version for the id, ignoring the one passed in.
     Task<PlaybookRef> PublishAsync(Playbook playbook, CancellationToken ct);
     Task<ExecutorRef> PublishAsync(ExecutorSpec spec, CancellationToken ct);
     Task<WorkflowRef> PublishAsync(WorkflowDefinition workflow, CancellationToken ct);
+    Task<SkillRef>    PublishAsync(Skill skill, CancellationToken ct);
 
     // Returns the code's SHA-256, which ExecutorSpec.CodeAssembly names.
     Task<string> PublishCodeAsync(Stream code, CancellationToken ct);

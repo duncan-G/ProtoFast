@@ -84,6 +84,7 @@ public static class Extensions
                     .AddHttpClientInstrumentation(options =>
                         options.FilterHttpRequestMessage = req =>
                             !string.Equals(req.RequestUri?.AbsolutePath, "/health", StringComparison.OrdinalIgnoreCase)
+                            && !IsSqsReceive(req)
                     );
             });
 
@@ -91,6 +92,12 @@ public static class Extensions
 
         return builder;
     }
+
+    // Queue consumers long-poll continuously; each poll would otherwise export as its own root trace.
+    // The consumer's process span carries the sender's trace instead.
+    private static bool IsSqsReceive(HttpRequestMessage request) =>
+        request.Headers.TryGetValues("X-Amz-Target", out var targets)
+        && targets.Contains("AmazonSQS.ReceiveMessage", StringComparer.Ordinal);
 
     private static IHostApplicationBuilder AddOpenTelemetryExporters(this IHostApplicationBuilder builder)
     {

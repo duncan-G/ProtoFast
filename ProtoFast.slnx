@@ -24,6 +24,7 @@
     <Project Path="services/document_import/src/ProtoFast.DocumentImport.Core/ProtoFast.DocumentImport.Core.csproj" />
     <Project Path="services/document_import/src/ProtoFast.DocumentImport.Data/ProtoFast.DocumentImport.Data.csproj" />
     <Project Path="services/document_import/src/ProtoFast.DocumentImport.Engine/ProtoFast.DocumentImport.Engine.csproj" />
+    <Project Path="services/document_import/src/ProtoFast.DocumentImport.Screenplay/ProtoFast.DocumentImport.Screenplay.csproj" />
     <Project Path="services/document_import/src/ProtoFast.DocumentImport.Storage/ProtoFast.DocumentImport.Storage.csproj" />
     <Project Path="services/document_import/src/ProtoFast.DocumentImport.Worker/ProtoFast.DocumentImport.Worker.csproj" />
   </Folder>

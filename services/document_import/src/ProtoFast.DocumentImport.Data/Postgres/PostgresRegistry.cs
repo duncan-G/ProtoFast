@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using ProtoFast.DocumentImport.Data.Postgres.Entities;
 using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Skills;
 using ProtoFast.DocumentImport.Engine.Storage;
 using ProtoFast.DocumentImport.Engine.Workflows;
 using ProtoFast.DocumentImport.Storage;
@@ -43,6 +44,13 @@ public sealed class PostgresRegistry(
         return workflow with { Ref = reference };
     }
 
+    public async Task<Skill> ResolveAsync(SkillRef reference, CancellationToken ct)
+    {
+        var entry = await FindAsync(RegistryEntryKind.Skill, reference.Id, reference.Version, ct);
+        var skill = await ReadAsync<Skill>(RegistryKeys.Skill(entry.ContentHash), ct);
+        return skill with { Ref = reference };
+    }
+
     public async Task<PlaybookRef> PublishAsync(Playbook playbook, CancellationToken ct)
     {
         var id = playbook.Ref.Id;
@@ -66,6 +74,14 @@ public sealed class PostgresRegistry(
         var version = await PublishAsync(
             RegistryEntryKind.Workflow, id, workflow with { Ref = new WorkflowRef(id, 0) }, RegistryKeys.Workflow, promoted: false, ct);
         return new WorkflowRef(id, version);
+    }
+
+    public async Task<SkillRef> PublishAsync(Skill skill, CancellationToken ct)
+    {
+        var id = skill.Ref.Id;
+        var version = await PublishAsync(
+            RegistryEntryKind.Skill, id, skill with { Ref = new SkillRef(id, 0) }, RegistryKeys.Skill, promoted: false, ct);
+        return new SkillRef(id, version);
     }
 
     public async Task<string> PublishCodeAsync(Stream code, CancellationToken ct)

@@ -1,7 +1,12 @@
 import { inject, Injectable } from '@angular/core';
 import { Code, ConnectError, createClient } from '@connectrpc/connect';
 import { GRPC_TRANSPORT } from '../grpc-transport';
-import { Documents, type Document as DocumentMessage } from '../../lib/gen/document_pb';
+import {
+  Documents,
+  ImportState as ImportStateMessage,
+  type Document as DocumentMessage,
+  type ImportProgress as ImportProgressMessage,
+} from '../../lib/gen/document_pb';
 import { DocumentUpload } from '../../lib/gen/document_upload_pb';
 
 /** One accepted source format, as the API's table lists it. */
@@ -23,7 +28,36 @@ export interface AcceptedFormats {
   labels: string[];
 }
 
-/** A document on the desk: an upload the API has confirmed landed in storage. */
+/**
+ * Where the import the server runs on an upload stands, as the document import engine's run
+ * ledger records it. `done` means the document has become a story and left the desk.
+ */
+export type ImportState =
+  | 'queued'
+  | 'reading'
+  | 'analysing'
+  | 'saving'
+  | 'retrying'
+  | 'failed'
+  | 'done';
+
+export interface ImportProgress {
+  uploadId: string;
+  state: ImportState;
+  /** The engine stage being worked while `analysing`: "library", "scenes" or "story". */
+  stage: string;
+  /** What went wrong, written for the person, while `retrying` or once `failed`. */
+  message: string;
+  /** Set once `done`. */
+  storyId: string | null;
+  /** USD spent on model calls so far, across every attempt. */
+  costUsd: number;
+}
+
+/**
+ * A document on the desk: an upload the API has confirmed landed in storage, waiting to be (or
+ * being) imported. It leaves the desk once its import turns it into a story.
+ */
 export interface DocumentSummary {
   id: string;
   name: string;
@@ -33,6 +67,7 @@ export interface DocumentSummary {
   fileExtension: string;
   createdAt: Date;
   lastModifiedAt: Date;
+  import: ImportProgress;
 }
 
 /** A presigned POST, ready to be replayed as multipart/form-data with the file part last. */
@@ -103,6 +138,34 @@ export class DocumentApi {
     const reply = await this.documents.listDocuments({});
     return reply.documents.map(toSummary);
   }
+
+  /** Progress for each upload; ids that aren't the caller's, or never became documents, are left out. */
+  async getImportProgress(uploadIds: string[]): Promise<ImportProgress[]> {
+    const reply = await this.documents.getImportProgress({ uploadIds });
+    return reply.imports.map(toProgress);
+  }
+}
+
+const IMPORT_STATES: Record<ImportStateMessage, ImportState> = {
+  [ImportStateMessage.UNSPECIFIED]: 'queued',
+  [ImportStateMessage.QUEUED]: 'queued',
+  [ImportStateMessage.READING]: 'reading',
+  [ImportStateMessage.ANALYSING]: 'analysing',
+  [ImportStateMessage.SAVING]: 'saving',
+  [ImportStateMessage.RETRYING]: 'retrying',
+  [ImportStateMessage.FAILED]: 'failed',
+  [ImportStateMessage.DONE]: 'done',
+};
+
+function toProgress(message: ImportProgressMessage): ImportProgress {
+  return {
+    uploadId: message.uploadId,
+    state: IMPORT_STATES[message.state] ?? 'queued',
+    stage: message.stage,
+    message: message.message,
+    storyId: message.storyId || null,
+    costUsd: Number(message.costUsdMicros) / 1_000_000,
+  };
 }
 
 function toSummary(message: DocumentMessage): DocumentSummary {
@@ -115,6 +178,16 @@ function toSummary(message: DocumentMessage): DocumentSummary {
     fileExtension: message.fileExtension,
     createdAt: new Date(Number(message.createdUnixSeconds) * 1000),
     lastModifiedAt: new Date(Number(message.lastModifiedUnixSeconds) * 1000),
+    import: message.import
+      ? toProgress(message.import)
+      : {
+          uploadId: message.id,
+          state: 'queued',
+          stage: '',
+          message: '',
+          storyId: null,
+          costUsd: 0,
+        },
   };
 }
 

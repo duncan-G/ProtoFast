@@ -14,5 +14,7 @@ public static class RegistryKeys
 
     public static string Workflow(string hash) => $"{Prefix}workflows/{hash}.json";
 
+    public static string Skill(string hash) => $"{Prefix}skills/{hash}.json";
+
     public static string Code(string hash) => $"{Prefix}code/{hash}";
 }

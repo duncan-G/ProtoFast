@@ -16,7 +16,7 @@ public class VerifierRunnerTests
     {
         var output = await _h.Artifacts.PutAsync("run", "a", Utf8(content), Markdown, Ct);
         var stage = Stage("a") with { Verifiers = verifiers, Budget = new Budget(maxCost, Timeout.InfiniteTimeSpan) };
-        var request = new StageRequest("run", stage, _h.Signature, []);
+        var request = new StageRequest("run", stage, _h.DocumentSignature, []);
         var result = new StageResult(output, null, new Cost(cost, TimeSpan.Zero), []);
         return await _h.Get<VerifierRunner>().RunAsync(request, result, Tier.DelegateSmall, Ct);
     }

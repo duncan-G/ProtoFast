@@ -5,6 +5,7 @@ using ProtoFast.DocumentImport.Engine.Executors;
 using ProtoFast.DocumentImport.Engine.Learning;
 using ProtoFast.DocumentImport.Engine.Policy;
 using ProtoFast.DocumentImport.Engine.Scheduling;
+using ProtoFast.DocumentImport.Engine.Skills;
 using ProtoFast.DocumentImport.Engine.Verification;
 using ProtoFast.DocumentImport.Engine.Workflows;
 
@@ -15,7 +16,7 @@ public static class ServiceCollectionExtensions
     /// <summary>
     /// Registers the engine's logic but no stores or outcome queue: add those with
     /// <c>AddDurableWorkflowEngineStores</c>, or <c>AddInMemoryWorkflowEngineStores</c> for tests.
-    /// Callers must also register an <see cref="IClassifier"/>, an <see cref="IDiscoveryAgent"/>
+    /// Callers must also register an <see cref="IDocumentClassifier"/>, an <see cref="IDiscoveryAgent"/>
     /// and <see cref="IExecutorFactory"/>s.
     /// </summary>
     public static IServiceCollection AddAgentWorkflowEngine(
@@ -28,6 +29,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.AddHostedService<WorkflowEngineStartupCheck>();
 
+        services.TryAddSingleton<DocumentSignatures>();
         services.TryAddSingleton<VerifierCatalog>();
         services.TryAddSingleton<VerifierRunner>();
         services.TryAddSingleton<IExecutorResolver, RegistryExecutorResolver>();
@@ -37,6 +39,8 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<Scheduler>();
         services.TryAddSingleton<IScheduler>(sp => sp.GetRequiredService<Scheduler>());
         services.TryAddSingleton<AgentToolsFactory>();
+        services.TryAddSingleton<ScriptCompiler>();
+        services.TryAddSingleton<SkillRuntimeFactory>();
         services.TryAddSingleton<IWorkflowMiner, WorkflowMiner>();
         services.TryAddSingleton<WorkflowPromotion>();
         services.TryAddSingleton<RunDispatcher>();

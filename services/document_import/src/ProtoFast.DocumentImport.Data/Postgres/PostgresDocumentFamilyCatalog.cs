@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ProtoFast.DocumentImport.Data.Postgres.Entities;
 using ProtoFast.DocumentImport.Engine.Discovery;
 using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Skills;
 using ProtoFast.DocumentImport.Engine.Verification;
 
 namespace ProtoFast.DocumentImport.Data.Postgres;
@@ -70,6 +71,37 @@ public sealed class PostgresDocumentFamilyCatalog(
             .Where(v => v.Family == family)
             .OrderBy(v => v.AddedAt).ThenBy(v => v.VerifierId)
             .Select(v => new VerifierSpec(v.VerifierId, v.StageId, v.Rubric))
+            .ToListAsync(ct);
+    }
+
+    public async Task AddSkillAsync(string family, SkillRef skill, CancellationToken ct)
+    {
+        await using var db = await contexts.CreateDbContextAsync(ct);
+        db.DocumentFamilySkills.Add(new DocumentFamilySkill
+        {
+            Family = family,
+            SkillId = skill.Id,
+            SkillVersion = skill.Version,
+            AddedAt = time.GetUtcNow(),
+        });
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException e) when (PostgresErrors.IsUniqueViolation(e))
+        {
+            // Already in the family.
+        }
+    }
+
+    public async Task<IReadOnlyList<SkillRef>> SkillsAsync(string family, CancellationToken ct)
+    {
+        await using var db = await contexts.CreateDbContextAsync(ct);
+        return await db.DocumentFamilySkills.AsNoTracking()
+            .Where(s => s.Family == family)
+            .OrderBy(s => s.AddedAt).ThenBy(s => s.SkillId).ThenBy(s => s.SkillVersion)
+            .Select(s => new SkillRef(s.SkillId, s.SkillVersion))
             .ToListAsync(ct);
     }
 }

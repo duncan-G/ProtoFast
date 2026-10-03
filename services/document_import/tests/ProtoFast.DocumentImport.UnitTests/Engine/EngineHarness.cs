@@ -29,7 +29,7 @@ internal sealed class EngineHarness
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<TimeProvider>(Time);
-        services.AddSingleton<IClassifier>(new FixedClassifier(Family));
+        services.AddSingleton<IDocumentClassifier>(new FixedDocumentClassifier(Family));
         services.AddSingleton<IDiscoveryAgent>(Agent);
         services.AddSingleton<IExecutorFactory>(Executors);
         services.AddSingleton<IShadowSampler>(Sampler);
@@ -64,7 +64,7 @@ internal sealed class EngineHarness
     public SynchronousOutcomeQueue Outcomes => (SynchronousOutcomeQueue)Get<IOutcomeQueue>();
     public ExecutorRef Orchestrator => Get<EngineOptions>().Orchestrator;
 
-    public Signature Signature { get; } = new(Family, new Dictionary<string, string>());
+    public DocumentSignature DocumentSignature { get; } = new(Family, new Dictionary<string, string>());
 
     public Task<ArtifactRef> InputAsync(string content = "input") =>
         Artifacts.PutAsync(DocumentImport.Core.DocumentImportIds.New(), ArtifactRef.InputStageId, Utf8(content), Raw, default);

@@ -1,6 +1,7 @@
 using ProtoFast.DocumentImport.Data.Postgres;
 using ProtoFast.DocumentImport.IntegrationTests.Fixtures;
 using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Skills;
 using ProtoFast.DocumentImport.Engine.Verification;
 using Xunit;
 
@@ -38,5 +39,19 @@ public class PostgresDocumentFamilyCatalogTests(PostgresFixture postgres)
 
         Assert.Equal([spec], await Catalog.VerifiersAsync(_family, Ct));
         await Assert.ThrowsAsync<InvalidOperationException>(() => Catalog.AddVerifierAsync(_family, spec, Ct));
+    }
+
+    [Fact]
+    public async Task Skill_versions_are_listed_in_the_order_added_and_adding_twice_is_a_no_op()
+    {
+        var first = new SkillRef("split-scenes", 1);
+        var second = new SkillRef("split-scenes", 2);
+
+        await Catalog.AddSkillAsync(_family, first, Ct);
+        await Catalog.AddSkillAsync(_family, second, Ct);
+        await Catalog.AddSkillAsync(_family, first, Ct);
+
+        Assert.Equal([first, second], await Catalog.SkillsAsync(_family, Ct));
+        Assert.Empty(await Catalog.SkillsAsync($"{_family}-other", Ct));
     }
 }

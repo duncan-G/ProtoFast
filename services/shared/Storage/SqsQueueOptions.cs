@@ -12,5 +12,12 @@ public sealed class SqsQueueOptions
 
     public int MaxMessages { get; set; } = 10;
 
+    /// <summary>
+    /// How long a received message stays invisible before it is delivered again. Set on each
+    /// receive rather than read from the queue, so the consumer knows exactly how long it has
+    /// and can renew it (see <c>MessageLease</c>) while work on the message continues.
+    /// </summary>
+    public TimeSpan VisibilityTimeout { get; set; } = TimeSpan.FromMinutes(15);
+
     public TimeSpan WaitTime { get; set; } = TimeSpan.FromSeconds(20);
 }

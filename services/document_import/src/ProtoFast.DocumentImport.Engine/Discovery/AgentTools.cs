@@ -1,18 +1,22 @@
 using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 using ProtoFast.DocumentImport.Engine.Executors;
 using ProtoFast.DocumentImport.Engine.Learning;
 using ProtoFast.DocumentImport.Engine.Policy;
+using ProtoFast.DocumentImport.Engine.Skills;
 using ProtoFast.DocumentImport.Engine.Storage;
 using ProtoFast.DocumentImport.Engine.Verification;
 using ProtoFast.DocumentImport.Engine.Workflows;
 
 namespace ProtoFast.DocumentImport.Engine.Discovery;
 
-public sealed class AgentTools : IAgentTools
+public sealed partial class AgentTools : IAgentTools
 {
+    private const int MaxSkillName = 64;
+
     private readonly AgentToolsFactory _engine;
     private readonly string _runId;
-    private readonly Signature _signature;
+    private readonly DocumentSignature _documentSignature;
     private readonly ArtifactRef _input;
     private readonly TraceRef _trace;
     private readonly StageRequest? _scope;
@@ -20,27 +24,41 @@ public sealed class AgentTools : IAgentTools
 
     private readonly ConcurrentDictionary<string, ContractRef> _contracts = new(StringComparer.Ordinal);
     private readonly ConcurrentQueue<Decision> _scopedDecisions = new();
+    private readonly Lock _scopedCostLock = new();
+    private decimal _scopedCost;
 
     internal AgentTools(
-        AgentToolsFactory engine, string runId, Signature signature, ArtifactRef input, TraceRef trace,
+        AgentToolsFactory engine, string runId, DocumentSignature documentSignature, ArtifactRef input, TraceRef trace,
         StageRequest? scope, CancellationToken ct)
     {
         _engine = engine;
         _runId = runId;
-        _signature = signature;
+        _documentSignature = documentSignature;
         _input = input;
         _trace = trace;
         _scope = scope;
         _ct = ct;
     }
 
-    private string Family => _signature.Family;
+    private string Family => _documentSignature.Family;
 
     /// <summary>Stage scope only.</summary>
     public ArtifactRef? ScopedOutput { get; private set; }
 
     /// <summary>Stage scope only.</summary>
     public IReadOnlyList<Decision> ScopedDecisions => _scopedDecisions.ToList();
+
+    /// <summary>Stage scope only: what the loop spent on its own writes, not on delegates (they record their own).</summary>
+    public decimal ScopedCost
+    {
+        get
+        {
+            lock (_scopedCostLock)
+            {
+                return _scopedCost;
+            }
+        }
+    }
 
     public async Task<DocumentFamilyContext> Context()
     {
@@ -79,7 +97,8 @@ public sealed class AgentTools : IAgentTools
     public Task<Stream> ReadArtifact(ArtifactRef reference) => _engine.Artifacts.GetAsync(reference, _ct);
 
     public async Task<WriteResult> WriteArtifact(
-        string stageId, Stream content, ContractRef contract, IReadOnlyList<ArtifactRef>? inputs = null)
+        string stageId, Stream content, ContractRef contract, IReadOnlyList<ArtifactRef>? inputs = null,
+        Cost? cost = null)
     {
         EnsureWritable(stageId);
         inputs ??= _scope?.Inputs ?? [];
@@ -93,6 +112,14 @@ public sealed class AgentTools : IAgentTools
                     $"Stage '{stageId}' must produce {scope.Stage.Output}, not {contract}.", nameof(contract));
             }
 
+            if (cost is not null)
+            {
+                lock (_scopedCostLock)
+                {
+                    _scopedCost += cost.Amount;
+                }
+            }
+
             var scopedOutput = await _engine.Artifacts.PutAsync(_runId, stageId, content, contract, _ct);
             var scopedVerdicts = await _engine.Verifiers.RunAsync(
                 scope, new StageResult(scopedOutput, _trace, Cost.Zero, []), Tier.Orchestrator, _ct);
@@ -100,12 +127,13 @@ public sealed class AgentTools : IAgentTools
             return new WriteResult(scopedOutput, scopedVerdicts);
         }
 
+        await _engine.Ledger.BeginStageAsync(_runId, stageId, _ct);
         var output = await _engine.Artifacts.PutAsync(_runId, stageId, content, contract, _ct);
         _contracts[stageId] = contract;
 
         var stage = await RecordedStageAsync(stageId, inputs, contract);
-        var request = new StageRequest(_runId, stage, _signature, inputs);
-        var result = new StageResult(output, _trace, Cost.Zero, []);
+        var request = new StageRequest(_runId, stage, _documentSignature, inputs);
+        var result = new StageResult(output, _trace, cost ?? Cost.Zero, []);
         var verdicts = await _engine.Verifiers.RunAsync(request, result, Tier.Orchestrator, _ct);
 
         var record = new StageRecord(
@@ -133,6 +161,54 @@ public sealed class AgentTools : IAgentTools
     }
 
     public Task<string> UploadCode(Stream code) => _engine.Registry.PublishCodeAsync(code, _ct);
+
+    public Task<Stream> ReadCode(string hash) => _engine.Registry.OpenCodeAsync(hash, _ct);
+
+    public async Task<IReadOnlyList<Skill>> Skills()
+    {
+        var latest = (await _engine.Catalog.SkillsAsync(Family, _ct))
+            .GroupBy(s => s.Id, StringComparer.Ordinal)
+            .Select(g => g.MaxBy(s => s.Version));
+        var skills = new List<Skill>();
+        foreach (var reference in latest)
+        {
+            skills.Add(await _engine.Registry.ResolveAsync(reference, _ct));
+        }
+
+        return skills;
+    }
+
+    public async Task<SkillRef> DefineSkill(Skill skill)
+    {
+        if (skill.Ref.Id.Length > MaxSkillName || !SkillName().IsMatch(skill.Ref.Id) || BuiltInSkills.All.ContainsKey(skill.Ref.Id))
+        {
+            throw new ArgumentException(
+                $"'{skill.Ref.Id}' is not a usable skill name: use lowercase words joined by hyphens, and no built-in skill's name.",
+                nameof(skill));
+        }
+
+        if (string.IsNullOrWhiteSpace(skill.Description) || string.IsNullOrWhiteSpace(skill.Instructions))
+        {
+            throw new ArgumentException("A skill needs a description and instructions.", nameof(skill));
+        }
+
+        foreach (var script in skill.Scripts)
+        {
+            if (!SkillName().IsMatch(script.Name) || skill.Scripts.Count(s => s.Name == script.Name) > 1)
+            {
+                throw new ArgumentException($"'{script.Name}' is not a usable, unique script name.", nameof(skill));
+            }
+
+            if (!await _engine.Registry.CodeExistsAsync(script.CodeHash, _ct))
+            {
+                throw new ArgumentException($"No uploaded code has hash {script.CodeHash}.", nameof(skill));
+            }
+        }
+
+        var published = await _engine.Registry.PublishAsync(skill, _ct);
+        await _engine.Catalog.AddSkillAsync(Family, published, _ct);
+        return published;
+    }
 
     public async Task<ExecutorRef> DefineExecutor(ExecutorSpec spec)
     {
@@ -228,7 +304,7 @@ public sealed class AgentTools : IAgentTools
         await Record(new Decision($"executor:{stageId}", executor.ToString(), "Delegated by the agent loop.", 1));
 
         var record = await _engine.Attempts.RunAsync(
-            new StageRequest(_runId, stage, _signature, inputs), executor, isShadow: false, _ct);
+            new StageRequest(_runId, stage, _documentSignature, inputs), executor, isShadow: false, _ct);
 
         if (_scope is not null && record.Passed)
         {
@@ -248,6 +324,15 @@ public sealed class AgentTools : IAgentTools
 
         return _engine.Ledger.RecordAsync(_runId, decision, _ct);
     }
+
+    public async Task<IReadOnlyList<StageRecord>> Records() =>
+        (await _engine.Ledger.SummariseAsync(_runId, _ct)).Stages.Where(s => !s.IsShadow).ToList();
+
+    public async Task<IReadOnlyList<string>> LoadTranscript() =>
+        _scope is null ? await _engine.Ledger.TranscriptAsync(_runId, _ct) : [];
+
+    public Task AppendTranscript(int sequence, string json) =>
+        _scope is null ? _engine.Ledger.AppendTranscriptAsync(_runId, sequence, json, _ct) : Task.CompletedTask;
 
     private void ValidateStructure(ExecutorSpec spec)
     {
@@ -342,11 +427,16 @@ public sealed class AgentTools : IAgentTools
 
     private async Task<ContractRef?> LastRecordedContractAsync(string stageId)
     {
-        var runs = await _engine.Ledger.RecentAsync(Family, RunMode.Discovery, _engine.Options.ContextRuns, _ct);
+        // This run's own records first: a resumed run delegates to stages it defined before the interruption.
+        var runs = (await _engine.Ledger.RecentAsync(Family, RunMode.Discovery, _engine.Options.ContextRuns, _ct))
+            .Prepend(await _engine.Ledger.SummariseAsync(_runId, _ct));
         return runs
             .SelectMany(r => r.Stages)
             .Where(s => s.StageId == stageId)
             .Select(s => (ContractRef?)s.Stage.Output)
             .FirstOrDefault();
     }
+
+    [GeneratedRegex("^[a-z][a-z0-9]*(-[a-z0-9]+)*$")]
+    private static partial Regex SkillName();
 }

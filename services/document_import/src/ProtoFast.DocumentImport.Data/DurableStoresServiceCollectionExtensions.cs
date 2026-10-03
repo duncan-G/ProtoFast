@@ -22,20 +22,31 @@ public static class DurableStoresServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddDurableWorkflowEngineStores(this IServiceCollection services)
     {
-        services.AddDbContextFactory<WorkflowEngineDbContext>((sp, options) =>
-            options.UseWorkflowEngineNpgsql(sp.GetRequiredService<NpgsqlDataSource>()));
-        services.TryAddSingleton(TimeProvider.System);
+        services.AddDurableRunLedger();
 
         services.AddSingleton<IArtifactStore, S3ArtifactStore>();
-        services.AddSingleton<IRunLedger, PostgresRunLedger>();
         services.AddSingleton<IRegistry, PostgresRegistry>();
         services.AddSingleton<IPolicyStore, PostgresPolicyStore>();
         services.AddSingleton<IDocumentFamilyPolicyStore, PostgresDocumentFamilyPolicyStore>();
         services.AddSingleton<IDocumentFamilyCatalog, PostgresDocumentFamilyCatalog>();
+        services.AddSingleton<IDocumentFamilyGenerations, PostgresDocumentFamilyGenerations>();
         services.AddSingleton<IMinedWorkflowStore, PostgresMinedWorkflowStore>();
 
         services.AddSingleton<IOutcomeQueue, SqsOutcomeQueue>();
         services.AddHostedService<OutcomeQueueConsumer>();
+        return services;
+    }
+
+    /// <summary>
+    /// The Postgres run ledger alone, for a service that reads run progress but runs nothing (the
+    /// api). Needs an <c>NpgsqlDataSource</c>.
+    /// </summary>
+    public static IServiceCollection AddDurableRunLedger(this IServiceCollection services)
+    {
+        services.AddDbContextFactory<WorkflowEngineDbContext>((sp, options) =>
+            options.UseWorkflowEngineNpgsql(sp.GetRequiredService<NpgsqlDataSource>()));
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<IRunLedger, PostgresRunLedger>();
         return services;
     }
 }

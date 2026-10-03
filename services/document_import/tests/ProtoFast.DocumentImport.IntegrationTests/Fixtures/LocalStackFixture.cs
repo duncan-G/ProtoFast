@@ -48,6 +48,27 @@ public sealed class LocalStackFixture : IAsyncLifetime
         return queue;
     }
 
+    /// <summary>A standard queue, like the import queue; with a receive limit it dead-letters after that many receives.</summary>
+    public async Task<string> CreateQueueAsync(TimeSpan visibilityTimeout, int? maxReceiveCount = null)
+    {
+        var queue = $"imports-{Guid.NewGuid():N}";
+        using var sqs = new AmazonSQSClient(Credentials, new AmazonSQSConfig { ServiceURL = ServiceUrl, AuthenticationRegion = Region });
+        var attributes = new Dictionary<string, string>
+        {
+            ["VisibilityTimeout"] = ((int)visibilityTimeout.TotalSeconds).ToString(),
+        };
+
+        if (maxReceiveCount is { } max)
+        {
+            var dlq = await sqs.CreateQueueAsync($"{queue}-dlq");
+            var arn = (await sqs.GetQueueAttributesAsync(dlq.QueueUrl, [QueueAttributeName.QueueArn])).QueueARN;
+            attributes["RedrivePolicy"] = $$"""{"deadLetterTargetArn":"{{arn}}","maxReceiveCount":{{max}}}""";
+        }
+
+        await sqs.CreateQueueAsync(new CreateQueueRequest { QueueName = queue, Attributes = attributes });
+        return queue;
+    }
+
     public void AddObjectStorage(IServiceCollection services, string bucket) =>
         services.AddS3ObjectStorage(o =>
         {
@@ -57,12 +78,13 @@ public sealed class LocalStackFixture : IAsyncLifetime
             o.ObjectLockEnabled = false;
         });
 
-    public void AddQueue(IServiceCollection services, string key, string queue) =>
+    public void AddQueue(IServiceCollection services, string key, string queue, TimeSpan visibilityTimeout) =>
         services.AddSqsQueue(key, o =>
         {
             o.QueueName = queue;
             o.ServiceUrl = ServiceUrl;
             o.AwsRegion = Region;
             o.WaitTime = TimeSpan.FromSeconds(1);
+            o.VisibilityTimeout = visibilityTimeout;
         });
 }

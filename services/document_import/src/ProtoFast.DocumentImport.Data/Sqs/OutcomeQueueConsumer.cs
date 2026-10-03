@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ProtoFast.DocumentImport.Core;
 using ProtoFast.DocumentImport.Engine.Learning;
 using ProtoFast.Storage.Abstractions;
 
@@ -52,6 +53,9 @@ public sealed class OutcomeQueueConsumer(
                 continue;
             }
 
+            using var activity = DocumentImportTelemetry.StartProcess(queue.Name, message.Parent);
+            activity?.SetTag("document_import.family", outcome.Family);
+            activity?.SetTag("document_import.outcome", outcome.Kind.ToString());
             try
             {
                 await updater.ApplyAsync(outcome, ct);
@@ -59,6 +63,7 @@ public sealed class OutcomeQueueConsumer(
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
+                activity.Fail(e);
                 failedFamilies.Add(outcome.Family);
                 logger.LogError(e, "Policy update failed for {Kind} on {Family}/{StageId}",
                     outcome.Kind, outcome.Family, outcome.StageId);

@@ -18,5 +18,8 @@ public sealed class EngineOptions
     /// <summary>Recent discovery runs <c>Context()</c> draws reusable stage ids from.</summary>
     public int ContextRuns { get; set; } = 20;
 
+    /// <summary>How long an agent-written script may run before the agent is told it timed out.</summary>
+    public TimeSpan ScriptTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
     public int OutcomePartitions { get; set; } = Math.Max(1, Environment.ProcessorCount);
 }

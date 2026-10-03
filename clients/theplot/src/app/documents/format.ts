@@ -12,6 +12,11 @@ export function formatBytes(bytes: number): string {
   return `${bytes} B`;
 }
 
+/** "$1.24", or "<$0.01" for a fraction of a cent. */
+export function formatCost(usd: number): string {
+  return usd > 0 && usd < 0.01 ? '<$0.01' : `$${usd.toFixed(2)}`;
+}
+
 /** The whole-megabyte figure a limit is quoted as: 10 MB, not 10.0 MB. */
 export function formatLimit(bytes: number): string {
   return `${Math.round(bytes / MB)} MB`;

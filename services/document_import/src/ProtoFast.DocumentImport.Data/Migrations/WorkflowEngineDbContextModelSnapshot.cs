@@ -49,6 +49,27 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                     b.ToTable("document_family_executors", "engine");
                 });
 
+            modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.DocumentFamilyGenerationEntry", b =>
+                {
+                    b.Property<string>("Family")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("family");
+
+                    b.Property<int>("Generation")
+                        .HasColumnType("integer")
+                        .HasColumnName("generation");
+
+                    b.Property<DateTimeOffset>("ResetAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reset_at");
+
+                    b.HasKey("Family")
+                        .HasName("pk_document_family_generations");
+
+                    b.ToTable("document_family_generations", "engine");
+                });
+
             modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.DocumentFamilyPolicyEntry", b =>
                 {
                     b.Property<string>("Family")
@@ -87,6 +108,32 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                         .HasName("pk_document_family_policies");
 
                     b.ToTable("document_family_policies", "engine");
+                });
+
+            modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.DocumentFamilySkill", b =>
+                {
+                    b.Property<string>("Family")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("family");
+
+                    b.Property<string>("SkillId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("skill_id");
+
+                    b.Property<int>("SkillVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("skill_version");
+
+                    b.Property<DateTimeOffset>("AddedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("added_at");
+
+                    b.HasKey("Family", "SkillId", "SkillVersion")
+                        .HasName("pk_document_family_skills");
+
+                    b.ToTable("document_family_skills", "engine");
                 });
 
             modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.DocumentFamilyVerifier", b =>
@@ -245,6 +292,10 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("run_id");
 
+                    b.Property<DateTimeOffset?>("AbandonedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("abandoned_at");
+
                     b.Property<DateTimeOffset?>("ClosedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("closed_at");
@@ -253,6 +304,10 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb")
                         .HasColumnName("facets");
+
+                    b.Property<string>("Failure")
+                        .HasColumnType("text")
+                        .HasColumnName("failure");
 
                     b.Property<string>("Family")
                         .IsRequired()
@@ -282,6 +337,82 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                         .HasDatabaseName("ix_runs_family_mode_closed_at");
 
                     b.ToTable("runs", "engine");
+                });
+
+            modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.RunMessageEntry", b =>
+                {
+                    b.Property<string>("RunId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("run_id");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer")
+                        .HasColumnName("sequence");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("message");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("recorded_at");
+
+                    b.HasKey("RunId", "Sequence")
+                        .HasName("pk_run_messages");
+
+                    b.ToTable("run_messages", "engine");
+                });
+
+            modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.RunProgressEntry", b =>
+                {
+                    b.Property<string>("SourceId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("source_id");
+
+                    b.Property<decimal>("Cost")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("cost");
+
+                    b.Property<string>("Message")
+                        .HasColumnType("text")
+                        .HasColumnName("message");
+
+                    b.Property<string>("Phase")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("phase");
+
+                    b.Property<string>("ResultId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("result_id");
+
+                    b.Property<string>("RunId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("run_id");
+
+                    b.Property<string>("StageId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("stage_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("SourceId")
+                        .HasName("pk_run_progress");
+
+                    b.HasIndex("RunId")
+                        .HasDatabaseName("ix_run_progress_run_id");
+
+                    b.ToTable("run_progress", "engine");
                 });
 
             modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.StagePolicyEntry", b =>
@@ -385,6 +516,16 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_run_decisions_runs_run_id");
+                });
+
+            modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.RunMessageEntry", b =>
+                {
+                    b.HasOne("ProtoFast.DocumentImport.Data.Postgres.Entities.RunEntry", null)
+                        .WithMany()
+                        .HasForeignKey("RunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_run_messages_runs_run_id");
                 });
 
             modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.StageRecordEntry", b =>

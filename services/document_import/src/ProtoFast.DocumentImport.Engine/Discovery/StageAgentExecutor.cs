@@ -19,7 +19,7 @@ public sealed class StageAgentExecutor(IDiscoveryAgent agent, AgentToolsFactory 
         return new StageResult(
             scoped.ScopedOutput ?? ArtifactRef.None,
             trace,
-            new Cost(0, time.GetElapsedTime(started)),
+            new Cost(scoped.ScopedCost, time.GetElapsedTime(started)),
             scoped.ScopedDecisions);
     }
 }

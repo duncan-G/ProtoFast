@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using ProtoFast.DocumentImport.Engine.Discovery;
 using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Skills;
 using ProtoFast.DocumentImport.Engine.Verification;
 
 namespace ProtoFast.DocumentImport.Engine.InMemory;
@@ -57,11 +58,35 @@ public sealed class InMemoryDocumentFamilyCatalog : IDocumentFamilyCatalog
         }
     }
 
+    public Task AddSkillAsync(string family, SkillRef skill, CancellationToken ct)
+    {
+        var entry = EntryFor(family);
+        lock (entry)
+        {
+            if (!entry.Skills.Contains(skill))
+            {
+                entry.Skills.Add(skill);
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<SkillRef>> SkillsAsync(string family, CancellationToken ct)
+    {
+        var entry = EntryFor(family);
+        lock (entry)
+        {
+            return Task.FromResult<IReadOnlyList<SkillRef>>(entry.Skills.ToList());
+        }
+    }
+
     private Entry EntryFor(string family) => _families.GetOrAdd(family, _ => new Entry());
 
     private sealed class Entry
     {
         public List<ExecutorRef> Executors { get; } = [];
         public List<VerifierSpec> Verifiers { get; } = [];
+        public List<SkillRef> Skills { get; } = [];
     }
 }
