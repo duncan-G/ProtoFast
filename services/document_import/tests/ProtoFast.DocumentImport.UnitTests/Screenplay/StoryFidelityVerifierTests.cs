@@ -105,7 +105,7 @@ public class StoryFidelityVerifierTests
     {
         var input = await InputAsync();
         var ledger = _services.GetRequiredService<IRunLedger>();
-        var signature = new DocumentSignature(SimpleDocumentClassifier.ProseFamily, new Dictionary<string, string>());
+        var signature = new DocumentSignature("prose", new Dictionary<string, string>());
         await ledger.OpenAsync(input.RunId, signature, RunMode.Discovery, Ct);
         var scenes = await _services.GetRequiredService<IArtifactStore>()
             .PutAsync(input.RunId, "scenes", Stream("[]"), new ContractRef("scenes", 1), Ct);
@@ -143,7 +143,7 @@ public class StoryFidelityVerifierTests
         var stage = new StageDefinition(
             StoryStages.StoryStage, [], StoryStages.SourceContract, StoryStages.StoryContract, [StoryFidelityVerifier.VerifierId], Budget.Unbounded);
         var request = new StageRequest(
-            input.RunId, stage, new DocumentSignature(SimpleDocumentClassifier.ProseFamily, new Dictionary<string, string>()), inputs);
+            input.RunId, stage, new DocumentSignature("prose", new Dictionary<string, string>()), inputs);
         var verifier = _services.GetServices<IVerifier>().Single(v => v.Id == StoryFidelityVerifier.VerifierId);
         return await verifier.VerifyAsync(request, new StageResult(output, null, Cost.Zero, []), Ct);
     }

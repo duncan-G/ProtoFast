@@ -74,6 +74,18 @@ public interface IClassifier
 }
 ```
 
+The manuscript classifier is two model calls. A small model writes a synopsis of the document (its
+opening, a slice of its middle and its ending when it is long): what it is, what it contains, its
+form and language. A medium model then reads that synopsis and every registered family's description
+(`IDocumentFamilyRegistry`) and names the family that fits, or opens a new one, with a name, a display
+name and a description written for whoever sorts the next document, when none does. The descriptions
+are the taxonomy: the classifier writes them as families appear and an operator sharpens them from the
+console, and the next document is sorted by the sharper rule. The synopsis, form, language and the
+model's reason land in the signature's facets, so the ledger shows why a run went where it did.
+
+A source's open discovery run keeps the family it opened under. The dispatcher reuses that run's
+signature on a redelivery instead of classifying again, since a model asked twice may answer twice.
+
 ## 2. Executors
 
 One interface, five tiers. The engine cannot distinguish them.

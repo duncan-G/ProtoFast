@@ -29,7 +29,7 @@ internal sealed class EngineHarness
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<TimeProvider>(Time);
-        services.AddSingleton<IDocumentClassifier>(new FixedDocumentClassifier(Family));
+        services.AddSingleton<IDocumentClassifier>(Classifier);
         services.AddSingleton<IDiscoveryAgent>(Agent);
         services.AddSingleton<IExecutorFactory>(Executors);
         services.AddSingleton<IShadowSampler>(Sampler);
@@ -49,6 +49,7 @@ internal sealed class EngineHarness
     }
 
     public FakeTimeProvider Time { get; } = new(new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero));
+    public FixedDocumentClassifier Classifier { get; } = new(Family);
     public ScriptedAgent Agent { get; } = new();
     public ScriptedExecutorFactory Executors { get; } = new();
     public FixedSampler Sampler { get; } = new();

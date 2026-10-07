@@ -30,7 +30,10 @@ public sealed class RunDispatcher(
     /// <param name="input">Already stored under <see cref="ArtifactRef.InputStageId"/>.</param>
     public async Task<RunSummary> RunAsync(ArtifactRef input, CancellationToken ct)
     {
-        var documentSignature = await documentSignatures.ClassifyAsync(input, ct);
+        // The classifier is a model, so a redelivery that classified afresh could leave the
+        // source's open run stranded under a family it never had.
+        var open = await OpenRunAsync(input, ct);
+        var documentSignature = open?.DocumentSignature ?? await documentSignatures.ClassifyAsync(input, ct);
         var family = await families.GetAsync(documentSignature.Family, ct);
         var workflow = family.Workflow is { } promoted && await registry.IsPromotedAsync(promoted, ct)
             ? await registry.ResolveAsync(promoted, ct)
@@ -48,7 +51,7 @@ public sealed class RunDispatcher(
         RunSummary summary;
         try
         {
-            summary = await RunDiscoveryAsync(input, documentSignature, ct);
+            summary = await RunDiscoveryAsync(input, documentSignature, open, ct);
         }
         finally
         {
@@ -59,9 +62,9 @@ public sealed class RunDispatcher(
         return summary;
     }
 
-    private async Task<RunSummary> RunDiscoveryAsync(ArtifactRef input, DocumentSignature documentSignature, CancellationToken ct)
+    private async Task<RunSummary> RunDiscoveryAsync(
+        ArtifactRef input, DocumentSignature documentSignature, RunSummary? resumed, CancellationToken ct)
     {
-        var resumed = await ResumableAsync(input, documentSignature, ct);
         var runId = resumed?.RunId ?? DocumentImportIds.New();
         var trace = new TraceRef(runId);
         using var activity = StartRun(RunMode.Discovery, documentSignature);
@@ -102,8 +105,8 @@ public sealed class RunDispatcher(
         }
     }
 
-    /// <summary>The source's last run, when it is an open discovery run of the same family.</summary>
-    private async Task<RunSummary?> ResumableAsync(ArtifactRef input, DocumentSignature documentSignature, CancellationToken ct)
+    /// <summary>The source's last run, when it is a discovery run still open.</summary>
+    private async Task<RunSummary?> OpenRunAsync(ArtifactRef input, CancellationToken ct)
     {
         var progress = (await ledger.ProgressAsync([input.RunId], ct)).GetValueOrDefault(input.RunId);
         if (progress?.RunId is not { } runId)
@@ -112,7 +115,7 @@ public sealed class RunDispatcher(
         }
 
         var open = await ledger.FindOpenAsync(runId, ct);
-        return open is { Mode: RunMode.Discovery } && open.DocumentSignature.Family == documentSignature.Family ? open : null;
+        return open is { Mode: RunMode.Discovery } ? open : null;
     }
 
     private async Task<RunSummary> RunScheduledAsync(

@@ -111,6 +111,31 @@ public class RunDispatcherTests
     }
 
     [Fact]
+    public async Task A_resumed_run_keeps_the_family_it_opened_under_when_the_classifier_changes_its_mind()
+    {
+        var attempts = 0;
+        _h.Agent.Run = async (input, tools) =>
+        {
+            if (++attempts == 1)
+            {
+                throw new IOException("the database went away");
+            }
+
+            await tools.WriteArtifact("summarise", Utf8("summary"), Markdown, [input]);
+        };
+        var input = await _h.InputAsync();
+        await Assert.ThrowsAsync<IOException>(() => Dispatcher.RunAsync(input, Ct));
+        var interrupted = (await _h.Ledger.ProgressAsync([input.RunId], Ct))[input.RunId];
+
+        _h.Classifier.Family = "memo";
+        var summary = await Dispatcher.RunAsync(input, Ct);
+
+        Assert.Equal((interrupted.RunId, Family), (summary.RunId, summary.DocumentSignature.Family));
+        Assert.Empty(await _h.Ledger.RecentAsync("memo", RunMode.Discovery, 10, Ct));
+        Assert.Single(await _h.Ledger.RecentAsync(Family, RunMode.Discovery, 10, Ct));
+    }
+
+    [Fact]
     public async Task A_run_the_agent_gives_up_on_is_abandoned_and_never_resumed()
     {
         var runs = 0;

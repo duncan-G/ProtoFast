@@ -35,7 +35,8 @@ builder.Services.AddAgentWorkflowEngine();
 builder.Services.AddDurableWorkflowEngineStores();
 builder.Services.AddScreenplayDiscovery(
     options => builder.Configuration.GetSection("Providers").Bind(options),
-    agent => builder.Configuration.GetSection("DiscoveryAgent").Bind(agent));
+    agent => builder.Configuration.GetSection("DiscoveryAgent").Bind(agent),
+    classifier => builder.Configuration.GetSection("DocumentClassifier").Bind(classifier));
 
 builder.Services.Configure<ConversionOptions>(builder.Configuration.GetSection("Conversion"));
 builder.Services.AddHttpClient(ConversionClient.HttpClientName, http => http.Timeout = TimeSpan.FromMinutes(10));
