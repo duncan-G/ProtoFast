@@ -24,7 +24,7 @@ The entrypoint fails fast: every required variable is checked, and an unknown
 
 | `ENVOY_MODE` | Used by | Shape |
 |---|---|---|
-| `dev` | `aspire run` | one HTTPS listener per client on `CLIENT_<NAME>_LISTENER_PORT`; catch-all → that client's `ng serve` |
+| `dev` | `aspire run` | one HTTPS listener per client on `CLIENT_<NAME>_LISTENER_PORT`, serving only `CLIENT_<NAME>_DOMAIN` (any other `Host` is 302-redirected to it); catch-all → that client's `ng serve` |
 | `dev-host` | `SsrHost__Dev=true aspire run` | same listeners; catch-all → the unified SSR host with an `x-client` header |
 | `publish` | production | one listener on `PORT` (8443); one virtual host per `CLIENT_<NAME>_DOMAIN`, all → the SSR host |
 
@@ -38,7 +38,7 @@ unmatched Host header still gets a sensible site.
 | `ENVOY_MODE` | `dev` \| `dev-host` \| `publish` |
 | `CLIENTS`, `DEFAULT_CLIENT` | which clients exist; which one is the fallback |
 | `PORT` (publish) / `CLIENT_<NAME>_LISTENER_PORT` (dev) | listener ports |
-| `CLIENT_<NAME>_DOMAIN` (publish) | the vhost domain for that client |
+| `CLIENT_<NAME>_DOMAIN` | the vhost domain for that client (dev: `«client».dev.localhost`) |
 | `CLIENT_<NAME>_HOST/_PORT` (dev) | that client's dev server |
 | `CLIENTS_HOST_HOST/_PORT` | the unified SSR host (publish and dev-host) |
 | `AUTH_HOST/_PORT`, `PAYMENTS_…`, `API_…` | backend upstreams |
@@ -73,8 +73,8 @@ Three things about this list are load-bearing:
 - **`x-client` is set at the vhost level**, so every route — static assets included
   — carries it. Without that, one client would serve another's hashed bundles.
 
-Each vhost also sets CORS (exact origin in publish, a localhost regex in dev,
-`allow_credentials: true`) and an `alt-svc` header advertising HTTP/3.
+Each vhost also sets CORS (the client's exact origin — in dev
+`https://«client».dev.localhost:«port»` — with `allow_credentials: true`) and an `alt-svc` header advertising HTTP/3.
 
 ## The Keycloak vhost (production only)
 

@@ -2,9 +2,10 @@
 set -e
 
 # Renders the Envoy config from templates based on ENVOY_MODE:
-#   dev      — one HTTPS listener per client (CLIENT_<NAME>_LISTENER_PORT), each
-#              routing API prefixes to the services and its catch-all to that
-#              client's Angular dev server (CLIENT_<NAME>_HOST/PORT).
+#   dev      — one HTTPS listener per client (CLIENT_<NAME>_LISTENER_PORT) serving
+#              its CLIENT_<NAME>_DOMAIN, each routing API prefixes to the services
+#              and its catch-all to that client's Angular dev server
+#              (CLIENT_<NAME>_HOST/PORT).
 #   dev-host — same per-client listeners, but every catch-all routes to the
 #              unified SSR host (CLIENTS_HOST_HOST/PORT) with an x-client header.
 #   publish  — a single listener on PORT with one virtual host per client domain
@@ -140,15 +141,6 @@ render_rds() { # route_config_name vhosts_file out_file
 
 case "$ENVOY_MODE" in
   dev|dev-host)
-    # Pages and API are same-origin per listener; CORS allows local origins as
-    # a safety net.
-    DEV_CORS=/tmp/cors_dev.yaml
-    cat > "$DEV_CORS" <<'EOF'
-          allow_origin_string_match:
-            - safe_regex:
-                regex: "^https?://(localhost|127\\.0\\.0\\.1)(:[0-9]+)?$"
-EOF
-
     if [ "$ENVOY_MODE" = "dev-host" ]; then
       require_env CLIENTS_HOST_HOST
       require_env CLIENTS_HOST_PORT
@@ -158,7 +150,9 @@ EOF
     for CLIENT in $CLIENT_LIST; do
       U=$(upper "$CLIENT")
       require_env "CLIENT_${U}_LISTENER_PORT"
+      require_env "CLIENT_${U}_DOMAIN"
       eval "LISTENER_PORT=\$CLIENT_${U}_LISTENER_PORT"
+      eval "DOMAIN=\$CLIENT_${U}_DOMAIN"
 
       if [ "$ENVOY_MODE" = "dev" ]; then
         require_env "CLIENT_${U}_HOST"
@@ -173,9 +167,33 @@ EOF
         CONSOLE_TLS=/dev/null
       fi
 
+      CORS_FILE="/tmp/cors_${CLIENT}.yaml"
+      cat > "$CORS_FILE" <<EOF
+          allow_origin_string_match:
+            - exact: "https://${DOMAIN}:${LISTENER_PORT}"
+EOF
+
       VHOSTS_FILE="/tmp/vhosts_${CLIENT}.yaml"
       : > "$VHOSTS_FILE"
-      render_vhost "$CLIENT" '["*"]' "$LISTENER_PORT" "$WEB_CLUSTER" "$DEV_CORS" "$VHOSTS_FILE" "$CONSOLE_TLS"
+      render_vhost "$CLIENT" "[\"${DOMAIN}\", \"${DOMAIN}:${LISTENER_PORT}\"]" "$LISTENER_PORT" "$WEB_CLUSTER" "$CORS_FILE" "$VHOSTS_FILE" "$CONSOLE_TLS"
+      # Any other Host (an old https://localhost:2000x bookmark) is sent to the client's own
+      # hostname rather than served there, where its cookie would not be the client's.
+      cat >> "$VHOSTS_FILE" <<EOF
+    - name: ${CLIENT}_canonical_host
+      domains: ["*"]
+      typed_per_filter_config:
+        envoy.filters.http.ext_authz:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+          disabled: true
+      routes:
+        - match: { prefix: "/" }
+          redirect:
+            scheme_redirect: https
+            host_redirect: "${DOMAIN}"
+            port_redirect: ${LISTENER_PORT}
+            response_code: FOUND
+
+EOF
       render_rds "routes_${CLIENT}" "$VHOSTS_FILE" "/etc/envoy/discovery/envoy.rds.${CLIENT}.yaml"
       render_listener "listener_${CLIENT}" "$LISTENER_PORT" "envoy.rds.${CLIENT}.yaml" "routes_${CLIENT}"
     done

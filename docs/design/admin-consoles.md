@@ -119,7 +119,7 @@ operator holds becomes a cross-app permission the moment an RPC is gated on it.
 | Host | Realm | Client | Extra |
 |---|---|---|---|
 | `admin.protofast.dev` | `operators` | `admin` | `RequiredRoles`, `MaxAge`, `AcrValues` |
-| dev `localhost+20000` | `operators` | `admin` | `RequiredRoles` |
+| dev `admin.dev.localhost` | `operators` | `admin` | `RequiredRoles` |
 
 ### 4.5 Granting and revoking
 

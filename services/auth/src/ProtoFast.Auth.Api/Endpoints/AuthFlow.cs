@@ -194,13 +194,17 @@ public sealed class AuthFlow(
         // routine for /reset and unavoidable for the passkey offer — that second leg is a
         // whole authorize round trip and comes back with a fresh token set. Drop the record
         // the cookie is about to stop pointing at, or every offer leaves one behind in Redis
-        // until its TTL runs out.
+        // until its TTL runs out. Only a record from this realm, though: a cookie carrying
+        // another realm's session means two hosts share a cookie jar, and deleting it would sign
+        // the other host out.
         var previousSessionId = ctx.Request.Cookies[_session.CookieName];
 
         var sessionId = await sessionStore.CreateAsync(session, ct);
         AppendSessionCookie(ctx, sessionId);
 
-        if (!string.IsNullOrEmpty(previousSessionId) && previousSessionId != sessionId)
+        if (!string.IsNullOrEmpty(previousSessionId)
+            && previousSessionId != sessionId
+            && (await sessionStore.GetAsync(previousSessionId, ct))?.Realm == session.Realm)
         {
             await sessionStore.DeleteAsync(previousSessionId, ct);
         }

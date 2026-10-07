@@ -351,7 +351,7 @@ Both endpoints now use `OtlpHttpEndpointName` (port 4318).
 `BROWSER_OTEL_ENDPOINT` is injected but unused by the browser (it uses
 `SERVER_URL`-based `/otlp/v1/`); it remains available for future use.
 Note `adminWeb` — the client's `SERVER_URL` is its per-client Envoy
-listener endpoint returned by `proxy.WithClient(builder, "admin")`.
+listener origin returned by `proxy.WithClient(builder, "admin")`.
 When the unified SSR host is registered (`AddClientHost`), pass the
 same two OTel endpoints to it as well.
 

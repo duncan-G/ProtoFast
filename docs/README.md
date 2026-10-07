@@ -35,9 +35,10 @@ which environment it is in.
 ## The 60-second version
 
 - **Dev**: `aspire run` from the repo root. The AppHost starts Postgres, Redis,
-Keycloak, smtp4dev, the OTel collector, three .NET services, two Angular dev
-servers and Envoy. Browsers use `https://localhost:20000` (admin) and
-`https://localhost:20001` (protofast). Everything else is assigned dynamically.
+Keycloak, smtp4dev, the OTel collector, three .NET services, three Angular dev
+servers and Envoy. Browsers use `https://admin.dev.localhost:20000`,
+`https://protofast.dev.localhost:20001` and `https://theplot.dev.localhost:20002`.
+Everything else is assigned dynamically.
 - **Prod**: two EC2 instances. **Host A** is the edge (cloudflared → Envoy → the
 unified SSR host + OTel collector + Aspire dashboard). **Host B** is services
 and state (auth / payments / api + Keycloak + Postgres + Redis). There are no

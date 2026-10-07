@@ -125,7 +125,7 @@ public static EndpointReference AddClientApp(
     this IDistributedApplicationBuilder builder,
     string clientName,
     string clientPath,
-    EndpointReference serverEndpoint,
+    ReferenceExpression serverUrl,
     EndpointReference? clientOtelEndpoint = null,
     EndpointReference? clientServerOtelEndpoint = null)
 ```
@@ -209,7 +209,7 @@ Key ordering: the OTel collector is created first (other resources
 depend on it); Envoy gets `.WithOtelCollectorEndpoints(otel)` before
 the `WaitFor` calls; the client app (or the unified SSR host) receives
 the collector endpoints. Note `proxy.WithClient(builder, "admin")` —
-the client's `SERVER_URL` is its per-client Envoy listener endpoint.
+the client's `SERVER_URL` is its per-client Envoy listener origin.
 Backend services still use `GetEndpoint("http")` since Envoy talks
 upstream over cleartext.
 

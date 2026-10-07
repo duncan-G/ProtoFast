@@ -71,7 +71,8 @@ steps; deviations should be deliberate and discussed with the user.
    every port at startup and passes it through endpoint references.
    Envoy gets one HTTPS listener per client (fixed internal target
    ports 20000, 20001, … assigned in registration order by
-   `WithClient`); each listener routes API prefixes to the services
+   `WithClient`, each served on its own `«client».dev.localhost`
+   hostname); each listener routes API prefixes to the services
    and its catch-all to that client. All upstream endpoints (hosts
    and ports) are injected as environment variables via
    `WithUpstreamEndpoint` and rendered by `entrypoint.sh` at
@@ -544,7 +545,7 @@ Six rows corresponding to six `.Add...` calls in `Program.cs`
 
 **Curl checks.** Obtain the Envoy admin URL and the admin client's
 listener URL (the `admin-web` endpoint on the envoy resource, e.g.
-`https://localhost:20000`) from `aspire describe --format Json`. The
+`https://admin.dev.localhost:20000`) from `aspire describe --format Json`. The
 listener uses a self-signed Aspire developer certificate, so pass
 `-k` (allow insecure) on all HTTPS checks. All pass on a clean run:
 

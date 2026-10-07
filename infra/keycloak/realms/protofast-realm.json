@@ -362,7 +362,7 @@
       "name": "ProtoFast Web",
       "enabled": true,
       "protocol": "openid-connect",
-      "baseUrl": "${PROTOFAST_WEB_BASE_URL:https://localhost:20001}",
+      "baseUrl": "${PROTOFAST_WEB_BASE_URL:https://protofast.dev.localhost:20001}",
       "publicClient": false,
       "clientAuthenticatorType": "client-secret",
       "secret": "${PROTOFAST_WEB_CLIENT_SECRET:dev-protofast-web-secret}",
@@ -374,7 +374,7 @@
       "fullScopeAllowed": true,
       "redirectUris": [
         "https://protofast.dev/signin-oidc",
-        "https://localhost:20001/signin-oidc"
+        "https://protofast.dev.localhost:20001/signin-oidc"
       ],
       "webOrigins": [
         "https://protofast.dev",
@@ -382,7 +382,7 @@
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "https://protofast.dev/*##https://localhost:20001/*",
+        "post.logout.redirect.uris": "https://protofast.dev/*##https://protofast.dev.localhost:20001/*",
         "backchannel.logout.url": "${BACKCHANNEL_LOGOUT_URL:}",
         "backchannel.logout.session.required": "true",
         "backchannel.logout.revoke.offline.tokens": "false"

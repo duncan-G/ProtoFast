@@ -362,7 +362,7 @@
       "name": "ThePlot Web",
       "enabled": true,
       "protocol": "openid-connect",
-      "baseUrl": "${THEPLOT_WEB_BASE_URL:https://localhost:20002}",
+      "baseUrl": "${THEPLOT_WEB_BASE_URL:https://theplot.dev.localhost:20002}",
       "publicClient": false,
       "clientAuthenticatorType": "client-secret",
       "secret": "${THEPLOT_WEB_CLIENT_SECRET:dev-theplot-web-secret}",
@@ -374,7 +374,7 @@
       "fullScopeAllowed": true,
       "redirectUris": [
         "https://theplot.protofast.dev/signin-oidc",
-        "https://localhost:20002/signin-oidc"
+        "https://theplot.dev.localhost:20002/signin-oidc"
       ],
       "webOrigins": [
         "https://theplot.protofast.dev",
@@ -382,7 +382,7 @@
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "https://theplot.protofast.dev/*##https://localhost:20002/*",
+        "post.logout.redirect.uris": "https://theplot.protofast.dev/*##https://theplot.dev.localhost:20002/*",
         "backchannel.logout.url": "${BACKCHANNEL_LOGOUT_URL:}",
         "backchannel.logout.session.required": "true",
         "backchannel.logout.revoke.offline.tokens": "false"
