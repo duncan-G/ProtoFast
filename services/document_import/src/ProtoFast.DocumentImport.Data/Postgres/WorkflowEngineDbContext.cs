@@ -31,6 +31,8 @@ public sealed class WorkflowEngineDbContext(DbContextOptions<WorkflowEngineDbCon
 
     public DbSet<RunMessageEntry> RunMessages => Set<RunMessageEntry>();
 
+    public DbSet<RunSystemPromptEntry> RunSystemPrompts => Set<RunSystemPromptEntry>();
+
     public DbSet<RunProgressEntry> RunProgress => Set<RunProgressEntry>();
 
     public DbSet<StagePolicyEntry> StagePolicies => Set<StagePolicyEntry>();
@@ -41,9 +43,21 @@ public sealed class WorkflowEngineDbContext(DbContextOptions<WorkflowEngineDbCon
 
     public DbSet<MinedWorkflowDraftEntry> MinedWorkflowDrafts => Set<MinedWorkflowDraftEntry>();
 
+    public DbSet<DocumentFamilyEntry> DocumentFamilies => Set<DocumentFamilyEntry>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(Schema);
+
+        // Keyed by the bare family name: what an operator wrote about it outlives every generation.
+        modelBuilder.Entity<DocumentFamilyEntry>(entity =>
+        {
+            entity.HasKey(e => e.Family);
+            entity.Property(e => e.Family).HasMaxLength(IdLength);
+            entity.Property(e => e.DisplayName).IsRequired().HasMaxLength(IdLength);
+            entity.Property(e => e.Description).IsRequired();
+            entity.Property(e => e.CreatedBy).HasMaxLength(IdLength);
+        });
 
         modelBuilder.Entity<RegistryEntry>(entity =>
         {
@@ -89,6 +103,8 @@ public sealed class WorkflowEngineDbContext(DbContextOptions<WorkflowEngineDbCon
 
             // The miner and Context() read a family's most recently closed runs.
             entity.HasIndex(e => new { e.Family, e.Mode, e.ClosedAt });
+            // The console lists runs newest first.
+            entity.HasIndex(e => e.OpenedAt).IsDescending();
         });
 
         modelBuilder.Entity<StageRecordEntry>(entity =>
@@ -118,6 +134,14 @@ public sealed class WorkflowEngineDbContext(DbContextOptions<WorkflowEngineDbCon
             entity.HasKey(e => new { e.RunId, e.Sequence });
             entity.Property(e => e.RunId).HasMaxLength(IdLength);
             entity.Property(e => e.Message).IsRequired().HasColumnType("jsonb");
+            entity.HasOne<RunEntry>().WithMany().HasForeignKey(e => e.RunId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RunSystemPromptEntry>(entity =>
+        {
+            entity.HasKey(e => new { e.RunId, e.FromSequence });
+            entity.Property(e => e.RunId).HasMaxLength(IdLength);
+            entity.Property(e => e.Prompt).IsRequired();
             entity.HasOne<RunEntry>().WithMany().HasForeignKey(e => e.RunId).OnDelete(DeleteBehavior.Cascade);
         });
 

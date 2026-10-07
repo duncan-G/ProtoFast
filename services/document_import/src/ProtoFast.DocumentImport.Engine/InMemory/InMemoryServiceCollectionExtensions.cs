@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using ProtoFast.DocumentImport.Engine.Discovery;
+using ProtoFast.DocumentImport.Engine.Families;
 using ProtoFast.DocumentImport.Engine.Learning;
 using ProtoFast.DocumentImport.Engine.Policy;
 using ProtoFast.DocumentImport.Engine.Storage;
@@ -18,6 +19,7 @@ public static class InMemoryServiceCollectionExtensions
         services.AddSingleton<IDocumentFamilyPolicyStore, InMemoryDocumentFamilyPolicyStore>();
         services.AddSingleton<IDocumentFamilyCatalog, InMemoryDocumentFamilyCatalog>();
         services.AddSingleton<IDocumentFamilyGenerations, InMemoryDocumentFamilyGenerations>();
+        services.AddSingleton<IDocumentFamilyRegistry, InMemoryDocumentFamilyRegistry>();
         services.AddSingleton<IMinedWorkflowStore, InMemoryMinedWorkflowStore>();
 
         services.AddSingleton<InMemoryOutcomeQueue>();

@@ -33,8 +33,9 @@ builder.Services.AddGrpc(options =>
 builder.AddNpgsqlDataSource("protofast"); // NpgsqlDataSource for the ThePlotDbContext
 builder.Services.AddThePlotData();
 
-// Import progress is read from the document import engine's run ledger, in the same database.
-builder.Services.AddDurableRunLedger();
+// Import progress is read from the document import engine's run ledger, in the same database;
+// theplot's console reads the rest of the engine through the same stores.
+builder.Services.AddDurableEngineAdministration();
 builder.Services.AddScoped<StoryScope>();
 builder.Services.AddScoped<StoryLibrary>();
 
@@ -55,6 +56,8 @@ app.MapGrpcService<DocumentService>();
 app.MapGrpcService<StoryService>();
 app.MapGrpcService<AdminOverviewService>();
 app.MapGrpcService<TheplotAdminService>();
+app.MapGrpcService<TheplotRunsService>();
+app.MapGrpcService<TheplotFamiliesService>();
 app.MapGet("/", () => "Communication with gRPC endpoints must be made through a gRPC client. To learn how to create a client, visit: https://go.microsoft.com/fwlink/?linkid=2086909");
 
 app.Run();

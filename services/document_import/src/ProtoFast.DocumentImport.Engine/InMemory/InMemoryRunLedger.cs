@@ -118,6 +118,33 @@ public sealed class InMemoryRunLedger : IRunLedger
         }
     }
 
+    public Task RecordSystemPromptAsync(string runId, int fromSequence, string prompt, CancellationToken ct)
+    {
+        var run = Find(runId);
+        lock (run)
+        {
+            if (run.SystemPrompts.Count == 0 || run.SystemPrompts.Values.Last().Prompt != prompt)
+            {
+                run.SystemPrompts.TryAdd(fromSequence, new RunSystemPrompt(fromSequence, prompt, DateTimeOffset.UtcNow));
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<RunSystemPrompt>> SystemPromptsAsync(string runId, CancellationToken ct)
+    {
+        if (!_runs.TryGetValue(runId, out var run))
+        {
+            return Task.FromResult<IReadOnlyList<RunSystemPrompt>>([]);
+        }
+
+        lock (run)
+        {
+            return Task.FromResult<IReadOnlyList<RunSystemPrompt>>(run.SystemPrompts.Values.ToList());
+        }
+    }
+
     public Task ReportAsync(string sourceId, RunProgress progress, CancellationToken ct)
     {
         _progress.AddOrUpdate(
@@ -178,6 +205,7 @@ public sealed class InMemoryRunLedger : IRunLedger
         public List<StageRecord> Stages { get; } = [];
         public List<Decision> Decisions { get; } = [];
         public SortedDictionary<int, string> Transcript { get; } = [];
+        public SortedDictionary<int, RunSystemPrompt> SystemPrompts { get; } = [];
         public TraceRef? Trace { get; set; }
         public long? ClosedSequence { get; set; }
         public string? Failure { get; set; }

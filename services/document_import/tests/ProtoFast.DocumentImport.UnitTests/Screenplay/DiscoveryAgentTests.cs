@@ -9,10 +9,12 @@ using ProtoFast.DocumentImport.Engine.InMemory;
 using ProtoFast.DocumentImport.Engine.Skills;
 using ProtoFast.DocumentImport.Engine.Storage;
 using ProtoFast.DocumentImport.Engine.Verification;
+using ProtoFast.DocumentImport.Engine.Workflows;
 using ProtoFast.DocumentImport.Screenplay;
 using ProtoFast.DocumentImport.Screenplay.Agents;
 using ProtoFast.DocumentImport.Screenplay.Drafts;
 using ProtoFast.DocumentImport.Screenplay.Models;
+using ProtoFast.DocumentImport.UnitTests.Engine.Fakes;
 using Xunit;
 
 namespace ProtoFast.DocumentImport.UnitTests.Screenplay;
@@ -20,6 +22,9 @@ namespace ProtoFast.DocumentImport.UnitTests.Screenplay;
 public partial class DiscoveryAgentTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    // The classifier is a model of its own; these tests are about the loop, so the family is fixed.
+    private const string ProseFamily = "prose";
 
     // Deterministic on purpose: the test is about the loop, not the screenplay.
     private const string DraftScript = """
@@ -83,6 +88,7 @@ public partial class DiscoveryAgentTests
         services.AddInMemoryWorkflowEngineStores();
         services.AddScreenplayDiscovery(configureAgent: configureAgent);
         services.AddSingleton<ILanguageModelFactory>(models);
+        services.AddSingleton<IDocumentClassifier>(new FixedDocumentClassifier(ProseFamily));
         return services.BuildServiceProvider();
     }
 
@@ -156,7 +162,7 @@ public partial class DiscoveryAgentTests
     public async Task A_family_whose_story_verifier_was_defined_differently_still_runs()
     {
         await Get<IDocumentFamilyCatalog>().AddVerifierAsync(
-            SimpleDocumentClassifier.ProseFamily,
+            ProseFamily,
             new VerifierSpec(StoryGoal.Goal.Verifiers[0].Id, StoryStages.StoryStage, "The story has a title and at least one scene."),
             Ct);
         _models.ScriptTurns(
@@ -256,11 +262,19 @@ public partial class DiscoveryAgentTests
         var resumed = _models.Turns.ElementAt(4).Messages;
         Assert.Equal(7, resumed.Count);
         Assert.Equal(["create-skill", "create-code"], resumed.Skip(3).Where(m => m.ToolCalls.Count > 0).Select(m => m.ToolCalls[0].Input.GetProperty("skill").GetString()));
-        var versions = (await Get<IDocumentFamilyCatalog>().SkillsAsync(SimpleDocumentClassifier.ProseFamily, Ct)).Where(s => s.Id == "draft-story");
+        var versions = (await Get<IDocumentFamilyCatalog>().SkillsAsync(ProseFamily, Ct)).Where(s => s.Id == "draft-story");
         Assert.Equal(2, versions.Max(s => s.Version));
 
         // The three turns before the outage are still charged to the story.
         Assert.Equal(0.04m, story.Result.Cost.Amount);
+
+        // The resumed prompt lists the skill the first attempt wrote, so it is kept beside the first.
+        var prompts = await Get<IRunLedger>().SystemPromptsAsync(runId, Ct);
+        Assert.Equal([0, 7], prompts.Select(p => p.FromSequence));
+        Assert.Equal(_models.Turns.First().System, prompts[0].Prompt);
+        Assert.Equal(_models.Turns.ElementAt(4).System, prompts[1].Prompt);
+        Assert.DoesNotContain("draft-story (yours)", prompts[0].Prompt);
+        Assert.Contains("draft-story (yours)", prompts[1].Prompt);
     }
 
     [Fact]

@@ -96,6 +96,7 @@ public sealed class DiscoveryAgent(
         var system = SystemPrompt(await runtime.ListAsync());
         var model = models.For(options.ModelClass);
         var transcript = await Transcript.OpenAsync(tools, task);
+        await tools.RecordSystemPrompt(transcript.Resumed ? transcript.Messages.Count : 0, system);
         if (transcript.Resumed)
         {
             await RestoreAsync(runtime, tools, transcript);

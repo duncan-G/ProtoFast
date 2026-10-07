@@ -154,6 +154,47 @@ public sealed class PostgresRunLedger(
             .ToListAsync(ct);
     }
 
+    public async Task RecordSystemPromptAsync(string runId, int fromSequence, string prompt, CancellationToken ct)
+    {
+        await using var db = await contexts.CreateDbContextAsync(ct);
+        var latest = await db.RunSystemPrompts.AsNoTracking()
+            .Where(p => p.RunId == runId)
+            .OrderByDescending(p => p.FromSequence)
+            .Select(p => p.Prompt)
+            .FirstOrDefaultAsync(ct);
+        if (latest == prompt)
+        {
+            return;
+        }
+
+        db.RunSystemPrompts.Add(new RunSystemPromptEntry
+        {
+            RunId = runId, FromSequence = fromSequence, Prompt = prompt, RecordedAt = time.GetUtcNow(),
+        });
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException e) when (PostgresErrors.IsUniqueViolation(e))
+        {
+            // A racing resume recorded this point first.
+        }
+        catch (DbUpdateException e) when (PostgresErrors.IsForeignKeyViolation(e))
+        {
+            throw new KeyNotFoundException($"Run {runId} was never opened.", e);
+        }
+    }
+
+    public async Task<IReadOnlyList<RunSystemPrompt>> SystemPromptsAsync(string runId, CancellationToken ct)
+    {
+        await using var db = await contexts.CreateDbContextAsync(ct);
+        return await db.RunSystemPrompts.AsNoTracking()
+            .Where(p => p.RunId == runId)
+            .OrderBy(p => p.FromSequence)
+            .Select(p => new RunSystemPrompt(p.FromSequence, p.Prompt, p.RecordedAt))
+            .ToListAsync(ct);
+    }
+
     public async Task ReportAsync(string sourceId, RunProgress progress, CancellationToken ct)
     {
         await using var db = await contexts.CreateDbContextAsync(ct);

@@ -58,7 +58,7 @@ public sealed class PostgresPolicyStore(
     private PolicyRow Default(string family, string stageId) =>
         PolicyRow.Default(family, stageId, options.Orchestrator, time.GetUtcNow());
 
-    private static PolicyRow ToRow(StagePolicyEntry entry) =>
+    internal static PolicyRow ToRow(StagePolicyEntry entry) =>
         new(
             entry.Family,
             entry.StageId,

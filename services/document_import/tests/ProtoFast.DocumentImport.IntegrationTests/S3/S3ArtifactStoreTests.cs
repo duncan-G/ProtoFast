@@ -51,6 +51,19 @@ public class S3ArtifactStoreTests(LocalStackFixture localStack) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task The_run_input_round_trips_under_its_escaped_stage_id()
+    {
+        var reference = await Store.PutAsync("upload-1", ArtifactRef.InputStageId, Utf8("INT. HOUSE - DAY"), Markdown, Ct);
+
+        using var reader = new StreamReader(await Store.GetAsync(reference, Ct));
+        Assert.Equal("INT. HOUSE - DAY", await reader.ReadToEndAsync(Ct));
+        Assert.Equal(Markdown, await Store.ContractOfAsync(reference, Ct));
+        Assert.Contains(
+            await Objects.ListAsync("runs/upload-1/", Ct),
+            k => k.StartsWith("runs/upload-1/%24input/", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_stage_id_cannot_add_path_segments()
     {
         var reference = await Store.PutAsync("run-1", "../uploads", Utf8("x"), Markdown, Ct);

@@ -334,6 +334,9 @@ public sealed partial class AgentTools : IAgentTools
     public Task AppendTranscript(int sequence, string json) =>
         _scope is null ? _engine.Ledger.AppendTranscriptAsync(_runId, sequence, json, _ct) : Task.CompletedTask;
 
+    public Task RecordSystemPrompt(int fromSequence, string prompt) =>
+        _scope is null ? _engine.Ledger.RecordSystemPromptAsync(_runId, fromSequence, prompt, _ct) : Task.CompletedTask;
+
     private void ValidateStructure(ExecutorSpec spec)
     {
         if (string.IsNullOrWhiteSpace(spec.Ref.Id))

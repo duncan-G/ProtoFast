@@ -23,6 +23,43 @@ namespace ProtoFast.DocumentImport.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.DocumentFamilyEntry", b =>
+                {
+                    b.Property<string>("Family")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("family");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Family")
+                        .HasName("pk_document_families");
+
+                    b.ToTable("document_families", "engine");
+                });
+
             modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.DocumentFamilyExecutor", b =>
                 {
                     b.Property<string>("Family")
@@ -333,6 +370,10 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                     b.HasKey("RunId")
                         .HasName("pk_runs");
 
+                    b.HasIndex("OpenedAt")
+                        .IsDescending()
+                        .HasDatabaseName("ix_runs_opened_at");
+
                     b.HasIndex("Family", "Mode", "ClosedAt")
                         .HasDatabaseName("ix_runs_family_mode_closed_at");
 
@@ -413,6 +454,32 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                         .HasDatabaseName("ix_run_progress_run_id");
 
                     b.ToTable("run_progress", "engine");
+                });
+
+            modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.RunSystemPromptEntry", b =>
+                {
+                    b.Property<string>("RunId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("run_id");
+
+                    b.Property<int>("FromSequence")
+                        .HasColumnType("integer")
+                        .HasColumnName("from_sequence");
+
+                    b.Property<string>("Prompt")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("prompt");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("recorded_at");
+
+                    b.HasKey("RunId", "FromSequence")
+                        .HasName("pk_run_system_prompts");
+
+                    b.ToTable("run_system_prompts", "engine");
                 });
 
             modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.StagePolicyEntry", b =>
@@ -526,6 +593,16 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_run_messages_runs_run_id");
+                });
+
+            modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.RunSystemPromptEntry", b =>
+                {
+                    b.HasOne("ProtoFast.DocumentImport.Data.Postgres.Entities.RunEntry", null)
+                        .WithMany()
+                        .HasForeignKey("RunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_run_system_prompts_runs_run_id");
                 });
 
             modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.StageRecordEntry", b =>

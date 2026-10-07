@@ -6,6 +6,7 @@ using ProtoFast.DocumentImport.Data.Postgres;
 using ProtoFast.DocumentImport.Data.S3;
 using ProtoFast.DocumentImport.Data.Sqs;
 using ProtoFast.DocumentImport.Engine.Discovery;
+using ProtoFast.DocumentImport.Engine.Families;
 using ProtoFast.DocumentImport.Engine.Learning;
 using ProtoFast.DocumentImport.Engine.Policy;
 using ProtoFast.DocumentImport.Engine.Storage;
@@ -30,10 +31,28 @@ public static class DurableStoresServiceCollectionExtensions
         services.AddSingleton<IDocumentFamilyPolicyStore, PostgresDocumentFamilyPolicyStore>();
         services.AddSingleton<IDocumentFamilyCatalog, PostgresDocumentFamilyCatalog>();
         services.AddSingleton<IDocumentFamilyGenerations, PostgresDocumentFamilyGenerations>();
+        services.AddSingleton<IDocumentFamilyRegistry, PostgresDocumentFamilyRegistry>();
         services.AddSingleton<IMinedWorkflowStore, PostgresMinedWorkflowStore>();
 
         services.AddSingleton<IOutcomeQueue, SqsOutcomeQueue>();
         services.AddHostedService<OutcomeQueueConsumer>();
+        return services;
+    }
+
+    /// <summary>
+    /// What the admin console reads and changes, for a service that runs nothing (the api): the
+    /// ledger and its inspector, the family directory, registry and generations, artifacts and the
+    /// registry. Needs an <c>NpgsqlDataSource</c> and an <c>IObjectStore</c>.
+    /// </summary>
+    public static IServiceCollection AddDurableEngineAdministration(this IServiceCollection services)
+    {
+        services.AddDurableRunLedger();
+        services.TryAddSingleton<IRunInspector, PostgresRunInspector>();
+        services.TryAddSingleton<IDocumentFamilyDirectory, PostgresDocumentFamilyDirectory>();
+        services.TryAddSingleton<IDocumentFamilyRegistry, PostgresDocumentFamilyRegistry>();
+        services.TryAddSingleton<IDocumentFamilyGenerations, PostgresDocumentFamilyGenerations>();
+        services.TryAddSingleton<IArtifactStore, S3ArtifactStore>();
+        services.TryAddSingleton<IRegistry, PostgresRegistry>();
         return services;
     }
 

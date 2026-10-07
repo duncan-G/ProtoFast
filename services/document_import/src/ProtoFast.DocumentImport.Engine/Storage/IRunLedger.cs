@@ -28,6 +28,13 @@ public interface IRunLedger
     Task AppendTranscriptAsync(string runId, int sequence, string json, CancellationToken ct);
     Task<IReadOnlyList<string>> TranscriptAsync(string runId, CancellationToken ct);
 
+    // The system prompt the conversation ran under. A resumed run can list skills the first attempt
+    // wrote, so each prompt is kept from the message it took effect at; repeating the latest is a no-op.
+    Task RecordSystemPromptAsync(string runId, int fromSequence, string prompt, CancellationToken ct);
+
+    // Oldest first.
+    Task<IReadOnlyList<RunSystemPrompt>> SystemPromptsAsync(string runId, CancellationToken ct);
+
     // Progress is keyed by source: the id the run's input is stored under, so one entry follows
     // every attempt at a source. Each report replaces the last, except that a report naming no
     // run keeps the last one named, and only the first report sets the cost.

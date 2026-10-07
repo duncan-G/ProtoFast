@@ -44,4 +44,7 @@ public interface IAgentTools
     // instead of restarting. Empty, and appends are dropped, in a stage-scoped loop.
     Task<IReadOnlyList<string>> LoadTranscript();
     Task                AppendTranscript(int sequence, string json);
+
+    // Dropped in a stage-scoped loop, like the transcript.
+    Task                RecordSystemPrompt(int fromSequence, string prompt);
 }

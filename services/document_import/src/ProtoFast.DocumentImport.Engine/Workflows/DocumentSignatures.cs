@@ -12,6 +12,6 @@ public sealed class DocumentSignatures(IDocumentClassifier classifier, IDocument
         var generation = await generations.CurrentAsync(signature.Family, ct);
 
         // Generation 0 keeps the bare name, so families that predate resets keep what they learned.
-        return generation == 0 ? signature : signature with { Family = $"{signature.Family}#{generation}" };
+        return signature with { Family = DocumentFamilyKeys.ForGeneration(signature.Family, generation) };
     }
 }

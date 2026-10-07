@@ -4,6 +4,25 @@ An admin-only view of the document import engine: every run the ledger recorded,
 attempt inside it, and the executor input and output artifacts each attempt read and wrote.
 Ordinary users never see the ledger; the admin console at `admin.protofast.dev` is the only way in.
 
+> **Status (2026-10-07).** Built as part of theplot's console, on the access model of
+> [admin-consoles.md](admin-consoles.md) rather than §2–§3 below (operators realm, `admin-theplot`,
+> no base `admin` role). What exists:
+>
+> - read model: `IRunInspector` and `IDocumentFamilyDirectory` in the Engine project, Postgres
+>   implementations in Data, one new table `engine.document_families` for what an operator writes
+>   about a family, registered in the api by `AddDurableEngineAdministration()`;
+> - RPCs: `TheplotRuns` (list, run, transcript, artifact, executor, skill) and `TheplotFamilies`
+>   (list, get, create, update, reset) in `Protos/Admin/Theplot/theplot_engine.proto`, every one
+>   opening with `AdminAccess` for `theplot`;
+> - pages in `clients/admin-theplot`: `/runs`, `/runs/:id` (stages, artifact side sheet deep-linked
+>   as `?artifact=stage/hash`, the agent's conversation), `/families`, `/families/:family`,
+>   `/executors/:id/:version`, `/skills/:id/:version`.
+>
+> Not done from this document: §4.1 (stamping runs with their app). Every import today is
+> theplot's, so the RPCs serve the whole ledger to `admin-theplot`; before a second app imports
+> documents, runs need `app`/`source_id` columns and the RPCs a filter on them. `GetArtifact` is
+> unary with a 1 MiB default cap rather than streaming.
+
 The console serves every client app (protofast, theplot, and any app added later) from that one
 host. Which apps a signed-in operator sees is decided by which per-app admin roles their account
 holds (§2, §5).

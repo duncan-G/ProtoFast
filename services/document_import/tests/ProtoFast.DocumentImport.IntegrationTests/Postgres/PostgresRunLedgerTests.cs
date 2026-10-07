@@ -185,6 +185,22 @@ public class PostgresRunLedgerTests(PostgresFixture postgres)
         await Assert.ThrowsAsync<KeyNotFoundException>(() => Ledger.AppendTranscriptAsync(DocumentImportIds.New(), 0, "{}", Ct));
     }
 
+    [Fact]
+    public async Task A_system_prompt_is_kept_from_the_message_it_took_effect_at_and_a_repeat_is_ignored()
+    {
+        var runId = DocumentImportIds.New();
+        await Ledger.OpenAsync(runId, DocumentSignature, RunMode.Discovery, Ct);
+
+        await Ledger.RecordSystemPromptAsync(runId, 0, "Skills: context", Ct);
+        await Ledger.RecordSystemPromptAsync(runId, 4, "Skills: context", Ct);
+        await Ledger.RecordSystemPromptAsync(runId, 7, "Skills: context, split (yours)", Ct);
+
+        var prompts = await Ledger.SystemPromptsAsync(runId, Ct);
+        Assert.Equal([(0, "Skills: context"), (7, "Skills: context, split (yours)")], prompts.Select(p => (p.FromSequence, p.Prompt)));
+        Assert.Empty(await Ledger.SystemPromptsAsync(DocumentImportIds.New(), Ct));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => Ledger.RecordSystemPromptAsync(DocumentImportIds.New(), 0, "x", Ct));
+    }
+
     private async Task<string> ClosedRunAsync(RunMode mode)
     {
         var runId = DocumentImportIds.New();
