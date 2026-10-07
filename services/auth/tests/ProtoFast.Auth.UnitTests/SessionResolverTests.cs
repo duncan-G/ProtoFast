@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -27,8 +28,8 @@ public class SessionResolverTests
     [Fact]
     public async Task Session_is_dropped_when_keycloak_rejects_the_refresh()
     {
-        // Signing out on protofast.dev ends the shared realm's SSO session, so admin's refresh
-        // comes back 400 invalid_grant "Session not active".
+        // The realm's SSO session ended elsewhere, so the refresh comes back 400 invalid_grant
+        // "Session not active".
         var store = new FakeSessionStore();
         var sessionId = store.Seed(DeadAccessTokenSession());
         var resolver = Resolver(store, Rejects(HttpStatusCode.BadRequest));
@@ -137,6 +138,47 @@ public class SessionResolverTests
     }
 
     [Fact]
+    public async Task Session_without_a_console_role_is_dropped()
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var store = new FakeSessionStore();
+        var sessionId = store.Seed(DeadAccessTokenSession() with
+        {
+            AccessToken = SignedAccessToken(key, "admin", "offline_access"),
+            Roles = ["offline_access"],
+        });
+        var keycloak = Rejects(HttpStatusCode.BadRequest);
+        keycloak.SigningKey = new ECDsaSecurityKey(key);
+
+        var identity = await Resolver(store, keycloak).ResolveSessionAsync(sessionId, Host, CancellationToken.None);
+
+        Assert.Null(identity);
+        Assert.Null(await store.GetAsync(sessionId, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Revoking_the_last_console_role_ends_the_session_at_the_next_refresh()
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var store = new FakeSessionStore();
+        var sessionId = store.Seed(DeadAccessTokenSession());
+        var keycloak = new FakeKeycloakGateway(() => new KeycloakTokens(
+            SignedAccessToken(key, "admin", "offline_access"),
+            "refresh-token-2",
+            null,
+            DateTimeOffset.UtcNow.AddMinutes(5),
+            DateTimeOffset.UtcNow.AddMinutes(30)))
+        {
+            SigningKey = new ECDsaSecurityKey(key),
+        };
+
+        var identity = await Resolver(store, keycloak).ResolveSessionAsync(sessionId, Host, CancellationToken.None);
+
+        Assert.Null(identity);
+        Assert.Null(await store.GetAsync(sessionId, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Unknown_session_id_resolves_to_anonymous()
     {
         var resolver = Resolver(new FakeSessionStore(), Rejects(HttpStatusCode.BadRequest));
@@ -151,7 +193,7 @@ public class SessionResolverTests
             new FakeJwtFactory(),
             new TenantResolver(Options.Create(new TenantOptions
             {
-                ByHost = { [Host] = new TenantConfig { Realm = "protofast", ClientId = "admin" } },
+                ByHost = { [Host] = new TenantConfig { Realm = "operators", ClientId = "admin", RequiredRoles = ["platform", "admin-theplot"] } },
             })),
             Options.Create(new SessionPolicyOptions()),
             TimeProvider.System,
@@ -162,9 +204,9 @@ public class SessionResolverTests
     {
         Sub = "user-123",
         Email = "a@b.com",
-        Realm = "protofast",
+        Realm = "operators",
         ClientId = "admin",
-        Roles = ["admin"],
+        Roles = ["platform"],
         AccessToken = new JwtSecurityTokenHandler().WriteToken(new JwtSecurityToken()), // unsigned
         RefreshToken = "refresh-token",
         AccessExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-5),
@@ -172,10 +214,17 @@ public class SessionResolverTests
         CreatedAt = DateTimeOffset.UtcNow.AddHours(-1),
     };
 
-    private static string SignedAccessToken(ECDsa key, string azp)
+    private static string SignedAccessToken(ECDsa key, string azp, params string[] roles)
     {
+        roles = roles.Length == 0 ? ["platform"] : roles;
+        var realmAccess = JsonSerializer.Serialize(new { roles });
         var jwt = new JwtSecurityToken(
-            claims: [new Claim("sub", "user-123"), new Claim("azp", azp)],
+            claims:
+            [
+                new Claim("sub", "user-123"),
+                new Claim("azp", azp),
+                new Claim("realm_access", realmAccess, JsonClaimValueTypes.Json),
+            ],
             expires: DateTime.UtcNow.AddMinutes(5),
             signingCredentials: new SigningCredentials(new ECDsaSecurityKey(key), SecurityAlgorithms.EcdsaSha256));
 

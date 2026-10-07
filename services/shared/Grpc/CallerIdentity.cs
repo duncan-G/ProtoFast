@@ -12,7 +12,8 @@ namespace ProtoFast.Grpc;
 /// is deliberately no way to pass an owner in a request, because a request field would be a
 /// client-controlled authorization key.</para>
 /// </summary>
-public sealed record CallerIdentity(string Subject, IReadOnlySet<string> Roles)
+/// <param name="Tenant">The realm the caller signed in to.</param>
+public sealed record CallerIdentity(string Subject, string Tenant, IReadOnlySet<string> Roles)
 {
     public static CallerIdentity From(ServerCallContext context)
     {
@@ -29,7 +30,7 @@ public sealed record CallerIdentity(string Subject, IReadOnlySet<string> Roles)
             .SelectMany(c => c.Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        return new CallerIdentity(subject, roles);
+        return new CallerIdentity(subject, principal.FindFirstValue("tenant") ?? "", roles);
     }
 
     public bool HasRole(string role) => Roles.Contains(role);

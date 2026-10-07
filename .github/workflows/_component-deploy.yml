@@ -124,6 +124,10 @@ jobs:
           npm run generate:grpc
           npm test -- --watch=false
 
+      - if: inputs.build == 'client-s3' && (inputs.target == 'admin' || startsWith(inputs.target, 'admin-'))
+        name: admin console isolation checks
+        run: python3 scripts/check-admin-console.py "${{ inputs.project }}"
+
       # buildx components have no unit tests here; conversion runs its own in deploy-conversion.yml.
       - if: inputs.build == 'buildx'
         run: echo "no unit tests for ${{ inputs.component }} (build=buildx)"

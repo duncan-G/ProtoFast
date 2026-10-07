@@ -72,6 +72,11 @@ public sealed class SessionResolver(
             return null;
         }
 
+        if (!tenant.Admits(session.Roles))
+        {
+            return await DropAsync(sessionId, ct).ConfigureAwait(false);
+        }
+
         if (await IsAccessTokenValidAsync(session, tenant, ct).ConfigureAwait(false))
         {
             return await LiveIdentityAsync(sessionId, session, ct).ConfigureAwait(false);
@@ -145,6 +150,14 @@ public sealed class SessionResolver(
             }
 
             var identity = KeycloakClaims.Read(refreshed.AccessToken, refreshed.IdToken);
+
+            // Revoking an operator's last console role ends the session at the next refresh.
+            if (!tenant.Admits(identity.Roles))
+            {
+                logger.LogInformation("Session in realm {Realm} lost its console roles; dropping it", session.Realm);
+                return await DropAsync(sessionId, ct).ConfigureAwait(false);
+            }
+
             var current = session with
             {
                 AccessToken = refreshed.AccessToken,

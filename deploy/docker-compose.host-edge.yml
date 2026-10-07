@@ -47,6 +47,11 @@ services:
       # Catch-all upstream: the unified SSR host (same host, Docker DNS).
       CLIENTS_HOST_HOST: clients
       CLIENTS_HOST_PORT: "4000"
+      # App consoles on the admin host at /<app>/, each in its own container and routed only
+      # to holders of admin-<app> (docs/design/admin-consoles.md).
+      CLIENT_ADMIN_CONSOLES: theplot
+      CONSOLE_THEPLOT_HOST: clients-admin-theplot
+      CONSOLE_THEPLOT_PORT: "4000"
       # gRPC service upstreams now live on Host B: dial its private IP + the
       # ports Host B publishes (auth 8080, payments 8081, api 8082) — §3.1.
       AUTH_HOST: ${HOST_B_IP}
@@ -84,6 +89,29 @@ services:
       ASSETS_DIR: /assets
       DEFAULT_CLIENT: ${DEFAULT_CLIENT:-protofast}
       NG_ALLOWED_HOSTS: "${CLIENT_ADMIN_DOMAIN:-admin.example.com},${CLIENT_PROTOFAST_DOMAIN:-protofast.example.com},${CLIENT_THEPLOT_DOMAIN:-theplot.example.com}"
+      NG_TRUST_PROXY_HEADERS: "x-forwarded-for,x-forwarded-proto"
+      SERVER_OTEL_ENDPOINT: "http://otel-collector:4318"
+      BROWSER_OTEL_ENDPOINT: "/otlp"
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
+      # The admin client here is the platform console, open to any operator; its pages check roles.
+      ADMIN_CONSOLE_ROLES: "*"
+
+  # theplot's admin console: the clients-host image serving that one bundle, so code its agent
+  # writes never shares a process with another app's. CLIENTS here overrides .env's list.
+  clients-admin-theplot:
+    image: ${ECR}/protofast-clients-host:${CLIENTS_HOST_TAG}
+    restart: unless-stopped
+    env_file:
+      - .env
+      - versions.env
+    environment:
+      PORT: "4000"
+      ASSETS_DIR: /assets
+      CLIENTS: admin-theplot
+      DEFAULT_CLIENT: admin-theplot
+      ADMIN_CONSOLE_ROLES: admin-theplot
+      NG_ALLOWED_HOSTS: "${CLIENT_ADMIN_DOMAIN:-admin.example.com}"
       NG_TRUST_PROXY_HEADERS: "x-forwarded-for,x-forwarded-proto"
       SERVER_OTEL_ENDPOINT: "http://otel-collector:4318"
       BROWSER_OTEL_ENDPOINT: "/otlp"

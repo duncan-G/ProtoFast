@@ -14,7 +14,7 @@ public class TenantResolverTests
         ByHost =
         {
             ["protofast.dev"] = new TenantConfig { Realm = "protofast", ClientId = "protofast-web" },
-            ["admin.protofast.dev"] = new TenantConfig { Realm = "protofast", ClientId = "admin" },
+            ["admin.protofast.dev"] = new TenantConfig { Realm = "operators", ClientId = "admin", RequiredRoles = ["platform", "admin-theplot"] },
             ["localhost"] = new TenantConfig { Realm = "protofast", ClientId = "protofast-web" },
             // '+' is how config spells "host:port" — a colon in a configuration key is a
             // path separator and never survives binding (see TenantResolver's constructor).
@@ -26,8 +26,40 @@ public class TenantResolverTests
     public void Resolves_exact_host()
     {
         Assert.True(Resolver().TryResolve("admin.protofast.dev", out var tenant));
-        Assert.Equal("protofast", tenant!.Realm);
+        Assert.Equal("operators", tenant!.Realm);
         Assert.Equal("admin", tenant.ClientId);
+        Assert.Equal(["platform", "admin-theplot"], tenant.RequiredRoles);
+    }
+
+    [Fact]
+    public void Required_roles_survive_configuration_binding()
+    {
+        var json = """
+            {
+              "Tenants": {
+                "ByHost": {
+                  "localhost+20000": { "Realm": "operators", "ClientId": "admin", "RequiredRoles": ["platform", "admin-theplot"] }
+                }
+              }
+            }
+            """;
+        var config = new ConfigurationBuilder()
+            .AddJsonStream(new MemoryStream(Encoding.UTF8.GetBytes(json)))
+            .Build();
+        var options = new TenantOptions();
+        config.GetSection("Tenants").Bind(options);
+
+        Assert.True(new TenantResolver(Options.Create(options)).TryResolve("localhost:20000", out var tenant));
+        Assert.True(tenant!.Admits(["offline_access", "admin-theplot"]));
+        Assert.True(tenant.Admits(["platform"]));
+        Assert.False(tenant.Admits(["offline_access", "admin-protofast"]));
+    }
+
+    [Fact]
+    public void A_tenant_without_a_required_role_admits_any_account()
+    {
+        Assert.True(Resolver().TryResolve("protofast.dev", out var tenant));
+        Assert.True(tenant!.Admits([]));
     }
 
     [Fact]
@@ -106,14 +138,14 @@ public class TenantResolverTests
     {
         // Back-channel logout arrives from Keycloak, so there is no Host to map — the realm and
         // client come out of the logout token instead.
-        Assert.True(Resolver().TryResolveByClient("protofast", "admin", out var tenant));
+        Assert.True(Resolver().TryResolveByClient("operators", "admin", out var tenant));
         Assert.Equal("admin", tenant!.ClientId);
-        Assert.Equal("protofast", tenant.Realm);
+        Assert.Equal("operators", tenant.Realm);
     }
 
     [Theory]
     [InlineData("protofast", "not-a-client")]
-    [InlineData("other-realm", "admin")]  // right client, wrong realm — never cross realms
+    [InlineData("protofast", "admin")]  // right client, wrong realm — never cross realms
     [InlineData("protofast", "")]
     [InlineData(null, "admin")]
     public void Unknown_realm_client_pair_is_not_resolved(string? realm, string? clientId)

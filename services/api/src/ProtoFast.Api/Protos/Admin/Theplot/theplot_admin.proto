@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+option csharp_namespace = "ProtoFast.Api.Admin.Theplot";
+
+package admin.theplot;
+
+// Read-only views over every writer's data, for theplot's console. Needs admin-theplot.
+service TheplotAdmin {
+
+    // Most recently modified first.
+    rpc ListStories (ListStoriesRequest) returns (ListStoriesReply);
+
+    rpc GetStory (GetStoryRequest) returns (GetStoryReply);
+}
+
+message StorySummary {
+    string id = 1;
+    string title = 2;
+    // The writer's subject in the theplot realm.
+    string owner_id = 3;
+    int32 scene_count = 4;
+    int64 created_unix_seconds = 5;
+    int64 last_modified_unix_seconds = 6;
+}
+
+message ListStoriesRequest {
+    // At most 100; 0 means 25.
+    int32 page_size = 1;
+    // Zero-based.
+    int32 page = 2;
+}
+
+message ListStoriesReply {
+    repeated StorySummary stories = 1;
+    int32 total = 2;
+}
+
+message GetStoryRequest {
+    string story_id = 1;
+}
+
+message GetStoryReply {
+    StorySummary story = 1;
+    int32 character_count = 2;
+    int32 location_count = 3;
+    int32 prop_count = 4;
+}

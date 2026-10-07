@@ -1,0 +1,415 @@
+{
+  "realm": "operators",
+  "displayName": "ProtoFast Operators",
+  "displayNameHtml": "<img src=\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNTAgMzIiIHJvbGU9ImltZyIgYXJpYS1sYWJlbD0iUHJvdG9mYXN0Ij48ZyBmaWxsPSJub25lIiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj48cGF0aCBkPSJNNSA2SDEzIiBzdHJva2U9IiM0MjNhNmEiLz48cGF0aCBkPSJNNSAxMUgxNiIgc3Ryb2tlPSIjNWQ1Mjk0Ii8+PHBhdGggZD0iTTUgMTZIMTkiIHN0cm9rZT0iIzc5NmNiZiIvPjxwYXRoIGQ9Ik01IDIxSDE2IiBzdHJva2U9IiM1ZDUyOTQiLz48cGF0aCBkPSJNNSAyNkgxMyIgc3Ryb2tlPSIjNDIzYTZhIi8+PC9nPjxjaXJjbGUgY3g9IjI1IiBjeT0iMTYiIHI9IjQiIGZpbGw9IiM5MTg0ZDkiLz48dGV4dCB4PSIzOCIgeT0iMjMiIGZpbGw9IiNlOWU5ZWQiIGZvbnQtZmFtaWx5PSJJbnRlcixzeXN0ZW0tdWksc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMiIgZm9udC13ZWlnaHQ9IjUwMCIgbGV0dGVyLXNwYWNpbmc9Ii0wLjQ0Ij5Qcm90b2Zhc3Q8L3RleHQ+PC9zdmc+\" alt=\"Protofast\" height=\"28\" style=\"height:28px;width:auto\">",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": true,
+  "rememberMe": true,
+  "verifyEmail": true,
+  "loginTheme": "protofast",
+  "emailTheme": "protofast",
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 10,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "passwordPolicy": "",
+  "ssoSessionIdleTimeout": 28800,
+  "ssoSessionMaxLifespan": 604800,
+  "accessTokenLifespan": 300,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "attributes": {
+    "actionTokenGeneratedByUserLifespan.verify-email": "43200",
+    "actionTokenGeneratedByUserLifespan.reset-credentials": "3600",
+    "acr.loa.map": "{\"basic\":1,\"passkey\":2}"
+  },
+  "webAuthnPolicyPasswordlessRpEntityName": "ProtoFast Operators",
+  "webAuthnPolicyPasswordlessPasskeysEnabled": true,
+  "webAuthnPolicyPasswordlessMediation": "conditional",
+  "webAuthnPolicyPasswordlessRpId": "${OPERATORS_WEBAUTHN_RP_ID:auth.protofast.dev}",
+  "webAuthnPolicyPasswordlessSignatureAlgorithms": [
+    "ES256",
+    "RS256"
+  ],
+  "webAuthnPolicyPasswordlessAttestationConveyancePreference": "none",
+  "webAuthnPolicyPasswordlessAuthenticatorAttachment": "not specified",
+  "webAuthnPolicyPasswordlessResidentKey": "required",
+  "webAuthnPolicyPasswordlessUserVerificationRequirement": "required",
+  "webAuthnPolicyPasswordlessCreateTimeout": 0,
+  "webAuthnPolicyPasswordlessAvoidSameAuthenticatorRegister": false,
+  "webAuthnPolicyPasswordlessAcceptableAaguids": [],
+  "smtpServer": {
+    "host": "${SMTP_HOST:localhost}",
+    "port": "${SMTP_PORT:1025}",
+    "from": "${SMTP_FROM:no-reply@protofast.dev}",
+    "fromDisplayName": "ProtoFast Operators",
+    "ssl": "${SMTP_SSL:false}",
+    "starttls": "${SMTP_STARTTLS:false}",
+    "auth": "${SMTP_AUTH:false}",
+    "user": "${SMTP_USER:}",
+    "password": "${SMTP_PASSWORD:}"
+  },
+  "roles": {
+    "realm": [
+      {
+        "name": "platform",
+        "description": "Signs in to admin.protofast.dev; engine-wide and cross-app data."
+      },
+      {
+        "name": "admin-protofast",
+        "description": "Signs in to protofast's admin console and reads protofast's admin data."
+      },
+      {
+        "name": "admin-theplot",
+        "description": "Signs in to theplot's admin console and reads theplot's admin data."
+      }
+    ]
+  },
+  "requiredActions": [
+    {
+      "alias": "verify-email-code",
+      "name": "Verify Email by Code",
+      "providerId": "verify-email-code",
+      "enabled": true,
+      "defaultAction": true,
+      "priority": 10,
+      "config": {}
+    },
+    {
+      "alias": "VERIFY_EMAIL",
+      "name": "Verify Email",
+      "providerId": "VERIFY_EMAIL",
+      "enabled": false,
+      "defaultAction": false,
+      "priority": 11,
+      "config": {}
+    },
+    {
+      "alias": "UPDATE_PASSWORD",
+      "name": "Update Password",
+      "providerId": "UPDATE_PASSWORD",
+      "enabled": false,
+      "defaultAction": false,
+      "priority": 40,
+      "config": {}
+    },
+    {
+      "alias": "UPDATE_PROFILE",
+      "name": "Update Profile",
+      "providerId": "UPDATE_PROFILE",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 20,
+      "config": {}
+    },
+    {
+      "alias": "webauthn-register",
+      "name": "Webauthn Register",
+      "providerId": "webauthn-register",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 70,
+      "config": {}
+    },
+    {
+      "alias": "webauthn-register-passwordless",
+      "name": "Webauthn Register Passwordless",
+      "providerId": "webauthn-register-passwordless",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 80,
+      "config": {}
+    }
+  ],
+  "authenticationFlows": [
+    {
+      "alias": "passwordless browser",
+      "description": "Email-first browser flow: passkey or a mailed code, never a password",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "identity-provider-redirector",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "requirement": "ALTERNATIVE",
+          "priority": 30,
+          "flowAlias": "passwordless forms",
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "passwordless forms",
+      "description": "Two branches keyed on the level of authentication the client asked for. Both are CONDITIONAL and nothing here is ALTERNATIVE: Keycloak discards every ALTERNATIVE that sits beside a REQUIRED or CONDITIONAL sibling.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "requirement": "CONDITIONAL",
+          "priority": 10,
+          "flowAlias": "passwordless sign-in",
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "requirement": "CONDITIONAL",
+          "priority": 20,
+          "flowAlias": "passwordless step-up",
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "passwordless sign-in",
+      "description": "Ordinary sign-in. The level-1 condition is what stamps a level on the session; without it the step-up branch below would fire on every first authentication, because an unlevelled session matches any level condition.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-level-of-authentication",
+          "authenticatorConfig": "basic-level-of-authentication",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "auth-username-form",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "requirement": "REQUIRED",
+          "priority": 30,
+          "flowAlias": "passwordless credentials",
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "passwordless credentials",
+      "description": "Passkey if this device has one, otherwise a code mailed to the address. Both are ALTERNATIVE, so either satisfies the step and the credential chooser can move between them.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "webauthn-authenticator-passwordless",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "email-otp",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "passwordless step-up",
+      "description": "Runs only for a client that asked for the passkey level (the admin console). Its max age is what makes it re-prompt inside a live SSO session instead of being satisfied once and forgotten.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-level-of-authentication",
+          "authenticatorConfig": "passkey-level-of-authentication",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "webauthn-authenticator-passwordless",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "passwordless registration",
+      "description": "Registration with no password step",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "registration-page-form",
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "flowAlias": "passwordless registration form",
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "passwordless registration form",
+      "description": "Email address only. registration-password-action is absent rather than disabled: it stamps an UPDATE_PASSWORD required action on every new user even when the realm has that action turned off.",
+      "providerId": "form-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "protofast-registration-user-creation",
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    {
+      "alias": "basic-level-of-authentication",
+      "config": {
+        "loa-condition-level": "1",
+        "loa-max-age": "604800"
+      }
+    },
+    {
+      "alias": "passkey-level-of-authentication",
+      "config": {
+        "loa-condition-level": "2",
+        "loa-max-age": "900"
+      }
+    }
+  ],
+  "browserFlow": "passwordless browser",
+  "registrationFlow": "passwordless registration",
+  "directGrantFlow": "direct grant",
+  "resetCredentialsFlow": "reset credentials",
+  "clientAuthenticationFlow": "clients",
+  "dockerAuthenticationFlow": "docker auth",
+  "identityProviders": [],
+  "clients": [
+    {
+      "clientId": "admin",
+      "name": "ProtoFast Admin Console",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "baseUrl": "${ADMIN_BASE_URL:https://localhost:20000}",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${ADMIN_CLIENT_SECRET:dev-admin-secret}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "https://admin.protofast.dev/signin-oidc",
+        "https://localhost:20000/signin-oidc"
+      ],
+      "webOrigins": [
+        "https://admin.protofast.dev",
+        "+"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://admin.protofast.dev/*##https://localhost:20000/*",
+        "backchannel.logout.url": "${BACKCHANNEL_LOGOUT_URL:}",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false",
+        "client.session.idle.timeout": "900",
+        "client.session.max.lifespan": "3600"
+      }
+    },
+    {
+      "clientId": "account-admin",
+      "name": "Operators Account Administration",
+      "description": "Service account auth-svc uses for the Admin API calls account management needs: read a user's passkeys, remove one, delete the account.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${ACCOUNT_ADMIN_CLIENT_SECRET:dev-account-admin-secret}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": true,
+      "redirectUris": [],
+      "webOrigins": []
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-account-admin",
+      "enabled": true,
+      "serviceAccountClientId": "account-admin",
+      "clientRoles": {
+        "realm-management": [
+          "view-users",
+          "manage-users"
+        ]
+      }
+    }
+  ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\":[{\"name\":\"username\",\"validations\":{\"length\":{\"min\":3,\"max\":255},\"username-prohibited-characters\":{},\"up-username-not-idn-homograph\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"email\",\"validations\":{\"email\":{},\"length\":{\"max\":255}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false}],\"groups\":[]}"
+          ]
+        }
+      }
+    ]
+  }
+}

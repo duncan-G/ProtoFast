@@ -41,6 +41,11 @@ public static class EnvoyProxyResourceBuilderExtensions
             .WithEnvironment(ctx =>
             {
                 ctx.EnvironmentVariables["CLIENTS"] = string.Join(',', clientsAnnotation.Clients);
+                foreach (var host in clientsAnnotation.Consoles.GroupBy(c => c.Client))
+                {
+                    ctx.EnvironmentVariables[$"CLIENT_{ToEnvName(host.Key)}_CONSOLES"] =
+                        string.Join(',', host.Select(c => c.Console));
+                }
             });
 
         if (builder.ExecutionContext.IsPublishMode)
@@ -156,6 +161,24 @@ public static class EnvoyProxyResourceBuilderExtensions
         return [.. clients.Select((_, i) => $"https://localhost:{FirstClientListenerPort + i}")];
     }
 
+    /// <summary>
+    /// Mounts an app console at <c>/{console}/</c> on <paramref name="clientName"/>'s host, served
+    /// by its own process at <paramref name="endpoint"/> and only to holders of
+    /// <c>admin-{console}</c> (docs/design/admin-consoles.md).
+    /// </summary>
+    public static IResourceBuilder<ContainerResource> WithConsole(
+        this IResourceBuilder<ContainerResource> envoy,
+        string clientName,
+        string consoleName,
+        EndpointReference endpoint)
+    {
+        envoy.Resource.Annotations
+            .OfType<EnvoyClientsAnnotation>()
+            .Single()
+            .Consoles.Add((clientName, consoleName));
+        return envoy.WithUpstreamEndpoint($"CONSOLE_{ToEnvName(consoleName)}", endpoint);
+    }
+
     public static IResourceBuilder<ContainerResource> WithUpstreamEndpoint(
         this IResourceBuilder<ContainerResource> envoy,
         string name,
@@ -195,5 +218,7 @@ public static class EnvoyProxyResourceBuilderExtensions
         public List<string> Clients { get; } = [];
 
         public List<ParameterResource> Domains { get; } = [];
+
+        public List<(string Client, string Console)> Consoles { get; } = [];
     }
 }

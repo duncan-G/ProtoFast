@@ -56,7 +56,7 @@ compose in prod.
 | Section | Class | What it controls |
 |---|---|---|
 | `Keycloak` | `KeycloakOptions` | back-channel `Authority`, browser-facing `PublicAuthority`, the three client secrets, the `account-admin` service client |
-| `Tenants:ByHost` | `TenantOptions` | host → realm/client map, plus `MaxAge`/`AcrValues` for step-up on the admin host |
+| `Tenants:ByHost` | `TenantOptions` | host → realm/client map, plus `MaxAge`/`AcrValues` for step-up and `RequiredRoles` (the console roles) on the admin host |
 | `Session` | `SessionPolicyOptions` | cookie name (`pf_session`), 8 h idle TTL, 7 d absolute TTL, id rotation on refresh |
 | `InternalJwt` | `InternalJwtOptions` (auth) / `InternalJwtValidationOptions` (backends) | ES256 key material, `kid`, issuer/audience, 5 min lifetime |
 | `Smtp` | `SmtpOptions` | the relay `auth` sends its own mail through; unset host disables mail rather than failing startup |

@@ -33,6 +33,9 @@ public sealed class AuthFlow(
     private readonly SessionPolicyOptions _session = sessionOptions.Value;
     private readonly SubscriptionOptions _subscriptions = subscriptionOptions.Value;
 
+    /// <summary>Served by the console without a session, so it cannot loop back to sign-in.</summary>
+    public const string ForbiddenPath = "/forbidden";
+
     /// <summary>/signin, /signup (registration), /add-passkey — set up correlation, 302 to Keycloak.</summary>
     /// <param name="skipIfAuthenticated">When true (sign-in/sign-up), an already-valid session
     /// short-circuits straight to the return target instead of re-running the flow. An endpoint
@@ -156,6 +159,15 @@ public sealed class AuthFlow(
                 correlation.Realm, identity.Acr ?? "(none)", correlation.ClientId, required);
             activity?.SetStatus(ActivityStatusCode.Error, "Required acr not satisfied");
             return Results.Redirect("/");
+        }
+
+        if (!hostTenant.Admits(identity.Roles))
+        {
+            logger.LogWarning(
+                "Subject {Subject} in realm {Realm} holds none of {Roles} for client {ClientId}; no session issued",
+                identity.Subject, correlation.Realm, string.Join(',', hostTenant.RequiredRoles), correlation.ClientId);
+            activity?.SetStatus(ActivityStatusCode.Error, "Required role missing");
+            return Results.Redirect(ForbiddenPath);
         }
 
         var (user, firstLogin) = await ProvisionAsync(correlation.Realm, identity, ct);
@@ -301,16 +313,23 @@ public sealed class AuthFlow(
 
     /// <summary>
     /// The full tenant config for the host this callback arrived on, which carries the per-client
-    /// re-authentication policy the correlation record does not. Falls back to realm and client
-    /// alone if the host no longer maps anywhere, or maps somewhere else — the correlation is the
-    /// authority on which client this flow belongs to.
+    /// re-authentication and role policy the correlation record does not. If the host no longer
+    /// maps to this flow's client, the policy comes from another host of that client — the
+    /// correlation is the authority on which client this flow belongs to.
     /// </summary>
-    private TenantConfig HostTenant(HttpContext ctx, CorrelationData correlation) =>
-        tenantResolver.TryResolve(ctx.Request.Host.Value, out var tenant)
-        && tenant.Realm == correlation.Realm
-        && tenant.ClientId == correlation.ClientId
-            ? tenant
+    private TenantConfig HostTenant(HttpContext ctx, CorrelationData correlation)
+    {
+        if (tenantResolver.TryResolve(ctx.Request.Host.Value, out var tenant)
+            && tenant.Realm == correlation.Realm
+            && tenant.ClientId == correlation.ClientId)
+        {
+            return tenant;
+        }
+
+        return tenantResolver.TryResolveByClient(correlation.Realm, correlation.ClientId, out var byClient)
+            ? byClient
             : new TenantConfig { Realm = correlation.Realm, ClientId = correlation.ClientId };
+    }
 
     private static string WithFlag(string returnUrl, string flag) =>
         returnUrl + (returnUrl.Contains('?') ? '&' : '?') + Uri.EscapeDataString(flag) + "=1";

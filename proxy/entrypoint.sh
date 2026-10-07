@@ -43,6 +43,8 @@ require_env ENVOY_TLS_KEY
 CLIENT_LIST=$(echo "$CLIENTS" | tr ',' ' ')
 FIRST_CLIENT=${CLIENT_LIST%% *}
 DEFAULT_CLIENT="${DEFAULT_CLIENT:-$FIRST_CLIENT}"
+# The client whose host the admin consoles live on; its vhost carries the console CSP.
+ADMIN_CLIENT="${ADMIN_CLIENT:-admin}"
 
 TMPL=/etc/envoy
 LISTENERS_FILE=/tmp/listeners.yaml
@@ -82,7 +84,17 @@ render_cluster() { # name host port tls_block_file
     "$TMPL/envoy.cluster.yaml.tmpl" >> "$CLIENT_CLUSTERS_FILE"
 }
 
-render_vhost() { # name domains alt_svc_port web_cluster cors_file out_file
+render_vhost() { # name domains alt_svc_port web_cluster cors_file out_file console_upstream_tls
+  local consoles_file="/tmp/console_routes_$1.yaml" headers_file="/tmp/response_headers_$1.yaml"
+  render_console_routes "$1" "$4" "$7" "$consoles_file"
+  : > "$headers_file"
+  if [ "$1" = "$ADMIN_CLIENT" ]; then
+    case "$ENVOY_MODE" in
+      # The dev server's HMR socket falls back to its own localhost port.
+      dev*) sed -e "s|connect-src 'self'|connect-src 'self' wss://localhost:*|" "$TMPL/envoy.admin-csp.yaml.tmpl" > "$headers_file" ;;
+      *) cat "$TMPL/envoy.admin-csp.yaml.tmpl" > "$headers_file" ;;
+    esac
+  fi
   sed \
     -e "s|__VHOST_NAME__|$1|g" \
     -e "s|__DOMAINS__|$2|g" \
@@ -90,7 +102,32 @@ render_vhost() { # name domains alt_svc_port web_cluster cors_file out_file
     -e "s|__WEB_CLUSTER__|$4|g" \
     -e "/^__CORS_ALLOW_ORIGIN_MATCHES__$/r $5" \
     -e "/^__CORS_ALLOW_ORIGIN_MATCHES__$/d" \
+    -e "/^__CONSOLE_ROUTES__$/r $consoles_file" \
+    -e "/^__CONSOLE_ROUTES__$/d" \
+    -e "/^__RESPONSE_HEADERS_EXTRA__$/r $headers_file" \
+    -e "/^__RESPONSE_HEADERS_EXTRA__$/d" \
     "$TMPL/envoy.vhost.yaml.tmpl" >> "$6"
+}
+
+# App consoles mounted under a client's host at /<console>/ (CLIENT_<NAME>_CONSOLES), each with
+# its own upstream (CONSOLE_<CONSOLE>_HOST/PORT) — docs/design/admin-consoles.md.
+render_console_routes() { # client web_cluster upstream_tls_file out_file
+  local consoles console cu c_host c_port
+  : > "$4"
+  eval "consoles=\${CLIENT_$(upper "$1")_CONSOLES:-}"
+  for console in $(echo "$consoles" | tr ',' ' '); do
+    case "$console" in
+      *[!a-z0-9-]*) echo "Error: console name '$console' must be lowercase letters, digits and '-'." >&2; exit 1 ;;
+    esac
+    cu=$(upper "$console")
+    require_env "CONSOLE_${cu}_HOST"
+    require_env "CONSOLE_${cu}_PORT"
+    eval "c_host=\$CONSOLE_${cu}_HOST"
+    eval "c_port=\$CONSOLE_${cu}_PORT"
+    render_cluster "console_${console}" "$c_host" "$c_port" "$3"
+    sed -e "s|__CONSOLE__|$console|g" -e "s|__WEB_CLUSTER__|$2|g" \
+      "$TMPL/envoy.console-routes.yaml.tmpl" >> "$4"
+  done
 }
 
 render_rds() { # route_config_name vhosts_file out_file
@@ -130,13 +167,15 @@ EOF
         eval "UP_PORT=\$CLIENT_${U}_PORT"
         WEB_CLUSTER="client_${CLIENT}"
         render_cluster "$WEB_CLUSTER" "$UP_HOST" "$UP_PORT" "$DEV_UPSTREAM_TLS"
+        CONSOLE_TLS="$DEV_UPSTREAM_TLS"
       else
         WEB_CLUSTER=clients_host
+        CONSOLE_TLS=/dev/null
       fi
 
       VHOSTS_FILE="/tmp/vhosts_${CLIENT}.yaml"
       : > "$VHOSTS_FILE"
-      render_vhost "$CLIENT" '["*"]' "$LISTENER_PORT" "$WEB_CLUSTER" "$DEV_CORS" "$VHOSTS_FILE"
+      render_vhost "$CLIENT" '["*"]' "$LISTENER_PORT" "$WEB_CLUSTER" "$DEV_CORS" "$VHOSTS_FILE" "$CONSOLE_TLS"
       render_rds "routes_${CLIENT}" "$VHOSTS_FILE" "/etc/envoy/discovery/envoy.rds.${CLIENT}.yaml"
       render_listener "listener_${CLIENT}" "$LISTENER_PORT" "envoy.rds.${CLIENT}.yaml" "routes_${CLIENT}"
     done
@@ -167,7 +206,7 @@ EOF
           allow_origin_string_match:
             - exact: "https://${DOMAIN}"
 EOF
-      render_vhost "$CLIENT" "$DOMAINS" "$PORT" clients_host "$CORS_FILE" "$VHOSTS_FILE"
+      render_vhost "$CLIENT" "$DOMAINS" "$PORT" clients_host "$CORS_FILE" "$VHOSTS_FILE" /dev/null
     done
 
     # Optional Keycloak edge vhost. Only the two-instance prod topology routes

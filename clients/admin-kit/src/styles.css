@@ -1,0 +1,2 @@
+/* Tailwind's source scan does not follow the console's admin-kit symlink. */
+@source "./";

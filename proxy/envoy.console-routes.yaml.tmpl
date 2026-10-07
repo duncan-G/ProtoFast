@@ -1,0 +1,19 @@
+        # The __CONSOLE__ console (docs/design/admin-consoles.md). Matched after ext_authz has
+        # replaced x-roles (clear_route_cache), so only a holder of admin-__CONSOLE__ reaches its
+        # own SSR process — assets included. Everyone else lands on the platform console, which
+        # signs them in or shows the forbidden page.
+        - match:
+            prefix: "/__CONSOLE__/"
+            headers:
+              - name: "x-roles"
+                string_match:
+                  safe_regex:
+                    regex: "^(.*,)?admin-__CONSOLE__(,.*)?$"
+          route: { cluster: console___CONSOLE__ }
+        - match: { path: "/__CONSOLE__" }
+          redirect: { path_redirect: "/__CONSOLE__/" }
+        - match: { prefix: "/__CONSOLE__/" }
+          route: { cluster: __WEB_CLUSTER__ }
+          request_headers_to_add:
+            - header: { key: "x-console-denied", value: "__CONSOLE__" }
+              append_action: OVERWRITE_IF_EXISTS_OR_ADD
