@@ -936,11 +936,13 @@ console_services() {
 }
 
 # An admin console renders its home page. Probed on its own container with the identity headers
-# Envoy would add, because through Envoy only a signed-in holder of its role reaches it.
+# Envoy would add, because through Envoy only a signed-in holder of its role reaches it. Host is
+# the admin domain: Angular's SSRF guard answers 400 to any host not in NG_ALLOWED_HOSTS.
 console_ok() {
   local svc="$1" app="${1#clients-admin-}"
   docker run --rm --network "$NETWORK" curlimages/curl:latest \
     -fsS -o /dev/null --max-time 5 \
+    -H "Host: $(domain_for admin)" \
     -H "x-user-id: deploy-health-check" -H "x-roles: admin-${app}" \
     "http://${svc}:4000/${app}/"
 }
