@@ -13,6 +13,8 @@ dependencies = [
   # deploy-conversion.yml fails the build if their packages appear.
   "markitdown[pdf,docx,pptx,xlsx,xls,outlook]==0.1.7",
   "pdfplumber==0.11.10",
+  "pikepdf==10.16.0",
+  "fonttools==4.66.1",
   "pytesseract==0.3.13",
   "pillow==12.3.0",
   "ocrmypdf==17.12.1",

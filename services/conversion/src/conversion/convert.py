@@ -10,7 +10,7 @@ import tempfile
 import time
 from dataclasses import dataclass, field
 
-from . import images, limits, markitdown_adapter, pdf, sniff
+from . import images, limits, markitdown_adapter, pdf, sniff, text_layer
 from .config import Settings
 from .contract import ConvertReply, ConvertRequest, OcrResult
 from .formats import Format, resolve
@@ -172,6 +172,7 @@ def _convert_pdf(
     """Probe the text layer, OCR only if it looks scanned, then extract from whichever PDF now
     carries the text."""
     budget.check("reading the PDF")
+    source = text_layer.repair(source)
     text = pdf.extract(source)
     limits.check_page_count(text.pages, settings.max_pages)
 
