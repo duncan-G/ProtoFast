@@ -16,9 +16,9 @@ unset USE_SSL LOCALSTACK_HOST
 REGION="${AWS_DEFAULT_REGION:-us-east-1}"
 
 # The browser origins the presigned upload arrives from, set by WithClientOrigins, which derives
-# them from the Envoy per-client listener ports. The same variable feeds the bucket rules below and
-# LocalStack's own fallback: reading it here rather than asking the AppHost for a second copy is
-# what keeps the two from drifting apart.
+# them from the Envoy per-client listeners (https://«client».dev.localhost:2000x). The same
+# variable feeds the bucket rules below and LocalStack's own fallback: reading it here rather than
+# asking the AppHost for a second copy is what keeps the two from drifting apart.
 ORIGINS="${EXTRA_CORS_ALLOWED_ORIGINS:-}"
 
 # Queue shapes, kept together so they are tunable in one place rather than buried in the JSON.

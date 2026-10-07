@@ -341,7 +341,7 @@
       "name": "ProtoFast Admin Console",
       "enabled": true,
       "protocol": "openid-connect",
-      "baseUrl": "${ADMIN_BASE_URL:https://localhost:20000}",
+      "baseUrl": "${ADMIN_BASE_URL:https://admin.dev.localhost:20000}",
       "publicClient": false,
       "clientAuthenticatorType": "client-secret",
       "secret": "${ADMIN_CLIENT_SECRET:dev-admin-secret}",
@@ -353,7 +353,7 @@
       "fullScopeAllowed": true,
       "redirectUris": [
         "https://admin.protofast.dev/signin-oidc",
-        "https://localhost:20000/signin-oidc"
+        "https://admin.dev.localhost:20000/signin-oidc"
       ],
       "webOrigins": [
         "https://admin.protofast.dev",
@@ -361,7 +361,7 @@
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "https://admin.protofast.dev/*##https://localhost:20000/*",
+        "post.logout.redirect.uris": "https://admin.protofast.dev/*##https://admin.dev.localhost:20000/*",
         "backchannel.logout.url": "${BACKCHANNEL_LOGOUT_URL:}",
         "backchannel.logout.session.required": "true",
         "backchannel.logout.revoke.offline.tokens": "false",

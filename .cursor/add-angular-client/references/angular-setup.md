@@ -197,7 +197,8 @@ single unified SSR host container (`clients/host/`):
 
 In every mode the client also gets `proxy.WithClient(...)`, which in
 dev creates the client's Envoy listener (fixed internal target ports
-20000, 20001, … in registration order) and in publish wires the
+20000, 20001, … in registration order, served as
+`«clientname».dev.localhost`) and in publish wires the
 `«clientname»-domain` parameter into the client's virtual host.
 
 ### Dev-mode package
@@ -221,14 +222,14 @@ namespace «ProjectName».AppHost.ClientApp;
 
 public static class ClientAppResourceBuilderExtensions
 {
-    // Run mode only: one Angular dev server per client. serverEndpoint is the
-    // client's Envoy listener endpoint (returned by proxy.WithClient), injected
+    // Run mode only: one Angular dev server per client. serverUrl is the
+    // client's browser origin (returned by proxy.WithClient), injected
     // as SERVER_URL. Returns the dev server's HTTPS endpoint (the Envoy upstream).
     public static EndpointReference AddClientApp(
         this IDistributedApplicationBuilder builder,
         string clientName,
         string clientPath,
-        EndpointReference serverEndpoint,
+        ReferenceExpression serverUrl,
         EndpointReference? clientOtelEndpoint = null,
         EndpointReference? clientServerOtelEndpoint = null);
 
@@ -284,12 +285,14 @@ else
 
 - **`proxy.WithClient(builder, "«clientname»")`** — dev: creates the
   per-client Envoy listener endpoint (`«clientname»-web` on the envoy
-  resource) and the `CLIENT_«CLIENTNAME»_LISTENER_PORT` env var;
+  resource) and the `CLIENT_«CLIENTNAME»_LISTENER_PORT` and
+  `CLIENT_«CLIENTNAME»_DOMAIN` (`«clientname».dev.localhost`) env vars;
   publish: creates the `«clientname»-domain` parameter and the
-  `CLIENT_«CLIENTNAME»_DOMAIN` env var. Returns the endpoint to use as
-  `SERVER_URL`.
+  `CLIENT_«CLIENTNAME»_DOMAIN` env var. Returns the client's browser
+  origin (a `ReferenceExpression`) to use as `SERVER_URL`.
 - **`AddClientApp`** (dev only) — runs the Angular dev server with the
-  Envoy listener endpoint as `SERVER_URL`.
+  client's origin (`https://«clientname».dev.localhost:«port»`) as
+  `SERVER_URL`.
 - **`WithUpstreamEndpoint("CLIENT_«CLIENTNAME»", …)`** — injects
   `CLIENT_«CLIENTNAME»_HOST/PORT` so Envoy's entrypoint can build the
   client's upstream cluster in dev.

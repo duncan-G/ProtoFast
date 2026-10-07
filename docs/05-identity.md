@@ -68,7 +68,7 @@ for the naming rules).
 | `Keycloak:PublicAuthority` | empty → falls back to `Authority` | `https://${KEYCLOAK_DOMAIN}` — used for redirects and as the expected token issuer |
 | `Keycloak:ClientSecretProtofastWeb` / `…Admin` / `…TheplotWeb` | from Secrets Manager (`dev-*-secret` defaults) | from Secrets Manager |
 | `Keycloak:AdminClientId` / `AdminClientSecret` | `account-admin` / from Secrets Manager | from Secrets Manager; empty disables account management (503) instead of failing startup. One value serves every realm: each realm's `account-admin` client is imported with the same secret placeholder |
-| `Tenants:ByHost:<host>:Realm` / `:ClientId` | `localhost` → `protofast` / `protofast-web`; `localhost+20000` → `operators` / `admin`; `localhost+20002` → `theplot` / `theplot-web` | `protofast.dev` → `protofast-web`, `admin.protofast.dev` → `operators` / `admin`, `theplot.protofast.dev` → `theplot` / `theplot-web` |
+| `Tenants:ByHost:<host>:Realm` / `:ClientId` | `protofast.dev.localhost` → `protofast` / `protofast-web`; `admin.dev.localhost` → `operators` / `admin`; `theplot.dev.localhost` → `theplot` / `theplot-web` | `protofast.dev` → `protofast-web`, `admin.protofast.dev` → `operators` / `admin`, `theplot.protofast.dev` → `theplot` / `theplot-web` |
 | `Tenants:ByHost:admin…:RequiredRoles` | `platform`, `admin-protofast`, `admin-theplot` | same; an account holding none of them gets no session and lands on `/forbidden` |
 | `Tenants:ByHost:admin…:MaxAge` / `:AcrValues` | — | forces re-authentication (and optionally a passkey) when entering the admin console |
 | `Session:*` | defaults | defaults: `pf_session`, 8 h idle, 7 d absolute, id rotated on refresh |
@@ -77,11 +77,11 @@ for the naming rules).
 | `Subscriptions:Enabled` | off | off until billing exists |
 
 A host that is not in `Tenants:ByHost` is never guessed — it routes public.
-A `host:port` entry beats the bare host: dev's per-client Envoy listeners all
-share `localhost` and differ only by port, so the port is the only thing that
-can put one listener (theplot's, `localhost:20002`) in its own realm. In the
-config key the port is written with `+` (`localhost+20002`) — a colon in a
-configuration key is a path separator and would silently unbind the entry.
+Each dev client has a hostname of its own (`«client».dev.localhost`, on its
+pinned Envoy listener) because cookies ignore ports: clients told apart only by
+port would share one `pf_session`. A `host:port` entry still beats the bare host,
+written with `+` (`host+port`) since a colon in a configuration key is a path
+separator and would silently unbind the entry, but no environment uses one.
 
 **Why two Keycloak authorities?** Tokens are stamped with the issuer captured
 during the browser login. If the back-channel used a different URL, the refresh
@@ -156,6 +156,7 @@ The full rationale, including which "tidy-ups" silently break the flow, is in
 | Allow-listed client settings (back-channel logout, admin session overrides) | same reconcile; secrets, redirect URIs and flows stay owned by the import |
 | Authentication flows | **never** reconciled automatically — run `scripts/keycloak-apply-passwordless-flow.py` by hand (idempotent, supports `--dry-run`) |
 | The `account-admin` client on an existing realm | `scripts/keycloak-apply-account-admin-client.py`, once |
+| Client URLs (redirect URIs, web origins, base URL, post-logout URIs), in dev | applied on every AppHost start by the `dev-client-urls` resource (`scripts/keycloak-apply-client-urls.py`) |
 | Anything, in dev | edit the JSON and recreate the Keycloak container so the import runs on an empty database |
 
 Keep the two realm copies (`infra/keycloak/realms/` and `deploy/keycloak/realms/`)

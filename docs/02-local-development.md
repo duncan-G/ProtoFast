@@ -28,19 +28,23 @@ AWS CLI v2 and an SSO profile named **`developer`** (the Developer permission se
 | `protofast-db`            | database             | runs `ProtoFast.SchemaMigrations` (the ThePlot `plot` schema) alongside `api`                                    |
 | `redis`                   | container            | session, correlation and replay stores                                                                           |
 | `keycloak`                | container (26.7)     | stores users/realms in the `keycloak` database (so they survive restarts), realm import from `infra/keycloak/realms`, themes and provider JAR bind-mounted, tracing + logs to the collector |
+| `dev-client-urls`         | executable (python3) | runs `scripts/keycloak-apply-client-urls.py` on every start: pushes the realm files' client URLs into realms the `keycloak` database already holds |
 | `smtp4dev`                | container            | local mail catcher; both Keycloak and `auth` are pointed at it                                                   |
 | `auth`, `payments`, `api` | .NET projects        | OTLP reference, Redis/Postgres connection strings; JWT and Keycloak secrets from `protofast/dev`                 |
 | `conversion`              | Dockerfile container | document → Markdown; LocalStack S3 by container DNS, the upload bucket, OTLP to the collector                    |
-| `envoy`                   | Dockerfile container | one HTTPS listener per client, dev certificate, upstream host/port for every service                             |
+| `envoy`                   | Dockerfile container | one HTTPS listener per client on `«client».dev.localhost`, dev certificate, upstream host/port for every service |
 | `admin`, `protofast`, `theplot` | `ng serve`     | `PORT`, `SSL_CERT`, `SSL_KEY`, `SERVER_URL`, OTel endpoints                                                      |
 
 
 Two details are worth knowing because they explain otherwise-mysterious errors:
 
-- **The client listener ports are pinned** — `20000` for the first registered
-client (`admin`), `20001` for the second (`protofast`). Keycloak's realm import
-lists `https://localhost:20000|20001/signin-oidc` as exact redirect URIs, so a
-randomly-assigned port would fail with `invalid_redirect_uri`.
+- **Each client has its own hostname and a pinned port** — `admin.dev.localhost:20000`,
+`protofast.dev.localhost:20001`, `theplot.dev.localhost:20002` (ports in
+registration order). Cookies ignore ports, so clients sharing `localhost` would
+share one `pf_session`. Keycloak's realms list `https://«client».dev.localhost:«port»/signin-oidc`
+as exact redirect URIs, so a randomly-assigned port would fail with
+`invalid_redirect_uri`. Envoy redirects any other `Host` (e.g. an old
+`https://localhost:20000` bookmark) to the client's hostname.
 - **Containers reach host processes via** `host.docker.internal`**.** Envoy and
 Keycloak are started with `--add-host=host.docker.internal:host-gateway`, which
 is how Envoy dials the .NET services and how Keycloak posts back-channel logout
@@ -107,7 +111,7 @@ this is for UI work only.
 | Apply migrations                  | automatic — `auth-db` and `protofast-db` each run their migrations project when the AppHost starts                                            |
 | Rebuild the Keycloak provider JAR | `infra/keycloak/providers/build.sh`, then restart Keycloak                                                                                    |
 | Edit the Keycloak login theme     | edit under `deploy/keycloak/themes/protofast`; `start-dev` disables theme caching, so a refresh is enough                                     |
-| Change the realm                  | edit `infra/keycloak/realms/protofast-realm.json`, drop the `keycloak` database in pgAdmin (this also wipes local accounts), then restart the AppHost — the import skips a realm that already exists |
+| Change the realm                  | edit `infra/keycloak/realms/protofast-realm.json`, drop the `keycloak` database in pgAdmin (this also wipes local accounts), then restart the AppHost — the import skips a realm that already exists. Client URLs (redirect URIs, web origins, base URL, post-logout URIs) need no drop: the `dev-client-urls` resource re-applies them from the realm files on every start |
 | See traces / logs / metrics       | the Aspire dashboard URL printed by `aspire run`                                                                                              |
 | Run the auth tests                | `dotnet test services/auth/tests/ProtoFast.Auth.UnitTests` (and `…IntegrationTests`)                                                          |
 

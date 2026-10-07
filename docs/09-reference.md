@@ -129,7 +129,7 @@ scripts/                  secrets, dev helpers, Keycloak apply scripts
 
 | Port | Where | What |
 |---|---|---|
-| 20000 / 20001 | dev, host | Envoy listeners for `admin` / `protofast` |
+| 20000 / 20001 / 20002 | dev, host | Envoy listeners for `admin` / `protofast` / `theplot`, served as `«client».dev.localhost` |
 | 8443 | prod, Host A | Envoy publish listener (tunnel target) |
 | 9901 | both | Envoy admin (`/ready`) |
 | 4000 | both | unified SSR clients host |

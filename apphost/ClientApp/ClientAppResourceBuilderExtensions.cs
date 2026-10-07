@@ -24,13 +24,13 @@ public static class ClientAppResourceBuilderExtensions
 
     /// <summary>
     /// Adds a single client's Angular dev server (run mode only). The browser reaches the
-    /// client through its per-client Envoy listener; <paramref name="serverEndpoint"/> is
-    /// that listener's endpoint, injected as <c>SERVER_URL</c>.
+    /// client through its per-client Envoy listener; <paramref name="serverUrl"/> is that
+    /// listener's browser origin, injected as <c>SERVER_URL</c>.
     /// </summary>
     /// <param name="builder">The distributed application builder.</param>
     /// <param name="clientName">The resource name for the client app.</param>
     /// <param name="clientPath">The file-system path to the client app project directory.</param>
-    /// <param name="serverEndpoint">The client's Envoy listener endpoint injected as <c>SERVER_URL</c>.</param>
+    /// <param name="serverUrl">The client's browser origin (from <c>WithClient</c>) injected as <c>SERVER_URL</c>.</param>
     /// <param name="clientOtelEndpoint">Optional browser-side OpenTelemetry collector endpoint injected as <c>BROWSER_OTEL_ENDPOINT</c>.</param>
     /// <param name="clientServerOtelEndpoint">Optional server-side OpenTelemetry collector endpoint injected as <c>SERVER_OTEL_ENDPOINT</c>.</param>
     /// <param name="environment">Extra settings the platform owns, e.g. an admin console's <c>ADMIN_CONSOLE_ROLES</c>.</param>
@@ -39,7 +39,7 @@ public static class ClientAppResourceBuilderExtensions
         this IDistributedApplicationBuilder builder,
         string clientName,
         string clientPath,
-        EndpointReference serverEndpoint,
+        ReferenceExpression serverUrl,
         EndpointReference? clientOtelEndpoint = null,
         EndpointReference? clientServerOtelEndpoint = null,
         IReadOnlyDictionary<string, string>? environment = null)
@@ -53,7 +53,7 @@ public static class ClientAppResourceBuilderExtensions
                 ctx.EnvironmentVariables["SSL_KEY"] = ctx.KeyPath;
                 return Task.CompletedTask;
             })
-            .WithEnvironment("SERVER_URL", serverEndpoint);
+            .WithEnvironment("SERVER_URL", serverUrl);
 
         foreach (var (name, value) in environment ?? new Dictionary<string, string>())
         {

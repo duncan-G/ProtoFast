@@ -25,13 +25,13 @@
 ## Development
 
 `aspire run` starts everything as local processes and containers. Ports are
-assigned by Aspire at startup **except** the two Envoy client listeners, which are
+assigned by Aspire at startup **except** the Envoy client listeners, which are
 pinned because Keycloak's redirect URIs are exact.
 
 ```mermaid
 graph TD
-    Browser -->|https://localhost:20000| EnvoyAdmin["Envoy listener · admin"]
-    Browser -->|https://localhost:20001| EnvoyPF["Envoy listener · protofast"]
+    Browser -->|https://admin.dev.localhost:20000| EnvoyAdmin["Envoy listener · admin"]
+    Browser -->|https://protofast.dev.localhost:20001| EnvoyPF["Envoy listener · protofast"]
     EnvoyAdmin --> NgAdmin["ng serve · admin"]
     EnvoyPF --> NgPF["ng serve · protofast"]
     EnvoyAdmin & EnvoyPF -->|"/signin, /account/*"| Auth["auth (BFF)"]
@@ -48,11 +48,14 @@ graph TD
 
 Key facts:
 
-- One **listener per client** (`20000` = admin, `20001` = protofast). Pages and
-API share an origin, so there is no cross-origin problem to solve.
+- One **listener per client**, each on its own hostname: `admin.dev.localhost:20000`,
+`protofast.dev.localhost:20001`, `theplot.dev.localhost:20002`. Pages and API share
+an origin, so there is no cross-origin problem to solve. Any other `Host` (e.g.
+`localhost:20000`) is redirected to the client's hostname.
 - Keycloak is reached **directly** on `:8080` in dev — it is not behind Envoy.
-- Both listeners are `localhost`, so the browser keeps one cookie jar: signing in
-on one port signs you in on the other. That is a dev-only artefact.
+- Each client needs its own hostname because cookies ignore ports: clients on
+one host would share one `pf_session`. Browsers resolve `*.localhost` to loopback,
+and the ASP.NET dev certificate covers `*.dev.localhost`.
 
 
 
