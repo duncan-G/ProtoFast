@@ -2,6 +2,9 @@ version: v2
 inputs:
   - directory: ../../services/payments/src/ProtoFast.Payments.Api/Protos
   - directory: ../../services/api/src/ProtoFast.Api/Protos
+    # Admin RPCs belong to the admin consoles only (docs/design/admin-consoles.md §3).
+    exclude_paths:
+      - ../../services/api/src/ProtoFast.Api/Protos/Admin
 plugins:
   - local: protoc-gen-es
     out: src/lib/gen

@@ -1,4 +1,5 @@
 using ProtoFast.Api.Services;
+using ProtoFast.Api.Services.Admin;
 using ProtoFast.Api.Services.Screenplays;
 using ProtoFast.Data.ThePlot;
 using ProtoFast.Grpc;
@@ -43,6 +44,8 @@ app.MapDefaultEndpoints();
 app.MapGrpcService<DocumentUploadService>();
 app.MapGrpcService<DocumentService>();
 app.MapGrpcService<StoryService>();
+app.MapGrpcService<AdminOverviewService>();
+app.MapGrpcService<TheplotAdminService>();
 app.MapGet("/", () => "Communication with gRPC endpoints must be made through a gRPC client. To learn how to create a client, visit: https://go.microsoft.com/fwlink/?linkid=2086909");
 
 app.Run();

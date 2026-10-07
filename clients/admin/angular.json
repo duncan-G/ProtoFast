@@ -23,6 +23,7 @@
           "options": {
             "browser": "src/main.ts",
             "tsConfig": "tsconfig.app.json",
+            "preserveSymlinks": true,
             "inlineStyleLanguage": "scss",
             "assets": [
               {

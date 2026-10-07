@@ -1,0 +1,42 @@
+name: deploy-client-admin-theplot
+
+# theplot's admin console: builds and ships only clients/admin-theplot, into its own
+# clients-admin-theplot container (docs/design/admin-consoles.md §3).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "clients/admin-theplot/**"
+      - "clients/admin-kit/**"
+      - "services/api/src/ProtoFast.Api/Protos/Admin/Shared/**"
+      - "services/api/src/ProtoFast.Api/Protos/Admin/Theplot/**"
+      - ".github/workflows/deploy-client-admin-theplot.yml"
+      - ".github/workflows/_component-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing artifact tag to (re)deploy or roll back to. Blank = build current source."
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-client-admin-theplot
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_component-deploy.yml
+    with:
+      component: client-admin-theplot
+      host: edge
+      build: client-s3
+      target: admin-theplot
+      kind: client
+      hash_paths: "clients/admin-theplot clients/admin-kit services/api/src/ProtoFast.Api/Protos/Admin/Shared services/api/src/ProtoFast.Api/Protos/Admin/Theplot"
+      project: clients/admin-theplot
+      tag: ${{ inputs.tag }}
+    secrets: inherit

@@ -16,9 +16,9 @@ public sealed class TenantConfig
 
     /// <summary>
     /// OIDC <c>max_age</c> (seconds) for this host's authorize requests. Set on the admin
-    /// host and nowhere else: without it, a realm SSO session opened on the product site
-    /// carries straight into the admin console, silently, for as long as the session lives.
-    /// Null leaves silent SSO alone, which is what every other host wants.
+    /// host and nowhere else: without it, a live operators-realm SSO session carries straight
+    /// into the admin console, silently, for as long as the session lives. Null leaves silent
+    /// SSO alone, which is what every other host wants.
     /// </summary>
     public int? MaxAge { get; init; }
 
@@ -29,4 +29,14 @@ public sealed class TenantConfig
     /// sign-in if it did not.
     /// </summary>
     public string? AcrValues { get; init; }
+
+    /// <summary>
+    /// Realm roles of which the account must hold at least one for this host to issue or keep a
+    /// session: the console roles on the admin host (docs/design/admin-consoles.md §4.3). Empty
+    /// admits any account in the realm.
+    /// </summary>
+    public string[] RequiredRoles { get; init; } = [];
+
+    public bool Admits(IReadOnlyList<string> roles) =>
+        RequiredRoles.Length == 0 || RequiredRoles.Any(r => roles.Contains(r, StringComparer.Ordinal));
 }

@@ -33,6 +33,7 @@ public static class ClientAppResourceBuilderExtensions
     /// <param name="serverEndpoint">The client's Envoy listener endpoint injected as <c>SERVER_URL</c>.</param>
     /// <param name="clientOtelEndpoint">Optional browser-side OpenTelemetry collector endpoint injected as <c>BROWSER_OTEL_ENDPOINT</c>.</param>
     /// <param name="clientServerOtelEndpoint">Optional server-side OpenTelemetry collector endpoint injected as <c>SERVER_OTEL_ENDPOINT</c>.</param>
+    /// <param name="environment">Extra settings the platform owns, e.g. an admin console's <c>ADMIN_CONSOLE_ROLES</c>.</param>
     /// <returns>An <see cref="EndpointReference"/> for the dev server's HTTPS endpoint (used as the Envoy upstream).</returns>
     public static EndpointReference AddClientApp(
         this IDistributedApplicationBuilder builder,
@@ -40,7 +41,8 @@ public static class ClientAppResourceBuilderExtensions
         string clientPath,
         EndpointReference serverEndpoint,
         EndpointReference? clientOtelEndpoint = null,
-        EndpointReference? clientServerOtelEndpoint = null)
+        EndpointReference? clientServerOtelEndpoint = null,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         var clientAppDev = builder.AddJavaScriptApp(clientName, clientPath, runScriptName: "start")
             .WithHttpsEndpoint(env: "PORT")
@@ -52,6 +54,11 @@ public static class ClientAppResourceBuilderExtensions
                 return Task.CompletedTask;
             })
             .WithEnvironment("SERVER_URL", serverEndpoint);
+
+        foreach (var (name, value) in environment ?? new Dictionary<string, string>())
+        {
+            clientAppDev.WithEnvironment(name, value);
+        }
 
         clientAppDev.WithOtelEndpoints(clientOtelEndpoint, clientServerOtelEndpoint);
         clientAppDev.WithDevServerHealthCheck(builder, clientName);
@@ -72,6 +79,7 @@ public static class ClientAppResourceBuilderExtensions
     /// <param name="allowedHosts">Browser-facing hostnames injected as <c>NG_ALLOWED_HOSTS</c>; Angular SSR rejects requests whose <c>Host</c> isn't listed.</param>
     /// <param name="clientOtelEndpoint">Optional browser-side OpenTelemetry collector endpoint injected as <c>BROWSER_OTEL_ENDPOINT</c>.</param>
     /// <param name="clientServerOtelEndpoint">Optional server-side OpenTelemetry collector endpoint injected as <c>SERVER_OTEL_ENDPOINT</c>.</param>
+    /// <param name="environment">Extra settings the platform owns, e.g. <c>CLIENTS</c> and <c>ADMIN_CONSOLE_ROLES</c>.</param>
     /// <returns>An <see cref="EndpointReference"/> for the host's HTTP endpoint (used as the Envoy upstream).</returns>
     public static EndpointReference AddClientHost(
         this IDistributedApplicationBuilder builder,
@@ -79,7 +87,8 @@ public static class ClientAppResourceBuilderExtensions
         string defaultClient,
         ReferenceExpression allowedHosts,
         EndpointReference? clientOtelEndpoint = null,
-        EndpointReference? clientServerOtelEndpoint = null)
+        EndpointReference? clientServerOtelEndpoint = null,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         var host = builder.AddDockerfile(name, "..", "clients/host/Dockerfile")
             .WithHttpEndpoint(targetPort: 4000, env: "PORT")
@@ -88,6 +97,11 @@ public static class ClientAppResourceBuilderExtensions
             // Angular SSR strips them (and logs a warning) unless explicitly trusted.
             .WithEnvironment("NG_TRUST_PROXY_HEADERS", "x-forwarded-for,x-forwarded-proto")
             .WithEnvironment("NG_ALLOWED_HOSTS", allowedHosts);
+
+        foreach (var (key, value) in environment ?? new Dictionary<string, string>())
+        {
+            host.WithEnvironment(key, value);
+        }
 
         host.WithOtelEndpoints(clientOtelEndpoint, clientServerOtelEndpoint);
 

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using ProtoFast.Api.IntegrationTests;
+using ProtoFast.Api.Services.Admin;
 using ProtoFast.Api.Services.Screenplays;
 using ProtoFast.Data.ThePlot;
 using Testcontainers.PostgreSql;
@@ -31,6 +32,8 @@ public sealed class StoryDatabase : IAsyncLifetime
         services.AddScoped<StoryScope>();
         services.AddScoped<StoryLibrary>();
         services.AddScoped<StoryService>();
+        services.AddScoped<AdminOverviewService>();
+        services.AddScoped<TheplotAdminService>();
         Services = services.BuildServiceProvider();
 
         await using var scope = Services.CreateAsyncScope();

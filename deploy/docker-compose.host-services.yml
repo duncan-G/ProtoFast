@@ -85,17 +85,20 @@ services:
       # Host → realm/client map (config now, DB row later — auth §3.3).
       Tenants__ByHost__protofast.dev__Realm: protofast
       Tenants__ByHost__protofast.dev__ClientId: protofast-web
-      Tenants__ByHost__admin.protofast.dev__Realm: protofast
-      Tenants__ByHost__admin.protofast.dev__ClientId: admin
       Tenants__ByHost__theplot.protofast.dev__Realm: theplot
       Tenants__ByHost__theplot.protofast.dev__ClientId: theplot-web
-      # Admin-only re-authentication policy. Both clients share the realm's SSO session, so
-      # without these a sign-in on the product site walks into the admin console silently.
-      # max_age forces *a* re-authentication; acr_values asks the realm for the level whose
-      # branch demands a passkey, and the callback refuses the sign-in if the token comes
-      # back at a lower one. Leave ACR_VALUES empty until staff passkey coverage and the
-      # break-glass procedure are both in place — asking for a level the realm cannot reach
-      # locks the admin console.
+      # The admin host signs operators in to the operators realm and issues a session only to
+      # an account holding at least one console role (docs/design/admin-consoles.md §4.4).
+      Tenants__ByHost__admin.protofast.dev__Realm: operators
+      Tenants__ByHost__admin.protofast.dev__ClientId: admin
+      Tenants__ByHost__admin.protofast.dev__RequiredRoles__0: platform
+      Tenants__ByHost__admin.protofast.dev__RequiredRoles__1: admin-protofast
+      Tenants__ByHost__admin.protofast.dev__RequiredRoles__2: admin-theplot
+      # Re-authentication policy on entering the console. max_age forces *a*
+      # re-authentication; acr_values asks the realm for the level whose branch demands a
+      # passkey, and the callback refuses the sign-in if the token comes back at a lower one.
+      # Leave ACR_VALUES empty until operator passkey coverage and the break-glass procedure
+      # are both in place — asking for a level the realm cannot reach locks the console.
       Tenants__ByHost__admin.protofast.dev__MaxAge: "${ADMIN_MAX_AGE:-900}"
       Tenants__ByHost__admin.protofast.dev__AcrValues: "${ADMIN_ACR_VALUES:-}"
     volumes:
@@ -314,6 +317,7 @@ services:
       THEPLOT_WEB_BASE_URL: "${THEPLOT_WEB_BASE_URL:-https://theplot.protofast.dev}"
       # WebAuthn needs the RP ID to be the passkey page's host or a parent — that page is Keycloak's.
       THEPLOT_WEBAUTHN_RP_ID: "${KEYCLOAK_DOMAIN:-auth.example.com}"
+      OPERATORS_WEBAUTHN_RP_ID: "${KEYCLOAK_DOMAIN:-auth.example.com}"
       # Where Keycloak POSTs the logout token when an SSO session ends (both clients share the
       # endpoint; the token's `aud` says which one it is for). Same-host compose DNS, never the
       # public edge — Envoy's vhost routes only the browser OIDC paths to auth, so this URL is

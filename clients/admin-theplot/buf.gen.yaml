@@ -1,0 +1,12 @@
+version: v2
+inputs:
+  # The platform admin RPCs and theplot's own, nothing else (docs/design/admin-consoles.md §3).
+  - directory: ../../services/api/src/ProtoFast.Api/Protos
+    paths:
+      - ../../services/api/src/ProtoFast.Api/Protos/Admin/Shared
+      - ../../services/api/src/ProtoFast.Api/Protos/Admin/Theplot
+plugins:
+  - local: protoc-gen-es
+    out: src/lib/gen
+    opt: target=ts
+clean: true
