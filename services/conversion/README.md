@@ -38,7 +38,7 @@ The allowlist in `src/conversion/formats.py` mirrors
 | Handler | Formats |
 |---|---|
 | passthrough | `.md` `.markdown` `.txt` |
-| pdf | `.pdf`: pdfplumber reads the text layer and OCRmyPDF adds one when the PDF looks scanned |
+| pdf | `.pdf`: pdfplumber reads the text layer and OCRmyPDF adds one when the PDF looks scanned. Symbolic TrueType fonts with no ToUnicode map (Final Draft's Courier) get one first, so `’` is not read as `Õ` |
 | image | `.png` `.jpg` `.tif` `.bmp`: Tesseract OCR |
 | markitdown | Office, HTML, CSV/TSV, JSON, XML, EPUB, Outlook `.msg`, notebooks |
 
