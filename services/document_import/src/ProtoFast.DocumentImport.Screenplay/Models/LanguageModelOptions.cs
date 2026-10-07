@@ -20,16 +20,16 @@ public sealed class LanguageModelOptions
 
     public ProviderOptions Anthropic { get; set; } = new()
     {
-        Large = "claude-opus-5",
-        Medium = "claude-sonnet-5",
-        Small = "claude-haiku-4-5",
+        Large = "claude-opus-5-5",
+        Medium = "claude-sonnet-5-5",
+        Small = "claude-haiku-5-5",
         InputPricePerMillion = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["claude-opus-5"] = 5, ["claude-sonnet-5"] = 2, ["claude-haiku-4-5"] = 1,
+            ["claude-opus-5-5"] = 4, ["claude-sonnet-5-5"] = 2, ["claude-haiku-5-5"] = 0.10m,
         },
         OutputPricePerMillion = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["claude-opus-5"] = 25, ["claude-sonnet-5"] = 10, ["claude-haiku-4-5"] = 5,
+            ["claude-opus-5-5"] = 20, ["claude-sonnet-5-5"] = 10, ["claude-haiku-5-5"] = 0.50m,
         },
     };
 

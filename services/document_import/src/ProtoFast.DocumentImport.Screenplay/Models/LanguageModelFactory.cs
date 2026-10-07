@@ -36,18 +36,19 @@ public sealed class LanguageModelFactory(
             _ => throw new ArgumentException($"'{modelClass}' is not a model class.", nameof(modelClass)),
         };
 
+        var maxOutputTokens = provider.MaxOutputTokensOf(modelId, options.MaxOutputTokens);
         ILanguageModel model = providerName.ToLowerInvariant() switch
         {
-            LanguageModelProviders.Anthropic => new AnthropicLanguageModel(modelId, provider, options.MaxOutputTokens),
+            LanguageModelProviders.Anthropic => new AnthropicLanguageModel(modelId, provider, maxOutputTokens),
             LanguageModelProviders.Gemini => new GeminiLanguageModel(
-                modelId, provider, httpClients.CreateClient(GeminiLanguageModel.HttpClientName), options.MaxOutputTokens),
+                modelId, provider, httpClients.CreateClient(GeminiLanguageModel.HttpClientName), maxOutputTokens),
             _ => throw new InvalidOperationException($"Unknown language model provider '{providerName}'."),
         };
 
         // Retries sit outside tracing so each attempt is its own span.
         var (telemetryName, serverAddress) = LanguageModelProviders.Telemetry(providerName);
         return new RetryingLanguageModel(
-            new TracedLanguageModel(model, telemetryName, serverAddress, options.MaxOutputTokens, options.CaptureMessageContent),
+            new TracedLanguageModel(model, telemetryName, serverAddress, maxOutputTokens, options.CaptureMessageContent),
             options.Retry, time, logger);
     }
 }

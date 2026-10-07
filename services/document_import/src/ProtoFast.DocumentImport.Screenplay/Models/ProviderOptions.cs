@@ -17,6 +17,12 @@ public sealed class ProviderOptions
 
     public Dictionary<string, decimal> OutputPricePerMillion { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Output caps for models below <see cref="LanguageModelOptions.MaxOutputTokens"/>, keyed by model id.</summary>
+    public Dictionary<string, int> MaxOutputTokens { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public int MaxOutputTokensOf(string modelId, int limit) =>
+        MaxOutputTokens.TryGetValue(modelId, out var cap) ? Math.Min(cap, limit) : limit;
+
     public decimal PriceOf(string modelId, long inputTokens, long outputTokens)
     {
         InputPricePerMillion.TryGetValue(modelId, out var input);
