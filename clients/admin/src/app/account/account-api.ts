@@ -107,16 +107,6 @@ export class AccountApi {
       throw await toError(response, 'The passkey could not be removed.');
     }
   }
-
-  async deleteAccount(): Promise<void> {
-    const response = await fetch('/account/delete', {
-      method: 'POST',
-      headers: { accept: 'application/json' },
-    });
-    if (!response.ok) {
-      throw await toError(response, 'Your account could not be deleted.');
-    }
-  }
 }
 
 /**

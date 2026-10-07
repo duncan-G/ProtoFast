@@ -1,97 +1,14 @@
 import './instrumentation';
 
-import {
-  AngularNodeAppEngine,
-  createNodeRequestHandler,
-  isMainModule,
-  writeResponseToNodeResponse,
-} from '@angular/ssr/node';
-import express from 'express';
+import { createNodeRequestHandler, isMainModule } from '@angular/ssr/node';
 import { join } from 'node:path';
-import { ssrRequestContext, ssrTraceMiddleware } from './lib/telemetry.ssr';
+import { createAdminServer } from './admin-kit/server';
 
-const browserDistFolder = join(import.meta.dirname, '../browser');
-
-const app = express();
-// Browser-facing hostnames this app answers for, injected by the deployment
-// (`NG_ALLOWED_HOSTS`) because they are not known at build time. Angular's SSRF guard rejects
-// any request whose `Host`/`X-Forwarded-Host` is not listed — with the empty build-time list in
-// angular.json and nothing supplied here, that is *every* request (HTTP 400).
-const allowedHosts = (process.env['NG_ALLOWED_HOSTS'] ?? '')
-  .split(',')
-  .map((host) => host.trim())
-  .filter((host) => host.length > 0);
-
-// Requests reach this process through Envoy, the trusted edge that sets
-// `x-forwarded-*` (and `x-client`). Trust those proxy headers so SSR builds
-// the request URL from the original host rather than the internal one.
-const angularApp = new AngularNodeAppEngine({
-  allowedHosts,
-  trustProxyHeaders: [
-    'x-forwarded-host',
-    'x-forwarded-proto',
-    'x-forwarded-port',
-    'x-forwarded-prefix',
-  ],
+const app = createAdminServer({
+  browserDistFolder: join(import.meta.dirname, '../browser'),
+  publicPaths: ['/forbidden'],
 });
 
-/**
- * Example Express Rest API endpoints can be defined here.
- * Uncomment and define endpoints as necessary.
- *
- * Example:
- * ```ts
- * app.get('/api/{*splat}', (req, res) => {
- *   // Handle API request
- * });
- * ```
- */
-
-/**
- * Serve static files from /browser. The client bundle is identical for everyone and carries no
- * identity, so it is served publicly (and cacheably) ahead of the auth gate below.
- */
-app.use(
-  express.static(browserDistFolder, {
-    maxAge: '1y',
-    index: false,
-    redirect: false,
-  }),
-);
-
-/**
- * Protected-app gate (guide §7). The admin app is entirely internal — every rendered page requires
- * an authenticated identity. The edge only annotates identity, so the SSR host itself enforces it:
- * anonymous requests (no `x-user-id` from ext_authz) are bounced to the BFF sign-in server-side —
- * no flash of protected chrome — and personalized responses are never cached.
- */
-app.use((req, res, next) => {
-  res.setHeader('Cache-Control', 'private, no-store');
-  if (!req.headers['x-user-id']) {
-    res.redirect(302, `/signin?returnUrl=${encodeURIComponent(req.originalUrl)}`);
-    return;
-  }
-  next();
-});
-
-/**
- * Handle all other requests by rendering the Angular application. Each render runs inside a
- * server span whose traceparent the page carries to the browser (see lib/telemetry.ssr.ts).
- */
-app.use(ssrTraceMiddleware);
-app.use((req, res, next) => {
-  angularApp
-    .handle(req, ssrRequestContext(res))
-    .then((response) =>
-      response ? writeResponseToNodeResponse(response, res) : next(),
-    )
-    .catch(next);
-});
-
-/**
- * Start the server if this module is the main entry point.
- * The server listens on the port defined by the `PORT` environment variable, or defaults to 4000.
- */
 if (isMainModule(import.meta.url)) {
   const port = process.env['PORT'] || 4000;
   app.listen(port, (error) => {
@@ -103,7 +20,4 @@ if (isMainModule(import.meta.url)) {
   });
 }
 
-/**
- * Request handler used by the Angular CLI (for dev-server and during build) or Firebase Cloud Functions.
- */
 export const reqHandler = createNodeRequestHandler(app);

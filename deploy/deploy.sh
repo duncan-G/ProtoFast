@@ -302,13 +302,14 @@ record_keycloak_config_applied() {
 # still be missing. `up -d --force-recreate` guarantees the container matches the
 # current compose file. Keycloak's state is in Postgres, so this costs a restart.
 
-# Realm name declared by the realm JSON on disk (empty if there is none).
-kc_realm_name() {
+# Realm names declared by the realm JSON files on disk, one per line (empty if there are none).
+kc_realm_names() {
   local realm_file
-  realm_file="$(ls -1 "${APP_DIR}"/keycloak/realms/*.json 2>/dev/null | head -n1 || true)"
-  [ -n "$realm_file" ] || return 0
-  python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("realm",""))' \
-    "$realm_file" 2>/dev/null || true
+  for realm_file in "${APP_DIR}"/keycloak/realms/*.json; do
+    [ -f "$realm_file" ] || continue
+    python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("realm",""))' \
+      "$realm_file" 2>/dev/null || true
+  done
 }
 
 # HTTP status of a realm's OIDC discovery document, from inside the compose
@@ -323,24 +324,27 @@ keycloak_realm_status() {
 }
 
 ensure_realm_imported() {
-  local realm status deadline
-  realm="$(kc_realm_name)"
-  if [ -z "$realm" ]; then
+  local realm realms status deadline missing=""
+  realms="$(kc_realm_names | sed '/^$/d')"
+  if [ -z "$realms" ]; then
     log "WARNING: no realm JSON under ${APP_DIR}/keycloak/realms; skipping realm import check"
     return 0
   fi
-  status="$(keycloak_realm_status "$realm")"
-  case "$status" in
-    404) : ;;                       # missing — import it below
-    "" | 000)
-      log "WARNING: could not probe realm '${realm}' (keycloak unreachable); skipping realm import check"
-      return 0 ;;
-    *) return 0 ;;                  # already there
-  esac
+  for realm in $realms; do
+    status="$(keycloak_realm_status "$realm")"
+    case "$status" in
+      404) missing="${missing:+$missing }${realm}" ;;  # missing — import it below
+      "" | 000)
+        log "WARNING: could not probe realm '${realm}' (keycloak unreachable); skipping realm import check"
+        return 0 ;;
+      *) : ;;                       # already there
+    esac
+  done
+  [ -n "$missing" ] || return 0
 
-  log "realm '${realm}' does not exist in keycloak; recreating keycloak so --import-realm runs"
+  log "realm(s) '${missing}' do not exist in keycloak; recreating keycloak so --import-realm runs"
   if ! compose up -d --no-deps --force-recreate keycloak; then
-    log "ERROR: could not recreate keycloak; realm '${realm}' NOT imported"
+    log "ERROR: could not recreate keycloak; realm(s) '${missing}' NOT imported"
     return 1
   fi
 
@@ -353,15 +357,17 @@ ensure_realm_imported() {
     sleep 5
   done
 
-  status="$(keycloak_realm_status "$realm")"
-  if [ "$status" = 404 ]; then
-    # The import ran and refused the file. Keycloak logs the reason and keeps
-    # serving, so nothing else surfaces it — say so loudly and fail the run.
-    log "ERROR: realm '${realm}' STILL missing after the import restart. Sign-in stays broken."
-    log "Check the container log for KC-SERVICES0005 (\`docker logs \$(docker ps -qf name=keycloak)\`)."
-    return 1
-  fi
-  log "realm '${realm}' imported from $(ls -1 "${APP_DIR}"/keycloak/realms/*.json | head -n1 | xargs basename)"
+  for realm in $missing; do
+    status="$(keycloak_realm_status "$realm")"
+    if [ "$status" = 404 ]; then
+      # The import ran and refused the file. Keycloak logs the reason and keeps
+      # serving, so nothing else surfaces it — say so loudly and fail the run.
+      log "ERROR: realm '${realm}' STILL missing after the import restart. Sign-in stays broken."
+      log "Check the container log for KC-SERVICES0005 (\`docker logs \$(docker ps -qf name=keycloak)\`)."
+      return 1
+    fi
+    log "realm '${realm}' imported"
+  done
   record_keycloak_config_applied
 }
 
@@ -425,7 +431,7 @@ webAuthnPolicyPasswordlessAcceptableAaguids
 webAuthnPolicyPasswordlessPasskeysEnabled webAuthnPolicyPasswordlessMediation"
 
 # Placeholders in KC_REALM_KEYS resolved from the container's env, as the import does; others are skipped.
-KC_REALM_ENV="WEBAUTHN_RP_ID THEPLOT_WEBAUTHN_RP_ID"
+KC_REALM_ENV="WEBAUTHN_RP_ID THEPLOT_WEBAUTHN_RP_ID OPERATORS_WEBAUTHN_RP_ID"
 
 # Same idea one level down, for keys that live in the realm's "attributes" map
 # (kcadm addresses a dotted attribute name by quoting it). Action tokens default
@@ -881,6 +887,10 @@ resolve() {
       KEY="CLOUDFLARED_TAG"; SVC="cloudflared"; KIND="edge" ;;
     clients-host)
       KEY="CLIENTS_HOST_TAG"; SVC="clients"; KIND="host" ;;
+    client-admin-*)
+      # An app's admin console runs in a container of its own, never the shared host.
+      CLIENT_NAME="${component#client-}"
+      KEY="CLIENT_$(upper "$CLIENT_NAME")_TAG"; SVC="clients-${CLIENT_NAME}"; KIND="client" ;;
     client-*)
       CLIENT_NAME="${component#client-}"
       KEY="CLIENT_$(upper "$CLIENT_NAME")_TAG"; SVC="clients"; KIND="client" ;;
@@ -918,6 +928,23 @@ vhost_ok() {
   docker run --rm --network "$NETWORK" curlimages/curl:latest \
     -ksS -o /dev/null -w '' --max-time 5 \
     -H "Host: ${domain}" "https://envoy:8443/"
+}
+
+# The admin console containers in this compose file (clients-admin-<app>).
+console_services() {
+  compose config --services 2>/dev/null | grep '^clients-admin-' || true
+}
+
+# An admin console renders its home page. Probed on its own container with the identity headers
+# Envoy would add, because through Envoy only a signed-in holder of its role reaches it. Host is
+# the admin domain: Angular's SSRF guard answers 400 to any host not in NG_ALLOWED_HOSTS.
+console_ok() {
+  local svc="$1" app="${1#clients-admin-}"
+  docker run --rm --network "$NETWORK" curlimages/curl:latest \
+    -fsS -o /dev/null --max-time 5 \
+    -H "Host: $(domain_for admin)" \
+    -H "x-user-id: deploy-health-check" -H "x-roles: admin-${app}" \
+    "http://${svc}:4000/${app}/"
 }
 
 # Envoy-scoped checks via the admin API (binds 0.0.0.0:ENVOY_ADMIN_PORT, reached
@@ -1007,10 +1034,17 @@ health_once() {
       IFS=','; for name in $(clients_list); do
         name="$(printf '%s' "$name" | tr -d '[:space:]')"; [ -n "$name" ] || continue
         vhost_ok "$(domain_for "$name")" || { rc=1; log "vhost not ready: $(domain_for "$name")"; }
-      done; unset IFS ;;
+      done; unset IFS
+      for name in $(console_services); do
+        console_ok "$name" || { rc=1; log "console not ready: ${name}"; }
+      done ;;
     client)
-      # Only this client's vhost (exercises its freshly pulled assets).
-      vhost_ok "$(domain_for "$CLIENT_NAME")" || { rc=1; log "vhost not ready: $(domain_for "$CLIENT_NAME")"; } ;;
+      # Only this client (exercises its freshly pulled assets).
+      if [ "$SVC" = clients ]; then
+        vhost_ok "$(domain_for "$CLIENT_NAME")" || { rc=1; log "vhost not ready: $(domain_for "$CLIENT_NAME")"; }
+      else
+        console_ok "$SVC" || { rc=1; log "console not ready: ${SVC}"; }
+      fi ;;
     otel)
       otel_ok || { rc=1; log "otel-collector not ready"; } ;;
     aspire)
@@ -1137,7 +1171,14 @@ apply_kind() {
       log "pulling ${SVC} (clients-host)"
       compose pull "$SVC"
       log "recreating ${SVC} (re-pulls all clients from S3)"
-      compose up -d --no-deps --force-recreate "$SVC" ;;
+      compose up -d --no-deps --force-recreate "$SVC"
+      # The admin console containers run the same image.
+      for console in $(console_services); do
+        if [ -n "$(get_env "$VERSIONS_FILE" "CLIENT_$(upper "${console#clients-}")_TAG")" ]; then
+          log "recreating ${console} (same image)"
+          compose up -d --no-deps --force-recreate "$console"
+        fi
+      done ;;
     client)
       # Image unchanged; only the manifest tag moved. Force-recreate the host so
       # its entrypoint re-syncs the pinned client assets from S3.
@@ -1281,7 +1322,8 @@ host_bringup_sets() {
       SERVICE_TAGS="auth:AUTH_TAG payments:PAYMENTS_TAG api:API_TAG conversion:CONVERSION_TAG"
       ALWAYS_UP="postgres redis keycloak" ;;
     *) # edge (also the default for a pre-split .env that predates HOST_ROLE)
-      SERVICE_TAGS="envoy:ENVOY_TAG clients:CLIENTS_HOST_TAG otel-collector:OTEL_TAG"
+      SERVICE_TAGS="envoy:ENVOY_TAG clients:CLIENTS_HOST_TAG otel-collector:OTEL_TAG
+                    clients-admin-theplot:CLIENT_ADMIN_THEPLOT_TAG"
       ALWAYS_UP="cloudflared aspire-dashboard" ;;
   esac
 }

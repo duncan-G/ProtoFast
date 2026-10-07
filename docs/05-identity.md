@@ -47,6 +47,16 @@ Passkeys are **offered, never required**: after a successful sign-in `auth` send
 an ordinary authorize request carrying
 `kc_action=webauthn-register-passwordless`, and cancelling costs nothing.
 
+## Operators
+
+The admin host signs people in to its own `operators` realm, never an app's realm:
+registration is off, and an operator exists only once
+[`scripts/keycloak-grant-admin.py`](../scripts/keycloak-grant-admin.py) grants them
+`admin-<app>` or `platform`. Every app console lives on `admin.protofast.dev` at
+`/<app>/`; Envoy routes it only to holders of its role, and each admin RPC checks
+`tenant=operators` plus that role again
+([design](design/admin-consoles.md)).
+
 ## Configuring `auth`
 
 All keys arrive as `Auth_*` environment variables (see [layer 03](03-services-and-clients.md)
@@ -58,7 +68,8 @@ for the naming rules).
 | `Keycloak:PublicAuthority` | empty → falls back to `Authority` | `https://${KEYCLOAK_DOMAIN}` — used for redirects and as the expected token issuer |
 | `Keycloak:ClientSecretProtofastWeb` / `…Admin` / `…TheplotWeb` | from Secrets Manager (`dev-*-secret` defaults) | from Secrets Manager |
 | `Keycloak:AdminClientId` / `AdminClientSecret` | `account-admin` / from Secrets Manager | from Secrets Manager; empty disables account management (503) instead of failing startup. One value serves every realm: each realm's `account-admin` client is imported with the same secret placeholder |
-| `Tenants:ByHost:<host>:Realm` / `:ClientId` | `localhost` → `protofast` / `protofast-web`; `localhost+20002` → `theplot` / `theplot-web` | `protofast.dev` → `protofast-web`, `admin.protofast.dev` → `admin`, `theplot.protofast.dev` → `theplot` / `theplot-web` |
+| `Tenants:ByHost:<host>:Realm` / `:ClientId` | `localhost` → `protofast` / `protofast-web`; `localhost+20000` → `operators` / `admin`; `localhost+20002` → `theplot` / `theplot-web` | `protofast.dev` → `protofast-web`, `admin.protofast.dev` → `operators` / `admin`, `theplot.protofast.dev` → `theplot` / `theplot-web` |
+| `Tenants:ByHost:admin…:RequiredRoles` | `platform`, `admin-protofast`, `admin-theplot` | same; an account holding none of them gets no session and lands on `/forbidden` |
 | `Tenants:ByHost:admin…:MaxAge` / `:AcrValues` | — | forces re-authentication (and optionally a passkey) when entering the admin console |
 | `Session:*` | defaults | defaults: `pf_session`, 8 h idle, 7 d absolute, id rotated on refresh |
 | `InternalJwt:PrivateKeyPem` / `:KeyId` | from Secrets Manager (`protofast/dev`) | private PEM from Secrets Manager; never a file in prod |

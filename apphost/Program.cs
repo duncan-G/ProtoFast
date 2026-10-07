@@ -135,7 +135,21 @@ if (!builder.ExecutionContext.IsPublishMode)
         // RP ID leaks account existence across tenants in the passkey picker), so
         // the theplot realm gets its own — the same localhost value in dev.
         .WithEnvironment("WEBAUTHN_RP_ID", "localhost")
-        .WithEnvironment("THEPLOT_WEBAUTHN_RP_ID", "localhost");
+        .WithEnvironment("THEPLOT_WEBAUTHN_RP_ID", "localhost")
+        .WithEnvironment("OPERATORS_WEBAUTHN_RP_ID", "localhost");
+}
+
+if (!builder.ExecutionContext.IsPublishMode)
+{
+    // Dev admin console operators (scripts/seed-dev-operators.sh). Idempotent, so every start re-runs it.
+    var devOperators = builder.AddExecutable("dev-operators", "bash", "../scripts", "seed-dev-operators.sh")
+        .WithEnvironment("KC_URL", keycloak.GetEndpoint("http"))
+        .WithEnvironment("KC_ADMIN_PASSWORD", keycloak.Resource.AdminPasswordParameter)
+        .WaitFor(keycloak);
+    if (keycloak.Resource.AdminUserNameParameter is { } adminUser)
+    {
+        devOperators.WithEnvironment("KC_ADMIN_USER", adminUser);
+    }
 }
 
 // Auth
@@ -233,18 +247,34 @@ var adminWeb = proxy.WithClient(builder, "admin");
 var protofastWeb = proxy.WithClient(builder, "protofast");
 var theplotWeb = proxy.WithClient(builder, "theplot");
 
+// The admin host's platform console admits any operator; each app console mounted on that host
+// at /{app}/ runs in its own process and admits only admin-{app} (docs/design/admin-consoles.md).
+// The roles are set here, never by the console's own code.
+var platformConsole = new Dictionary<string, string> { ["ADMIN_CONSOLE_ROLES"] = "*" };
+var theplotConsole = new Dictionary<string, string> { ["ADMIN_CONSOLE_ROLES"] = "admin-theplot" };
+
 if (useSsrHost)
 {
     var clientsHost = builder.AddClientHost(
-        "clients", defaultClient: "admin", proxy.GetClientHostnames(), otelHttp, otelHttp);
+        "clients", defaultClient: "admin", proxy.GetClientHostnames(), otelHttp, otelHttp, platformConsole);
     proxy
         .WithUpstreamEndpoint("CLIENTS_HOST", clientsHost)
         .WithEnvironment("DEFAULT_CLIENT", "admin");
+
+    // Never in the shared host's CLIENTS: an app console gets a process of its own.
+    var theplotConsoleHost = builder.AddClientHost(
+        "clients-admin-theplot", defaultClient: "admin-theplot", proxy.GetClientHostnames(), otelHttp, otelHttp,
+        new Dictionary<string, string>(theplotConsole) { ["CLIENTS"] = "admin-theplot" });
+    proxy.WithConsole("admin", "theplot", theplotConsoleHost);
 }
 else
 {
-    var adminDev = builder.AddClientApp("admin", "../clients/admin", adminWeb, otelHttp, otelHttp);
+    var adminDev = builder.AddClientApp("admin", "../clients/admin", adminWeb, otelHttp, otelHttp, platformConsole);
     proxy.WithUpstreamEndpoint("CLIENT_ADMIN", adminDev);
+
+    var theplotConsoleDev = builder.AddClientApp(
+        "admin-theplot", "../clients/admin-theplot", adminWeb, otelHttp, otelHttp, theplotConsole);
+    proxy.WithConsole("admin", "theplot", theplotConsoleDev);
 
     var protofastDev = builder.AddClientApp("protofast", "../clients/protofast", protofastWeb, otelHttp, otelHttp);
     proxy.WithUpstreamEndpoint("CLIENT_PROTOFAST", protofastDev);

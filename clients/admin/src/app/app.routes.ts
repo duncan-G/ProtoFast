@@ -1,27 +1,26 @@
 import { Routes } from '@angular/router';
-import { authGuard } from './auth/auth.guard';
+import { consoleGuard, FORBIDDEN_ROUTE, roleGuard } from '../admin-kit';
 
 export const routes: Routes = [
+  { path: '', pathMatch: 'full', redirectTo: 'app' },
+  FORBIDDEN_ROUTE,
   {
-    path: '',
-    loadComponent: () => import('./pages/home/home').then((m) => m.Home),
-  },
-  {
-    // Protected area — the guard + the SSR Express gate keep anonymous users out (guide §7).
     path: 'app',
-    canActivate: [authGuard],
-    loadComponent: () => import('./pages/dashboard/dashboard').then((m) => m.Dashboard),
+    canActivate: [consoleGuard],
+    loadComponent: () => import('./pages/consoles/consoles').then((m) => m.Consoles),
   },
   {
-    // Account management — same gate as /app; the SSR host protects every admin page anyway.
     path: 'app/account',
-    canActivate: [authGuard],
+    canActivate: [consoleGuard],
     loadComponent: () => import('./pages/account/account').then((m) => m.Account),
   },
   {
-    // Catch-all: unmatched paths render a 404 page (SSR returns HTTP 404) instead of
-    // falling through to Express's bare "Cannot GET …".
+    path: 'app/platform',
+    canActivate: [roleGuard('platform')],
+    loadComponent: () => import('./pages/platform/platform').then((m) => m.Platform),
+  },
+  {
     path: '**',
-    loadComponent: () => import('./pages/not-found/not-found').then((m) => m.NotFound),
+    loadComponent: () => import('../admin-kit/pages/not-found').then((m) => m.NotFound),
   },
 ];

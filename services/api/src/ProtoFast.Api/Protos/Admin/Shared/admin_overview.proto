@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+option csharp_namespace = "ProtoFast.Api.Admin";
+
+package admin.shared;
+
+// Platform RPCs every app's console may call. Each names its app and needs admin-{app}.
+service AdminOverview {
+
+    // Headline counts for one app's data.
+    rpc GetOverview (GetOverviewRequest) returns (GetOverviewReply);
+}
+
+message GetOverviewRequest {
+    // The app's realm name, e.g. "theplot".
+    string app = 1;
+}
+
+message GetOverviewReply {
+    repeated OverviewMetric metrics = 1;
+}
+
+message OverviewMetric {
+    string label = 1;
+    int64 value = 2;
+}

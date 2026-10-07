@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using ProtoFast.Api.IntegrationTests;
 using ProtoFast.Api.Services;
+using ProtoFast.Api.Services.Admin;
 using ProtoFast.Api.Services.Screenplays;
 using ProtoFast.Data.ThePlot;
 using ProtoFast.DocumentImport.Engine.InMemory;
@@ -36,6 +37,8 @@ public sealed class StoryDatabase : IAsyncLifetime
         services.AddScoped<StoryService>();
         services.AddSingleton<IRunLedger, InMemoryRunLedger>();
         services.AddScoped<DocumentService>();
+        services.AddScoped<AdminOverviewService>();
+        services.AddScoped<TheplotAdminService>();
         Services = services.BuildServiceProvider();
 
         await using var scope = Services.CreateAsyncScope();

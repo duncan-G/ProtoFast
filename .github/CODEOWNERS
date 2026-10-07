@@ -1,0 +1,7 @@
+# Everything outside an app console's own folder is the platform's (docs/design/admin-consoles.md §5).
+# When an app's agent gets an account, add it as an owner of its console folder and nothing else;
+# the kit symlink inside that folder stays ours.
+*                                     @duncan-G
+
+/clients/admin-theplot/               @duncan-G
+/clients/admin-theplot/src/admin-kit  @duncan-G

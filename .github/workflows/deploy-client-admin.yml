@@ -5,7 +5,8 @@ on:
     branches: [main]
     paths:
       - "clients/admin/**"
-      - "services/**/Protos/**"
+      - "clients/admin-kit/**"
+      - "services/api/src/ProtoFast.Api/Protos/Admin/Shared/**"
       - ".github/workflows/deploy-client-admin.yml"
       - ".github/workflows/_component-deploy.yml"
   workflow_dispatch:
@@ -32,7 +33,7 @@ jobs:
       build: client-s3
       target: admin
       kind: client
-      hash_paths: "clients/admin :(glob)services/**/Protos/**"
+      hash_paths: "clients/admin clients/admin-kit services/api/src/ProtoFast.Api/Protos/Admin/Shared"
       project: clients/admin
       tag: ${{ inputs.tag }}
     secrets: inherit
