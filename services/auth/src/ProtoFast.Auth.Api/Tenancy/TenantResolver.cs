@@ -46,10 +46,8 @@ public sealed class TenantResolver : ITenantResolver
             return false;
         }
 
-        // A "host:port" entry wins over the bare host. In dev every client shares localhost and
-        // the per-client Envoy listeners differ only by port, so the port is the only thing that
-        // can put two listeners in two realms (e.g. localhost:20002 → theplot while localhost
-        // stays protofast). Production hosts are distinct names and never need port entries.
+        // A "host:port" entry wins over the bare host. Hosts told apart only by port share a
+        // cookie jar, though, so give each client a name of its own rather than a port entry.
         return _byHost.TryGetValue(Normalize(host, keepPort: true), out tenant)
             || _byHost.TryGetValue(Normalize(host), out tenant);
     }

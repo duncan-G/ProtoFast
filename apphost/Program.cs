@@ -140,9 +140,17 @@ if (!builder.ExecutionContext.IsPublishMode)
         .WithEnvironment("KC_URL", keycloak.GetEndpoint("http"))
         .WithEnvironment("KC_ADMIN_PASSWORD", keycloak.Resource.AdminPasswordParameter)
         .WaitFor(keycloak);
+    // The realm import skips realms the keycloak database already holds, so client URL changes
+    // in the export would otherwise never reach them.
+    var devClientUrls = builder.AddExecutable(
+            "dev-client-urls", "python3", "../scripts", "keycloak-apply-client-urls.py", "--insecure", "../infra/keycloak/realms")
+        .WithEnvironment("KC_URL", keycloak.GetEndpoint("http"))
+        .WithEnvironment("KC_ADMIN_PASSWORD", keycloak.Resource.AdminPasswordParameter)
+        .WaitFor(keycloak);
     if (keycloak.Resource.AdminUserNameParameter is { } adminUser)
     {
         devOperators.WithEnvironment("KC_ADMIN_USER", adminUser);
+        devClientUrls.WithEnvironment("KC_ADMIN_USER", adminUser);
     }
 }
 
@@ -178,10 +186,9 @@ if (smtp4dev is not null)
 // This reads auth's endpoint but adds no wait edge (auth already waits on keycloak, and the
 // reverse would deadlock): Aspire allocates every endpoint before it starts anything.
 //
-// Both apps share one cookie jar in dev — the browser ignores ports, so localhost:20000 and
-// :20001 are one host with one pf_session — which means there is only ever one session here and
-// nothing for a back-channel logout to reach across to. It is wired anyway so a broken URL or
-// payload surfaces locally instead of in prod; the coverage lives in the test suite.
+// Each dev realm has exactly one client host, so a back-channel logout here only ever reaches the
+// session it came from. It is wired anyway so a broken URL or payload surfaces locally instead of
+// in prod; the coverage lives in the test suite.
 var authHttp = auth.GetEndpoint("http");
 keycloak
     .WithContainerRuntimeArgs("--add-host=host.docker.internal:host-gateway")

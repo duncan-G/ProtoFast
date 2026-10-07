@@ -7,6 +7,10 @@ public static class EnvoyProxyResourceBuilderExtensions
     private const string EnvoyConfigPath = "../proxy";
     private const int FirstClientListenerPort = 20000;
 
+    // Cookies ignore ports, so each dev client needs a hostname of its own or they all share one
+    // pf_session. The ASP.NET dev certificate covers *.dev.localhost.
+    private const string DevDomainSuffix = "dev.localhost";
+
     /// <summary>
     /// Adds the Envoy proxy container. The entrypoint renders its config from templates based
     /// on <c>ENVOY_MODE</c>:
@@ -76,12 +80,11 @@ public static class EnvoyProxyResourceBuilderExtensions
     }
 
     /// <summary>
-    /// Registers a client with the proxy. In run mode this adds a dedicated HTTPS listener
-    /// endpoint for the client (the browser's entry point — pages and API share this origin)
-    /// and returns it; in publish mode this wires a <c>«client»-domain</c> parameter into the
-    /// client's virtual host and returns the proxy's public endpoint.
+    /// Registers a client with the proxy and returns its browser origin (pages and API share it).
+    /// In run mode this adds a dedicated HTTPS listener served as <c>«client».dev.localhost</c>;
+    /// in publish mode this wires a <c>«client»-domain</c> parameter into the client's virtual host.
     /// </summary>
-    public static EndpointReference WithClient(
+    public static ReferenceExpression WithClient(
         this IResourceBuilder<ContainerResource> envoy,
         IDistributedApplicationBuilder applicationBuilder,
         string clientName)
@@ -100,36 +103,43 @@ public static class EnvoyProxyResourceBuilderExtensions
                 $"{clientName}-domain", $"{clientName}.example.com", publishValueAsDefault: true);
             clientsAnnotation.Domains.Add(domain.Resource);
             envoy.WithEnvironment($"CLIENT_{envName}_DOMAIN", domain);
-            return envoy.GetEndpoint("https");
+            return ReferenceExpression.Create($"https://{domain}");
         }
 
         var endpointName = $"{clientName}-web";
+        var origin = DevOrigin(clientName, listenerPort);
         // Pin the host port too — Keycloak's redirect URIs are exact
-        // (https://localhost:20000|20001/signin-oidc). targetPort-only maps a random
+        // (https://admin.dev.localhost:20000/signin-oidc). targetPort-only maps a random
         // host port and the authorize request fails with invalid_redirect_uri.
         envoy
             .WithHttpsEndpoint(port: listenerPort, targetPort: listenerPort, name: endpointName, isProxied: false)
             .WithEnvironment($"CLIENT_{envName}_LISTENER_PORT", listenerPort.ToString())
-            .WithUrlForEndpoint(endpointName, u => u.DisplayText = $"{clientName} (web)");
+            .WithEnvironment($"CLIENT_{envName}_DOMAIN", DevDomain(clientName))
+            .WithUrlForEndpoint(endpointName, u =>
+            {
+                u.Url = origin;
+                u.DisplayText = $"{clientName} (web)";
+            });
 
-        return envoy.GetEndpoint(endpointName);
+        return ReferenceExpression.Create($"{origin}");
     }
 
     /// <summary>
     /// The hostnames browsers use to reach the clients through the proxy: the client domain
-    /// parameters in publish mode, or <c>localhost</c> in run mode (per-client listeners
-    /// differ only by port). Feed this to the SSR host's <c>NG_ALLOWED_HOSTS</c>.
+    /// parameters in publish mode, or <c>«client».dev.localhost</c> in run mode. Feed this to the
+    /// SSR host's <c>NG_ALLOWED_HOSTS</c>.
     /// </summary>
     public static ReferenceExpression GetClientHostnames(this IResourceBuilder<ContainerResource> envoy)
     {
-        var domains = envoy.Resource.Annotations
+        var clients = envoy.Resource.Annotations
             .OfType<EnvoyClientsAnnotation>()
-            .Single()
-            .Domains;
+            .Single();
+        var domains = clients.Domains;
 
         if (domains.Count == 0)
         {
-            return ReferenceExpression.Create($"localhost");
+            var devDomains = string.Join(',', clients.Clients.Select(DevDomain));
+            return ReferenceExpression.Create($"{devDomains}");
         }
 
         var expression = new ReferenceExpressionBuilder();
@@ -158,7 +168,7 @@ public static class EnvoyProxyResourceBuilderExtensions
             .Single()
             .Clients;
 
-        return [.. clients.Select((_, i) => $"https://localhost:{FirstClientListenerPort + i}")];
+        return [.. clients.Select((client, i) => DevOrigin(client, FirstClientListenerPort + i))];
     }
 
     /// <summary>
@@ -209,6 +219,11 @@ public static class EnvoyProxyResourceBuilderExtensions
             .WithEnvironment("OTEL_HTTP_PORT", http.Property(EndpointProperty.Port))
             .WithEnvironment("OTEL_INSTANCE_ID", envoy.Resource.Name);
     }
+
+    private static string DevDomain(string clientName) => $"{clientName}.{DevDomainSuffix}";
+
+    private static string DevOrigin(string clientName, int listenerPort) =>
+        $"https://{DevDomain(clientName)}:{listenerPort}";
 
     private static string ToEnvName(string clientName) =>
         clientName.ToUpperInvariant().Replace('-', '_');

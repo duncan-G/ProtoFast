@@ -5,7 +5,9 @@ image. Its config is **generated at container startup** from fragment
 templates, driven by an `ENVOY_MODE` env var:
 
 - **`dev`** — one HTTPS listener **per client**, each on its own fixed
-  internal port (20000, 20001, …). Each listener routes API prefixes
+  internal port (20000, 20001, …) and its own hostname
+  (`«client».dev.localhost`; any other `Host` is redirected there).
+  Each listener routes API prefixes
   (`/auth/`, `/payments/`, `/api/`) to the service clusters and its
   catch-all to that client's Angular dev server. The browser enters
   through the client's listener, so pages and API are same-origin.
@@ -75,7 +77,7 @@ Environment variable contract (validated fail-fast by the entrypoint):
 | `DEFAULT_CLIENT` | dev-host, publish | client answering unmatched hosts (defaults to first) |
 | `CLIENT_«NAME»_LISTENER_PORT` | dev, dev-host | the client's listener port (20000 + index) |
 | `CLIENT_«NAME»_HOST/PORT` | dev | the client's Angular dev-server upstream |
-| `CLIENT_«NAME»_DOMAIN` | publish | the client's public subdomain |
+| `CLIENT_«NAME»_DOMAIN` | all | the client's hostname: `«name».dev.localhost` in dev, its public subdomain in publish |
 | `CLIENTS_HOST_HOST/PORT` | dev-host, publish | unified SSR host upstream |
 | `PORT` | publish | the single public listener port |
 | `«SERVICE»_HOST/PORT` | all | one pair per gRPC service (AUTH, PAYMENTS, API) |
@@ -350,8 +352,9 @@ RDS notes:
 - The catch-all sets `x-client` (`OVERWRITE_IF_EXISTS_OR_ADD` so
   clients cannot spoof it) — the unified SSR host dispatches on it.
 - `__CORS_ALLOW_ORIGIN_MATCHES__` is replaced with a generated
-  `allow_origin_string_match` block: a local-origin regex in dev
-  modes, or `exact: "https://«domain»"` in publish. Traffic is
+  `allow_origin_string_match` block: the client's exact origin —
+  `exact: "https://«client».dev.localhost:«port»"` in dev modes, or
+  `exact: "https://«domain»"` in publish. Traffic is
   same-origin in the normal path, so CORS is a safety net.
 
 ## 6g. `proxy/envoy.cluster.yaml.tmpl` — web cluster fragment
@@ -470,15 +473,6 @@ render_rds() { # route_config_name vhosts_file out_file
 
 case "$ENVOY_MODE" in
   dev|dev-host)
-    # Pages and API are same-origin per listener; CORS allows local origins as
-    # a safety net.
-    DEV_CORS=/tmp/cors_dev.yaml
-    cat > "$DEV_CORS" <<'EOF'
-          allow_origin_string_match:
-            - safe_regex:
-                regex: "^https?://(localhost|127\\.0\\.0\\.1)(:[0-9]+)?$"
-EOF
-
     if [ "$ENVOY_MODE" = "dev-host" ]; then
       require_env CLIENTS_HOST_HOST
       require_env CLIENTS_HOST_PORT
@@ -488,7 +482,9 @@ EOF
     for CLIENT in $CLIENT_LIST; do
       U=$(upper "$CLIENT")
       require_env "CLIENT_${U}_LISTENER_PORT"
+      require_env "CLIENT_${U}_DOMAIN"
       eval "LISTENER_PORT=\$CLIENT_${U}_LISTENER_PORT"
+      eval "DOMAIN=\$CLIENT_${U}_DOMAIN"
 
       if [ "$ENVOY_MODE" = "dev" ]; then
         require_env "CLIENT_${U}_HOST"
@@ -501,9 +497,28 @@ EOF
         WEB_CLUSTER=clients_host
       fi
 
+      CORS_FILE="/tmp/cors_${CLIENT}.yaml"
+      cat > "$CORS_FILE" <<EOF
+          allow_origin_string_match:
+            - exact: "https://${DOMAIN}:${LISTENER_PORT}"
+EOF
+
       VHOSTS_FILE="/tmp/vhosts_${CLIENT}.yaml"
       : > "$VHOSTS_FILE"
-      render_vhost "$CLIENT" '["*"]' "$LISTENER_PORT" "$WEB_CLUSTER" "$DEV_CORS" "$VHOSTS_FILE"
+      render_vhost "$CLIENT" "[\"${DOMAIN}\", \"${DOMAIN}:${LISTENER_PORT}\"]" "$LISTENER_PORT" "$WEB_CLUSTER" "$CORS_FILE" "$VHOSTS_FILE"
+      # Any other Host (e.g. https://localhost:2000x) is sent to the client's own hostname
+      # rather than served there, where its cookie would not be the client's.
+      cat >> "$VHOSTS_FILE" <<EOF
+    - name: ${CLIENT}_canonical_host
+      domains: ["*"]
+      routes:
+        - match: { prefix: "/" }
+          redirect:
+            host_redirect: "${DOMAIN}"
+            port_redirect: ${LISTENER_PORT}
+            response_code: FOUND
+
+EOF
       render_rds "routes_${CLIENT}" "$VHOSTS_FILE" "/etc/envoy/discovery/envoy.rds.${CLIENT}.yaml"
       render_listener "listener_${CLIENT}" "$LISTENER_PORT" "envoy.rds.${CLIENT}.yaml" "routes_${CLIENT}"
     done
@@ -692,6 +707,10 @@ public static class EnvoyProxyResourceBuilderExtensions
     private const string EnvoyConfigPath = "../proxy";
     private const int FirstClientListenerPort = 20000;
 
+    // Cookies ignore ports, so each dev client needs a hostname of its own or they all share one
+    // session cookie. The ASP.NET dev certificate covers *.dev.localhost.
+    private const string DevDomainSuffix = "dev.localhost";
+
     public static IResourceBuilder<ContainerResource> AddEnvoyProxy(
         this IDistributedApplicationBuilder builder,
         string name,
@@ -744,11 +763,11 @@ public static class EnvoyProxyResourceBuilderExtensions
     }
 
     /// <summary>
-    /// Registers a client with the proxy. In run mode this adds a dedicated HTTPS listener
-    /// endpoint for the client (the browser's entry point) and returns it; in publish mode
-    /// this wires a «client»-domain parameter into the client's virtual host.
+    /// Registers a client with the proxy and returns its browser origin (pages and API share it).
+    /// In run mode this adds a dedicated HTTPS listener served as «client».dev.localhost;
+    /// in publish mode this wires a «client»-domain parameter into the client's virtual host.
     /// </summary>
-    public static EndpointReference WithClient(
+    public static ReferenceExpression WithClient(
         this IResourceBuilder<ContainerResource> envoy,
         IDistributedApplicationBuilder applicationBuilder,
         string clientName)
@@ -766,16 +785,24 @@ public static class EnvoyProxyResourceBuilderExtensions
             var domain = applicationBuilder.AddParameter(
                 $"{clientName}-domain", $"{clientName}.example.com", publishValueAsDefault: true);
             envoy.WithEnvironment($"CLIENT_{envName}_DOMAIN", domain);
-            return envoy.GetEndpoint("https");
+            return ReferenceExpression.Create($"https://{domain}");
         }
 
         var endpointName = $"{clientName}-web";
+        var origin = DevOrigin(clientName, listenerPort);
+        // Pin the host port too — Keycloak's redirect URIs are exact
+        // (https://admin.dev.localhost:20000/signin-oidc).
         envoy
-            .WithHttpsEndpoint(targetPort: listenerPort, name: endpointName, isProxied: false)
+            .WithHttpsEndpoint(port: listenerPort, targetPort: listenerPort, name: endpointName, isProxied: false)
             .WithEnvironment($"CLIENT_{envName}_LISTENER_PORT", listenerPort.ToString())
-            .WithUrlForEndpoint(endpointName, u => u.DisplayText = $"{clientName} (web)");
+            .WithEnvironment($"CLIENT_{envName}_DOMAIN", DevDomain(clientName))
+            .WithUrlForEndpoint(endpointName, u =>
+            {
+                u.Url = origin;
+                u.DisplayText = $"{clientName} (web)";
+            });
 
-        return envoy.GetEndpoint(endpointName);
+        return ReferenceExpression.Create($"{origin}");
     }
 
     public static IResourceBuilder<ContainerResource> WithUpstreamEndpoint(
@@ -787,6 +814,11 @@ public static class EnvoyProxyResourceBuilderExtensions
         envoy.WithEnvironment($"{name}_PORT", endpoint.Property(EndpointProperty.Port));
         return envoy;
     }
+
+    private static string DevDomain(string clientName) => $"{clientName}.{DevDomainSuffix}";
+
+    private static string DevOrigin(string clientName, int listenerPort) =>
+        $"https://{DevDomain(clientName)}:{listenerPort}";
 
     private sealed class EnvoyClientsAnnotation : IResourceAnnotation
     {
@@ -800,9 +832,12 @@ Notes:
 - `AddDockerfile` builds the `proxy/` directory as a Docker image.
 - The deferred `WithEnvironment(ctx => …)` callback materializes
   `CLIENTS` after all `WithClient` registrations have run.
-- `WithClient` assigns listener target ports in registration order
-  (20000, 20001, …) — `isProxied: false` publishes the container port
-  directly, so dev URLs are stable (`https://localhost:20000`, …).
+- `WithClient` assigns listener ports in registration order
+  (20000, 20001, …) and pins the host port to the same value
+  (`isProxied: false`), so dev URLs are stable. Each client gets its own
+  hostname (`https://admin.dev.localhost:20000`, …): cookies ignore
+  ports, so clients sharing `localhost` would share one session cookie.
+  `WithClient` returns that origin as a `ReferenceExpression`.
 - **Dev mode** uses `WithHttpsCertificateConfiguration` to inject
   Aspire's developer certificate paths as `ENVOY_TLS_CERT` and
   `ENVOY_TLS_KEY` environment variables, and adds

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Dev-only admin console operators, created (idempotently) by the AppHost once Keycloak is healthy.
-# Sign in at https://localhost:20000 with the email; the code arrives in smtp4dev (localhost:8025).
+# Sign in at https://admin.dev.localhost:20000 with the email; the code arrives in smtp4dev (localhost:8025).
 # Env: KC_URL, KC_ADMIN_USER, KC_ADMIN_PASSWORD — set by the AppHost.
 set -euo pipefail
 

@@ -28,8 +28,8 @@ graph TD
         Redis["Redis"]
     end
 
-    Browser -->|"https://localhost:20000"| LAdmin
-    Browser -->|"https://localhost:20001"| LPF
+    Browser -->|"https://admin.dev.localhost:20000"| LAdmin
+    Browser -->|"https://protofast.dev.localhost:20001"| LPF
     Browser -->|"login pages"| KC
 
     LAdmin --> NgAdmin
@@ -50,7 +50,7 @@ graph TD
     Aspire -.-|orchestrates| State
 ```
 
-Every request goes through Envoy: each client gets its own HTTPS listener, so pages and API calls share one origin. Envoy routes by path prefix — `/payments/*` and `/api/*` to the gRPC services, sign-in and account endpoints to `auth` — and asks `auth` who the caller is (ext_authz) before forwarding anything else. Ports are assigned by Aspire at startup, except the two client listeners, which are pinned because Keycloak's redirect URIs are exact.
+Every request goes through Envoy: each client gets its own HTTPS listener, so pages and API calls share one origin. Envoy routes by path prefix — `/payments/*` and `/api/*` to the gRPC services, sign-in and account endpoints to `auth` — and asks `auth` who the caller is (ext_authz) before forwarding anything else. Ports are assigned by Aspire at startup, except the client listeners, which are pinned because Keycloak's redirect URIs are exact. Each client is served on its own hostname (`https://«client».dev.localhost:«port»`), because cookies ignore ports.
 
 For the full picture, including the production topology, see [docs/01-topology.md](docs/01-topology.md).
 

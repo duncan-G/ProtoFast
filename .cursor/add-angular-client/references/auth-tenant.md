@@ -19,14 +19,13 @@ below applies either way; a new realm additionally needs the realm import
 ## 1. Dev tenant map
 
 `services/auth/src/ProtoFast.Auth.Api/appsettings.Development.json` →
-`Tenants:ByHost`. The key is the client's per-client Envoy listener,
-`localhost+«port»` (20000, 20001, … in `WithClient` registration order).
-The `+` stands in for `:` — a colon in a .NET config key is a path
-separator and silently unbinds the entry (a binding test in
-`TenantResolverTests` covers this).
+`Tenants:ByHost`. The key is the client's dev hostname,
+`«clientname».dev.localhost` (set by `WithClient`). Do not key it by
+port: cookies ignore ports, so clients told apart only by port share one
+session cookie.
 
 ```jsonc
-"localhost+«port»": {
+"«clientname».dev.localhost": {
   "Realm": "«realm»",
   "ClientId": "«clientname»-web"
 }
@@ -51,7 +50,12 @@ separator and silently unbinds the entry (a binding test in
 
 - Realm JSON in `deploy/keycloak/realms/«realm»-realm.json` **and** the
   `infra/keycloak/realms/` copy, using `${env.*}` placeholders like the
-  existing realms.
+  existing realms. The dev redirect URI is exact:
+  `https://«clientname».dev.localhost:«port»/signin-oidc` (the port is the
+  client's listener port, 20000 + its `WithClient` index). A client
+  joining an existing realm needs the same entry added to that realm's
+  client. The dev AppHost's `dev-client-urls` resource pushes client
+  URLs into realms that already exist on every start.
 - The **keycloak** service env in `deploy/docker-compose.host-services.yml`:
   the `«CLIENTNAME»_WEB_CLIENT_SECRET` and `«CLIENTNAME»_WEB_BASE_URL`
   placeholder values the import substitutes.

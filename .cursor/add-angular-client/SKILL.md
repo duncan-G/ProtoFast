@@ -31,9 +31,11 @@ in two contexts:
 
 - **Dev:** each client runs its own `ng serve` (HMR), but the browser
   enters through a **per-client Envoy listener** — pages and API share
-  one origin per client. `proxy.WithClient(builder, "«clientname»")`
-  creates the listener and returns its endpoint, which becomes the
-  client's `SERVER_URL`.
+  one origin per client, on its own hostname
+  (`https://«clientname».dev.localhost:«port»` — cookies ignore ports, so
+  clients sharing `localhost` would share one session cookie).
+  `proxy.WithClient(builder, "«clientname»")` creates the listener and
+  returns that origin, which becomes the client's `SERVER_URL`.
 - **Publish:** a single **unified SSR host** container
   (`clients/host/`) serves every client's SSR bundle from one Node
   process. Envoy matches the client's subdomain and tags requests with
@@ -160,7 +162,8 @@ If the project has no auth BFF, skip this step.
 - In **dev mode** Aspire assigns the dev-server port dynamically via
   the `PORT` env var — never hardcode it. Per-client Envoy listener
   ports are fixed internal targets (20000, 20001, …) assigned in
-  registration order by `WithClient`; do not pick them manually.
+  registration order by `WithClient`; do not pick them manually. The
+  hostname is always `«clientname».dev.localhost`.
 - The dev server runs HTTPS using Aspire's developer certificate.
   `AddClientApp` injects `SSL_CERT` and `SSL_KEY` env vars via
   `WithHttpsCertificateConfiguration`; the `start` script passes them
