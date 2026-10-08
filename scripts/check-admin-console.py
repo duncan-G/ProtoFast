@@ -8,7 +8,7 @@ Run in the console's pipeline after `npm run generate:grpc`. Fails when:
 * its generated code holds protos other than Admin/Shared and its own Admin/<App>;
 * its src/admin-kit is anything but the symlink to the platform's kit;
 * its sources import a package outside the allowed set, or its package.json adds a
-  dependency the platform console (clients/admin) does not have;
+  dependency the platform console (clients/admin) does not have and that is not approved;
 * the shared clients host is configured to load an app console;
 * the admin vhost's CSP no longer pins connect-src to the console's own origin.
 """
@@ -21,8 +21,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PLATFORM = "admin"
 ALLOWED_IMPORTS = re.compile(
-    r"^(\.|@angular/|@connectrpc/|@bufbuild/|@opentelemetry/|rxjs|tslib$|express$|node:)"
+    r"^(\.|@angular/|@connectrpc/|@bufbuild/|@opentelemetry/|rxjs|tslib$|express$|node:"
+    r"|highlight\.js(/|$)|marked$)"
 )
+# Reviewed exceptions an app console may depend on although the platform console does not.
+APPROVED_DEPENDENCIES = {"highlight.js", "marked"}
 IMPORT = re.compile(r"""(?:^|\s)(?:import|export)\s[^'"]*?from\s+['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)""")
 
 failures = []
@@ -68,7 +71,9 @@ def check_dependencies(project):
     platform = json.loads((ROOT / "clients" / PLATFORM / "package.json").read_text())
     console = json.loads((project / "package.json").read_text())
     for section in ("dependencies", "devDependencies"):
-        extra = sorted(set(console.get(section, {})) - set(platform.get(section, {})))
+        extra = sorted(
+            set(console.get(section, {})) - set(platform.get(section, {})) - APPROVED_DEPENDENCIES
+        )
         if extra:
             fail(f"{project.name} adds {section} the platform console lacks: {', '.join(extra)}")
 

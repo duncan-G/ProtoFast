@@ -138,8 +138,8 @@ A revoke takes effect at the operator's next access-token refresh, within one to
   kit symlink inside that folder.
 - **Imports and dependencies**: `scripts/check-admin-console.py` (run in the console's pipeline)
   allows only relative imports, `@angular/*`, `@connectrpc/*`, `@bufbuild/*`, `@opentelemetry/*`,
-  `rxjs`, `tslib`, `express` and `node:*`, and fails on any dependency the platform console does
-  not have. It also fails on generated code from another app's protos, a kit link that points
+  `rxjs`, `tslib`, `express`, `node:*` and the reviewed exceptions `highlight.js` and `marked`,
+  and fails on any other dependency the platform console does not have. It also fails on generated code from another app's protos, a kit link that points
   elsewhere, an app console listed in the shared host's `CLIENTS`, and a CSP that no longer pins
   `connect-src`.
 - **Data**: frontend only. A feature that needs new data is a request for a new RPC under
