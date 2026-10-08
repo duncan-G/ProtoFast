@@ -55,6 +55,29 @@ public class MessageLeaseTests
     }
 
     [Fact]
+    public async Task A_message_held_after_waiting_is_renewed_on_the_time_it_has_left()
+    {
+        await using var lease = Hold(receivedAt: _time.GetUtcNow() - Timeout + TimeSpan.FromMinutes(1));
+
+        Assert.Single(_queue.Renewals);
+
+        await AdvanceAsync(Timeout / 3);
+
+        Assert.Equal(2, _queue.Renewals.Count);
+        Assert.False(lease.IsLost);
+    }
+
+    [Fact]
+    public async Task A_message_that_lapsed_before_it_was_held_is_lost_on_its_first_failed_renewal()
+    {
+        _queue.Failures = int.MaxValue;
+
+        await using var lease = Hold(receivedAt: _time.GetUtcNow() - Timeout);
+
+        Assert.True(lease.IsLost);
+    }
+
+    [Fact]
     public async Task Releasing_the_lease_stops_the_renewals()
     {
         var lease = Hold();
@@ -78,8 +101,8 @@ public class MessageLeaseTests
         Assert.False(lease.IsLost);
     }
 
-    private MessageLease Hold(CancellationToken ct = default) =>
-        MessageLease.Hold(_queue, "handle", Timeout, NullLogger.Instance, ct, _time);
+    private MessageLease Hold(CancellationToken ct = default, DateTimeOffset? receivedAt = null) =>
+        MessageLease.Hold(_queue, "handle", Timeout, receivedAt ?? _time.GetUtcNow(), NullLogger.Instance, ct, _time);
 
     // Each step fires at most one renewal, which runs to completion before the next step.
     private async Task AdvanceAsync(TimeSpan by)
@@ -116,6 +139,9 @@ public class MessageLeaseTests
         public Task SendAsync<T>(T message, string groupId, CancellationToken ct = default) => throw new NotSupportedException();
 
         public Task<IReadOnlyList<QueueMessage<T>>> ReceiveAsync<T>(CancellationToken ct = default) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<QueueMessage<T>>> ReceiveAsync<T>(int maxMessages, CancellationToken ct = default) =>
+            throw new NotSupportedException();
 
         public Task DeleteAsync(string receiptHandle, CancellationToken ct = default) => throw new NotSupportedException();
     }

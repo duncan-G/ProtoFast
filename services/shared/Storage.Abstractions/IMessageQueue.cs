@@ -14,6 +14,9 @@ public interface IMessageQueue
     /// <summary>Long-polls. An empty list means nothing arrived within the wait.</summary>
     Task<IReadOnlyList<QueueMessage<T>>> ReceiveAsync<T>(CancellationToken ct = default);
 
+    /// <summary>As <see cref="ReceiveAsync{T}(CancellationToken)"/>, taking at most <paramref name="maxMessages"/>.</summary>
+    Task<IReadOnlyList<QueueMessage<T>>> ReceiveAsync<T>(int maxMessages, CancellationToken ct = default);
+
     /// <summary>
     /// Acknowledges a message. One that is never deleted is delivered again after its visibility
     /// timeout, and moves to the dead-letter queue after the queue's receive limit.

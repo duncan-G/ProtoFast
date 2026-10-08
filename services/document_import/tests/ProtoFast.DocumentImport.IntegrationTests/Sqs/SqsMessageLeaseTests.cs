@@ -35,7 +35,7 @@ public class SqsMessageLeaseTests(LocalStackFixture localStack) : IAsyncLifetime
         var message = Assert.Single(await Queue.ReceiveAsync<string>(Ct));
         var logger = _services.GetRequiredService<ILogger<SqsMessageLeaseTests>>();
 
-        await using (MessageLease.Hold(Queue, message.ReceiptHandle, message.Visibility, logger, Ct))
+        await using (MessageLease.Hold(Queue, message, logger, Ct))
         {
             // Twice the visibility, each receive long-polling for a second of it.
             for (var elapsed = TimeSpan.Zero; elapsed < Visibility * 2; elapsed += TimeSpan.FromSeconds(1))

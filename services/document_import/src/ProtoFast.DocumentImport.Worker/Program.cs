@@ -46,6 +46,7 @@ builder.Services.AddScoped<SourceTextResolver>();
 builder.Services.AddScoped<StoryWriter>();
 builder.Services.AddScoped<DocumentImportRunner>();
 
+builder.Services.Configure<DocumentImportConsumerOptions>(builder.Configuration.GetSection("Consumer"));
 builder.Services.AddHostedService<DocumentImportConsumer>();
 
 builder.Build().Run();

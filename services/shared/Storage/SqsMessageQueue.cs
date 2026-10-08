@@ -21,6 +21,8 @@ internal sealed class SqsMessageQueue : IMessageQueue, IDisposable
     private const string TraceParentAttribute = "traceparent";
     private const string TraceStateAttribute = "tracestate";
 
+    private const int MaxReceiveBatch = 10;
+
     private readonly SqsQueueOptions _options;
     private readonly ILogger<SqsMessageQueue> _logger;
     private readonly AmazonSQSClient _sqs;
@@ -59,12 +61,19 @@ internal sealed class SqsMessageQueue : IMessageQueue, IDisposable
         await _sqs.SendMessageAsync(request, ct);
     }
 
-    public async Task<IReadOnlyList<QueueMessage<T>>> ReceiveAsync<T>(CancellationToken ct = default)
+    public Task<IReadOnlyList<QueueMessage<T>>> ReceiveAsync<T>(CancellationToken ct = default) =>
+        ReceiveAsync<T>(_options.MaxMessages, ct);
+
+    public async Task<IReadOnlyList<QueueMessage<T>>> ReceiveAsync<T>(int maxMessages, CancellationToken ct = default)
     {
+        var queueUrl = await QueueUrlAsync(ct);
+
+        // Taken before the request, as SQS starts each message's visibility timeout during it.
+        var receivedAt = DateTimeOffset.UtcNow;
         var response = await _sqs.ReceiveMessageAsync(new ReceiveMessageRequest
         {
-            QueueUrl = await QueueUrlAsync(ct),
-            MaxNumberOfMessages = _options.MaxMessages,
+            QueueUrl = queueUrl,
+            MaxNumberOfMessages = Math.Clamp(maxMessages, 1, MaxReceiveBatch),
             WaitTimeSeconds = (int)_options.WaitTime.TotalSeconds,
             VisibilityTimeout = (int)_options.VisibilityTimeout.TotalSeconds,
             MessageAttributeNames = [TraceParentAttribute, TraceStateAttribute],
@@ -94,6 +103,7 @@ internal sealed class SqsMessageQueue : IMessageQueue, IDisposable
                     body,
                     message.ReceiptHandle,
                     _options.VisibilityTimeout,
+                    receivedAt,
                     TraceParent(message),
                     IsLastDelivery(message, maxReceiveCount)));
             }
