@@ -7,7 +7,8 @@
 #
 # Usage:  deploy.sh apply <component>=<tag> [<component>=<tag> ...]
 #
-#   component ∈ auth | payments | api | conversion | envoy | otel-collector | clients-host
+#   component ∈ auth | payments | api | conversion | document-import | envoy | otel-collector
+#               | clients-host
 #               | auth-migrations | api-migrations | aspire-dashboard
 #               | client-<name>            (e.g. client-admin, client-protofast)
 #
@@ -857,7 +858,7 @@ upper() { printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_'; }
 
 # Resolve a component id to its manifest key, compose service, and kind. Sets the
 # globals KEY, SVC, KIND (and CLIENT_NAME for client kinds). Unknown → exit 2.
-#   KIND ∈ service | conversion | envoy | otel | host | client | aspire | edge | stateful
+#   KIND ∈ service | conversion | worker | envoy | otel | host | client | aspire | edge | stateful
 # stateful (keycloak/postgres/redis — two-instance restructure §5.3) gets its OWN
 # apply path, kept separate from the recreate+health+rollback service flow:
 # Postgres never auto-rolls-back its tag; Redis is a disposable cache.
@@ -870,6 +871,9 @@ resolve() {
     conversion)
       # Its own kind: plain HTTP, so the gRPC probe would fail a healthy container.
       KEY="CONVERSION_TAG"; SVC="conversion"; KIND="conversion" ;;
+    document-import)
+      # No endpoint at all, so it is judged on staying up (worker_ok).
+      KEY="DOCUMENT_IMPORT_TAG"; SVC="document-import"; KIND="worker" ;;
     auth-migrations)
       # Not a long-running container — applying it only publishes the image + pins the tag; the
       # migration RUN happens as a pre-step of the auth apply (run_auth_migrations).
@@ -977,6 +981,20 @@ conversion_ok() {
     "import urllib.request;urllib.request.urlopen('http://localhost:8090/health')" >/dev/null 2>&1
 }
 
+# The worker serves nothing to probe. A host that cannot start (bad config, unreadable secret,
+# unreachable queue) exits and is restarted, so a fresh container that has run WORKER_SETTLE_SECS
+# without a restart is the signal. A recreate resets RestartCount to 0.
+WORKER_SETTLE_SECS="${WORKER_SETTLE_SECS:-30}"
+worker_ok() {
+  local cid state running restarts started
+  cid="$(compose ps -aq "$1" 2>/dev/null | head -n1)"
+  [ -n "$cid" ] || return 1
+  state="$(docker inspect -f '{{.State.Running}} {{.RestartCount}} {{.State.StartedAt}}' "$cid" 2>/dev/null)" || return 1
+  read -r running restarts started <<< "$state"
+  [ "$running" = true ] && [ "$restarts" = 0 ] || return 1
+  [ $(( $(date +%s) - $(date -d "$started" +%s) )) -ge "$WORKER_SETTLE_SECS" ]
+}
+
 # otel-collector readiness extension (config.yaml: health_check on :13133).
 otel_ok() {
   docker run --rm --network "$NETWORK" curlimages/curl:latest \
@@ -1017,6 +1035,8 @@ health_once() {
       grpc_ok "$SVC" || { rc=1; log "grpc health not serving: ${SVC}"; } ;;
     conversion)
       conversion_ok || { rc=1; log "conversion /health not serving"; } ;;
+    worker)
+      worker_ok "$SVC" || { rc=1; log "${SVC} not up for ${WORKER_SETTLE_SECS}s without a restart"; } ;;
     migrations)
       : ;; # one-shot job: no long-running container to probe; the auth/api apply runs and gates it
     envoy)
@@ -1139,7 +1159,7 @@ run_api_migrations() {
   log "api schema migrations applied"
 }
 
-# Without a bucket the converter starts healthy and then fails every conversion.
+# Without a bucket the converter and the worker start healthy and then fail every document.
 require_documents_bucket() {
   if [ -z "$(get_env "$ENV_FILE" DOCUMENTS_BUCKET)" ]; then
     log "DOCUMENTS_BUCKET unset — the deploy job passes it from the DOCUMENTS_BUCKET repo variable"
@@ -1148,9 +1168,22 @@ require_documents_bucket() {
   fi
 }
 
+# The worker reads and writes the `protofast` DB, whose schema only the api apply migrates.
+require_import_prerequisites() {
+  require_documents_bucket || return 1
+  if [ -z "$(get_env "$ENV_FILE" PROTOFAST_DB_PASSWORD)" ]; then
+    log "PROTOFAST_DB_PASSWORD unset — Api_DbPassword is not in ${APP_SECRET_ID}. Aborting ${SVC} apply."
+    return 1
+  fi
+  if [ -z "$(get_env "$VERSIONS_FILE" API_MIGRATIONS_TAG)" ]; then
+    log "API_MIGRATIONS_TAG unset — deploy the api first so the protofast schema exists. Aborting ${SVC} apply."
+    return 1
+  fi
+}
+
 apply_kind() {
   case "$KIND" in
-    service|conversion|envoy|otel|aspire|edge)
+    service|conversion|worker|envoy|otel|aspire|edge)
       log "pulling ${SVC}"
       compose pull "$SVC"
       # Gate the auth apply on a successful schema migration (rc 4 → manifest restored upstream).
@@ -1158,6 +1191,7 @@ apply_kind() {
         auth) run_auth_migrations || return 4 ;;
         api)  run_api_migrations  || return 4 ;;
         conversion) require_documents_bucket || return 4 ;;
+        document-import) require_import_prerequisites || return 4 ;;
       esac
       log "recreating ${SVC}${RECREATE:+ (forced)}"
       # shellcheck disable=SC2086  # RECREATE is intentionally word-split (flag or empty)
@@ -1272,7 +1306,7 @@ prune_old_images() {
   [ -n "$ecr" ] || return 0
   for repo in protofast-envoy protofast-clients-host protofast-auth protofast-auth-migrations \
               protofast-payments protofast-api protofast-api-migrations protofast-conversion \
-              protofast-otel-collector; do
+              protofast-document-import protofast-otel-collector; do
     docker image ls "${ecr}/${repo}" --format '{{.CreatedAt}}\t{{.Repository}}:{{.Tag}}' \
       | sort -r \
       | awk -v keep="$KEEP_RELEASES" 'NR>keep {print $NF}' \
@@ -1319,7 +1353,8 @@ push_manifest() {
 host_bringup_sets() {
   case "$(get_env "$ENV_FILE" HOST_ROLE)" in
     services)
-      SERVICE_TAGS="auth:AUTH_TAG payments:PAYMENTS_TAG api:API_TAG conversion:CONVERSION_TAG"
+      SERVICE_TAGS="auth:AUTH_TAG payments:PAYMENTS_TAG api:API_TAG conversion:CONVERSION_TAG
+                    document-import:DOCUMENT_IMPORT_TAG"
       ALWAYS_UP="postgres redis keycloak" ;;
     *) # edge (also the default for a pre-split .env that predates HOST_ROLE)
       SERVICE_TAGS="envoy:ENVOY_TAG clients:CLIENTS_HOST_TAG otel-collector:OTEL_TAG
@@ -1387,7 +1422,7 @@ bootstrap() {
 # Postgres is crash-safe (WAL), so a partial drain never corrupts data.
 drain() {
   log "draining Host B: writers -> postgres -> unmount"
-  compose stop auth payments api keycloak || true   # no new sessions/realm writes
+  compose stop document-import auth payments api keycloak || true   # no new sessions/realm/import writes
   compose stop postgres || true                      # fast shutdown (image STOPSIGNAL=SIGINT)
   sync
   umount /mnt/pgdata 2>/dev/null || log "WARN: /mnt/pgdata busy or not mounted; ext4 journal covers it"
