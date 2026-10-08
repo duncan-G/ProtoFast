@@ -203,8 +203,8 @@ public sealed class StoryWriter(
     }
 
     /// <summary>
-    /// Keeps the mentions the API's scene validator would accept: each starts at an @ inside the text,
-    /// none overlap, and each names a library entry of its kind.
+    /// Keeps the mentions the API's scene validator would accept: each lies inside the text and starts
+    /// at an @ unless it is a tag, none overlap, and each names a library entry of its kind.
     /// </summary>
     private static List<SceneElementMention> Mentions(
         string text,
@@ -217,14 +217,14 @@ public sealed class StoryWriter(
         var end = 0;
         foreach (var draft in (drafts ?? []).OrderBy(m => m.Offset))
         {
-            if (draft.Offset < end || draft.Length < 2 || draft.Offset + draft.Length > text.Length
-                || text[draft.Offset] != '@' || string.IsNullOrWhiteSpace(draft.Name))
+            if (draft.Offset < end || draft.Length < (draft.IsTag ? 1 : 2) || draft.Offset + draft.Length > text.Length
+                || (!draft.IsTag && text[draft.Offset] != '@') || string.IsNullOrWhiteSpace(draft.Name))
             {
                 continue;
             }
 
             var name = draft.Name.Trim();
-            var mention = new SceneElementMention { Offset = draft.Offset, Length = draft.Length };
+            var mention = new SceneElementMention { Offset = draft.Offset, Length = draft.Length, IsTag = draft.IsTag };
             switch (draft.Kind)
             {
                 case MentionKind.Character when characters.TryGetValue(name, out var character):

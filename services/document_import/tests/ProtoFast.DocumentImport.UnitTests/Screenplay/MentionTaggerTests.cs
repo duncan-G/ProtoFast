@@ -37,7 +37,7 @@ public class MentionTaggerTests
 
     private static void AssertMentionsMatchText(SceneElementDraft element)
     {
-        foreach (var mention in element.Mentions!)
+        foreach (var mention in element.Mentions!.Where(m => !m.IsTag))
         {
             Assert.Equal(
                 "@" + mention.Name,
@@ -49,6 +49,7 @@ public class MentionTaggerTests
     [Fact]
     public async Task Characters_and_locations_are_tagged_where_capitalised_with_the_longest_name_winning()
     {
+        _models.Script(ModelClasses.Medium, (_, _) => """{"aliases": []}""");
         var story = Story(
             """
             "characters": [{ "name": "Mara" }, { "name": "Mara Voss" }, { "name": "Hope" }],
@@ -71,7 +72,80 @@ public class MentionTaggerTests
             elements[2].Mentions!.Select(m => (m.Kind, m.Name)));
         AssertMentionsMatchText(elements[1]);
         AssertMentionsMatchText(elements[2]);
-        Assert.Empty(_models.Calls);
+        var (modelClass, _, user) = Assert.Single(_models.Calls);
+        Assert.Equal(ModelClasses.Medium, modelClass);
+        Assert.Contains("1. Marathon (once)", user);
+    }
+
+    [Fact]
+    public async Task Aliases_the_model_links_to_an_entry_are_tagged_as_written()
+    {
+        _models.Script(ModelClasses.Medium, (_, _) => """
+            {"aliases": [{"candidate": 1, "entry": 1}, {"candidate": 2, "entry": 1}, {"candidate": 3, "entry": 2}, {"candidate": 4, "entry": 1}]}
+            """);
+        var story = Story(
+            """
+            "characters": [{ "name": "John Smith", "description": "The stable master." }, { "name": "Mara Voss" }],
+            "locations": [{ "name": "Harrenhal Keep", "setting": "Exterior" }]
+            """,
+            "John Smith crosses the yard of Harrenhal Keep.",
+            "Mara Voss calls him Joe, and then Mr. Smith laughs.",
+            "Then John hands Mara the reins.");
+
+        var tagged = await Tagger.TagAsync(story, Ct);
+
+        var elements = Elements(tagged);
+        Assert.Equal("@John Smith crosses the yard of @Harrenhal Keep.", elements[1].Text);
+        Assert.Equal("@Mara Voss calls him Joe, and then Mr. Smith laughs.", elements[2].Text);
+        Assert.Equal("Then John hands Mara the reins.", elements[3].Text);
+        Assert.Equal(
+            [("Mara Voss", false, "@Mara Voss"), ("John Smith", true, "Joe"), ("John Smith", true, "Mr. Smith")],
+            elements[2].Mentions!.Select(m => (m.Name, m.IsTag, elements[2].Text!.Substring(m.Offset, m.Length))));
+        Assert.Equal(
+            [("John Smith", true, "John"), ("Mara Voss", true, "Mara")],
+            elements[3].Mentions!.Select(m => (m.Name, m.IsTag, elements[3].Text!.Substring(m.Offset, m.Length))));
+
+        var (modelClass, _, user) = Assert.Single(_models.Calls);
+        Assert.Equal(ModelClasses.Medium, modelClass);
+        Assert.Contains("1. John Smith (character): The stable master.", user);
+        Assert.Contains("3. Harrenhal Keep (location): ", user);
+        Assert.Contains("1. Joe (once)\n   - Mara Voss calls him [[Joe]], and then Mr. Smith laughs.", user.ReplaceLineEndings("\n"));
+        Assert.Contains("2. John (once)", user);
+        Assert.Contains("3. Mara (once)", user);
+        Assert.Contains("4. Mr. Smith (once)", user);
+        Assert.DoesNotContain("Then John (", user);
+    }
+
+    [Fact]
+    public async Task An_alias_linked_to_more_than_one_entry_stays_plain_text()
+    {
+        _models.Script(ModelClasses.Medium, (_, _) => """{"aliases": [{"candidate": 1, "entry": 1}, {"candidate": 1, "entry": 2}]}""");
+        var story = Story(
+            """
+            "characters": [{ "name": "John Smith" }, { "name": "Mary Smith" }]
+            """,
+            "John Smith and Mary Smith argue; only Smith stays.");
+
+        var tagged = await Tagger.TagAsync(story, Ct);
+
+        var element = Elements(tagged)[1];
+        Assert.Equal("@John Smith and @Mary Smith argue; only Smith stays.", element.Text);
+        Assert.DoesNotContain(element.Mentions!, m => m.IsTag);
+    }
+
+    [Fact]
+    public async Task A_failed_alias_search_still_tags_full_names()
+    {
+        _models.Script(ModelClasses.Medium, (_, _) => "No idea.");
+        var story = Story(
+            """
+            "characters": [{ "name": "John Smith" }]
+            """,
+            "John Smith whistles for Joe.");
+
+        var tagged = await Tagger.TagAsync(story, Ct);
+
+        Assert.Equal("@John Smith whistles for Joe.", Elements(tagged)[1].Text);
     }
 
     [Fact]

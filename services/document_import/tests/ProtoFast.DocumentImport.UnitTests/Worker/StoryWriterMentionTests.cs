@@ -32,6 +32,14 @@ public class StoryWriterMentionTests
                         { "kind": "Location", "name": "Harbor Docks", "offset": 30, "length": 13 },
                         { "kind": "Location", "name": "Harbor Docks", "offset": 40, "length": 13 }
                       ]
+                    },
+                    {
+                      "type": "Action",
+                      "text": "Joe waves.",
+                      "mentions": [
+                        { "kind": "Character", "name": "Mara", "offset": 0, "length": 3, "isTag": true },
+                        { "kind": "Character", "name": "Mara", "offset": 4, "length": 5 }
+                      ]
                     }
                   ]
                 }]
@@ -47,5 +55,9 @@ public class StoryWriterMentionTests
             m => Assert.Equal((0, 5, story.Characters[0]), (m.Offset, m.Length, m.Character)),
             m => Assert.Equal((16, 10, story.Props[0]), (m.Offset, m.Length, m.Prop)),
             m => Assert.Equal((30, 13, story.Locations[0]), (m.Offset, m.Length, m.Location)));
+        Assert.All(element.Mentions, m => Assert.False(m.IsTag));
+
+        var tag = Assert.Single(story.Containers[0].Scenes[0].Elements[1].Mentions);
+        Assert.Equal((0, 3, true, story.Characters[0]), (tag.Offset, tag.Length, tag.IsTag, tag.Character));
     }
 }
