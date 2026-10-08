@@ -5,6 +5,8 @@
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <UserSecretsId>dotnet-ProtoFast.DocumentImport.Worker-7e2e386e-9436-446f-9932-c30b591e47d7</UserSecretsId>
+        <ContainerRepository>protofast-document-import</ContainerRepository>
+        <ContainerFamily>noble-chiseled</ContainerFamily>
     </PropertyGroup>
 
     <ItemGroup>

@@ -1,0 +1,42 @@
+name: deploy-document-import
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/document_import/**"
+      - "services/api/src/ProtoFast.Data/**"
+      - "services/shared/**"
+      - ".github/workflows/deploy-document-import.yml"
+      - ".github/workflows/_component-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing artifact tag to (re)deploy or roll back to. Blank = build current source."
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-document-import
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_component-deploy.yml
+    with:
+      component: document-import
+      host: services
+      build: dotnet
+      target: protofast-document-import
+      kind: service
+      # The worker uses the api's data project (the plot schema it writes stories to), but that
+      # schema is migrated only by deploy-api. A change to both should land the api first.
+      hash_paths: "services/document_import services/api/src/ProtoFast.Data services/shared"
+      project: services/document_import/src/ProtoFast.DocumentImport.Worker
+      tests: services/document_import/tests
+      tag: ${{ inputs.tag }}
+    secrets: inherit

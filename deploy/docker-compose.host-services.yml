@@ -1,9 +1,9 @@
 # Host Services — SERVICES + STATE compose topology.
 #
-# Runs the three gRPC backends, the document-conversion service, and the stateful tier: Keycloak (identity),
-# Postgres (Keycloak's `keycloak` DB, auth's durable `auth` DB and the api's
-# `protofast` DB, on the persistent EBS volume at /mnt/pgdata), and Redis
-# (in-memory session cache + rate limits).
+# Runs the three gRPC backends, the document-conversion service, the document-import
+# worker, and the stateful tier: Keycloak (identity), Postgres (Keycloak's `keycloak` DB,
+# auth's durable `auth` DB and the api's `protofast` DB, on the persistent EBS volume at
+# /mnt/pgdata), and Redis (in-memory session cache + rate limits).
 #
 # Cross-host edges get PUBLISHED ports so Host A's Envoy can dial this host's
 # private IP: auth 8080, payments 8081, api 8082, keycloak 8083. Same-host wiring
@@ -220,6 +220,27 @@ services:
       timeout: 3s
       retries: 5
       start_period: 20s
+
+  # Document import: drains the upload queue, runs the agent workflow engine over each document and
+  # saves the story. No port and no gRPC health endpoint; deploy.sh gates on the container staying up.
+  # The queue names in its appsettings.json are the production ones (infra/queues.tf).
+  document-import:
+    image: ${ECR}/protofast-document-import:${DOCUMENT_IMPORT_TAG}
+    restart: unless-stopped
+    # Stopping cancels in-flight imports; their messages are redelivered once the lease lapses.
+    stop_grace_period: 30s
+    environment:
+      <<: *dotnet-env
+      # A generic host reads DOTNET_ENVIRONMENT, not ASPNETCORE_ENVIRONMENT.
+      DOTNET_ENVIRONMENT: Production
+      ConnectionStrings__protofast: "Host=postgres;Port=5432;Database=protofast;Username=protofast;Password=${PROTOFAST_DB_PASSWORD:-};GSS Encryption Mode=Disable"
+      DocumentImport_S3__Bucket: "${DOCUMENTS_BUCKET:-}"
+      DocumentImport_Conversion__BaseUrl: "http://conversion:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      conversion:
+        condition: service_started
 
   postgres:
     # Pinned upstream image via POSTGRES_TAG (versions.env). Major-version bumps

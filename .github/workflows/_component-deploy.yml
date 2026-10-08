@@ -18,7 +18,7 @@ on:
   workflow_call:
     inputs:
       component:
-        description: "Component id: auth|payments|api|conversion|envoy|otel-collector|clients-host|client-admin|client-protofast"
+        description: "Component id: auth|payments|api|conversion|document-import|envoy|otel-collector|clients-host|client-admin|client-protofast"
         required: true
         type: string
       host:
@@ -43,6 +43,10 @@ on:
         type: string
       project:
         description: "dotnet project path | buildx context dir | client dir (clients/<name>)"
+        required: false
+        type: string
+      tests:
+        description: "Directory searched for dotnet test projects. Blank = services/<component>/tests."
         required: false
         type: string
       tag:
@@ -100,13 +104,14 @@ jobs:
           # services/<component> has no project/solution file at its root (only
           # src/ + tests/), so `dotnet test <dir>` fails with MSB1003. Run each
           # discovered test project explicitly instead.
-          mapfile -t test_projects < <(find "services/${{ inputs.component }}/tests" -name '*.csproj' 2>/dev/null | sort)
+          tests_dir="${{ inputs.tests || format('services/{0}/tests', inputs.component) }}"
+          mapfile -t test_projects < <(find "$tests_dir" -name '*.csproj' 2>/dev/null | sort)
           if [ "${#test_projects[@]}" -gt 0 ]; then
             for proj in "${test_projects[@]}"; do
               dotnet test "$proj" -c Release
             done
           else
-            echo "no test projects under services/${{ inputs.component }}/tests; skipping dotnet test"
+            echo "no test projects under ${tests_dir}; skipping dotnet test"
           fi
 
       # --- Angular client: unit tests (vitest in Node, no browser) ------------
