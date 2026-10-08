@@ -144,8 +144,24 @@ describe('ConnectStoryApi', () => {
     });
     expect(scene.elements[1].type).toBe('Action');
     expect(scene.elements[1].mentions).toEqual([
-      { id: 'm1', characterId: 'bolt', locationId: null, propId: null, offset: 0, length: 5 },
-      { id: 'm2', characterId: null, locationId: null, propId: 'map', offset: 16, length: 4 },
+      {
+        id: 'm1',
+        characterId: 'bolt',
+        locationId: null,
+        propId: null,
+        offset: 0,
+        length: 5,
+        isTag: false,
+      },
+      {
+        id: 'm2',
+        characterId: null,
+        locationId: null,
+        propId: 'map',
+        offset: 16,
+        length: 4,
+        isTag: false,
+      },
     ]);
   });
 
@@ -182,6 +198,7 @@ describe('ConnectStoryApi', () => {
               propId: null,
               offset: 4,
               length: 5,
+              isTag: true,
             },
           ],
         },
@@ -209,6 +226,7 @@ describe('ConnectStoryApi', () => {
     expect(dialogue.speakerId).toBe('bolt');
     expect(dialogue.locationId).toBeUndefined();
     expect(dialogue.mentions[0].target).toEqual({ case: 'locationId', value: 'docks' });
+    expect(dialogue.mentions[0].isTag).toBe(true);
     expect(transition.position).toBe(1);
     expect(transition.type).toBe(SceneElementType.TRANSITION);
     expect(transition.text).toBeUndefined();

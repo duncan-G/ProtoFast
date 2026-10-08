@@ -1,8 +1,9 @@
 namespace ProtoFast.Data.ThePlot.Entities;
 
 /// <summary>
-/// An <c>@Name</c> in a beat's text, pointing at a character, prop or location. Owned by its
-/// <see cref="SceneElement"/>: it has no <c>UserId</c> and is only read and written through it.
+/// An <c>@Name</c>, or a tagged span such as "him", in a beat's text, pointing at a character, prop
+/// or location. Owned by its <see cref="SceneElement"/>: it has no <c>UserId</c> and is only read
+/// and written through it.
 /// </summary>
 public sealed class SceneElementMention
 {
@@ -24,7 +25,10 @@ public sealed class SceneElementMention
 
     public Location? Location { get; set; }
 
-    /// <summary>Index of the <c>@</c> in the beat's text.</summary>
+    /// <summary>A tag marks text as it was written, with no <c>@</c>; a rename leaves its text alone.</summary>
+    public bool IsTag { get; set; }
+
+    /// <summary>Index of the <c>@</c>, or a tag's first character, in the beat's text.</summary>
     public int Offset { get; set; }
 
     /// <summary>Length of the reference, <c>@</c> included.</summary>

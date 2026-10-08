@@ -20,7 +20,7 @@ public static class MentionRewriter
         {
             var offset = mention.Offset + shift;
             mention.Offset = offset;
-            if (!isTarget(mention))
+            if (mention.IsTag || !isTarget(mention))
             {
                 continue;
             }

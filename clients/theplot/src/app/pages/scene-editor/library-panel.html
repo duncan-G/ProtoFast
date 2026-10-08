@@ -126,7 +126,7 @@
             <div class="se-confirm rise" role="alert">
               <span
                 >Remove “{{ character.name }}”? Their lines lose their speaker and their
-                &#64;mentions turn to plain text, in every scene.</span
+                &#64;mentions and tags turn to plain text, in every scene.</span
               >
               <div class="flex gap-1.5">
                 <button
@@ -209,7 +209,7 @@
             <div class="se-confirm rise" role="alert">
               <span
                 >Remove “{{ location.name }}”? Headings set there lose their location and its
-                &#64;mentions turn to plain text, in every scene.</span
+                &#64;mentions and tags turn to plain text, in every scene.</span
               >
               <div class="flex gap-1.5">
                 <button
@@ -264,18 +264,22 @@
                 class="se-entry-act"
                 [disabled]="!editingText()"
                 [title]="
-                  editingText() ? 'Insert into the beat you’re editing' : 'Open a beat to insert'
+                  !editingText()
+                    ? 'Open a beat to insert'
+                    : hasSelection()
+                      ? 'Tag the selected text'
+                      : 'Insert into the beat you’re editing'
                 "
                 (mousedown)="$event.preventDefault(); insertProp(prop)"
               >
-                &#64; Insert
+                &#64; {{ hasSelection() ? 'Tag' : 'Insert' }}
               </button>
             </div>
           </div>
           @if (confirming() === prop.id) {
             <div class="se-confirm rise" role="alert">
               <span
-                >Remove “{{ prop.name }}”? Its &#64;mentions turn to plain text, in every
+                >Remove “{{ prop.name }}”? Its &#64;mentions and tags turn to plain text, in every
                 scene.</span
               >
               <div class="flex gap-1.5">

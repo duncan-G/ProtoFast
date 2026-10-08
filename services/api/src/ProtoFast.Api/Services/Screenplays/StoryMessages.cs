@@ -151,6 +151,7 @@ public static class StoryMessages
             Id = mention.Id.ToString(),
             Offset = mention.Offset,
             Length = mention.Length,
+            IsTag = mention.IsTag,
         };
         if (mention.CharacterId is { } characterId)
         {

@@ -227,7 +227,7 @@ public sealed class ThePlotDbContext(
                     "num_nonnulls(character_id, prop_id, location_id) = 1");
                 t.HasCheckConstraint(
                     "ck_scene_element_mentions_span",
-                    "\"offset\" >= 0 AND length >= 2");
+                    "\"offset\" >= 0 AND length >= CASE WHEN is_tag THEN 1 ELSE 2 END");
             });
         });
     }

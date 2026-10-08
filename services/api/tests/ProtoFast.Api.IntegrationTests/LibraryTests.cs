@@ -40,6 +40,24 @@ public class LibraryTests(StoryDatabase database)
     }
 
     [Fact]
+    public async Task A_rename_keeps_tagged_text_and_shifts_tags_after_a_rewritten_mention()
+    {
+        var story = await _writer.CreateStoryAsync();
+        var mara = await _writer.CreateCharacterAsync(story.Id, "Mara");
+        const string text = "@Mara waves. He grins at her.";
+        var scene = await _writer.WriteFirstSceneAsync(
+            story, Heading(), Action(text, Mention(text, "@Mara", mara), Tag(text, "her", mara)));
+
+        await _writer.Call((s, c) => s.UpdateCharacter(
+            new UpdateCharacterRequest { CharacterId = mara.Id, Name = "Mara Voss", Kind = "Human", Hue = 25 }, c));
+
+        var beat = (await _writer.GetSceneAsync(scene.Id)).Elements[1];
+        Assert.Equal("@Mara Voss waves. He grins at her.", beat.Text);
+        Assert.Equal(["@Mara Voss", "her"], Slices(beat));
+        Assert.Equal([false, true], beat.Mentions.Select(m => m.IsTag));
+    }
+
+    [Fact]
     public async Task Recasing_a_name_rewrites_its_mentions_too()
     {
         var story = await _writer.CreateStoryAsync();
