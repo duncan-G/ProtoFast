@@ -65,9 +65,9 @@ public sealed class StoryFidelityVerifier(IArtifactStore artifacts, IRunLedger l
                 .Select(m => new Finding(ArtifactRef.InputStageId, $"{m.Words} manuscript words are not in the story: \"{m.Snippet}\"")));
         }
 
-        var reason = $"{overlap.Kept:P0} of the story's words are the manuscript's and {overlap.Covered:P0} of the manuscript is in the story";
+        var reason = $"{overlap.Kept * 100:0}% of the story's words are the manuscript's and {overlap.Covered * 100:0}% of the manuscript is in the story";
         return overlap.Kept < MinKept || overlap.Covered < MinCovered
-            ? new VerifierResult(Id, Verdict.Fail, $"{reason}; at least {MinKept:P0} and {MinCovered:P0} are required. Keep the manuscript's wording, split into elements, and drop only what is not story text.", findings)
+            ? new VerifierResult(Id, Verdict.Fail, $"{reason}; at least {MinKept * 100:0}% and {MinCovered * 100:0}% are required. Keep the manuscript's wording, split into elements, and drop only what is not story text.", findings)
             : new VerifierResult(Id, Verdict.Pass, $"{reason}.", []);
     }
 
