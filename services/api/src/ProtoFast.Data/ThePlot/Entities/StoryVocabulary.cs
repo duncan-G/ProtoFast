@@ -10,5 +10,7 @@ public sealed class StoryVocabulary
 
     public List<string> Transitions { get; set; } = [];
 
+    public List<string> Extensions { get; set; } = [];
+
     public List<CharacterKind> CharacterKinds { get; set; } = [];
 }

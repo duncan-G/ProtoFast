@@ -21,6 +21,9 @@
               <app-avatar [shape]="'Circle'" initials="?" [size]="18" />
               <span class="se-speaker-name se-missing">NO SPEAKER — PICK ONE</span>
             }
+            @if (element().extension) {
+              <span class="se-speaker-name se-extension">({{ element().extension }})</span>
+            }
           </div>
           @if (element().parenthetical) {
             <div class="se-paren">({{ element().parenthetical }})</div>
@@ -92,6 +95,17 @@
               })
             "
           />
+          <div class="flex items-center gap-2">
+            <span class="se-kicker">Extension</span>
+            <app-label-chips
+              [labels]="store.extensions()"
+              [selected]="element().extension"
+              noun="extension"
+              placeholder="e.g. FILTERED"
+              [add]="addExtension"
+              (pick)="toggleExtension($event)"
+            />
+          </div>
           <input
             class="se-paren-input"
             aria-label="Parenthetical"

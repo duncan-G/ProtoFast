@@ -12,6 +12,7 @@ function rows(...types: [string, SceneElementType][]): SceneElement[] {
     locationId: null,
     timeOfDay: null,
     speakerId: null,
+    extension: null,
     parenthetical: null,
     transition: null,
     mentions: [],

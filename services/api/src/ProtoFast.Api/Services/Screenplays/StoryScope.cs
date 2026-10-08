@@ -56,6 +56,7 @@ public sealed class StoryScope(
             PropIds = propIds.ToHashSet(),
             TimesOfDay = VocabularyLabels.TimesOfDay(story.Vocabulary),
             Transitions = VocabularyLabels.Transitions(story.Vocabulary),
+            Extensions = VocabularyLabels.Extensions(story.Vocabulary),
         };
     }
 }

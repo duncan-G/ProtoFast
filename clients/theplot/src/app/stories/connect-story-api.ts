@@ -181,6 +181,7 @@ export class ConnectStoryApi implements StoryApi {
       vocabulary: {
         timesOfDay: vocabulary.timesOfDay,
         transitions: vocabulary.transitions,
+        extensions: vocabulary.extensions,
         characterKinds: vocabulary.characterKinds.map((k) => ({
           label: k.label,
           avatarShape: SHAPES[k.avatarShape],
@@ -231,6 +232,7 @@ function toVocabulary(message: StoryVocabularyMessage | undefined): StoryVocabul
   return {
     timesOfDay: [...(message?.timesOfDay ?? [])],
     transitions: [...(message?.transitions ?? [])],
+    extensions: [...(message?.extensions ?? [])],
     characterKinds: (message?.characterKinds ?? []).map((k) => ({
       label: k.label,
       avatarShape: nameOf(SHAPES, k.avatarShape, 'avatar shape'),
@@ -279,6 +281,7 @@ function toElement(message: SceneElementMessage): SceneElement {
     locationId: message.locationId ?? null,
     timeOfDay: message.timeOfDay ?? null,
     speakerId: message.speakerId ?? null,
+    extension: message.extension ?? null,
     parenthetical: message.parenthetical ?? null,
     transition: message.transition ?? null,
     mentions: message.mentions.map(toMention),
@@ -337,6 +340,7 @@ function fromScene(scene: Scene) {
       locationId: e.locationId ?? undefined,
       timeOfDay: e.timeOfDay ?? undefined,
       speakerId: e.speakerId ?? undefined,
+      extension: e.extension ?? undefined,
       parenthetical: e.parenthetical ?? undefined,
       transition: e.transition ?? undefined,
       mentions: e.mentions.map(fromMention),

@@ -49,7 +49,7 @@ export class InMemoryStoryApi implements StoryApi {
     this.stories.set(id, {
       id,
       title: requireTitle(title),
-      vocabulary: { timesOfDay: [], transitions: [], characterKinds: [] },
+      vocabulary: { timesOfDay: [], transitions: [], extensions: [], characterKinds: [] },
       containers: [container],
       characters: [],
       locations: [],
@@ -72,6 +72,7 @@ export class InMemoryStoryApi implements StoryApi {
           locationId: null,
           timeOfDay: null,
           speakerId: null,
+          extension: null,
           parenthetical: null,
           transition: null,
           mentions: [],

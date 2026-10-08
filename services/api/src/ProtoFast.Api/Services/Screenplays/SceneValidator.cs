@@ -47,6 +47,7 @@ public static class SceneValidator
                 case SceneElementTypeRecord.Heading:
                     Forbid(element.HasText, row, rows, "text");
                     Forbid(element.HasSpeakerId, row, rows, "a speaker");
+                    Forbid(element.HasExtension, row, rows, "an extension");
                     Forbid(element.HasParenthetical, row, rows, "a parenthetical");
                     Forbid(element.HasTransition, row, rows, "a transition");
                     record.LocationId = element.HasLocationId
@@ -64,6 +65,7 @@ public static class SceneValidator
                     Forbid(element.HasLocationId, row, rows, "a location");
                     Forbid(element.HasTimeOfDay, row, rows, "a time of day");
                     Forbid(element.HasSpeakerId, row, rows, "a speaker");
+                    Forbid(element.HasExtension, row, rows, "an extension");
                     Forbid(element.HasParenthetical, row, rows, "a parenthetical");
                     record.Transition = VocabularyLabels.Pick(
                         element.HasTransition ? element.Transition : null,
@@ -80,6 +82,11 @@ public static class SceneValidator
                     record.SpeakerId = element.HasSpeakerId
                         ? Reference(element.SpeakerId, story.CharacterIds, row, "character")
                         : null;
+                    record.Extension = VocabularyLabels.Pick(
+                        element.HasExtension ? element.Extension : null,
+                        story.Extensions,
+                        stored?.Extension,
+                        "cue extension");
                     record.Parenthetical = element.HasParenthetical ? Parenthetical(element.Parenthetical) : null;
                     break;
 
@@ -87,6 +94,7 @@ public static class SceneValidator
                     Forbid(element.HasLocationId, row, rows, "a location");
                     Forbid(element.HasTimeOfDay, row, rows, "a time of day");
                     Forbid(element.HasSpeakerId, row, rows, "a speaker");
+                    Forbid(element.HasExtension, row, rows, "an extension");
                     Forbid(element.HasParenthetical, row, rows, "a parenthetical");
                     Forbid(element.HasTransition, row, rows, "a transition");
                     record.Text = element.Text;

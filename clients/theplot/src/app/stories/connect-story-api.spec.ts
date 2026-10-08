@@ -69,6 +69,7 @@ describe('ConnectStoryApi', () => {
       vocabulary: {
         timesOfDay: ['GOLDEN HOUR'],
         transitions: [],
+        extensions: [],
         characterKinds: [{ label: 'Ghost', avatarShape: 'Star' }],
       },
       containers: [
@@ -138,6 +139,7 @@ describe('ConnectStoryApi', () => {
       locationId: null,
       timeOfDay: 'NIGHT',
       speakerId: null,
+      extension: null,
       parenthetical: null,
       transition: null,
       mentions: [],
@@ -188,6 +190,7 @@ describe('ConnectStoryApi', () => {
           locationId: null,
           timeOfDay: null,
           speakerId: 'bolt',
+          extension: 'V.O.',
           parenthetical: 'beat',
           transition: null,
           mentions: [
@@ -211,6 +214,7 @@ describe('ConnectStoryApi', () => {
           locationId: null,
           timeOfDay: null,
           speakerId: null,
+          extension: null,
           parenthetical: null,
           transition: 'CUT TO',
           mentions: [],
@@ -224,12 +228,14 @@ describe('ConnectStoryApi', () => {
     expect(dialogue.position).toBe(0);
     expect(dialogue.type).toBe(SceneElementType.DIALOGUE);
     expect(dialogue.speakerId).toBe('bolt');
+    expect(dialogue.extension).toBe('V.O.');
     expect(dialogue.locationId).toBeUndefined();
     expect(dialogue.mentions[0].target).toEqual({ case: 'locationId', value: 'docks' });
     expect(dialogue.mentions[0].isTag).toBe(true);
     expect(transition.position).toBe(1);
     expect(transition.type).toBe(SceneElementType.TRANSITION);
     expect(transition.text).toBeUndefined();
+    expect(transition.extension).toBeUndefined();
     expect(transition.transition).toBe('CUT TO');
   });
 
@@ -257,6 +263,7 @@ describe('ConnectStoryApi', () => {
     await api.saveVocabulary('story', {
       timesOfDay: ['GOLDEN HOUR'],
       transitions: [],
+      extensions: ['FILTERED'],
       characterKinds: [{ label: 'Ghost', avatarShape: 'Shield' }],
     });
 
@@ -268,6 +275,7 @@ describe('ConnectStoryApi', () => {
     });
     expect(vocabulary?.storyId).toBe('story');
     expect(vocabulary?.vocabulary?.timesOfDay).toEqual(['GOLDEN HOUR']);
+    expect(vocabulary?.vocabulary?.extensions).toEqual(['FILTERED']);
     expect(vocabulary?.vocabulary?.characterKinds[0]).toMatchObject({
       label: 'Ghost',
       avatarShape: AvatarShape.SHIELD,
