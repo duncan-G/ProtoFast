@@ -50,12 +50,13 @@ public sealed class StoryWriter(
     internal static Story Build(StoryDraft draft)
     {
         var story = new Story { Title = Trim(draft.Title, NameLength, "Untitled") };
-        var characters = new Dictionary<string, Character>(StringComparer.OrdinalIgnoreCase);
-        var locations = new Dictionary<string, Location>(StringComparer.OrdinalIgnoreCase);
-        var props = new Dictionary<string, Prop>(StringComparer.OrdinalIgnoreCase);
+        var characters = new Dictionary<string, Character>(LibraryNameComparer.Instance);
+        var locations = new Dictionary<string, Location>(LibraryNameComparer.Instance);
+        var props = new Dictionary<string, Prop>(LibraryNameComparer.Instance);
 
         var timesOfDay = DefaultVocabulary.TimesOfDay.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var transitions = DefaultVocabulary.Transitions.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var extensions = DefaultVocabulary.Extensions.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var kinds = DefaultVocabulary.CharacterKinds.ToDictionary(k => k.Label, k => k.Label, StringComparer.OrdinalIgnoreCase);
 
         foreach (var label in draft.Vocabulary?.TimesOfDay ?? [])
@@ -66,6 +67,11 @@ public sealed class StoryWriter(
         foreach (var label in draft.Vocabulary?.Transitions ?? [])
         {
             AddLabel(transitions, story.Vocabulary.Transitions, label);
+        }
+
+        foreach (var label in draft.Vocabulary?.Extensions ?? [])
+        {
+            AddLabel(extensions, story.Vocabulary.Extensions, Extension(label));
         }
 
         foreach (var kind in draft.Vocabulary?.CharacterKinds ?? [])
@@ -110,7 +116,7 @@ public sealed class StoryWriter(
 
                 foreach (var element in scene.Elements ?? [])
                 {
-                    if (Element(story, element, characters, locations, props, timesOfDay, transitions) is { } row)
+                    if (Element(story, element, characters, locations, props, timesOfDay, transitions, extensions) is { } row)
                     {
                         row.Position = sceneRow.Elements.Count;
                         sceneRow.Elements.Add(row);
@@ -129,7 +135,8 @@ public sealed class StoryWriter(
         Dictionary<string, Location> locations,
         Dictionary<string, Prop> props,
         HashSet<string> timesOfDay,
-        HashSet<string> transitions)
+        HashSet<string> transitions,
+        HashSet<string> extensions)
     {
         if (!Enum.TryParse<SceneElementType>(element.Type, ignoreCase: true, out var type))
         {
@@ -170,13 +177,21 @@ public sealed class StoryWriter(
                 row.Mentions = Mentions(row.Text, element.Mentions, characters, locations, props);
                 if (type == SceneElementType.Dialogue)
                 {
+                    string? cueExtension = null;
                     if (!string.IsNullOrWhiteSpace(element.Speaker))
                     {
-                        row.Speaker = characters.TryGetValue(element.Speaker.Trim(), out var known)
+                        var speaker = element.Speaker.Trim();
+                        if (!characters.ContainsKey(speaker))
+                        {
+                            (speaker, cueExtension) = Cue(speaker);
+                        }
+
+                        row.Speaker = characters.TryGetValue(speaker, out var known)
                             ? known
-                            : AddCharacter(story, characters, element.Speaker, DefaultVocabulary.CharacterKinds[0].Label);
+                            : AddCharacter(story, characters, speaker, DefaultVocabulary.CharacterKinds[0].Label);
                     }
 
+                    row.Extension = AddLabel(extensions, story.Vocabulary.Extensions, Extension(element.Extension ?? cueExtension));
                     row.Parenthetical = string.IsNullOrWhiteSpace(element.Parenthetical)
                         ? null
                         : Trim(element.Parenthetical, NameLength, "");
@@ -270,7 +285,7 @@ public sealed class StoryWriter(
         return location;
     }
 
-    /// <summary>Times of day and transitions are stored uppercased, as headings print them.</summary>
+    /// <summary>Times of day, transitions and extensions are stored uppercased, as the script prints them.</summary>
     /// <returns>The label as the vocabulary spells it, or null when blank.</returns>
     private static string? AddLabel(HashSet<string> known, List<string> added, string? value)
     {
@@ -323,6 +338,35 @@ public sealed class StoryWriter(
 
         return label.Length > LabelLength ? label[..LabelLength].TrimEnd() : label;
     }
+
+    /// <summary>Splits a cue the draft left whole, "MARA (V.O.)", into the name and its extension.</summary>
+    private static (string Name, string? Extension) Cue(string speaker)
+    {
+        var open = speaker.IndexOf('(');
+        return open > 0 && speaker.EndsWith(')')
+            ? (speaker[..open].TrimEnd(), speaker[open..])
+            : (speaker, null);
+    }
+
+    /// <summary>
+    /// Drops the parentheses and CONT'D, which only marks a speech resumed, and spells an abbreviated
+    /// default (VO, V/O) the way the vocabulary does.
+    /// </summary>
+    private static string? Extension(string? value)
+    {
+        var words = (value ?? "")
+            .Split([' ', '(', ')'], StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => Letters(w) is not ("CONTD" or "CONTINUED" or "CONTINUING"));
+        var label = string.Join(' ', words);
+        if (label.Length == 0)
+        {
+            return null;
+        }
+
+        return DefaultVocabulary.Extensions.FirstOrDefault(d => Letters(d) == Letters(label)) ?? label;
+    }
+
+    private static string Letters(string value) => new(value.ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray());
 
     /// <summary>A stable hue per name, so re-imports colour the same character the same way.</summary>
     private static int Hue(string name)

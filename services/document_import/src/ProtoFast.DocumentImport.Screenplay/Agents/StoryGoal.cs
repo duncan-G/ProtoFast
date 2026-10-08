@@ -36,7 +36,7 @@ public static class StoryGoal
                 { "type": "Action", "text": "the manuscript's words for what happens" },
                 { "type": "Description", "text": "the manuscript's words for what something looks, sounds or feels like" },
                 { "type": "Narration", "text": "the manuscript's words in the narrator's voice" },
-                { "type": "Dialogue", "speaker": "a character name", "parenthetical": "optional", "text": "the spoken words" },
+                { "type": "Dialogue", "speaker": "a character name", "extension": "optional, e.g. V.O.", "parenthetical": "optional", "text": "the spoken words" },
                 { "type": "Transition", "transition": "a transition" }
               ]
             }]
@@ -44,24 +44,27 @@ public static class StoryGoal
           "vocabulary": {
             "timesOfDay": ["times of day the manuscript uses beyond the defaults"],
             "transitions": ["transitions the manuscript uses beyond the defaults"],
+            "extensions": ["cue extensions the manuscript uses beyond the defaults"],
             "characterKinds": [{ "label": "...", "avatarShape": "Circle|Square|Squircle|Teardrop|Pill|Diamond|Triangle|Pentagon|Hexagon|Octagon|Star|Shield" }]
           }
         }
         ```
 
-        Times of day, transitions and character kinds are an open vocabulary, not a fixed list. Every
-        story starts with these defaults:
+        Times of day, transitions, cue extensions and character kinds are an open vocabulary, not a
+        fixed list. Every story starts with these defaults:
 
         - times of day: DAY, NIGHT, DAWN, DUSK, CONTINUOUS, LATER
         - transitions: CUT TO, DISSOLVE TO, SMASH CUT TO, MATCH CUT TO, TIME CUT, FADE OUT
+        - cue extensions: V.O., O.S., O.C.
         - character kinds: Human, Robot, Animal, Creature, Voice
 
         Use a default when it says what the manuscript says. When the manuscript uses one that is not
-        on the list (MORNING, WIPE TO, FADE IN, IRIS OUT, Ghost, Alien), keep it as written rather than
-        forcing it onto the nearest default, and add it to `vocabulary` so the story offers it from
-        then on. Times of day and transitions are written in capitals without the trailing colon;
-        a new character kind is a short noun with an avatar shape that sets it apart from the defaults
-        (Human and Voice are circles, Robot a square, Animal a teardrop, Creature a squircle). Leave
+        on the list (MORNING, WIPE TO, FADE IN, IRIS OUT, FILTERED, Ghost, Alien), keep it as written
+        rather than forcing it onto the nearest default, and add it to `vocabulary` so the story offers
+        it from then on. Times of day and transitions are written in capitals without the trailing
+        colon, and cue extensions in capitals without the parentheses; a new character kind is a short
+        noun with an avatar shape that sets it apart from the defaults (Human and Voice are circles,
+        Robot a square, Animal a teardrop, Creature a squircle). Leave
         `vocabulary` lists empty when the defaults cover the manuscript.
 
         This is an import, not an adaptation. The story's text is the manuscript's text, in the
@@ -69,7 +72,7 @@ public static class StoryGoal
 
         - Leave out only what is not story: title page, author and contact details, copyright, table
           of contents, dedications, notes to the reader, page numbers, running headers and footers,
-          scene numbers, CONTINUED and MORE markers, and formatting markup.
+          scene numbers, CONTINUED, CONT'D and MORE markers, and formatting markup.
         - A prose paragraph often mixes action, description, narration and dialogue. Split it into
           one element per kind, each carrying the manuscript's own words for that part. Quoted speech
           becomes a Dialogue element: the words inside the quotes are its text, the speaker named by the
@@ -81,9 +84,11 @@ public static class StoryGoal
           manuscript's wording. That is the only rewriting allowed: no paraphrase, no summary, no
           condensing, no added detail, no corrected or modernised prose, no change of tense or person.
         - Screenplay sources map directly: sluglines become Headings, character cues become
-          `speaker`, parentheticals become `parenthetical`, action lines become Action, transitions
-          become Transition. A screenplay uses only those four types: Description and Narration are
-          for prose, so a screenplay's descriptive lines and asides to the reader stay Action.
+          `speaker`, a cue's extension (the V.O. in `MARA (V.O.)`) becomes `extension` and never
+          stays in the speaker's name, parentheticals become `parenthetical`, action lines become
+          Action, transitions become Transition. A screenplay uses only those four types:
+          Description and Narration are for prose, so a screenplay's descriptive lines and asides to
+          the reader stay Action.
 
         Build the story by slicing the manuscript, not by writing it out. Element text is never typed
         by a model, yours or a delegate's: a model retyping a passage drifts from it and is slow and
@@ -93,9 +98,9 @@ public static class StoryGoal
           paragraph the quoted speech and the narrative between quotes), dropping the non-story matter
           above wherever a pattern finds it.
         - A model - you, or a delegate on a page at a time - only labels the units: which scene each
-          starts, each scene's heading, each unit's element type, speaker and parenthetical, and where
-          a unit splits further. Its reply holds unit numbers and short anchors (the first few words
-          of a split), never the passage.
+          starts, each scene's heading, each unit's element type, speaker, extension and
+          parenthetical, and where a unit splits further. Its reply holds unit numbers and short
+          anchors (the first few words of a split), never the passage.
         - Code assembles the story from those labels, copying each element's text from the manuscript
           character for character, and records it with `write-artifact` from inside the script so the
           text never passes through you.
@@ -104,13 +109,13 @@ public static class StoryGoal
         descriptions, scene titles, new vocabulary entries, and the few words that repair a fragment a
         split leaves; keep those repairs as labels (unit, replacement) that the assembling code applies.
 
-        Rules: names are unique within their list and spelled as the manuscript spells them; every
-        character who speaks is listed; props are the objects that matter to the plot; library
-        descriptions are yours to write in one sentence each. Every scene opens with a Heading;
-        element types are Heading, Action, Description, Narration, Dialogue and Transition; Heading
-        and Transition carry no text, every other element does; speakers and locations are names from
-        the lists above; times of day, transitions and character kinds are defaults or entries in
-        `vocabulary`; scenes are grouped into acts or parts.
+        Rules: names are unique within their list and spelled as the manuscript spells them, without
+        cue extensions; every character who speaks is listed; props are the objects that matter to the
+        plot; library descriptions are yours to write in one sentence each. Every scene opens with a
+        Heading; element types are Heading, Action, Description, Narration, Dialogue and Transition;
+        Heading and Transition carry no text, every other element does; speakers and locations are
+        names from the lists above; times of day, transitions, cue extensions and character kinds are
+        defaults or entries in `vocabulary`; scenes are grouped into acts or parts.
 
         Cover the whole manuscript, not its opening: an import that drops the second half is wrong.
         The `story-fidelity` verifier measures both - the share of the story's words that are the

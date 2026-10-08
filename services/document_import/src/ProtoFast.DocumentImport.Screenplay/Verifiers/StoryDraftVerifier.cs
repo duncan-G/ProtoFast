@@ -90,8 +90,8 @@ public sealed class StoryDraftVerifier(IArtifactStore artifacts) : IVerifier
             return new VerifierResult(Id, Verdict.Fail, "The story is malformed.", findings);
         }
 
-        var characterNames = characters.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var locationNames = locations.Select(l => l.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var characterNames = characters.Select(c => c.Name).ToHashSet(LibraryNameComparer.Instance);
+        var locationNames = locations.Select(l => l.Name).ToHashSet(LibraryNameComparer.Instance);
         var kinds = DefaultKinds
             .Concat((story.Vocabulary?.CharacterKinds ?? []).Select(k => k.Label?.Trim() ?? ""))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -102,7 +102,9 @@ public sealed class StoryDraftVerifier(IArtifactStore artifacts) : IVerifier
                 $"'{c.Kind}' is neither a default character kind nor in vocabulary.characterKinds, so it gets a circle avatar."))
             .Concat(scenes.SelectMany(s => s.Elements ?? [])
                 .Select(e => e.Speaker is { } speaker && !characterNames.Contains(speaker)
-                    ? new Finding("$..speaker", $"'{speaker}' is not a library character.")
+                    ? new Finding("$..speaker", KeepsExtension(speaker)
+                        ? $"'{speaker}' keeps its cue extension; the name goes in speaker and the extension in extension."
+                        : $"'{speaker}' is not a library character.")
                     : e.Location is { } location && !locationNames.Contains(location)
                         ? new Finding("$..location", $"'{location}' is not a library location.")
                         : null)
@@ -118,9 +120,12 @@ public sealed class StoryDraftVerifier(IArtifactStore artifacts) : IVerifier
     private static IEnumerable<Finding> Duplicates(IEnumerable<string?> names, string path) =>
         names
             .Where(n => !string.IsNullOrWhiteSpace(n))
-            .GroupBy(n => n!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .GroupBy(n => n!.Trim(), LibraryNameComparer.Instance)
             .Where(g => g.Count() > 1)
             .Select(g => new Finding(path, $"'{g.Key}' appears more than once."));
+
+    private static bool KeepsExtension(string speaker) =>
+        speaker.TrimEnd().EndsWith(')') && speaker.IndexOf('(') > 0;
 
     private static bool IsHeadingOrTransition(string type) =>
         type.Equals("Heading", StringComparison.OrdinalIgnoreCase) || type.Equals("Transition", StringComparison.OrdinalIgnoreCase);

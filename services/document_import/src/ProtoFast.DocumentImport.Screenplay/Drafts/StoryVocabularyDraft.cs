@@ -7,4 +7,5 @@ namespace ProtoFast.DocumentImport.Screenplay.Drafts;
 public sealed record StoryVocabularyDraft(
     IReadOnlyList<string>? TimesOfDay,
     IReadOnlyList<string>? Transitions,
-    IReadOnlyList<CharacterKindDraft>? CharacterKinds);
+    IReadOnlyList<CharacterKindDraft>? CharacterKinds,
+    IReadOnlyList<string>? Extensions = null);
