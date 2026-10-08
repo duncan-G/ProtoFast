@@ -11,6 +11,8 @@ export interface SceneElement {
   locationId: string | null;
   timeOfDay: string | null;
   speakerId: string | null;
+  /** A cue extension such as V.O., without the parentheses. */
+  extension: string | null;
   /** Without the parentheses. */
   parenthetical: string | null;
   transition: string | null;

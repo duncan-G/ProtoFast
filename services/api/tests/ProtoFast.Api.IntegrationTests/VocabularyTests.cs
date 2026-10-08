@@ -9,12 +9,13 @@ public class VocabularyTests(StoryDatabase database)
     private readonly Writer _writer = new(database);
 
     [Theory]
-    [InlineData("night", null, null, "“NIGHT” is already on the list.")]
-    [InlineData(null, " cut to ", null, "“CUT TO” is already on the list.")]
-    [InlineData(null, null, "robot", "“Robot” is already on the list.")]
-    [InlineData("golden hour", null, null, "“GOLDEN HOUR” is already on the list.")]
+    [InlineData("night", null, null, null, "“NIGHT” is already on the list.")]
+    [InlineData(null, " cut to ", null, null, "“CUT TO” is already on the list.")]
+    [InlineData(null, null, "robot", null, "“Robot” is already on the list.")]
+    [InlineData(null, null, null, "v.o.", "“V.O.” is already on the list.")]
+    [InlineData("golden hour", null, null, null, "“GOLDEN HOUR” is already on the list.")]
     public async Task Labels_already_on_the_list_are_refused_in_any_case(
-        string? timeOfDay, string? transition, string? kind, string message)
+        string? timeOfDay, string? transition, string? kind, string? extension, string message)
     {
         var story = await _writer.CreateStoryAsync();
         var vocabulary = new StoryVocabulary();
@@ -26,6 +27,11 @@ public class VocabularyTests(StoryDatabase database)
         if (transition is not null)
         {
             vocabulary.Transitions.Add(transition);
+        }
+
+        if (extension is not null)
+        {
+            vocabulary.Extensions.Add(extension);
         }
 
         if (kind is not null)
@@ -60,18 +66,26 @@ public class VocabularyTests(StoryDatabase database)
         {
             TimesOfDay = { " golden hour " },
             Transitions = { "wipe to" },
+            Extensions = { "filtered" },
             CharacterKinds = { new CharacterKind { Label = " Ghost ", AvatarShape = AvatarShape.Shield } },
         });
 
         var saved = (await _writer.GetStoryAsync(story.Id)).Vocabulary;
         Assert.Equal(["GOLDEN HOUR"], saved.TimesOfDay);
         Assert.Equal(["WIPE TO"], saved.Transitions);
+        Assert.Equal(["FILTERED"], saved.Extensions);
         Assert.Equal(new CharacterKind { Label = "Ghost", AvatarShape = AvatarShape.Shield }, Assert.Single(saved.CharacterKinds));
 
-        var scene = await _writer.WriteFirstSceneAsync(story, Heading(null, "GOLDEN HOUR"), Transition("WIPE TO"));
+        var wisp = await _writer.CreateCharacterAsync(story.Id, "Wisp", "ghost");
+        var scene = await _writer.WriteFirstSceneAsync(
+            story,
+            Heading(null, "GOLDEN HOUR"),
+            Transition("WIPE TO"),
+            With(Dialogue(wisp.Id, "Boo."), r => r.Extension = "FILTERED"));
         Assert.Equal("GOLDEN HOUR", scene.Elements[0].TimeOfDay);
+        Assert.Equal("FILTERED", scene.Elements[2].Extension);
         Assert.Equal("GOLDEN HOUR", (await _writer.GetStoryAsync(story.Id)).Containers[0].Scenes[0].OpeningTimeOfDay);
-        Assert.Equal("Ghost", (await _writer.CreateCharacterAsync(story.Id, "Wisp", "ghost")).Kind);
+        Assert.Equal("Ghost", wisp.Kind);
     }
 
     private Task<SaveVocabularyReply> SaveAsync(string storyId, StoryVocabulary vocabulary) =>

@@ -33,6 +33,9 @@ public sealed class SceneElement : IDateStamped
 
     public Character? Speaker { get; set; }
 
+    /// <summary>A cue extension such as V.O., without the parentheses.</summary>
+    public string? Extension { get; set; }
+
     public string? Parenthetical { get; set; }
 
     public string? Transition { get; set; }

@@ -61,7 +61,13 @@ export class SceneEditorStore implements OnDestroy {
   readonly propById = computed(() => new Map(this.props().map((p) => [p.id, p])));
 
   private readonly vocabulary = computed<StoryVocabulary>(
-    () => this.story()?.vocabulary ?? { timesOfDay: [], transitions: [], characterKinds: [] },
+    () =>
+      this.story()?.vocabulary ?? {
+        timesOfDay: [],
+        transitions: [],
+        extensions: [],
+        characterKinds: [],
+      },
   );
   readonly timesOfDay = computed(() => [
     ...DEFAULT_VOCABULARY.timesOfDay,
@@ -70,6 +76,10 @@ export class SceneEditorStore implements OnDestroy {
   readonly transitions = computed(() => [
     ...DEFAULT_VOCABULARY.transitions,
     ...this.vocabulary().transitions,
+  ]);
+  readonly extensions = computed(() => [
+    ...DEFAULT_VOCABULARY.extensions,
+    ...this.vocabulary().extensions,
   ]);
   readonly kinds = computed<CharacterKind[]>(() => [
     ...DEFAULT_VOCABULARY.characterKinds,
@@ -273,6 +283,7 @@ export class SceneEditorStore implements OnDestroy {
     this.updateElement(id, {
       type,
       speakerId: dialogue ? (element.speakerId ?? this.guessSpeaker(index)) : null,
+      extension: dialogue ? element.extension : null,
       parenthetical: dialogue ? element.parenthetical : null,
     });
   }
@@ -309,6 +320,7 @@ export class SceneEditorStore implements OnDestroy {
       locationId: null,
       timeOfDay: null,
       speakerId: type === 'Dialogue' ? this.guessSpeaker(at) : null,
+      extension: null,
       parenthetical: null,
       transition: type === 'Transition' ? DEFAULT_VOCABULARY.transitions[0] : null,
       mentions: [],
@@ -450,6 +462,7 @@ export class SceneEditorStore implements OnDestroy {
           locationId: null,
           timeOfDay: null,
           speakerId: null,
+          extension: null,
           parenthetical: null,
           transition: null,
           mentions: [],
@@ -653,6 +666,18 @@ export class SceneEditorStore implements OnDestroy {
       this.saveVocabulary((v) => ({
         ...v,
         transitions: [...v.transitions, label.trim().toUpperCase()],
+      }))
+    );
+  }
+
+  /** Uppercased and without parentheses, as the cue prints it inside them. */
+  async addExtension(label: string): Promise<string | null> {
+    const problem = labelProblem(this.extensions(), label);
+    return (
+      problem ??
+      this.saveVocabulary((v) => ({
+        ...v,
+        extensions: [...v.extensions, label.trim().toUpperCase()],
       }))
     );
   }

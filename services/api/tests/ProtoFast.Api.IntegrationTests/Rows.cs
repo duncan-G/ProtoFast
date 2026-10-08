@@ -66,6 +66,12 @@ public static class Rows
     public static string[] Slices(SceneElement row) =>
         row.Mentions.Select(m => row.Text.Substring(m.Offset, m.Length)).ToArray();
 
+    public static T With<T>(T value, Action<T> change)
+    {
+        change(value);
+        return value;
+    }
+
     private static SceneElement Row(SceneElementType type) => new() { Id = Guid.NewGuid().ToString(), Type = type };
 
     private static int IndexOf(string text, string reference, int occurrence)

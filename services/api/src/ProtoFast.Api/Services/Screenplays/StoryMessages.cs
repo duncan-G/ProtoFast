@@ -44,6 +44,7 @@ public static class StoryMessages
         var message = new StoryVocabulary();
         message.TimesOfDay.AddRange(vocabulary.TimesOfDay);
         message.Transitions.AddRange(vocabulary.Transitions);
+        message.Extensions.AddRange(vocabulary.Extensions);
         message.CharacterKinds.AddRange(vocabulary.CharacterKinds.Select(k => new CharacterKind
         {
             Label = k.Label,
@@ -128,6 +129,11 @@ public static class StoryMessages
         if (element.SpeakerId is { } speakerId)
         {
             message.SpeakerId = speakerId.ToString();
+        }
+
+        if (element.Extension is not null)
+        {
+            message.Extension = element.Extension;
         }
 
         if (element.Parenthetical is not null)

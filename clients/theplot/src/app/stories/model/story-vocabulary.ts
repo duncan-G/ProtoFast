@@ -4,5 +4,6 @@ import { CharacterKind } from './character-kind';
 export interface StoryVocabulary {
   timesOfDay: string[];
   transitions: string[];
+  extensions: string[];
   characterKinds: CharacterKind[];
 }

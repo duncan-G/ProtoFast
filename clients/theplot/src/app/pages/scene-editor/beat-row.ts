@@ -20,6 +20,7 @@ import { Referable } from '../../stories/model/referable';
 import { SceneElementType } from '../../stories/model/scene-element-type';
 import { Avatar } from './avatar';
 import { initials, settingPrefix } from './format';
+import { LabelChips } from './label-chips';
 import { MentionText } from './mention-text';
 import { ReferenceQuery } from './reference-query';
 import { RowActions } from './row-actions';
@@ -49,7 +50,7 @@ const ENDS_OFF_WORD = /[^\p{L}\p{N}]$/u;
 @Component({
   selector: 'app-beat-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Avatar, MentionText, RowActions, SpeakerPicker],
+  imports: [Avatar, LabelChips, MentionText, RowActions, SpeakerPicker],
   templateUrl: './beat-row.html',
 })
 export class BeatRow {
@@ -114,6 +115,14 @@ export class BeatRow {
   protected finish(): void {
     this.closeQuery();
     this.store.editingId.set(null);
+  }
+
+  protected readonly addExtension = (label: string) => this.store.addExtension(label);
+
+  /** Picking the current extension clears it. */
+  protected toggleExtension(label: string): void {
+    const extension = label === this.element().extension ? null : label;
+    this.store.updateElement(this.element().id, { extension });
   }
 
   protected setParenthetical(value: string): void {

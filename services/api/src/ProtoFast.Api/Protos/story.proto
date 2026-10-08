@@ -116,6 +116,7 @@ message StoryVocabulary {
     repeated string times_of_day = 1;
     repeated string transitions = 2;
     repeated CharacterKind character_kinds = 3;
+    repeated string extensions = 4;
 }
 
 message CharacterKind {
@@ -165,6 +166,8 @@ message SceneElement {
     optional string parenthetical = 9;
     optional string transition = 10;
     repeated SceneElementMention mentions = 11;
+    // A cue extension such as V.O., without the parentheses.
+    optional string extension = 12;
 }
 
 // An @Name in an element's text. Offsets and lengths count UTF-16 code units.

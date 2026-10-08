@@ -437,7 +437,7 @@
     border: 1.5px dashed var(--se-danger);
   }
 
-  /* — chips: times of day, transitions — */
+  /* — chips: times of day, transitions, extensions — */
   .se-chips {
     display: flex;
     flex-wrap: wrap;
@@ -867,6 +867,9 @@
       700 15px 'Courier Prime',
       monospace;
     letter-spacing: 0.03em;
+  }
+  .se-extension {
+    color: var(--se-muted);
   }
   .se-paren {
     padding-left: 12%;

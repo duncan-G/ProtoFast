@@ -151,6 +151,7 @@ function element(sceneId: string, row: Row, position: number): SceneElement {
     locationId: null,
     timeOfDay: null,
     speakerId: null,
+    extension: null,
     parenthetical: null,
     transition: null,
     mentions: [],
@@ -335,7 +336,7 @@ export function sampleStory(): Story {
   return structuredClone({
     id: SAMPLE_STORY_ID,
     title: 'The Signal in the Scrap',
-    vocabulary: { timesOfDay: [], transitions: [], characterKinds: [] },
+    vocabulary: { timesOfDay: [], transitions: [], extensions: [], characterKinds: [] },
     containers: [
       {
         id: ACT_ONE,

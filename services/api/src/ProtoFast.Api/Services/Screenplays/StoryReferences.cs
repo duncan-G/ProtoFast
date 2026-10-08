@@ -14,4 +14,7 @@ public sealed class StoryReferences
 
     /// <summary>The defaults, then the story's additions.</summary>
     public required IReadOnlyList<string> Transitions { get; init; }
+
+    /// <summary>The defaults, then the story's additions.</summary>
+    public required IReadOnlyList<string> Extensions { get; init; }
 }
