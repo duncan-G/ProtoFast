@@ -115,6 +115,9 @@ resource "aws_iam_role_policy" "instance_assets" {
 # api does before recording a document (and presigned downloads). ListBucket is
 # what makes a missing object answer 404 rather than 403 — without it the api's
 # "has the file arrived?" check throws instead of reporting "not yet".
+# PutObjectRetention lets the worker write frozen run artifacts under GOVERNANCE
+# retention (S3ObjectStore.WriteFrozenBytesAsync); BypassGovernanceRetention is
+# withheld on purpose so the writer cannot unlock them.
 data "aws_iam_policy_document" "instance_documents" {
   statement {
     sid       = "DocumentsList"
@@ -128,6 +131,7 @@ data "aws_iam_policy_document" "instance_documents" {
     actions = [
       "s3:GetObject",
       "s3:PutObject",
+      "s3:PutObjectRetention",
       "s3:DeleteObject",
     ]
     resources = ["${aws_s3_bucket.documents.arn}/*"]

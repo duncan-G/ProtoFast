@@ -38,6 +38,23 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "documents" {
   }
 }
 
+# Object lock, for the frozen run artifacts the worker writes with per-object
+# GOVERNANCE retention (no bucket default, so uploads stay unlocked). S3 only
+# allows it on a versioned bucket, and it can't be turned off once enabled.
+resource "aws_s3_bucket_versioning" "documents" {
+  bucket = aws_s3_bucket.documents.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_object_lock_configuration" "documents" {
+  bucket              = aws_s3_bucket.documents.id
+  object_lock_enabled = "Enabled"
+
+  depends_on = [aws_s3_bucket_versioning.documents]
+}
+
 # The presigned POST comes from the theplot origin, so S3 must answer its CORS
 # preflight. Mirrors the LocalStack rules in scripts/localstack-init.sh (dev), but
 # narrowed to what production uses: the POST upload itself, plus GET/HEAD for
@@ -53,8 +70,10 @@ resource "aws_s3_bucket_cors_configuration" "documents" {
   }
 }
 
-# Only reap failed multipart uploads. Documents are user data with a database row
-# pointing at each one, so nothing is age-expired here.
+# Documents are user data with a database row pointing at each one, so no current
+# object is age-expired. With versioning on, a delete only adds a delete marker, so
+# the superseded versions it leaves behind are reaped here (a version still under
+# retention is skipped until its lock lapses).
 resource "aws_s3_bucket_lifecycle_configuration" "documents" {
   bucket = aws_s3_bucket.documents.id
   rule {
@@ -65,6 +84,19 @@ resource "aws_s3_bucket_lifecycle_configuration" "documents" {
       days_after_initiation = 7
     }
   }
+  rule {
+    id     = "expire-noncurrent-versions"
+    status = "Enabled"
+    filter {} # whole bucket
+    noncurrent_version_expiration {
+      noncurrent_days = 7
+    }
+    expiration {
+      expired_object_delete_marker = true
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.documents]
 }
 
 # TLS only. A Deny-only policy is not "public", so block_public_policy allows it.
