@@ -62,9 +62,19 @@ public static class Rows
     public static SceneElementMention Mention(string text, string reference, Prop prop, int occurrence = 0) =>
         new() { Id = Guid.NewGuid().ToString(), PropId = prop.Id, Offset = IndexOf(text, reference, occurrence), Length = reference.Length };
 
+    /// <summary>The <paramref name="occurrence"/>th <paramref name="span"/> in the text, tagged.</summary>
+    public static SceneElementMention Tag(string text, string span, Character character, int occurrence = 0) =>
+        new() { Id = Guid.NewGuid().ToString(), CharacterId = character.Id, Offset = IndexOf(text, span, occurrence), Length = span.Length, IsTag = true };
+
     /// <summary>Each mention's slice of the text, in order.</summary>
     public static string[] Slices(SceneElement row) =>
         row.Mentions.Select(m => row.Text.Substring(m.Offset, m.Length)).ToArray();
+
+    public static T With<T>(T value, Action<T> change)
+    {
+        change(value);
+        return value;
+    }
 
     private static SceneElement Row(SceneElementType type) => new() { Id = Guid.NewGuid().ToString(), Type = type };
 

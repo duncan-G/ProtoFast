@@ -354,6 +354,7 @@ public class StoryService(
         stored.LocationId = element.LocationId;
         stored.TimeOfDay = element.TimeOfDay;
         stored.SpeakerId = element.SpeakerId;
+        stored.Extension = element.Extension;
         stored.Parenthetical = element.Parenthetical;
         stored.Transition = element.Transition;
         if (!SameMentions(stored.Mentions, element.Mentions))

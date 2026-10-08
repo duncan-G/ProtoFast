@@ -9,6 +9,9 @@ public static class DefaultVocabulary
     public static readonly IReadOnlyList<string> Transitions =
         ["CUT TO", "DISSOLVE TO", "SMASH CUT TO", "MATCH CUT TO", "TIME CUT", "FADE OUT"];
 
+    /// <summary>Character cue extensions, printed in parentheses after the speaker.</summary>
+    public static readonly IReadOnlyList<string> Extensions = ["V.O.", "O.S.", "O.C."];
+
     public static readonly IReadOnlyList<CharacterKind> CharacterKinds =
     [
         new() { Label = "Human", AvatarShape = AvatarShape.Circle },

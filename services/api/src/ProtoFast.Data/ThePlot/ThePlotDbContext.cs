@@ -148,6 +148,7 @@ public sealed class ThePlotDbContext(
             entity.HasKey(e => e.Id);
             entity.Property(e => e.UserId).IsRequired().HasMaxLength(UserIdLength);
             entity.Property(e => e.Type).HasConversion<string>().HasMaxLength(EnumLength);
+            entity.Property(e => e.Extension).HasMaxLength(LabelLength);
             entity.Property(e => e.Parenthetical).HasMaxLength(NameLength);
             entity.Property(e => e.TimeOfDay).HasMaxLength(LabelLength);
             entity.Property(e => e.Transition).HasMaxLength(LabelLength);
@@ -183,7 +184,7 @@ public sealed class ThePlotDbContext(
                     "type = 'Transition' OR transition IS NULL");
                 t.HasCheckConstraint(
                     "ck_scene_elements_dialogue_columns",
-                    "type = 'Dialogue' OR (speaker_id IS NULL AND parenthetical IS NULL)");
+                    "type = 'Dialogue' OR (speaker_id IS NULL AND extension IS NULL AND parenthetical IS NULL)");
                 t.HasCheckConstraint(
                     "ck_scene_elements_text_columns",
                     "(type IN ('Heading', 'Transition')) = (text IS NULL)");
@@ -227,7 +228,7 @@ public sealed class ThePlotDbContext(
                     "num_nonnulls(character_id, prop_id, location_id) = 1");
                 t.HasCheckConstraint(
                     "ck_scene_element_mentions_span",
-                    "\"offset\" >= 0 AND length >= 2");
+                    "\"offset\" >= 0 AND length >= CASE WHEN is_tag THEN 1 ELSE 2 END");
             });
         });
     }

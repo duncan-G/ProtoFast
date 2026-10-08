@@ -8,6 +8,7 @@ import { TextEdit } from './model/text-edit';
 import { TextSegment } from './model/text-segment';
 
 const WORD_CHAR = /[\p{L}\p{N}]/u;
+const APOSTROPHE = /['’]/;
 
 /** Tie-break when a character, location and prop share a name: the autocomplete's order. */
 export const REFERENCE_ORDER: Record<ReferenceKind, number> = {
@@ -41,6 +42,7 @@ export function createMention(
   target: ReferenceTarget,
   offset: number,
   length: number,
+  isTag = false,
 ): SceneElementMention {
   return {
     id: crypto.randomUUID(),
@@ -49,6 +51,7 @@ export function createMention(
     propId: target.kind === 'prop' ? target.id : null,
     offset,
     length,
+    isTag,
   };
 }
 
@@ -103,10 +106,9 @@ export function shiftMentions(
       kept.push(delta === 0 ? mention : { ...mention, offset: mention.offset + delta });
     }
   }
-  return kept.filter((m) => after[m.offset] === '@');
+  return kept.filter((m) => m.isTag || after[m.offset] === '@');
 }
 
-/** The longest name ending on a word boundary; ties go by `REFERENCE_ORDER`. */
 export function matchReference(
   text: string,
   at: number,
@@ -115,13 +117,22 @@ export function matchReference(
   if (text[at] !== '@' || (at > 0 && WORD_CHAR.test(text[at - 1]))) {
     return null;
   }
+  return matchName(text, at + 1, referables);
+}
+
+/** The longest name spelled at `from` and ending on a word boundary; ties go by `REFERENCE_ORDER`. */
+export function matchName(
+  text: string,
+  from: number,
+  referables: readonly Referable[],
+): Referable | null {
   let best: Referable | null = null;
   for (const candidate of referables) {
     const length = candidate.name.length;
     if (length === 0) {
       continue;
     }
-    const spelled = text.slice(at + 1, at + 1 + length);
+    const spelled = text.slice(from, from + length);
     if (
       spelled.localeCompare(candidate.name, undefined, {
         sensitivity: 'accent',
@@ -129,7 +140,7 @@ export function matchReference(
     ) {
       continue;
     }
-    const next = text[at + 1 + length];
+    const next = text[from + length];
     if (next !== undefined && WORD_CHAR.test(next)) {
       continue;
     }
@@ -215,6 +226,47 @@ export function insertReference(
   };
 }
 
+/** Where the word ending at `end` starts; inner apostrophes count, so "Mara’s" is one word. */
+export function wordStart(text: string, end: number): number {
+  let start = end;
+  while (start > 0 && (WORD_CHAR.test(text[start - 1]) || APOSTROPHE.test(text[start - 1]))) {
+    start--;
+  }
+  while (start < end && APOSTROPHE.test(text[start])) {
+    start++;
+  }
+  return start;
+}
+
+/**
+ * Tags `[start, end)` (trimmed) and drops `[end, typedTo)`, the `@query` typed to pick the target.
+ * A tag replaces any reference it overlaps.
+ */
+export function tagReference(
+  value: MentionedText,
+  start: number,
+  end: number,
+  target: ReferenceTarget,
+  typedTo = end,
+): ReferenceInsertion {
+  const next = value.text.slice(0, end) + value.text.slice(typedTo);
+  const edit = { start: end, oldEnd: typedTo, newEnd: end };
+  const kept = shiftMentions(value.mentions, edit, next);
+  while (start < end && /\s/.test(next[start])) {
+    start++;
+  }
+  let to = end;
+  while (to > start && /\s/.test(next[to - 1])) {
+    to--;
+  }
+  if (to === start) {
+    return { value: { text: next, mentions: kept }, caret: end };
+  }
+  const others = kept.filter((m) => m.offset >= to || m.offset + m.length <= start);
+  const tag = createMention(target, start, to - start, true);
+  return { value: { text: next, mentions: sortMentions([...others, tag]) }, caret: end };
+}
+
 export function renameReferences(
   value: MentionedText,
   target: ReferenceTarget,
@@ -225,7 +277,7 @@ export function renameReferences(
   const out: SceneElementMention[] = [];
   for (const mention of sortMentions(value.mentions)) {
     const offset = mention.offset + shift;
-    if (!mentions(mention, target)) {
+    if (mention.isTag || !mentions(mention, target)) {
       out.push(shift === 0 ? mention : { ...mention, offset });
       continue;
     }

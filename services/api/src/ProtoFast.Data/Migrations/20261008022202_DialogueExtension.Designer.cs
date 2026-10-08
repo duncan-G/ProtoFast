@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ProtoFast.Data.ThePlot;
@@ -11,9 +12,11 @@ using ProtoFast.Data.ThePlot;
 namespace ProtoFast.Data.Migrations
 {
     [DbContext(typeof(ThePlotDbContext))]
-    partial class ThePlotDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261008022202_DialogueExtension")]
+    partial class DialogueExtension
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -486,10 +489,6 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("character_id");
 
-                    b.Property<bool>("IsTag")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_tag");
-
                     b.Property<int>("Length")
                         .HasColumnType("integer")
                         .HasColumnName("length");
@@ -529,7 +528,7 @@ namespace ProtoFast.Data.Migrations
                         {
                             t.HasCheckConstraint("ck_scene_element_mentions_one_target", "num_nonnulls(character_id, prop_id, location_id) = 1");
 
-                            t.HasCheckConstraint("ck_scene_element_mentions_span", "\"offset\" >= 0 AND length >= CASE WHEN is_tag THEN 1 ELSE 2 END");
+                            t.HasCheckConstraint("ck_scene_element_mentions_span", "\"offset\" >= 0 AND length >= 2");
                         });
                 });
 

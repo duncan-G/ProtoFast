@@ -15,10 +15,13 @@ public static class VocabularyLabels
     public static IReadOnlyList<string> Transitions(StoryVocabularyRecord vocabulary) =>
         [.. DefaultVocabulary.Transitions, .. vocabulary.Transitions];
 
+    public static IReadOnlyList<string> Extensions(StoryVocabularyRecord vocabulary) =>
+        [.. DefaultVocabulary.Extensions, .. vocabulary.Extensions];
+
     public static IReadOnlyList<string> CharacterKinds(StoryVocabularyRecord vocabulary) =>
         [.. DefaultVocabulary.CharacterKinds.Select(k => k.Label), .. vocabulary.CharacterKinds.Select(k => k.Label)];
 
-    /// <summary>Times of day and transitions are stored uppercased, as headings print them.</summary>
+    /// <summary>Times of day, transitions and extensions are stored uppercased, as the script prints them.</summary>
     public static StoryVocabularyRecord Validate(StoryVocabulary vocabulary)
     {
         var timesOfDay = new List<string>();
@@ -33,6 +36,12 @@ public static class VocabularyLabels
             transitions.Add(Add(label, [.. DefaultVocabulary.Transitions, .. transitions]).ToUpperInvariant());
         }
 
+        var extensions = new List<string>();
+        foreach (var label in vocabulary.Extensions)
+        {
+            extensions.Add(Add(label, [.. DefaultVocabulary.Extensions, .. extensions]).ToUpperInvariant());
+        }
+
         var kinds = new List<CharacterKindRecord>();
         foreach (var kind in vocabulary.CharacterKinds)
         {
@@ -45,7 +54,13 @@ public static class VocabularyLabels
             kinds.Add(new CharacterKindRecord { Label = label, AvatarShape = StoryMessages.FromMessage(kind.AvatarShape) });
         }
 
-        return new StoryVocabularyRecord { TimesOfDay = timesOfDay, Transitions = transitions, CharacterKinds = kinds };
+        return new StoryVocabularyRecord
+        {
+            TimesOfDay = timesOfDay,
+            Transitions = transitions,
+            Extensions = extensions,
+            CharacterKinds = kinds,
+        };
     }
 
     /// <summary>

@@ -21,6 +21,9 @@
               <app-avatar [shape]="'Circle'" initials="?" [size]="18" />
               <span class="se-speaker-name se-missing">NO SPEAKER — PICK ONE</span>
             }
+            @if (element().extension) {
+              <span class="se-speaker-name se-extension">({{ element().extension }})</span>
+            }
           </div>
           @if (element().parenthetical) {
             <div class="se-paren">({{ element().parenthetical }})</div>
@@ -92,6 +95,17 @@
               })
             "
           />
+          <div class="flex items-center gap-2">
+            <span class="se-kicker">Extension</span>
+            <app-label-chips
+              [labels]="store.extensions()"
+              [selected]="element().extension"
+              noun="extension"
+              placeholder="e.g. FILTERED"
+              [add]="addExtension"
+              (pick)="toggleExtension($event)"
+            />
+          </div>
           <input
             class="se-paren-input"
             aria-label="Parenthetical"
@@ -106,22 +120,46 @@
       }
 
       <div class="relative">
-        <textarea
-          #textarea
-          class="se-textarea se-script"
-          rows="2"
-          [attr.aria-label]="typeLabel() + ' text'"
-          [placeholder]="placeholder()"
-          [value]="element().text ?? ''"
-          (input)="onInput()"
-          (keydown)="onKey($event)"
-          (keyup)="trackCaret()"
-          (click)="trackCaret()"
-          (blur)="closeQuery()"
-        ></textarea>
+        <div class="se-marked-field">
+          <div #backdrop class="se-textarea se-script se-backdrop" aria-hidden="true">
+            <app-mention-text
+              [text]="element().text ?? ''"
+              [mentions]="element().mentions"
+              [marks]="true"
+            />
+            <br />
+          </div>
+          <textarea
+            #textarea
+            class="se-textarea se-script"
+            rows="2"
+            [attr.aria-label]="typeLabel() + ' text'"
+            [placeholder]="placeholder()"
+            [value]="element().text ?? ''"
+            (input)="onInput()"
+            (keydown)="onKey($event)"
+            (keyup)="trackCaret()"
+            (click)="trackCaret()"
+            (select)="trackCaret()"
+            (scroll)="syncScroll()"
+            (blur)="closeQuery()"
+          ></textarea>
+        </div>
         @if (query()) {
-          <div class="se-pop se-ac" role="listbox" aria-label="References">
-            <div class="se-pop-group">Reference</div>
+          <div
+            class="se-pop se-ac"
+            role="listbox"
+            [attr.aria-label]="tagging() !== null ? 'Tag as' : 'References'"
+          >
+            <div class="se-pop-group">
+              @if (tagging(); as tagged) {
+                Tag “{{ tagged }}” as
+              } @else if (tagging() === '') {
+                Tag as
+              } @else {
+                Reference
+              }
+            </div>
             @for (item of suggestions(); track item.kind + item.id; let i = $index) {
               <button
                 type="button"
@@ -165,15 +203,18 @@
         <button
           type="button"
           class="se-btn"
-          title="Search all characters, locations and props"
+          [title]="
+            selecting()
+              ? 'Tag the selected text with a character, location or prop'
+              : 'Search all characters, locations and props'
+          "
           (mousedown)="$event.preventDefault(); openReferenceSearch()"
         >
-          <span class="se-option-glyph se-script font-bold">&#64;</span>Reference…<span
-            class="se-pop-meta"
-            >{{ store.referables().length }}</span
-          >
+          <span class="se-option-glyph se-script font-bold">&#64;</span
+          >{{ selecting() ? 'Tag selection…' : 'Reference…'
+          }}<span class="se-pop-meta">{{ store.referables().length }}</span>
         </button>
-        <small>⌥↑↓ move · Esc to finish</small>
+        <small>him&#64; or select + &#64; to tag · ⌥↑↓ move · Esc to finish</small>
       </div>
     </div>
   </div>

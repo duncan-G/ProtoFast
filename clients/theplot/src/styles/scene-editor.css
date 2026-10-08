@@ -437,7 +437,7 @@
     border: 1.5px dashed var(--se-danger);
   }
 
-  /* — chips: times of day, transitions — */
+  /* — chips: times of day, transitions, extensions — */
   .se-chips {
     display: flex;
     flex-wrap: wrap;
@@ -868,6 +868,9 @@
       monospace;
     letter-spacing: 0.03em;
   }
+  .se-extension {
+    color: var(--se-muted);
+  }
   .se-paren {
     padding-left: 12%;
     font:
@@ -920,6 +923,15 @@
     content: '◆ ';
     font-size: 0.8em;
   }
+  .se-tag {
+    border-radius: 2px;
+    background: oklch(var(--se-hue-wash) var(--hue));
+    box-shadow: inset 0 -2px 0 oklch(var(--se-hue-line) var(--hue));
+  }
+  .se-tag-plain {
+    background: color-mix(in srgb, var(--se-ink) 9%, transparent);
+    box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--se-ink) 35%, transparent);
+  }
 
   .se-textarea {
     display: block;
@@ -935,6 +947,37 @@
   .se-textarea:focus-visible {
     outline: none;
     box-shadow: inset 0 -1px 0 var(--se-accent);
+  }
+  /* the textarea sits over a copy of its text that draws the mention and tag highlights */
+  .se-marked-field {
+    position: relative;
+    background: var(--se-wash);
+  }
+  .se-marked-field .se-textarea {
+    position: relative;
+    background: transparent;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+  }
+  .se-marked-field .se-backdrop {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    color: transparent;
+    pointer-events: none;
+  }
+  .se-mark {
+    border-radius: 2px;
+    background: oklch(var(--se-hue-wash) var(--hue));
+  }
+  .se-mark-tag {
+    box-shadow: inset 0 -2px 0 oklch(var(--se-hue-line) var(--hue));
+  }
+  .se-mark-plain {
+    background: color-mix(in srgb, var(--se-ink) 9%, transparent);
+  }
+  .se-mark-plain.se-mark-tag {
+    box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--se-ink) 35%, transparent);
   }
   .se-paren-input {
     padding: 4px 0;

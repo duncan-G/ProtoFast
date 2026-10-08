@@ -47,6 +47,7 @@ public static class SceneValidator
                 case SceneElementTypeRecord.Heading:
                     Forbid(element.HasText, row, rows, "text");
                     Forbid(element.HasSpeakerId, row, rows, "a speaker");
+                    Forbid(element.HasExtension, row, rows, "an extension");
                     Forbid(element.HasParenthetical, row, rows, "a parenthetical");
                     Forbid(element.HasTransition, row, rows, "a transition");
                     record.LocationId = element.HasLocationId
@@ -64,6 +65,7 @@ public static class SceneValidator
                     Forbid(element.HasLocationId, row, rows, "a location");
                     Forbid(element.HasTimeOfDay, row, rows, "a time of day");
                     Forbid(element.HasSpeakerId, row, rows, "a speaker");
+                    Forbid(element.HasExtension, row, rows, "an extension");
                     Forbid(element.HasParenthetical, row, rows, "a parenthetical");
                     record.Transition = VocabularyLabels.Pick(
                         element.HasTransition ? element.Transition : null,
@@ -80,6 +82,11 @@ public static class SceneValidator
                     record.SpeakerId = element.HasSpeakerId
                         ? Reference(element.SpeakerId, story.CharacterIds, row, "character")
                         : null;
+                    record.Extension = VocabularyLabels.Pick(
+                        element.HasExtension ? element.Extension : null,
+                        story.Extensions,
+                        stored?.Extension,
+                        "cue extension");
                     record.Parenthetical = element.HasParenthetical ? Parenthetical(element.Parenthetical) : null;
                     break;
 
@@ -87,6 +94,7 @@ public static class SceneValidator
                     Forbid(element.HasLocationId, row, rows, "a location");
                     Forbid(element.HasTimeOfDay, row, rows, "a time of day");
                     Forbid(element.HasSpeakerId, row, rows, "a speaker");
+                    Forbid(element.HasExtension, row, rows, "an extension");
                     Forbid(element.HasParenthetical, row, rows, "a parenthetical");
                     Forbid(element.HasTransition, row, rows, "a transition");
                     record.Text = element.Text;
@@ -118,9 +126,11 @@ public static class SceneValidator
         var end = 0;
         foreach (var mention in mentions.OrderBy(m => m.Offset))
         {
-            if (mention.Length < 2)
+            if (mention.Length < (mention.IsTag ? 1 : 2))
             {
-                throw StoryErrors.Invalid($"Row {row}: a mention needs a name after its @.");
+                throw StoryErrors.Invalid(mention.IsTag
+                    ? $"Row {row}: a tag needs some text."
+                    : $"Row {row}: a mention needs a name after its @.");
             }
 
             if (mention.Offset < 0 || (long)mention.Offset + mention.Length > text.Length)
@@ -128,7 +138,7 @@ public static class SceneValidator
                 throw StoryErrors.Invalid($"Row {row}: a mention runs outside the text.");
             }
 
-            if (text[mention.Offset] != '@')
+            if (!mention.IsTag && text[mention.Offset] != '@')
             {
                 throw StoryErrors.Invalid($"Row {row}: a mention has to start at an @.");
             }
@@ -139,7 +149,12 @@ public static class SceneValidator
             }
 
             end = mention.Offset + mention.Length;
-            var record = new SceneElementMentionRecord { Offset = mention.Offset, Length = mention.Length };
+            var record = new SceneElementMentionRecord
+            {
+                Offset = mention.Offset,
+                Length = mention.Length,
+                IsTag = mention.IsTag,
+            };
             switch (mention.TargetCase)
             {
                 case SceneElementMention.TargetOneofCase.CharacterId:

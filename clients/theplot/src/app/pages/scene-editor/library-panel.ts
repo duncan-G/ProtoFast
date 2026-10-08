@@ -64,6 +64,9 @@ export class LibraryPanel {
     const element = this.store.elements().find((e) => e.id === this.store.editingId());
     return !!element && element.text !== null;
   });
+  protected readonly hasSelection = computed(
+    () => this.editingText() && (this.store.selectionEnd() ?? 0) > (this.store.caret() ?? 0),
+  );
 
   protected readonly draftProblem = computed(() => {
     const draft = this.draft();

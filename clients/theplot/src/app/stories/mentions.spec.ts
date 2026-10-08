@@ -8,6 +8,9 @@ import {
   renameReferences,
   forgetReferences,
   segmentText,
+  shiftMentions,
+  tagReference,
+  wordStart,
 } from './mentions';
 import { MentionedText } from './model/mentioned-text';
 import { Referable } from './model/referable';
@@ -173,6 +176,62 @@ describe('insertReference', () => {
     expect(spans(next)).toEqual([
       ['@Radio', 'p-radio'],
       ['@Mara', 'c-mara'],
+    ]);
+  });
+});
+
+describe('wordStart', () => {
+  it('finds the word ending at a position, keeping inner apostrophes', () => {
+    expect(wordStart('She hands him@', 13)).toBe(10);
+    expect(wordStart('Mara’s@', 6)).toBe(0);
+    expect(wordStart('“him@', 4)).toBe(1);
+  });
+});
+
+describe('tagReference', () => {
+  it('tags the span and drops the typed @query', () => {
+    const value = linked('@Mara grins at him@Ol. Then leaves.');
+    const at = value.text.indexOf('him@');
+    const tagged = tagReference(value, at, at + 3, OLD_FEN, at + 6);
+    expect(tagged.value.text).toBe('@Mara grins at him. Then leaves.');
+    expect(spans(tagged.value)).toEqual([
+      ['@Mara', 'c-mara'],
+      ['him', 'c-fen'],
+    ]);
+    expect(tagged.value.mentions[1].isTag).toBe(true);
+    expect(tagged.caret).toBe(at + 3);
+  });
+
+  it('trims a selection and replaces a tag it overlaps', () => {
+    const first = tagReference({ text: 'the old man waits', mentions: [] }, 0, 11, MARA).value;
+    const retagged = tagReference(first, 3, 12, OLD_FEN);
+    expect(spans(retagged.value)).toEqual([['old man', 'c-fen']]);
+  });
+
+  it('tags nothing when the span is blank', () => {
+    const tagged = tagReference({ text: 'a  b', mentions: [] }, 1, 3, MARA);
+    expect(tagged.value.mentions).toEqual([]);
+  });
+
+  it('keeps tags through edits around them and drops ones cut into', () => {
+    const value = tagReference({ text: 'He waits.', mentions: [] }, 0, 2, MARA).value;
+    const typedBefore = applyTyping(value, 'And He waits.', LIBRARY, 4);
+    expect(spans(typedBefore)).toEqual([['He', 'c-mara']]);
+    const typedInside = shiftMentions(
+      value.mentions,
+      { start: 1, oldEnd: 1, newEnd: 2 },
+      'Hxe waits.',
+    );
+    expect(typedInside).toEqual([]);
+  });
+
+  it('is left alone by a rename', () => {
+    const value = tagReference(linked('@Mara nods. She smiles.'), 12, 15, MARA).value;
+    const next = renameReferences(value, { kind: 'character', id: 'c-mara' }, 'Mara Voss');
+    expect(next.text).toBe('@Mara Voss nods. She smiles.');
+    expect(spans(next)).toEqual([
+      ['@Mara Voss', 'c-mara'],
+      ['She', 'c-mara'],
     ]);
   });
 });

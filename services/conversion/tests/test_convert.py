@@ -79,6 +79,12 @@ def settings() -> Settings:
     return Settings()
 
 
+@pytest.fixture(autouse=True)
+def untouched_text_layer(monkeypatch):
+    # The real repair needs pikepdf; test_text_layer.py covers it.
+    monkeypatch.setattr(conversion.text_layer, "repair", lambda path: path)
+
+
 def test_a_document_is_converted_and_every_key_is_written(monkeypatch, settings):
     monkeypatch.setattr(markitdown_adapter, "to_markdown", lambda _: "# Title\n\nBody.\n")
     monkeypatch.setattr(markitdown_adapter, "version", lambda: "0.1.14")

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ProtoFast.Data.ThePlot;
@@ -11,9 +12,11 @@ using ProtoFast.Data.ThePlot;
 namespace ProtoFast.Data.Migrations
 {
     [DbContext(typeof(ThePlotDbContext))]
-    partial class ThePlotDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261008022027_AddMentionTags")]
+    partial class AddMentionTags
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -397,11 +400,6 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("date_last_modified");
 
-                    b.Property<string>("Extension")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("extension");
-
                     b.Property<Guid?>("LocationId")
                         .HasColumnType("uuid")
                         .HasColumnName("location_id");
@@ -463,7 +461,7 @@ namespace ProtoFast.Data.Migrations
 
                     b.ToTable("scene_elements", "plot", t =>
                         {
-                            t.HasCheckConstraint("ck_scene_elements_dialogue_columns", "type = 'Dialogue' OR (speaker_id IS NULL AND extension IS NULL AND parenthetical IS NULL)");
+                            t.HasCheckConstraint("ck_scene_elements_dialogue_columns", "type = 'Dialogue' OR (speaker_id IS NULL AND parenthetical IS NULL)");
 
                             t.HasCheckConstraint("ck_scene_elements_heading_columns", "type = 'Heading' OR (location_id IS NULL AND time_of_day IS NULL)");
 
@@ -708,9 +706,6 @@ namespace ProtoFast.Data.Migrations
                     b.OwnsOne("ProtoFast.Data.ThePlot.Entities.StoryVocabulary", "Vocabulary", b1 =>
                         {
                             b1.Property<Guid>("StoryId");
-
-                            b1.PrimitiveCollection<string>("Extensions")
-                                .IsRequired();
 
                             b1.PrimitiveCollection<string>("TimesOfDay")
                                 .IsRequired();

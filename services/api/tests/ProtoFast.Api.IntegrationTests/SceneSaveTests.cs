@@ -23,7 +23,7 @@ public class SceneSaveTests(StoryDatabase database)
         beat.Text = after;
         beat.Mentions.Clear();
         beat.Mentions.Add(Mention(after, "@Radio", radio));
-        var added = Dialogue(mara.Id, "Come on.", "(whispering)");
+        var added = With(Dialogue(mara.Id, "Come on.", "(whispering)"), r => r.Extension = "v.o.");
         scene.Title = "   ";
         scene.Elements.Clear();
         scene.Elements.AddRange([transition, added, beat]);
@@ -34,6 +34,7 @@ public class SceneSaveTests(StoryDatabase database)
         Assert.Equal([transition.Id, added.Id, beat.Id], saved.Elements.Select(e => e.Id));
         Assert.Equal([0, 1, 2], saved.Elements.Select(e => e.Position));
         Assert.DoesNotContain(saved.Elements, e => e.Id == heading.Id);
+        Assert.Equal("V.O.", saved.Elements[1].Extension);
         Assert.Equal("whispering", saved.Elements[1].Parenthetical);
         Assert.Equal(after, saved.Elements[2].Text);
         Assert.Equal(["@Radio"], Slices(saved.Elements[2]));
@@ -45,8 +46,9 @@ public class SceneSaveTests(StoryDatabase database)
     {
         var story = await _writer.CreateStoryAsync();
         var mara = await _writer.CreateCharacterAsync(story.Id, "Mara");
-        const string text = "@Mara waits.";
-        var scene = await _writer.WriteFirstSceneAsync(story, Heading(), Action(text, Mention(text, "@Mara", mara)));
+        const string text = "@Mara waits. She sighs.";
+        var scene = await _writer.WriteFirstSceneAsync(
+            story, Heading(), Action(text, Mention(text, "@Mara", mara), Tag(text, "She", mara)));
 
         await _writer.SaveSceneAsync(scene);
 
@@ -75,9 +77,11 @@ public class SceneSaveTests(StoryDatabase database)
     [InlineData("dialogue with a time of day")]
     [InlineData("transition with text")]
     [InlineData("transition with a parenthetical")]
+    [InlineData("action with an extension")]
     [InlineData("no type")]
     [InlineData("unknown time of day")]
     [InlineData("unknown transition")]
+    [InlineData("unknown extension")]
     [InlineData("location from another story")]
     [InlineData("repeated id")]
     public async Task Rows_that_set_fields_their_type_does_not_use_are_refused(string problem)
@@ -97,9 +101,11 @@ public class SceneSaveTests(StoryDatabase database)
             "dialogue with a time of day" => With(Dialogue(mara.Id, "Hi."), r => r.TimeOfDay = "DAY"),
             "transition with text" => With(Transition("CUT TO"), r => r.Text = "CUT"),
             "transition with a parenthetical" => With(Transition("CUT TO"), r => r.Parenthetical = "beat"),
+            "action with an extension" => With(Action("Rain."), r => r.Extension = "V.O."),
             "no type" => With(Action("Rain."), r => r.Type = SceneElementType.Unspecified),
             "unknown time of day" => Heading(docks.Id, "TEATIME"),
             "unknown transition" => Transition("WIPE TO"),
+            "unknown extension" => With(Dialogue(mara.Id, "Hi."), r => r.Extension = "FILTERED"),
             "location from another story" => Heading(elsewhere.Id),
             _ => Heading(),
         };
@@ -123,6 +129,8 @@ public class SceneSaveTests(StoryDatabase database)
     [InlineData("without a target")]
     [InlineData("target from another story")]
     [InlineData("on a heading")]
+    [InlineData("empty tag")]
+    [InlineData("tag overlapping a mention")]
     public async Task Invalid_mentions_are_refused(string problem)
     {
         var story = await _writer.CreateStoryAsync();
@@ -139,6 +147,8 @@ public class SceneSaveTests(StoryDatabase database)
             "overlapping" => Action(text, mention, With(Mention(text, "@Mara", mara), m => m.Length = 3)),
             "without a target" => Action(text, With(mention, m => m.ClearTarget())),
             "target from another story" => Action(text, Mention(text, "@Mara", stranger)),
+            "empty tag" => Action(text, With(Tag(text, "waits", mara), m => m.Length = 0)),
+            "tag overlapping a mention" => Action(text, mention, Tag(text, "Mara", mara)),
             _ => With(Heading(), r => r.Mentions.Add(mention)),
         };
 
@@ -179,11 +189,5 @@ public class SceneSaveTests(StoryDatabase database)
         Assert.Equal([0, 1], outline.Select(s => s.Position));
         var gone = await Assert.ThrowsAsync<RpcException>(() => _writer.GetSceneAsync(middle.Id));
         Assert.Equal(StatusCode.NotFound, gone.StatusCode);
-    }
-
-    private static T With<T>(T value, Action<T> change)
-    {
-        change(value);
-        return value;
     }
 }
