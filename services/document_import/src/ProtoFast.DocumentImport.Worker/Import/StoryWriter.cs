@@ -2,14 +2,13 @@ using ProtoFast.Data.ThePlot.Entities;
 using ProtoFast.Data.ThePlot.Repositories;
 using ProtoFast.Database.Abstractions;
 using ProtoFast.DocumentImport.Screenplay.Drafts;
-using ProtoFast.DocumentImport.Screenplay.Verifiers;
 
 namespace ProtoFast.DocumentImport.Worker.Import;
 
 /// <summary>
-/// Turns a story draft into ThePlot rows, replacing the imported document on the desk. Names the
-/// draft uses but never declared (a speaker, a heading's location) are added to the library rather
-/// than dropped.
+/// Turns a story draft into ThePlot rows, replacing the imported document on the desk. Names and
+/// labels the draft uses but never declared (a speaker, a heading's location, a transition, a
+/// character kind) are added to the library or the story's vocabulary rather than dropped.
 /// </summary>
 public sealed class StoryWriter(
     UserContext userContext,
@@ -48,16 +47,35 @@ public sealed class StoryWriter(
         return story.Id;
     }
 
-    private static Story Build(StoryDraft draft)
+    internal static Story Build(StoryDraft draft)
     {
         var story = new Story { Title = Trim(draft.Title, NameLength, "Untitled") };
         var characters = new Dictionary<string, Character>(StringComparer.OrdinalIgnoreCase);
         var locations = new Dictionary<string, Location>(StringComparer.OrdinalIgnoreCase);
         var props = new Dictionary<string, Prop>(StringComparer.OrdinalIgnoreCase);
 
+        var timesOfDay = DefaultVocabulary.TimesOfDay.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var transitions = DefaultVocabulary.Transitions.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var kinds = DefaultVocabulary.CharacterKinds.ToDictionary(k => k.Label, k => k.Label, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var label in draft.Vocabulary?.TimesOfDay ?? [])
+        {
+            AddLabel(timesOfDay, story.Vocabulary.TimesOfDay, label);
+        }
+
+        foreach (var label in draft.Vocabulary?.Transitions ?? [])
+        {
+            AddLabel(transitions, story.Vocabulary.Transitions, label);
+        }
+
+        foreach (var kind in draft.Vocabulary?.CharacterKinds ?? [])
+        {
+            AddKind(story, kinds, kind.Label, kind.AvatarShape);
+        }
+
         foreach (var c in draft.Characters ?? [])
         {
-            AddCharacter(story, characters, c.Name, c.Kind);
+            AddCharacter(story, characters, c.Name, AddKind(story, kinds, c.Kind, avatarShape: null));
         }
 
         foreach (var l in draft.Locations ?? [])
@@ -76,9 +94,6 @@ public sealed class StoryWriter(
             }
         }
 
-        var timesOfDay = DefaultVocabulary.TimesOfDay.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var transitions = DefaultVocabulary.Transitions.ToHashSet(StringComparer.OrdinalIgnoreCase);
-
         foreach (var (container, containerIndex) in (draft.Containers ?? []).Select((c, i) => (c, i)))
         {
             var containerRow = new Container
@@ -95,7 +110,7 @@ public sealed class StoryWriter(
 
                 foreach (var element in scene.Elements ?? [])
                 {
-                    if (Element(story, element, characters, locations, timesOfDay, transitions) is { } row)
+                    if (Element(story, element, characters, locations, props, timesOfDay, transitions) is { } row)
                     {
                         row.Position = sceneRow.Elements.Count;
                         sceneRow.Elements.Add(row);
@@ -112,6 +127,7 @@ public sealed class StoryWriter(
         SceneElementDraft element,
         Dictionary<string, Character> characters,
         Dictionary<string, Location> locations,
+        Dictionary<string, Prop> props,
         HashSet<string> timesOfDay,
         HashSet<string> transitions)
     {
@@ -132,28 +148,14 @@ public sealed class StoryWriter(
                         : AddLocation(story, locations, element.Location, setting: null);
                 }
 
-                if (!string.IsNullOrWhiteSpace(element.TimeOfDay))
-                {
-                    var time = Trim(element.TimeOfDay.ToUpperInvariant(), LabelLength, "");
-                    if (timesOfDay.Add(time))
-                    {
-                        story.Vocabulary.TimesOfDay.Add(time);
-                    }
-
-                    row.TimeOfDay = time;
-                }
-
+                row.TimeOfDay = AddLabel(timesOfDay, story.Vocabulary.TimesOfDay, element.TimeOfDay);
                 return row;
             }
 
             case SceneElementType.Transition:
             {
-                var transition = Trim((element.Transition ?? "CUT TO").ToUpperInvariant(), LabelLength, "CUT TO");
-                if (transitions.Add(transition))
-                {
-                    story.Vocabulary.Transitions.Add(transition);
-                }
-
+                var transition = AddLabel(transitions, story.Vocabulary.Transitions, element.Transition)
+                                 ?? DefaultVocabulary.Transitions[0];
                 return new SceneElement { Type = type, Transition = transition };
             }
 
@@ -165,13 +167,14 @@ public sealed class StoryWriter(
                 }
 
                 var row = new SceneElement { Type = type, Text = element.Text.Trim() };
+                row.Mentions = Mentions(row.Text, element.Mentions, characters, locations, props);
                 if (type == SceneElementType.Dialogue)
                 {
                     if (!string.IsNullOrWhiteSpace(element.Speaker))
                     {
                         row.Speaker = characters.TryGetValue(element.Speaker.Trim(), out var known)
                             ? known
-                            : AddCharacter(story, characters, element.Speaker, kind: null);
+                            : AddCharacter(story, characters, element.Speaker, DefaultVocabulary.CharacterKinds[0].Label);
                     }
 
                     row.Parenthetical = string.IsNullOrWhiteSpace(element.Parenthetical)
@@ -184,7 +187,52 @@ public sealed class StoryWriter(
         }
     }
 
-    private static Character AddCharacter(Story story, Dictionary<string, Character> characters, string? name, string? kind)
+    /// <summary>
+    /// Keeps the mentions the API's scene validator would accept: each starts at an @ inside the text,
+    /// none overlap, and each names a library entry of its kind.
+    /// </summary>
+    private static List<SceneElementMention> Mentions(
+        string text,
+        IReadOnlyList<MentionDraft>? drafts,
+        Dictionary<string, Character> characters,
+        Dictionary<string, Location> locations,
+        Dictionary<string, Prop> props)
+    {
+        var mentions = new List<SceneElementMention>();
+        var end = 0;
+        foreach (var draft in (drafts ?? []).OrderBy(m => m.Offset))
+        {
+            if (draft.Offset < end || draft.Length < 2 || draft.Offset + draft.Length > text.Length
+                || text[draft.Offset] != '@' || string.IsNullOrWhiteSpace(draft.Name))
+            {
+                continue;
+            }
+
+            var name = draft.Name.Trim();
+            var mention = new SceneElementMention { Offset = draft.Offset, Length = draft.Length };
+            switch (draft.Kind)
+            {
+                case MentionKind.Character when characters.TryGetValue(name, out var character):
+                    mention.Character = character;
+                    break;
+                case MentionKind.Location when locations.TryGetValue(name, out var location):
+                    mention.Location = location;
+                    break;
+                case MentionKind.Prop when props.TryGetValue(name, out var prop):
+                    mention.Prop = prop;
+                    break;
+                default:
+                    continue;
+            }
+
+            mentions.Add(mention);
+            end = draft.Offset + draft.Length;
+        }
+
+        return mentions;
+    }
+
+    private static Character AddCharacter(Story story, Dictionary<string, Character> characters, string? name, string kind)
     {
         var trimmed = Trim(name, NameLength, "Unknown");
         if (characters.TryGetValue(trimmed, out var existing))
@@ -195,9 +243,7 @@ public sealed class StoryWriter(
         var character = new Character
         {
             Name = trimmed,
-            Kind = kind is not null && StoryDraftVerifier.KnownKinds.Contains(kind)
-                ? DefaultVocabulary.CharacterKinds.First(k => k.Label.Equals(kind, StringComparison.OrdinalIgnoreCase)).Label
-                : DefaultVocabulary.CharacterKinds[0].Label,
+            Kind = kind,
             Hue = Hue(trimmed),
         };
         characters[trimmed] = character;
@@ -222,6 +268,60 @@ public sealed class StoryWriter(
         locations[trimmed] = location;
         story.Locations.Add(location);
         return location;
+    }
+
+    /// <summary>Times of day and transitions are stored uppercased, as headings print them.</summary>
+    /// <returns>The label as the vocabulary spells it, or null when blank.</returns>
+    private static string? AddLabel(HashSet<string> known, List<string> added, string? value)
+    {
+        if (Label(value) is not { } label)
+        {
+            return null;
+        }
+
+        label = label.ToUpperInvariant();
+        if (known.Add(label))
+        {
+            added.Add(label);
+        }
+
+        return label;
+    }
+
+    /// <returns>The kind as the vocabulary spells it; a blank kind is the first default.</returns>
+    private static string AddKind(Story story, Dictionary<string, string> kinds, string? value, string? avatarShape)
+    {
+        if (Label(value) is not { } label)
+        {
+            return DefaultVocabulary.CharacterKinds[0].Label;
+        }
+
+        if (kinds.TryGetValue(label, out var known))
+        {
+            return known;
+        }
+
+        kinds[label] = label;
+        story.Vocabulary.CharacterKinds.Add(new CharacterKind
+        {
+            Label = label,
+            AvatarShape = Enum.TryParse<AvatarShape>(avatarShape, ignoreCase: true, out var shape) && Enum.IsDefined(shape)
+                ? shape
+                : AvatarShape.Circle,
+        });
+        return label;
+    }
+
+    /// <summary>Screenplays write transitions as "CUT TO:"; the vocabulary drops the colon.</summary>
+    private static string? Label(string? value)
+    {
+        var label = value?.Trim().TrimEnd(':').TrimEnd() ?? "";
+        if (label.Length == 0)
+        {
+            return null;
+        }
+
+        return label.Length > LabelLength ? label[..LabelLength].TrimEnd() : label;
     }
 
     /// <summary>A stable hue per name, so re-imports colour the same character the same way.</summary>

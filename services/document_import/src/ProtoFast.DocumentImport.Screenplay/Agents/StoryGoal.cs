@@ -24,7 +24,7 @@ public static class StoryGoal
         ```json
         {
           "title": "the work's title, or a fitting one if none is given",
-          "characters": [{ "name": "...", "kind": "Human|Robot|Animal|Creature|Voice", "description": "one sentence" }],
+          "characters": [{ "name": "...", "kind": "a character kind", "description": "one sentence" }],
           "locations": [{ "name": "...", "setting": "Interior|Exterior", "description": "one sentence" }],
           "props": [{ "name": "...", "description": "one sentence" }],
           "containers": [{
@@ -32,17 +32,37 @@ public static class StoryGoal
             "scenes": [{
               "title": "short scene title",
               "elements": [
-                { "type": "Heading", "location": "a location name", "timeOfDay": "DAY|NIGHT|DAWN|DUSK|CONTINUOUS|LATER" },
+                { "type": "Heading", "location": "a location name", "timeOfDay": "a time of day" },
                 { "type": "Action", "text": "the manuscript's words for what happens" },
                 { "type": "Description", "text": "the manuscript's words for what something looks, sounds or feels like" },
                 { "type": "Narration", "text": "the manuscript's words in the narrator's voice" },
                 { "type": "Dialogue", "speaker": "a character name", "parenthetical": "optional", "text": "the spoken words" },
-                { "type": "Transition", "transition": "CUT TO|DISSOLVE TO|SMASH CUT TO|MATCH CUT TO|TIME CUT|FADE OUT" }
+                { "type": "Transition", "transition": "a transition" }
               ]
             }]
-          }]
+          }],
+          "vocabulary": {
+            "timesOfDay": ["times of day the manuscript uses beyond the defaults"],
+            "transitions": ["transitions the manuscript uses beyond the defaults"],
+            "characterKinds": [{ "label": "...", "avatarShape": "Circle|Square|Squircle|Teardrop|Pill|Diamond|Triangle|Pentagon|Hexagon|Octagon|Star|Shield" }]
+          }
         }
         ```
+
+        Times of day, transitions and character kinds are an open vocabulary, not a fixed list. Every
+        story starts with these defaults:
+
+        - times of day: DAY, NIGHT, DAWN, DUSK, CONTINUOUS, LATER
+        - transitions: CUT TO, DISSOLVE TO, SMASH CUT TO, MATCH CUT TO, TIME CUT, FADE OUT
+        - character kinds: Human, Robot, Animal, Creature, Voice
+
+        Use a default when it says what the manuscript says. When the manuscript uses one that is not
+        on the list (MORNING, WIPE TO, FADE IN, IRIS OUT, Ghost, Alien), keep it as written rather than
+        forcing it onto the nearest default, and add it to `vocabulary` so the story offers it from
+        then on. Times of day and transitions are written in capitals without the trailing colon;
+        a new character kind is a short noun with an avatar shape that sets it apart from the defaults
+        (Human and Voice are circles, Robot a square, Animal a teardrop, Creature a squircle). Leave
+        `vocabulary` lists empty when the defaults cover the manuscript.
 
         This is an import, not an adaptation. The story's text is the manuscript's text, in the
         manuscript's order and tense, cut into elements:
@@ -81,15 +101,16 @@ public static class StoryGoal
           text never passes through you.
 
         The only words a model writes are the title when the manuscript has none, the library
-        descriptions, scene titles, and the few words that repair a fragment a split leaves; keep those
-        repairs as labels (unit, replacement) that the assembling code applies.
+        descriptions, scene titles, new vocabulary entries, and the few words that repair a fragment a
+        split leaves; keep those repairs as labels (unit, replacement) that the assembling code applies.
 
         Rules: names are unique within their list and spelled as the manuscript spells them; every
         character who speaks is listed; props are the objects that matter to the plot; library
         descriptions are yours to write in one sentence each. Every scene opens with a Heading;
         element types are Heading, Action, Description, Narration, Dialogue and Transition; Heading
         and Transition carry no text, every other element does; speakers and locations are names from
-        the lists above; scenes are grouped into acts or parts.
+        the lists above; times of day, transitions and character kinds are defaults or entries in
+        `vocabulary`; scenes are grouped into acts or parts.
 
         Cover the whole manuscript, not its opening: an import that drops the second half is wrong.
         The `story-fidelity` verifier measures both - the share of the story's words that are the

@@ -1,14 +1,18 @@
 using System.Text.Json;
 using Anthropic;
+using Anthropic.Core;
 using Anthropic.Models.Messages;
 
 namespace ProtoFast.DocumentImport.Screenplay.Models;
 
-public sealed class AnthropicLanguageModel(string modelId, ProviderOptions provider, int maxOutputTokens) : ILanguageModel
+/// <summary>The Messages API, from Anthropic or a provider that serves it at <see cref="ProviderOptions.BaseUrl"/>.</summary>
+public sealed class AnthropicLanguageModel(
+    string modelId, string providerName, ProviderOptions provider, int maxOutputTokens) : ILanguageModel
 {
     private readonly AnthropicClient _client = new()
     {
-        ApiKey = provider.ApiKey ?? throw new InvalidOperationException("Providers:anthropic:ApiKey is not configured."),
+        ApiKey = provider.ApiKey ?? throw new InvalidOperationException($"Providers:{providerName}:ApiKey is not configured."),
+        BaseUrl = provider.BaseUrl ?? EnvironmentUrl.Production,
     };
 
     public string ModelId => modelId;
@@ -62,8 +66,8 @@ public sealed class AnthropicLanguageModel(string modelId, ProviderOptions provi
         var written = usage.CacheCreationInputTokens ?? 0;
         var read = usage.CacheReadInputTokens ?? 0;
 
-        // Cache writes cost 1.25x input and reads 0.1x.
-        var billedInput = usage.InputTokens + (long)(written * 1.25) + (long)(read * 0.1);
+        var billedInput = usage.InputTokens
+            + (long)(written * provider.CacheWriteMultiplier) + (long)(read * provider.CacheReadMultiplier);
         return new LanguageModelReply(
             text, modelId, usage.InputTokens + written + read, usage.OutputTokens,
             provider.PriceOf(modelId, billedInput, usage.OutputTokens),

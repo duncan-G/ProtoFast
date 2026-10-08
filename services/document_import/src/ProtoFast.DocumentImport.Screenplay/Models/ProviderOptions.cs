@@ -5,6 +5,9 @@ public sealed class ProviderOptions
 {
     public string? ApiKey { get; set; }
 
+    /// <summary>Overrides the SDK's endpoint, for providers that serve another's API.</summary>
+    public string? BaseUrl { get; set; }
+
     /// <summary>Model ids per engine model class.</summary>
     public string Large { get; set; } = "";
 
@@ -16,6 +19,11 @@ public sealed class ProviderOptions
     public Dictionary<string, decimal> InputPricePerMillion { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public Dictionary<string, decimal> OutputPricePerMillion { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Prompt-cache writes and reads as multiples of the input price.</summary>
+    public decimal CacheWriteMultiplier { get; set; } = 1.25m;
+
+    public decimal CacheReadMultiplier { get; set; } = 0.1m;
 
     /// <summary>Output caps for models below <see cref="LanguageModelOptions.MaxOutputTokens"/>, keyed by model id.</summary>
     public Dictionary<string, int> MaxOutputTokens { get; set; } = new(StringComparer.OrdinalIgnoreCase);

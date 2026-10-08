@@ -5,6 +5,7 @@ namespace ProtoFast.DocumentImport.Screenplay.Drafts;
 /// <param name="TimeOfDay">Heading only, e.g. DAY or NIGHT.</param>
 /// <param name="Speaker">Dialogue only: a library character name.</param>
 /// <param name="Transition">Transition only, e.g. CUT TO.</param>
+/// <param name="Mentions">Set by the mention tagger after the run, not by the agent.</param>
 public sealed record SceneElementDraft(
     string Type,
     string? Text,
@@ -12,4 +13,5 @@ public sealed record SceneElementDraft(
     string? TimeOfDay,
     string? Speaker,
     string? Parenthetical,
-    string? Transition);
+    string? Transition,
+    IReadOnlyList<MentionDraft>? Mentions = null);

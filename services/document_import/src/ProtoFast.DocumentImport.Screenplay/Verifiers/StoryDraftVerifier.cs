@@ -9,14 +9,14 @@ namespace ProtoFast.DocumentImport.Screenplay.Verifiers;
 
 /// <summary>
 /// Judges the one stage every import ends in. Structure is a hard failure; a name the library does
-/// not know, or a character kind the writer does not, only degrades, since the writer fills them in.
+/// not know, or a character kind the vocabulary does not declare, only degrades, since the writer fills
+/// them in.
 /// </summary>
 public sealed class StoryDraftVerifier(IArtifactStore artifacts) : IVerifier
 {
     public const string VerifierId = "story-draft-json";
 
-    public static readonly IReadOnlySet<string> KnownKinds =
-        new HashSet<string>(["Human", "Robot", "Animal", "Creature", "Voice"], StringComparer.OrdinalIgnoreCase);
+    private static readonly IReadOnlyList<string> DefaultKinds = ["Human", "Robot", "Animal", "Creature", "Voice"];
 
     private static readonly IReadOnlySet<string> Types =
         new HashSet<string>(["Heading", "Action", "Description", "Narration", "Dialogue", "Transition"], StringComparer.OrdinalIgnoreCase);
@@ -92,9 +92,14 @@ public sealed class StoryDraftVerifier(IArtifactStore artifacts) : IVerifier
 
         var characterNames = characters.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var locationNames = locations.Select(l => l.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var kinds = DefaultKinds
+            .Concat((story.Vocabulary?.CharacterKinds ?? []).Select(k => k.Label?.Trim() ?? ""))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var degraded = characters
-            .Where(c => c.Kind is not null && !KnownKinds.Contains(c.Kind))
-            .Select(c => new Finding($"$.characters[{c.Name}].kind", $"'{c.Kind}' is not a known character kind."))
+            .Where(c => !string.IsNullOrWhiteSpace(c.Kind) && !kinds.Contains(c.Kind.Trim()))
+            .Select(c => new Finding(
+                $"$.characters[{c.Name}].kind",
+                $"'{c.Kind}' is neither a default character kind nor in vocabulary.characterKinds, so it gets a circle avatar."))
             .Concat(scenes.SelectMany(s => s.Elements ?? [])
                 .Select(e => e.Speaker is { } speaker && !characterNames.Contains(speaker)
                     ? new Finding("$..speaker", $"'{speaker}' is not a library character.")
@@ -106,7 +111,7 @@ public sealed class StoryDraftVerifier(IArtifactStore artifacts) : IVerifier
             .ToList();
 
         return degraded.Count > 0
-            ? new VerifierResult(Id, Verdict.Degraded, "Some names or kinds fall back to defaults.", degraded)
+            ? new VerifierResult(Id, Verdict.Degraded, "Some names or kinds are filled in by default.", degraded)
             : new VerifierResult(Id, Verdict.Pass, "The story is complete.", []);
     }
 

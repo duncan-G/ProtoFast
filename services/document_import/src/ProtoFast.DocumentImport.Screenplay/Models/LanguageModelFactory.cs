@@ -39,7 +39,8 @@ public sealed class LanguageModelFactory(
         var maxOutputTokens = provider.MaxOutputTokensOf(modelId, options.MaxOutputTokens);
         ILanguageModel model = providerName.ToLowerInvariant() switch
         {
-            LanguageModelProviders.Anthropic => new AnthropicLanguageModel(modelId, provider, maxOutputTokens),
+            LanguageModelProviders.Anthropic or LanguageModelProviders.DeepSeek => new AnthropicLanguageModel(
+                modelId, providerName, provider, maxOutputTokens),
             LanguageModelProviders.Gemini => new GeminiLanguageModel(
                 modelId, provider, httpClients.CreateClient(GeminiLanguageModel.HttpClientName), maxOutputTokens),
             _ => throw new InvalidOperationException($"Unknown language model provider '{providerName}'."),

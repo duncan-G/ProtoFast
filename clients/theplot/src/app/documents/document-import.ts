@@ -62,7 +62,7 @@ export function jobStatus(job: ImportJob, progress: ImportProgress | undefined):
   }
 }
 
-const POLL_MS = 3000;
+const POLL_MS = 60_000;
 // The API answers for at most this many uploads per call.
 const POLL_BATCH = 50;
 

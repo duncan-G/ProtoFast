@@ -3,18 +3,21 @@ using ProtoFast.DocumentImport.Engine.Discovery;
 using ProtoFast.DocumentImport.Engine.Storage;
 using ProtoFast.DocumentImport.Screenplay.Agents;
 using ProtoFast.DocumentImport.Screenplay.Drafts;
+using ProtoFast.DocumentImport.Screenplay.Tagging;
 
 namespace ProtoFast.DocumentImport.Worker.Import;
 
 /// <summary>
-/// Upload in, story row out: text, then the engine run, then the terminal artifact saved in place
-/// of the document. Returns null when the document was already imported or deleted. Each step is
-/// reported to the ledger under the upload id, which is what the desk shows while it waits.
+/// Upload in, story row out: text, then the engine run, then the terminal artifact, its library
+/// names tagged as mentions, saved in place of the document. Returns null when the document was
+/// already imported or deleted. Each step is reported to the ledger under the upload id, which is
+/// what the desk shows while it waits.
 /// </summary>
 public sealed class DocumentImportRunner(
     SourceTextResolver sourceText,
     IArtifactStore artifacts,
     RunDispatcher dispatcher,
+    MentionTagger tagger,
     StoryWriter writer,
     IRunLedger ledger,
     ILogger<DocumentImportRunner> logger)
@@ -43,6 +46,7 @@ public sealed class DocumentImportRunner(
 
         await ledger.ReportAsync(request.UploadId, new RunProgress(RunPhase.Finishing, summary.RunId), ct);
         var draft = StoryJson.Deserialize<StoryDraft>(await ArtifactText.ReadAsync(artifacts, story.Output, ct));
+        draft = await tagger.TagAsync(draft, ct);
         var storyId = await writer.WriteAsync(request.UserId, request.UploadId, draft, ct);
         if (storyId is { } saved)
         {

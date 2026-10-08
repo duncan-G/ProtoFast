@@ -3,7 +3,7 @@ namespace ProtoFast.DocumentImport.Screenplay.Models;
 public sealed class LanguageModelOptions
 {
     /// <summary>Which provider agent executors run on; every model class maps within it.</summary>
-    public string Default { get; set; } = LanguageModelProviders.Anthropic;
+    public string Default { get; set; } = LanguageModelProviders.DeepSeek;
 
     /// <summary>Takes a refused request on the same model class; skipped while it has no API key.</summary>
     public string? Fallback { get; set; }
@@ -48,10 +48,30 @@ public sealed class LanguageModelOptions
         },
     };
 
+    // Peak-hour prices; off-peak is half. Cache hits are automatic, with no write premium.
+    public ProviderOptions DeepSeek { get; set; } = new()
+    {
+        BaseUrl = "https://api.deepseek.com/anthropic",
+        Large = "deepseek-v4-pro",
+        Medium = "deepseek-flash",
+        Small = "deepseek-flash",
+        InputPricePerMillion = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["deepseek-v4-pro"] = 1.32m, ["deepseek-flash"] = 0.30m,
+        },
+        OutputPricePerMillion = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["deepseek-v4-pro"] = 3.96m, ["deepseek-flash"] = 1.20m,
+        },
+        CacheWriteMultiplier = 1,
+        CacheReadMultiplier = 1 / 30m,
+    };
+
     public ProviderOptions Provider(string name) => name.ToLowerInvariant() switch
     {
         LanguageModelProviders.Anthropic => Anthropic,
         LanguageModelProviders.Gemini => Gemini,
+        LanguageModelProviders.DeepSeek => DeepSeek,
         _ => throw new InvalidOperationException($"Unknown language model provider '{name}'."),
     };
 }

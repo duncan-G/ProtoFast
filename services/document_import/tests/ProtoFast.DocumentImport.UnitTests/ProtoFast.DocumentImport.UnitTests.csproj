@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\ProtoFast.DocumentImport.Engine\ProtoFast.DocumentImport.Engine.csproj" />
     <ProjectReference Include="..\..\src\ProtoFast.DocumentImport.Screenplay\ProtoFast.DocumentImport.Screenplay.csproj" />
+    <ProjectReference Include="..\..\src\ProtoFast.DocumentImport.Worker\ProtoFast.DocumentImport.Worker.csproj" />
     <ProjectReference Include="..\..\..\shared\Storage\Storage.csproj" />
   </ItemGroup>
 

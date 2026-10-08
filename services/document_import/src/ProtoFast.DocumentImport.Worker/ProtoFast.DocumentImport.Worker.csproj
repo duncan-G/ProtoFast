@@ -23,4 +23,8 @@
         <ProjectReference Include="..\ProtoFast.DocumentImport.Storage\ProtoFast.DocumentImport.Storage.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+        <InternalsVisibleTo Include="ProtoFast.DocumentImport.UnitTests" />
+    </ItemGroup>
+
 </Project>

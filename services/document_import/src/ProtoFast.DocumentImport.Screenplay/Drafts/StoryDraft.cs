@@ -6,4 +6,5 @@ public sealed record StoryDraft(
     IReadOnlyList<CharacterDraft> Characters,
     IReadOnlyList<LocationDraft> Locations,
     IReadOnlyList<PropDraft> Props,
-    IReadOnlyList<ContainerDraft> Containers);
+    IReadOnlyList<ContainerDraft> Containers,
+    StoryVocabularyDraft? Vocabulary = null);
