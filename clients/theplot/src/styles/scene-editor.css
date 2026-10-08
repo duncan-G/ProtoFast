@@ -1400,9 +1400,6 @@
     font-size: 11.5px;
     color: var(--se-muted);
   }
-  .se-stat-meta.is-unused {
-    color: var(--se-accent-ink);
-  }
 
   /* — container menu — */
   .se-menu {
