@@ -8,8 +8,8 @@ export interface ImportStatus {
   step: number | null;
 }
 
-/** Read, library, scenes, assembly, save. */
-export const IMPORT_STEPS = 5;
+/** Read, library, scenes, assembly, mentions, save. */
+export const IMPORT_STEPS = 6;
 
 // The screenplay workflow's stages, in the order it runs them.
 const STAGES: Record<string, [step: number, label: string]> = {
@@ -41,7 +41,9 @@ export function describeImport(progress: ImportProgress): ImportStatus {
       return { label, step };
     }
     case 'saving':
-      return { label: 'Saving the story', step: 5 };
+      return progress.stage === 'mentions'
+        ? { label: 'Tagging the characters, places and props', step: 5 }
+        : { label: 'Saving the story', step: 6 };
     case 'retrying':
       return { label: 'Hit a snag · trying again', step: null };
     case 'failed':

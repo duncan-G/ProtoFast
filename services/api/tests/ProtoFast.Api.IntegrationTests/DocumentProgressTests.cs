@@ -23,21 +23,24 @@ public class DocumentProgressTests(StoryDatabase database)
     {
         var queued = await UploadAsync(_owner, onDesk: true);
         var analysing = await UploadAsync(_owner, onDesk: true);
+        var tagging = await UploadAsync(_owner, onDesk: true);
         var done = await UploadAsync(_owner, onDesk: false);
         var abandoned = await UploadAsync(_owner, onDesk: false);
         var theirs = await UploadAsync(_stranger, onDesk: true);
         var storyId = Guid.NewGuid().ToString();
         await Ledger.ReportAsync(analysing, new RunProgress(RunPhase.Running, "run", "scenes", Cost: 0.4125m), default);
+        await Ledger.ReportAsync(tagging, new RunProgress(RunPhase.Finishing, "run", "mentions"), default);
         await Ledger.ReportAsync(done, new RunProgress(RunPhase.Finished, "run", ResultId: storyId), default);
         await Ledger.ReportAsync(theirs, new RunProgress(RunPhase.Running, "run", "library"), default);
 
         var reply = await CallAsync(_owner, (s, c) => s.GetImportProgress(
-            new GetImportProgressRequest { UploadIds = { queued, analysing, done, abandoned, theirs } }, c));
+            new GetImportProgressRequest { UploadIds = { queued, analysing, tagging, done, abandoned, theirs } }, c));
 
         var imports = reply.Imports.ToDictionary(i => i.UploadId);
-        Assert.Equal(new[] { queued, analysing, done }.Order(), imports.Keys.Order());
+        Assert.Equal(new[] { queued, analysing, tagging, done }.Order(), imports.Keys.Order());
         Assert.Equal(ImportState.Queued, imports[queued].State);
         Assert.Equal((ImportState.Analysing, "scenes"), (imports[analysing].State, imports[analysing].Stage));
+        Assert.Equal((ImportState.Saving, "mentions"), (imports[tagging].State, imports[tagging].Stage));
         Assert.Equal(412_500, imports[analysing].CostUsdMicros);
         Assert.Equal((ImportState.Done, storyId), (imports[done].State, imports[done].StoryId));
     }

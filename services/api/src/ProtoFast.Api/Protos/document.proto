@@ -54,6 +54,7 @@ message ImportProgress {
     string upload_id = 1;
     ImportState state = 2;
     // The engine stage being worked while ANALYSING: "library", "scenes" or "story" for a screenplay.
+    // While SAVING, the step before the save itself: "mentions" for a screenplay; empty once saving.
     string stage = 3;
     // For the person: what went wrong while RETRYING or once FAILED.
     string message = 4;

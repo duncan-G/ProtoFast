@@ -44,9 +44,11 @@ public sealed class DocumentImportRunner(
         var story = summary.Stages.LastOrDefault(s => s.StageId == StoryStages.StoryStage && s is { IsShadow: false, Passed: true })
             ?? throw new InvalidOperationException($"Run {summary.RunId} produced no accepted story.");
 
-        await ledger.ReportAsync(request.UploadId, new RunProgress(RunPhase.Finishing, summary.RunId), ct);
+        await ledger.ReportAsync(
+            request.UploadId, new RunProgress(RunPhase.Finishing, summary.RunId, StoryStages.MentionsStage), ct);
         var draft = StoryJson.Deserialize<StoryDraft>(await ArtifactText.ReadAsync(artifacts, story.Output, ct));
         draft = await tagger.TagAsync(draft, ct);
+        await ledger.ReportAsync(request.UploadId, new RunProgress(RunPhase.Finishing, summary.RunId), ct);
         var storyId = await writer.WriteAsync(request.UserId, request.UploadId, draft, ct);
         if (storyId is { } saved)
         {

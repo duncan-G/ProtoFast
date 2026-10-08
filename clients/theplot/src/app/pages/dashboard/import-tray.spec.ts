@@ -63,7 +63,7 @@ describe('ImportTray', () => {
   it('keeps an uploaded file importing until the server says the story exists', async () => {
     withProgress(progress({ state: 'analysing', stage: 'scenes', costUsd: 0.4167 }));
     await fixture.whenStable();
-    expect(text()).toContain('Laying out the scenes · 3 of 5');
+    expect(text()).toContain('Laying out the scenes · 3 of 6');
     expect(text()).toContain('$0.42 so far');
     expect(text()).toContain('Importing 1 file');
     expect(text()).not.toContain('Open');
@@ -96,6 +96,6 @@ describe('ImportTray', () => {
     expect(text()).toContain('Importing 2 files');
     expect(text()).toContain('Night_Ferry.docx');
     expect(text()).toContain('DOCX');
-    expect(text()).toContain('Reading the file · 1 of 5');
+    expect(text()).toContain('Reading the file · 1 of 6');
   });
 });

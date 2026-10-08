@@ -35,7 +35,8 @@ describe('describeImport', () => {
       label: 'Laying out the scenes',
       step: 3,
     });
-    expect(describeImport(progress({ state: 'saving' })).step).toBe(5);
+    expect(describeImport(progress({ state: 'saving', stage: 'mentions' })).step).toBe(5);
+    expect(describeImport(progress({ state: 'saving' })).step).toBe(6);
   });
 
   it('falls back to a general label for a stage it does not know', () => {

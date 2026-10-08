@@ -24,7 +24,7 @@ internal static class ImportProgressMessages
                 RunPhase.Failed => ImportState.Failed,
                 _ => ImportState.Unspecified,
             },
-            Stage = progress is { Phase: RunPhase.Running, StageId: { } stage } ? stage : "",
+            Stage = progress is { Phase: RunPhase.Running or RunPhase.Finishing, StageId: { } stage } ? stage : "",
             Message = progress?.Message ?? "",
             CostUsdMicros = (long)Math.Round((progress?.Cost ?? 0) * 1_000_000m),
         };
