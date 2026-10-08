@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using ProtoFast.DocumentImport.Engine.Discovery;
 using ProtoFast.DocumentImport.Engine.Executors;
+using ProtoFast.DocumentImport.Engine.Skills;
 using ProtoFast.DocumentImport.Engine.Verification;
 using ProtoFast.DocumentImport.Engine.Workflows;
 using ProtoFast.DocumentImport.Screenplay.Agents;
@@ -72,6 +73,20 @@ public static class ScreenplayServiceCollectionExtensions
         services.AddSingleton(options);
         services.AddSingleton<ISkillVerifier, SkillNamesVerifier>();
         services.AddSingleton<ISkillVerifier, SkillGeneralityVerifier>();
+        return services;
+    }
+
+    /// <summary>
+    /// The review every script the agent writes passes before it is stored, on an Anthropic model.
+    /// Pair with <c>AddScreenplayDiscovery</c> for its models.
+    /// </summary>
+    public static IServiceCollection AddScriptSafetyReview(
+        this IServiceCollection services, Action<ScriptSafetyOptions>? configure = null)
+    {
+        var options = new ScriptSafetyOptions();
+        configure?.Invoke(options);
+        services.AddSingleton(options);
+        services.AddSingleton<IScriptSafetyReviewer, ScriptSafetyReviewer>();
         return services;
     }
 

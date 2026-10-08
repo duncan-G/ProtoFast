@@ -40,6 +40,7 @@ builder.Services.AddScreenplayDiscovery(
     classifier => builder.Configuration.GetSection("DocumentClassifier").Bind(classifier),
     tagger => builder.Configuration.GetSection("MentionTagger").Bind(tagger));
 builder.Services.AddSkillVerification(options => builder.Configuration.GetSection("SkillVerification").Bind(options));
+builder.Services.AddScriptSafetyReview(options => builder.Configuration.GetSection("ScriptSafety").Bind(options));
 
 builder.Services.Configure<ConversionOptions>(builder.Configuration.GetSection("Conversion"));
 builder.Services.AddHttpClient(ConversionClient.HttpClientName, http => http.Timeout = TimeSpan.FromMinutes(10));
