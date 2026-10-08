@@ -290,10 +290,11 @@
   }
 
   <!-- ─────────────────────────── tray ─────────────────────────── -->
-  @if (jobs().length > 0) {
+  @if (jobs().length > 0 || serverImports().length > 0) {
     <app-import-tray
       [jobs]="jobs()"
       [progress]="importProgress()"
+      [serverImports]="serverImports()"
       [expanded]="trayOpen()"
       (toggle)="toggleTray()"
       (open)="openJob($event)"

@@ -86,4 +86,16 @@ describe('ImportTray', () => {
     expect(text()).toContain('This file couldn’t be read.');
     expect(text()).toContain('1 import needs attention');
   });
+
+  it('counts imports still running from an earlier session', async () => {
+    const earlier = { ...uploaded().document!, id: 'earlier', fileName: 'Night_Ferry.docx' };
+    earlier.import = progress({ uploadId: earlier.id, state: 'reading' });
+    fixture.componentRef.setInput('serverImports', [earlier]);
+    withProgress(progress({ state: 'analysing', stage: 'library' }));
+    await fixture.whenStable();
+    expect(text()).toContain('Importing 2 files');
+    expect(text()).toContain('Night_Ferry.docx');
+    expect(text()).toContain('DOCX');
+    expect(text()).toContain('Reading the file · 1 of 5');
+  });
 });

@@ -23,7 +23,12 @@ import {
 } from '../../documents/document-api';
 import { DocumentImportService, ImportJob, LIVE_PHASES } from '../../documents/document-import';
 import { coverStripe, formatBytes, relativeTime, titleFromFileName } from '../../documents/format';
-import { describeCost, describeImport, IMPORT_STEPS } from '../../documents/import-progress';
+import {
+  describeCost,
+  describeImport,
+  IMPORT_STEPS,
+  isImportActive,
+} from '../../documents/import-progress';
 import { AccountMenu } from '../../shared/account-menu';
 import { StorySummary } from '../../stories/model/story-summary';
 import { StoryApi } from '../../stories/story-api';
@@ -46,6 +51,7 @@ interface DeskImport {
   /** What went wrong, while retrying or once failed. */
   note: string | null;
   failed: boolean;
+  active: boolean;
   /** What the import has spent on model calls, once it has spent anything. */
   cost: string | null;
   /** Width of the thin bar under the label, or null for none. */
@@ -210,8 +216,19 @@ export class Dashboard {
         isNew: false,
         import: deskImport(progress.get(document.id) ?? document.import),
       }));
+    const importing = (row: DeskRow) => (row.import?.active ? 0 : 1);
     return [...stories, ...documents].sort(
-      (a, b) => b.lastModifiedAt.getTime() - a.lastModifiedAt.getTime(),
+      (a, b) =>
+        importing(a) - importing(b) || b.lastModifiedAt.getTime() - a.lastModifiedAt.getTime(),
+    );
+  });
+
+  /** Imports still running on the server that no upload this session covers, e.g. after a reload. */
+  protected readonly serverImports = computed<DocumentSummary[]>(() => {
+    const progress = this.importProgress();
+    const tracked = new Set(this.jobs().map((job) => job.document?.id));
+    return this.documents().filter(
+      (d) => !tracked.has(d.id) && isImportActive(progress.get(d.id) ?? d.import),
     );
   });
 
@@ -487,6 +504,7 @@ function deskImport(progress: ImportProgress): DeskImport {
     label: step === null ? label : `${label} · ${step} of ${IMPORT_STEPS}`,
     note: noted ? progress.message || null : null,
     failed: progress.state === 'failed',
+    active: isImportActive(progress),
     cost: describeCost(progress),
     percent: step === null ? null : (step / IMPORT_STEPS) * 100,
   };
