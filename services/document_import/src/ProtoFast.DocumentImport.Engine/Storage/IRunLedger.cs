@@ -48,7 +48,8 @@ public interface IRunLedger
 
     // Progress is keyed by source: the id the run's input is stored under, so one entry follows
     // every attempt at a source. Each report replaces the last, except that a report naming no
-    // run keeps the last one named, and only the first report sets the cost.
+    // run keeps the last one named, only the first report sets the cost, nothing replaces Finished,
+    // and only Finished replaces Cancelled.
     Task ReportAsync(string sourceId, RunProgress progress, CancellationToken ct);
 
     // A no-op unless a source's progress names this run, so shadow runs never move it.

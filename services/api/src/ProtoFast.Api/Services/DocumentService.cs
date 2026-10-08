@@ -1,4 +1,5 @@
 using Grpc.Core;
+using Microsoft.EntityFrameworkCore;
 using ProtoFast.Data.ThePlot.Queries;
 using ProtoFast.Data.ThePlot.Repositories;
 using ProtoFast.Database.Abstractions;
@@ -90,6 +91,53 @@ public class DocumentService(
 
         return reply;
     }
+
+    /// <summary>
+    /// The document goes first: once it is gone the worker can no longer save a story from it, and
+    /// the ledger's cancel only stops the run sooner. A story saved first wins.
+    /// </summary>
+    public override async Task<CancelImportReply> CancelImport(CancelImportRequest request, ServerCallContext context)
+    {
+        if (!DocumentImportIds.IsValid(request.UploadId))
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "The upload id is not valid."));
+        }
+
+        using (var unitOfWork = unitOfWorkFactory.CreateReadWrite(nameof(CancelImport)))
+        {
+            var upload = await documentUploadRepository.GetFirstByQueryAsync(
+                documentUploadQueries.Create().WithUploadId(request.UploadId), context.CancellationToken);
+            if (upload is null)
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, "No such upload."));
+            }
+
+            if (await documentRepository.GetByKeyAsync(upload.UploadId, context.CancellationToken) is { } document)
+            {
+                await documentRepository.RemoveAsync(document, context.CancellationToken);
+                try
+                {
+                    await unitOfWork.CommitAsync(context.CancellationToken);
+                }
+                catch (DbUpdateConcurrencyException)
+                {
+                    throw AlreadyAStory();
+                }
+            }
+        }
+
+        await ledger.ReportAsync(request.UploadId, new RunProgress(RunPhase.Cancelled), context.CancellationToken);
+        var progress = (await ledger.ProgressAsync([request.UploadId], context.CancellationToken))[request.UploadId];
+        if (progress.Phase == RunPhase.Finished)
+        {
+            throw AlreadyAStory();
+        }
+
+        return new CancelImportReply { Import = ImportProgressMessages.From(request.UploadId, progress, documentExists: false) };
+    }
+
+    private static RpcException AlreadyAStory() =>
+        new(new Status(StatusCode.FailedPrecondition, "This import has already finished; its story is on your desk."));
 
     internal static Document ToMessage(DocumentRecord document, RunProgress? progress) => new()
     {

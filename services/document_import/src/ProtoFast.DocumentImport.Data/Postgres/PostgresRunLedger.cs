@@ -243,20 +243,48 @@ public sealed class PostgresRunLedger(
     public async Task ReportAsync(string sourceId, RunProgress progress, CancellationToken ct)
     {
         await using var db = await contexts.CreateDbContextAsync(ct);
-        var entry = await db.RunProgress.FindAsync([sourceId], ct);
-        if (entry is null)
+        var now = time.GetUtcNow();
+        var runId = progress.RunId;
+        var replacesCancelled = progress.Phase == RunPhase.Finished;
+
+        // One conditional update, so a report can't land over a cancel or finish made since it was decided.
+        var updated = await db.RunProgress
+            .Where(p => p.SourceId == sourceId
+                        && p.Phase != RunPhase.Finished
+                        && (replacesCancelled || p.Phase != RunPhase.Cancelled))
+            .ExecuteUpdateAsync(set => set
+                .SetProperty(p => p.Phase, progress.Phase)
+                .SetProperty(p => p.RunId, p => runId ?? p.RunId)
+                .SetProperty(p => p.StageId, progress.StageId)
+                .SetProperty(p => p.Message, progress.Message)
+                .SetProperty(p => p.ResultId, progress.ResultId)
+                .SetProperty(p => p.UpdatedAt, now), ct);
+        if (updated > 0 || await db.RunProgress.AnyAsync(p => p.SourceId == sourceId, ct))
         {
-            entry = new RunProgressEntry { SourceId = sourceId, Cost = progress.Cost };
-            db.RunProgress.Add(entry);
+            return;
         }
 
-        entry.Phase = progress.Phase;
-        entry.RunId = progress.RunId ?? entry.RunId;
-        entry.StageId = progress.StageId;
-        entry.Message = progress.Message;
-        entry.ResultId = progress.ResultId;
-        entry.UpdatedAt = time.GetUtcNow();
-        await db.SaveChangesAsync(ct);
+        db.RunProgress.Add(new RunProgressEntry
+        {
+            SourceId = sourceId,
+            Phase = progress.Phase,
+            RunId = runId,
+            StageId = progress.StageId,
+            Message = progress.Message,
+            ResultId = progress.ResultId,
+            Cost = progress.Cost,
+            UpdatedAt = now,
+        });
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException e) when (PostgresErrors.IsUniqueViolation(e))
+        {
+            // Another first report won the insert; this one now lands as an update.
+            await ReportAsync(sourceId, progress, ct);
+        }
     }
 
     public async Task BeginStageAsync(string runId, string stageId, CancellationToken ct)

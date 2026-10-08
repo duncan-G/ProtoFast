@@ -14,7 +14,7 @@ namespace ProtoFast.DocumentImport.Worker;
 /// from its receive and kept off the queue for as long as its import runs. A message is deleted once the story is saved, the upload proves unreadable
 /// or the discovery run fails on its own terms; any other failure comes back after its visibility
 /// timeout, resumes the run it interrupted or reuses the one it outlived, and dead-letters after the queue's receive limit,
-/// which is when its progress turns to failed.
+/// which is when its progress turns to failed. An import its owner cancels stops at the next poll, its message deleted and its run abandoned.
 /// </summary>
 public sealed class DocumentImportConsumer(
     [FromKeyedServices(DocumentImportQueues.ImportQueueKey)] IMessageQueue queue,
@@ -30,6 +30,8 @@ public sealed class DocumentImportConsumer(
 
     private static readonly RunProgress Retrying = new(
         RunPhase.Retrying, Message: "Something went wrong. The import will pick up where it left off shortly.");
+
+    private const string CancelledReason = "Cancelled by its owner.";
 
     private static readonly RunProgress GaveUp = new(
         RunPhase.Failed, Message: "This file couldn’t be turned into a story. Import it again to retry.");
@@ -111,15 +113,18 @@ public sealed class DocumentImportConsumer(
         using var activity = DocumentImportTelemetry.StartProcess(queue.Name, message.Parent);
         activity?.SetTag("document_import.upload_id", request.UploadId);
         await using var lease = MessageLease.Hold(queue, message, logger, ct);
+        await using var cancellation = ImportCancellation.Watch(
+            ledger, request.UploadId, options.Value.CancellationPollInterval, logger, lease.Token);
         try
         {
             using var scope = scopes.CreateScope();
-            var storyId = await scope.ServiceProvider.GetRequiredService<DocumentImportRunner>().RunAsync(request, lease.Token);
+            var storyId = await scope.ServiceProvider.GetRequiredService<DocumentImportRunner>().RunAsync(request, cancellation.Token);
             await queue.DeleteAsync(message.ReceiptHandle, ct);
             activity?.SetTag("document_import.story_id", storyId);
             if (storyId is null)
             {
                 logger.LogInformation("Upload {UploadId} is no longer on the desk; skipped", request.UploadId);
+                await AbandonCancelledRunAsync(request.UploadId, ct);
             }
             else
             {
@@ -146,6 +151,12 @@ public sealed class DocumentImportConsumer(
             activity.Fail(e);
             logger.LogError("Import of upload {UploadId} outlasted its lease and was delivered again; this attempt stops", request.UploadId);
         }
+        catch (OperationCanceledException) when (cancellation.IsCancelled)
+        {
+            await queue.DeleteAsync(message.ReceiptHandle, ct);
+            logger.LogInformation("Import of upload {UploadId} was cancelled by its owner", request.UploadId);
+            await AbandonCancelledRunAsync(request.UploadId, ct);
+        }
         catch (Exception e)
         {
             activity.Fail(e);
@@ -164,6 +175,23 @@ public sealed class DocumentImportConsumer(
                 logger.LogError(e, "Import of upload {UploadId} failed; it will be redelivered", request.UploadId);
                 await ReportAsync(request.UploadId, Retrying, ct);
             }
+        }
+    }
+
+    // The attempt a cancel stopped leaves its run open; abandoned, it is never resumed or mined.
+    private async Task AbandonCancelledRunAsync(string uploadId, CancellationToken ct)
+    {
+        try
+        {
+            var progress = (await ledger.ProgressAsync([uploadId], ct)).GetValueOrDefault(uploadId);
+            if (progress is { Phase: RunPhase.Cancelled, RunId: { } runId } && await ledger.FindOpenAsync(runId, ct) is not null)
+            {
+                await ledger.AbandonAsync(runId, CancelledReason, ct);
+            }
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            logger.LogWarning(e, "The run of cancelled upload {UploadId} could not be abandoned", uploadId);
         }
     }
 

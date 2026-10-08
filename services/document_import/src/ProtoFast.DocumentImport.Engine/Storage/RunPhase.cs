@@ -8,8 +8,11 @@ public enum RunPhase
     Running,
     /// <summary>The run passed; its output is being finished (the step named by StageId, if any) and saved.</summary>
     Finishing,
+    /// <summary>Final: no later report replaces it.</summary>
     Finished,
     /// <summary>An attempt failed and the source will be tried again.</summary>
     Retrying,
     Failed,
+    /// <summary>Stopped by the source's owner. Only <see cref="Finished"/>, for a result saved before the stop took, replaces it.</summary>
+    Cancelled,
 }

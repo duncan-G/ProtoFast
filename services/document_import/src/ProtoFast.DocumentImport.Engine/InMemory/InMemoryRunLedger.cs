@@ -182,7 +182,11 @@ public sealed class InMemoryRunLedger : IRunLedger
     public Task ReportAsync(string sourceId, RunProgress progress, CancellationToken ct)
     {
         _progress.AddOrUpdate(
-            sourceId, progress, (_, known) => progress with { RunId = progress.RunId ?? known.RunId, Cost = known.Cost });
+            sourceId,
+            progress,
+            (_, known) => known.Phase == RunPhase.Finished || (known.Phase == RunPhase.Cancelled && progress.Phase != RunPhase.Finished)
+                ? known
+                : progress with { RunId = progress.RunId ?? known.RunId, Cost = known.Cost });
         return Task.CompletedTask;
     }
 

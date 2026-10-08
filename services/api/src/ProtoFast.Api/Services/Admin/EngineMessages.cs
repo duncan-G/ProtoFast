@@ -112,6 +112,7 @@ internal static class EngineMessages
                 RunPhase.Finished => Proto.ProgressPhase.Finished,
                 RunPhase.Retrying => Proto.ProgressPhase.Retrying,
                 RunPhase.Failed => Proto.ProgressPhase.Failed,
+                RunPhase.Cancelled => Proto.ProgressPhase.Cancelled,
                 _ => Proto.ProgressPhase.Unspecified,
             },
             StageId = progress.StageId ?? "",

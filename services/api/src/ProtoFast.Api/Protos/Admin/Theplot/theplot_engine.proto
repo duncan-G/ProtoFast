@@ -90,6 +90,7 @@ enum ProgressPhase {
     PROGRESS_PHASE_FINISHED = 4;
     PROGRESS_PHASE_RETRYING = 5;
     PROGRESS_PHASE_FAILED = 6;
+    PROGRESS_PHASE_CANCELLED = 7;
 }
 
 enum TranscriptRole {

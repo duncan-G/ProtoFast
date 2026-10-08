@@ -27,7 +27,7 @@ export function describeCost(progress: ImportProgress): string | null {
 }
 
 export function isImportActive(progress: ImportProgress): boolean {
-  return progress.state !== 'done' && progress.state !== 'failed';
+  return progress.state !== 'done' && progress.state !== 'failed' && progress.state !== 'cancelled';
 }
 
 export function describeImport(progress: ImportProgress): ImportStatus {
@@ -50,5 +50,7 @@ export function describeImport(progress: ImportProgress): ImportStatus {
       return { label: 'Couldn’t import', step: null };
     case 'done':
       return { label: 'Ready', step: null };
+    case 'cancelled':
+      return { label: 'Cancelled', step: null };
   }
 }
