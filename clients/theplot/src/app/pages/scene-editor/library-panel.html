@@ -50,7 +50,7 @@
   @switch (store.libraryTab()) {
     @case ('characters') {
       @for (character of store.characters(); track character.id) {
-        <div class="se-entry">
+        <div class="se-entry" [attr.data-entry-id]="character.id">
           <app-avatar
             [shape]="store.kindOf(character).avatarShape"
             [hue]="character.hue"
@@ -104,7 +104,6 @@
                   [size]="11"
                 />{{ character.kind }} ▾
               </button>
-              <span class="whitespace-nowrap">{{ characterMeta(character) }}</span>
               <button
                 type="button"
                 class="se-entry-act"
@@ -145,7 +144,7 @@
     }
     @case ('locations') {
       @for (location of store.locations(); track location.id) {
-        <div class="se-entry">
+        <div class="se-entry" [attr.data-entry-id]="location.id">
           <span
             class="se-location-badge hue-fill"
             [style.--hue]="location.hue"
@@ -194,7 +193,6 @@
               >
                 {{ location.setting }}
               </button>
-              <span class="whitespace-nowrap">{{ locationMeta(location) }}</span>
               <button
                 type="button"
                 class="se-entry-act"
@@ -228,7 +226,7 @@
     }
     @case ('props') {
       @for (prop of store.props(); track prop.id) {
-        <div class="se-entry">
+        <div class="se-entry" [attr.data-entry-id]="prop.id">
           <span class="se-prop-badge" aria-hidden="true">◆</span>
           <div class="se-entry-main">
             <div class="se-entry-name-row">
@@ -258,7 +256,6 @@
             }
             <div class="se-entry-meta">
               <span class="se-entry-sub is-static">Prop</span>
-              <span class="whitespace-nowrap">{{ propMeta(prop) }}</span>
               <button
                 type="button"
                 class="se-entry-act"
