@@ -50,7 +50,7 @@ public sealed class SourceTextResolver(
         await using var stream = await objects.OpenReadAsync(key, ct)
             ?? throw new FileNotFoundException($"Object {key} is not in the bucket.");
         using var reader = new StreamReader(stream, Encoding.UTF8);
-        return await reader.ReadToEndAsync(ct);
+        return SourceTextNormalizer.Normalize(await reader.ReadToEndAsync(ct));
     }
 
     private static string WithExtension(string key, string extension)
