@@ -5,6 +5,7 @@ using ProtoFast.DocumentImport.Data.Sqs;
 using ProtoFast.DocumentImport.Engine;
 using ProtoFast.DocumentImport.Screenplay;
 using ProtoFast.DocumentImport.Worker;
+using ProtoFast.DocumentImport.Worker.Briefing;
 using ProtoFast.DocumentImport.Worker.Import;
 using ProtoFast.ServiceDefaults;
 using ProtoFast.ServiceDefaults.Secrets;
@@ -38,6 +39,7 @@ builder.Services.AddScreenplayDiscovery(
     agent => builder.Configuration.GetSection("DiscoveryAgent").Bind(agent),
     classifier => builder.Configuration.GetSection("DocumentClassifier").Bind(classifier),
     tagger => builder.Configuration.GetSection("MentionTagger").Bind(tagger));
+builder.Services.AddSkillVerification(options => builder.Configuration.GetSection("SkillVerification").Bind(options));
 
 builder.Services.Configure<ConversionOptions>(builder.Configuration.GetSection("Conversion"));
 builder.Services.AddHttpClient(ConversionClient.HttpClientName, http => http.Timeout = TimeSpan.FromMinutes(10));
@@ -48,5 +50,8 @@ builder.Services.AddScoped<DocumentImportRunner>();
 
 builder.Services.Configure<DocumentImportConsumerOptions>(builder.Configuration.GetSection("Consumer"));
 builder.Services.AddHostedService<DocumentImportConsumer>();
+
+builder.Services.AddRunBriefing(options => builder.Configuration.GetSection("RunBriefing").Bind(options));
+builder.Services.AddHostedService<RunBriefingService>();
 
 builder.Build().Run();

@@ -5,6 +5,7 @@ using ProtoFast.DocumentImport.Engine.Executors;
 using ProtoFast.DocumentImport.Engine.Verification;
 using ProtoFast.DocumentImport.Engine.Workflows;
 using ProtoFast.DocumentImport.Screenplay.Agents;
+using ProtoFast.DocumentImport.Screenplay.Briefing;
 using ProtoFast.DocumentImport.Screenplay.Classification;
 using ProtoFast.DocumentImport.Screenplay.Executors;
 using ProtoFast.DocumentImport.Screenplay.Models;
@@ -56,6 +57,34 @@ public static class ScreenplayServiceCollectionExtensions
         services.AddSingleton<IVerifier, StoryFidelityVerifier>();
         services.AddSingleton<IRubricVerifierFactory, LanguageModelRubricVerifierFactory>();
         services.AddSingleton<MentionTagger>();
+        return services;
+    }
+
+    /// <summary>
+    /// The checks every family's skills pass before they are published, so a skill fits the family and
+    /// not the one manuscript it was learned on. Pair with <c>AddScreenplayDiscovery</c> for its models.
+    /// </summary>
+    public static IServiceCollection AddSkillVerification(
+        this IServiceCollection services, Action<SkillVerificationOptions>? configure = null)
+    {
+        var options = new SkillVerificationOptions();
+        configure?.Invoke(options);
+        services.AddSingleton(options);
+        services.AddSingleton<ISkillVerifier, SkillNamesVerifier>();
+        services.AddSingleton<ISkillVerifier, SkillGeneralityVerifier>();
+        return services;
+    }
+
+    /// <summary>
+    /// The run briefer, which writes what a reviewer reads about a finished run. Pair with
+    /// <c>AddScreenplayDiscovery</c> for its models; the worker's briefing service drives it.
+    /// </summary>
+    public static IServiceCollection AddRunBriefing(this IServiceCollection services, Action<RunBriefingOptions>? configure = null)
+    {
+        var options = new RunBriefingOptions();
+        configure?.Invoke(options);
+        services.AddSingleton(options);
+        services.AddSingleton<RunBriefer>();
         return services;
     }
 }

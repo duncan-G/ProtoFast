@@ -44,6 +44,7 @@ describe('Runs', () => {
                       stageAttempts: 3,
                       costUsdMicros: 1_250_000n,
                       sourceId: 'upload-1',
+                      name: 'the-quiet-year.fdx',
                     },
                     {
                       runId: '01jabcdefghjkmnpqrstvwxyz1',
@@ -77,13 +78,14 @@ describe('Runs', () => {
     await fixture.whenStable();
   }
 
-  it('lists runs with their outcome, generation, cost and duration', async () => {
+  it('lists runs with their name, outcome, generation, cost and duration', async () => {
     const fixture = TestBed.createComponent(Runs);
     fixture.componentRef.setInput('family', '');
     await settle(fixture);
 
     const rows = fixture.nativeElement.querySelectorAll('tbody tr') as NodeListOf<HTMLElement>;
     expect(rows.length).toBe(2);
+    expect(rows[0].textContent).toContain('the-quiet-year.fdx');
     expect(rows[0].textContent).toContain('screenplay');
     expect(rows[0].textContent).toContain('gen 2');
     expect(rows[0].textContent).toContain('Passed');

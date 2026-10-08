@@ -1,5 +1,8 @@
 using Grpc.Core;
+using Microsoft.EntityFrameworkCore;
 using ProtoFast.Api.Admin.Theplot;
+using ProtoFast.Data.ThePlot;
+using ProtoFast.DocumentImport.Engine.Briefing;
 using ProtoFast.DocumentImport.Engine.Executors;
 using ProtoFast.DocumentImport.Engine.Skills;
 using ProtoFast.DocumentImport.Engine.Storage;
@@ -9,9 +12,15 @@ using Google.Protobuf;
 namespace ProtoFast.Api.Services.Admin;
 
 using EngineArtifactRef = ProtoFast.DocumentImport.Engine.Storage.ArtifactRef;
+using RunHeader = ProtoFast.Api.Admin.Theplot.RunHeader;
 
 /// <summary>The engine's ledger for theplot's console; today every import is theplot's.</summary>
-public sealed class TheplotRunsService(IRunInspector runs, IArtifactStore artifacts, IRegistry registry)
+public sealed class TheplotRunsService(
+    IRunInspector runs,
+    IRunBriefs briefs,
+    IArtifactStore artifacts,
+    IRegistry registry,
+    ThePlotDbContext theplot)
     : TheplotRuns.TheplotRunsBase
 {
     public const string App = TheplotAdminService.App;
@@ -36,8 +45,9 @@ public sealed class TheplotRunsService(IRunInspector runs, IArtifactStore artifa
                 request.PageSize <= 0 ? DefaultPageSize : request.PageSize),
             context.CancellationToken);
 
+        var names = await NamesAsync(page.Runs.Select(r => r.SourceId), context.CancellationToken);
         var reply = new ListRunsReply { Total = page.Total };
-        reply.Runs.AddRange(page.Runs.Select(EngineMessages.From));
+        reply.Runs.AddRange(page.Runs.Select(r => Named(EngineMessages.From(r), names)));
         return reply;
     }
 
@@ -48,9 +58,10 @@ public sealed class TheplotRunsService(IRunInspector runs, IArtifactStore artifa
         var detail = await runs.FindAsync(request.RunId, context.CancellationToken)
                      ?? throw new RpcException(new Status(StatusCode.NotFound, RunNotFound));
 
+        var names = await NamesAsync([detail.Header.SourceId], context.CancellationToken);
         var reply = new GetRunReply
         {
-            Run = EngineMessages.From(detail.Header),
+            Run = Named(EngineMessages.From(detail.Header), names),
             MessageCount = detail.MessageCount,
             Progress = detail.Progress is null ? null : EngineMessages.From(detail.Progress, detail.Header.SourceId ?? ""),
         };
@@ -76,6 +87,29 @@ public sealed class TheplotRunsService(IRunInspector runs, IArtifactStore artifa
             FromSequence = p.FromSequence, Text = p.Prompt, RecordedUnixMs = EngineMessages.Millis(p.RecordedAt),
         }));
         return reply;
+    }
+
+    public override async Task<GetRunReviewReply> GetRunReview(GetRunReviewRequest request, ServerCallContext context)
+    {
+        AdminAccess.RequireRow(context, App, RunNotFound);
+
+        var review = await runs.ReviewAsync(request.RunId, context.CancellationToken);
+        var reply = new GetRunReviewReply { Brief = review.Briefing is { } briefing ? RunReviews.From(briefing) : null };
+        reply.Steps.AddRange(review.Steps.Select(step => RunReviews.From(step, review.Briefing?.Brief)));
+        return reply;
+    }
+
+    public override async Task<RebriefRunReply> RebriefRun(RebriefRunRequest request, ServerCallContext context)
+    {
+        AdminAccess.RequireRow(context, App, RunNotFound);
+
+        if (await runs.FindAsync(request.RunId, context.CancellationToken) is null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, RunNotFound));
+        }
+
+        await briefs.ResetAsync(request.RunId, context.CancellationToken);
+        return new RebriefRunReply();
     }
 
     public override async Task<GetArtifactReply> GetArtifact(GetArtifactRequest request, ServerCallContext context)
@@ -176,6 +210,26 @@ public sealed class TheplotRunsService(IRunInspector runs, IArtifactStore artifa
         {
             return "";
         }
+    }
+
+    // Uploads are every writer's, so the per-user query filter is ignored.
+    private async Task<Dictionary<string, string>> NamesAsync(IEnumerable<string?> sourceIds, CancellationToken ct)
+    {
+        var ids = sourceIds.OfType<string>().Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        return await theplot.DocumentUploads.IgnoreQueryFilters().AsNoTracking()
+            .Where(u => ids.Contains(u.UploadId))
+            .ToDictionaryAsync(u => u.UploadId, u => u.FileName, ct);
+    }
+
+    private static RunHeader Named(RunHeader run, Dictionary<string, string> names)
+    {
+        run.Name = names.GetValueOrDefault(run.SourceId, "");
+        return run;
     }
 
     private static bool IsHash(string value) => value.Length == 64 && value.All(char.IsAsciiHexDigitLower);

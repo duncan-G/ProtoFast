@@ -13,6 +13,7 @@ public sealed class AgentToolsFactory(
     IRegistry registry,
     IDocumentFamilyCatalog catalog,
     VerifierRunner verifiers,
+    SkillVerifierRunner skillVerifiers,
     StageAttempts attempts,
     IOutcomeQueue outcomes,
     TimeProvider time,
@@ -31,6 +32,7 @@ public sealed class AgentToolsFactory(
     internal IRegistry Registry => registry;
     internal IDocumentFamilyCatalog Catalog => catalog;
     internal VerifierRunner Verifiers => verifiers;
+    internal SkillVerifierRunner SkillVerifiers => skillVerifiers;
     internal StageAttempts Attempts => attempts;
     internal IOutcomeQueue Outcomes => outcomes;
     internal TimeProvider Time => time;

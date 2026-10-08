@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
 using ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.Engine.Briefing;
 using ProtoFast.DocumentImport.Engine.Discovery;
 using ProtoFast.DocumentImport.Engine.Executors;
 using ProtoFast.DocumentImport.Engine.InMemory;
@@ -87,6 +88,7 @@ public partial class DiscoveryAgentTests
         services.AddAgentWorkflowEngine();
         services.AddInMemoryWorkflowEngineStores();
         services.AddScreenplayDiscovery(configureAgent: configureAgent);
+        services.AddRunBriefing();
         services.AddSingleton<ILanguageModelFactory>(models);
         services.AddSingleton<IDocumentClassifier>(new FixedDocumentClassifier(ProseFamily));
         return services.BuildServiceProvider();
@@ -156,6 +158,33 @@ public partial class DiscoveryAgentTests
         var next = await InputAsync("Again.");
         await Assert.ThrowsAsync<DiscoveryFailedException>(() => Get<RunDispatcher>().RunAsync(next, Ct));
         Assert.Contains("- draft-story (yours): Drafts a story from short prose.", _models.Turns.Last().System);
+    }
+
+    [Fact]
+    public async Task Each_turn_is_recorded_as_a_step_with_what_its_calls_did_scripts_included()
+    {
+        _models.ScriptTurns(
+            ModelClasses.Medium,
+            _ => Call(DiscoveryAgent.ExecuteSkill, new { skill = "context" }),
+            _ => CreateDraftSkill(),
+            _ => CreateDraftCode(),
+            Draft,
+            _ => Done());
+
+        var summary = await Get<RunDispatcher>().RunAsync(await InputAsync("The Quiet Year\n\nMara turns the radio on."), Ct);
+
+        var steps = await Get<IRunLedger>().StepsAsync(summary.RunId, Ct);
+        Assert.Equal([1, 3, 5, 7], steps.Select(s => s.Sequence));
+        Assert.Equal("Loaded built-in context", steps[0].Headline);
+        Assert.Equal("Published draft-story@1 (new skill)", steps[1].Headline);
+        Assert.StartsWith("Published draft-story@2: new script `draft` (", steps[2].Headline);
+
+        var draft = Assert.Single(steps[3].Calls);
+        Assert.Equal((DiscoveryAgent.ExecuteCode, "draft-story", "draft", false), (draft.Tool, draft.Skill, draft.Script, draft.IsError));
+        Assert.Collection(
+            draft.Effects,
+            e => Assert.Equal((StepEffectKind.ScriptRan, "Ran draft-story@2/draft", 0, "draft-story@2"), (e.Kind, e.Summary, e.Depth, e.Subject)),
+            e => Assert.Equal((StepEffectKind.ArtifactWritten, "Wrote stage `story`: passed", 1), (e.Kind, e.Summary, e.Depth)));
     }
 
     [Fact]

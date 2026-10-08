@@ -21,6 +21,13 @@ import {
 } from '../../engine/format';
 import { errorMessage, TheplotAdminApi } from '../../theplot-admin';
 
+interface RemovedSkill {
+  id: string;
+  removedUnixMs: bigint;
+  reason: string;
+  versions: number[];
+}
+
 /** One family: what an operator wrote about it, its generations, and everything its runs learned. */
 @Component({
   selector: 'app-family',
@@ -285,10 +292,10 @@ import { errorMessage, TheplotAdminApi } from '../../theplot-admin';
       <div class="mt-4 grid gap-6 lg:grid-cols-2">
         <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <h3 class="font-semibold text-gray-900">
-            Skills <span class="text-gray-400">{{ reply.skills.length }}</span>
+            Skills <span class="text-gray-400">{{ liveSkills().length }}</span>
           </h3>
           <ul class="mt-3 divide-y divide-gray-100 text-sm">
-            @for (skill of reply.skills; track skill.id + skill.version) {
+            @for (skill of liveSkills(); track skill.id + skill.version) {
               <li class="flex items-center justify-between py-2">
                 <a
                   [routerLink]="['/skills', skill.id, skill.version]"
@@ -304,6 +311,34 @@ import { errorMessage, TheplotAdminApi } from '../../theplot-admin';
               <li class="py-2 text-gray-500">None yet.</li>
             }
           </ul>
+          @if (removedSkills().length) {
+            <h4 class="mt-5 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Removed <span class="text-gray-400">{{ removedSkills().length }}</span>
+            </h4>
+            <p class="mt-1 text-xs text-gray-500">No run lists or loads these any more.</p>
+            <ul class="mt-2 divide-y divide-gray-100 text-sm">
+              @for (removed of removedSkills(); track removed.id + removed.removedUnixMs) {
+                <li class="py-2">
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="font-mono text-gray-500 line-through">{{ removed.id }}</span>
+                    <span class="text-xs text-gray-500">{{
+                      toDate(removed.removedUnixMs) | date: 'MMM d, HH:mm'
+                    }}</span>
+                  </div>
+                  <p class="mt-1 text-gray-600">{{ removed.reason }}</p>
+                  <p class="mt-1 flex flex-wrap gap-x-2 font-mono text-xs">
+                    @for (version of removed.versions; track version) {
+                      <a
+                        [routerLink]="['/skills', removed.id, version]"
+                        class="text-indigo-600 hover:underline"
+                        >&#64;{{ version }}</a
+                      >
+                    }
+                  </p>
+                </li>
+              }
+            </ul>
+          }
         </section>
 
         <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -414,6 +449,25 @@ export class Family {
   protected readonly resetting = signal(false);
   protected readonly resetError = signal('');
   protected readonly form = { displayName: '', description: '' };
+  protected readonly liveSkills = computed(() =>
+    (this.reply()?.skills ?? []).filter((s) => !s.removedUnixMs),
+  );
+  protected readonly removedSkills = computed(() => {
+    const groups = new Map<string, RemovedSkill>();
+    for (const skill of this.reply()?.skills ?? []) {
+      if (!skill.removedUnixMs) continue;
+      const key = `${skill.id}:${skill.removedUnixMs}`;
+      const group = groups.get(key) ?? {
+        id: skill.id,
+        removedUnixMs: skill.removedUnixMs,
+        reason: skill.removalReason,
+        versions: [],
+      };
+      group.versions.push(skill.version);
+      groups.set(key, group);
+    }
+    return [...groups.values()].sort((a, b) => Number(b.removedUnixMs - a.removedUnixMs));
+  });
   protected readonly generations = computed(() => {
     const current = this.reply()?.currentGeneration ?? 0;
     return Array.from({ length: current + 1 }, (_, i) => current - i);

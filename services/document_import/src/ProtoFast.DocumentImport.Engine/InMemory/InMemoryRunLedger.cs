@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using ProtoFast.DocumentImport.Engine.Briefing;
 using ProtoFast.DocumentImport.Engine.Executors;
 using ProtoFast.DocumentImport.Engine.Policy;
 using ProtoFast.DocumentImport.Engine.Storage;
@@ -85,6 +86,19 @@ public sealed class InMemoryRunLedger : IRunLedger
         }
     }
 
+    public Task<RunSummary?> FindClosedAsync(string runId, CancellationToken ct)
+    {
+        if (!_runs.TryGetValue(runId, out var run))
+        {
+            return Task.FromResult<RunSummary?>(null);
+        }
+
+        lock (run)
+        {
+            return Task.FromResult(run.ClosedSequence is not null ? Summarise(runId, run) : null);
+        }
+    }
+
     public Task<IReadOnlyList<RunSummary>> RecentAsync(string family, RunMode mode, int take, CancellationToken ct)
     {
         IReadOnlyList<RunSummary> recent = Closed(family, mode)
@@ -142,6 +156,26 @@ public sealed class InMemoryRunLedger : IRunLedger
         lock (run)
         {
             return Task.FromResult<IReadOnlyList<RunSystemPrompt>>(run.SystemPrompts.Values.ToList());
+        }
+    }
+
+    public Task RecordStepAsync(string runId, RunStep step, CancellationToken ct)
+    {
+        var run = Find(runId);
+        lock (run)
+        {
+            run.Steps.TryAdd(step.Sequence, step);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<RunStep>> StepsAsync(string runId, CancellationToken ct)
+    {
+        var run = Find(runId);
+        lock (run)
+        {
+            return Task.FromResult<IReadOnlyList<RunStep>>(run.Steps.Values.ToList());
         }
     }
 
@@ -206,6 +240,7 @@ public sealed class InMemoryRunLedger : IRunLedger
         public List<Decision> Decisions { get; } = [];
         public SortedDictionary<int, string> Transcript { get; } = [];
         public SortedDictionary<int, RunSystemPrompt> SystemPrompts { get; } = [];
+        public SortedDictionary<int, RunStep> Steps { get; } = [];
         public TraceRef? Trace { get; set; }
         public long? ClosedSequence { get; set; }
         public string? Failure { get; set; }

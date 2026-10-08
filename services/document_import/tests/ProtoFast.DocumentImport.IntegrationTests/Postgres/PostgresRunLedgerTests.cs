@@ -146,7 +146,7 @@ public class PostgresRunLedgerTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task An_open_run_is_found_until_it_is_closed_or_abandoned()
+    public async Task An_open_run_is_found_until_it_is_closed_or_abandoned_and_only_a_closed_one_as_finished()
     {
         var (closed, abandoned) = (DocumentImportIds.New(), DocumentImportIds.New());
         await Ledger.OpenAsync(closed, DocumentSignature, RunMode.Discovery, Ct);
@@ -163,6 +163,8 @@ public class PostgresRunLedgerTests(PostgresFixture postgres)
         Assert.Null(await Ledger.FindOpenAsync(closed, Ct));
         Assert.Null(await Ledger.FindOpenAsync(abandoned, Ct));
         Assert.Null(await Ledger.FindOpenAsync(DocumentImportIds.New(), Ct));
+        Assert.Equal(closed, (await Ledger.FindClosedAsync(closed, Ct))?.RunId);
+        Assert.Null(await Ledger.FindClosedAsync(abandoned, Ct));
         Assert.Equal([closed], (await Ledger.RecentAsync(_family, RunMode.Discovery, 10, Ct)).Select(r => r.RunId));
         await Assert.ThrowsAsync<KeyNotFoundException>(() => Ledger.AbandonAsync(DocumentImportIds.New(), "no run", Ct));
     }

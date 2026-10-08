@@ -72,12 +72,23 @@ public sealed class InMemoryDocumentFamilyCatalog : IDocumentFamilyCatalog
         return Task.CompletedTask;
     }
 
+    public Task<bool> RemoveSkillAsync(string family, string skillId, string reason, CancellationToken ct)
+    {
+        var entry = EntryFor(family);
+        lock (entry)
+        {
+            var live = entry.Skills.Where(s => s.Id == skillId && !entry.Removed.Contains(s)).ToList();
+            entry.Removed.UnionWith(live);
+            return Task.FromResult(live.Count > 0);
+        }
+    }
+
     public Task<IReadOnlyList<SkillRef>> SkillsAsync(string family, CancellationToken ct)
     {
         var entry = EntryFor(family);
         lock (entry)
         {
-            return Task.FromResult<IReadOnlyList<SkillRef>>(entry.Skills.ToList());
+            return Task.FromResult<IReadOnlyList<SkillRef>>(entry.Skills.Where(s => !entry.Removed.Contains(s)).ToList());
         }
     }
 
@@ -88,5 +99,6 @@ public sealed class InMemoryDocumentFamilyCatalog : IDocumentFamilyCatalog
         public List<ExecutorRef> Executors { get; } = [];
         public List<VerifierSpec> Verifiers { get; } = [];
         public List<SkillRef> Skills { get; } = [];
+        public HashSet<SkillRef> Removed { get; } = [];
     }
 }

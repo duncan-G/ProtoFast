@@ -167,6 +167,14 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("added_at");
 
+                    b.Property<string>("RemovalReason")
+                        .HasColumnType("text")
+                        .HasColumnName("removal_reason");
+
+                    b.Property<DateTimeOffset?>("RemovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("removed_at");
+
                     b.HasKey("Family", "SkillId", "SkillVersion")
                         .HasName("pk_document_family_skills");
 
@@ -272,6 +280,45 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                         .HasName("pk_registry_entries");
 
                     b.ToTable("registry_entries", "engine");
+                });
+
+            modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.RunBriefEntry", b =>
+                {
+                    b.Property<string>("RunId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("run_id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<string>("Brief")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("brief");
+
+                    b.Property<DateTimeOffset>("ClaimedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("claimed_at");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text")
+                        .HasColumnName("error");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("RunId")
+                        .HasName("pk_run_briefs");
+
+                    b.ToTable("run_briefs", "engine");
                 });
 
             modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.RunDecisionEntry", b =>
@@ -456,6 +503,32 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                     b.ToTable("run_progress", "engine");
                 });
 
+            modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.RunStepEntry", b =>
+                {
+                    b.Property<string>("RunId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("run_id");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer")
+                        .HasColumnName("sequence");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("recorded_at");
+
+                    b.Property<string>("Step")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("step");
+
+                    b.HasKey("RunId", "Sequence")
+                        .HasName("pk_run_steps");
+
+                    b.ToTable("run_steps", "engine");
+                });
+
             modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.RunSystemPromptEntry", b =>
                 {
                     b.Property<string>("RunId")
@@ -575,6 +648,16 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                     b.ToTable("stage_records", "engine");
                 });
 
+            modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.RunBriefEntry", b =>
+                {
+                    b.HasOne("ProtoFast.DocumentImport.Data.Postgres.Entities.RunEntry", null)
+                        .WithMany()
+                        .HasForeignKey("RunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_run_briefs_runs_run_id");
+                });
+
             modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.RunDecisionEntry", b =>
                 {
                     b.HasOne("ProtoFast.DocumentImport.Data.Postgres.Entities.RunEntry", null)
@@ -593,6 +676,16 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_run_messages_runs_run_id");
+                });
+
+            modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.RunStepEntry", b =>
+                {
+                    b.HasOne("ProtoFast.DocumentImport.Data.Postgres.Entities.RunEntry", null)
+                        .WithMany()
+                        .HasForeignKey("RunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_run_steps_runs_run_id");
                 });
 
             modelBuilder.Entity("ProtoFast.DocumentImport.Data.Postgres.Entities.RunSystemPromptEntry", b =>

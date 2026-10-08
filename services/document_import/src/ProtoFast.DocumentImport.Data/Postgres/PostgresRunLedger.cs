@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ProtoFast.DocumentImport.Data.Postgres.Entities;
+using ProtoFast.DocumentImport.Engine.Briefing;
 using ProtoFast.DocumentImport.Engine.Executors;
 using ProtoFast.DocumentImport.Engine.Policy;
 using ProtoFast.DocumentImport.Engine.Storage;
@@ -110,6 +111,14 @@ public sealed class PostgresRunLedger(
         return run is null ? null : (await SummariseAsync(db, [run], ct))[0];
     }
 
+    public async Task<RunSummary?> FindClosedAsync(string runId, CancellationToken ct)
+    {
+        await using var db = await contexts.CreateDbContextAsync(ct);
+        var run = await db.Runs.AsNoTracking()
+            .SingleOrDefaultAsync(r => r.RunId == runId && r.ClosedAt != null, ct);
+        return run is null ? null : (await SummariseAsync(db, [run], ct))[0];
+    }
+
     public async Task<IReadOnlyList<RunSummary>> RecentAsync(string family, RunMode mode, int take, CancellationToken ct)
     {
         await using var db = await contexts.CreateDbContextAsync(ct);
@@ -194,6 +203,42 @@ public sealed class PostgresRunLedger(
             .Select(p => new RunSystemPrompt(p.FromSequence, p.Prompt, p.RecordedAt))
             .ToListAsync(ct);
     }
+
+    public async Task RecordStepAsync(string runId, RunStep step, CancellationToken ct)
+    {
+        await using var db = await contexts.CreateDbContextAsync(ct);
+        db.RunSteps.Add(new RunStepEntry
+        {
+            RunId = runId, Sequence = step.Sequence, Step = EngineJson.Serialize(step), RecordedAt = time.GetUtcNow(),
+        });
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException e) when (PostgresErrors.IsUniqueViolation(e))
+        {
+            // Recorded before an interruption.
+        }
+        catch (DbUpdateException e) when (PostgresErrors.IsForeignKeyViolation(e))
+        {
+            throw new KeyNotFoundException($"Run {runId} was never opened.", e);
+        }
+    }
+
+    public async Task<IReadOnlyList<RunStep>> StepsAsync(string runId, CancellationToken ct)
+    {
+        await using var db = await contexts.CreateDbContextAsync(ct);
+        return await StepsAsync(db, runId, ct);
+    }
+
+    internal static async Task<IReadOnlyList<RunStep>> StepsAsync(WorkflowEngineDbContext db, string runId, CancellationToken ct) =>
+        (await db.RunSteps.AsNoTracking()
+            .Where(s => s.RunId == runId)
+            .OrderBy(s => s.Sequence)
+            .Select(s => s.Step)
+            .ToListAsync(ct))
+        .Select(EngineJson.Deserialize<RunStep>)
+        .ToList();
 
     public async Task ReportAsync(string sourceId, RunProgress progress, CancellationToken ct)
     {

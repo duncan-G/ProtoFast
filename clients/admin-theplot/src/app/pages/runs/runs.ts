@@ -104,6 +104,7 @@ const PAGE_SIZE = 25;
         <thead class="border-b border-gray-200 text-gray-500">
           <tr>
             <th class="px-4 py-3 font-medium">Run</th>
+            <th class="px-4 py-3 font-medium">Name</th>
             <th class="px-4 py-3 font-medium">Family</th>
             <th class="px-4 py-3 font-medium">Mode</th>
             <th class="px-4 py-3 font-medium">Opened</th>
@@ -124,6 +125,9 @@ const PAGE_SIZE = 25;
                   [title]="run.runId"
                   >{{ shortId(run.runId) }}</a
                 >
+              </td>
+              <td class="max-w-xs truncate px-4 py-3 text-gray-900" [title]="run.name">
+                {{ run.name || '—' }}
               </td>
               <td class="px-4 py-3">
                 <a [routerLink]="['/families', run.family]" class="text-gray-900 hover:underline">{{
@@ -151,7 +155,7 @@ const PAGE_SIZE = 25;
             </tr>
           } @empty {
             <tr>
-              <td colspan="9" class="px-4 py-8 text-center text-gray-500">
+              <td colspan="10" class="px-4 py-8 text-center text-gray-500">
                 {{ loading() ? 'Loading…' : 'No runs match.' }}
               </td>
             </tr>

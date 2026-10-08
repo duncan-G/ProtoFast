@@ -1,3 +1,4 @@
+using ProtoFast.DocumentImport.Engine.Briefing;
 using ProtoFast.DocumentImport.Engine.Executors;
 using ProtoFast.DocumentImport.Engine.Policy;
 using ProtoFast.DocumentImport.Engine.Workflows;
@@ -19,6 +20,9 @@ public interface IRunLedger
     // Null unless the run exists and is neither closed nor abandoned.
     Task<RunSummary?> FindOpenAsync(string runId, CancellationToken ct);
 
+    // Null unless the run exists and is closed.
+    Task<RunSummary?> FindClosedAsync(string runId, CancellationToken ct);
+
     // Closed runs only, newest first.
     Task<IReadOnlyList<RunSummary>> RecentAsync(string family, RunMode mode, int take, CancellationToken ct);
     Task<int> CountAsync(string family, RunMode mode, CancellationToken ct);
@@ -34,6 +38,13 @@ public interface IRunLedger
 
     // Oldest first.
     Task<IReadOnlyList<RunSystemPrompt>> SystemPromptsAsync(string runId, CancellationToken ct);
+
+    // What each model turn's tool calls did, keyed by the turn's transcript sequence; recording a
+    // sequence the run already has is a no-op, as a resumed run re-executes its pending calls.
+    Task RecordStepAsync(string runId, RunStep step, CancellationToken ct);
+
+    // Oldest first.
+    Task<IReadOnlyList<RunStep>> StepsAsync(string runId, CancellationToken ct);
 
     // Progress is keyed by source: the id the run's input is stored under, so one entry follows
     // every attempt at a source. Each report replaces the last, except that a report naming no

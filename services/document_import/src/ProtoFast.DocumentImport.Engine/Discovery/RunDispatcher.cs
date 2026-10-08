@@ -30,9 +30,19 @@ public sealed class RunDispatcher(
     /// <param name="input">Already stored under <see cref="ArtifactRef.InputStageId"/>.</param>
     public async Task<RunSummary> RunAsync(ArtifactRef input, CancellationToken ct)
     {
+        var lastRunId = (await ledger.ProgressAsync([input.RunId], ct)).GetValueOrDefault(input.RunId)?.RunId;
+
+        // What failed after the run is the caller's to retry; the run's output still stands.
+        if (await FinishedRunAsync(lastRunId, input, ct) is { } finished)
+        {
+            logger.LogInformation(
+                "Run {RunId} already finished source {SourceId}; this attempt reuses it", finished.RunId, input.RunId);
+            return finished;
+        }
+
         // The classifier is a model, so a redelivery that classified afresh could leave the
         // source's open run stranded under a family it never had.
-        var open = await OpenRunAsync(input, ct);
+        var open = await OpenRunAsync(lastRunId, ct);
         var documentSignature = open?.DocumentSignature ?? await documentSignatures.ClassifyAsync(input, ct);
         var family = await families.GetAsync(documentSignature.Family, ct);
         var workflow = family.Workflow is { } promoted && await registry.IsPromotedAsync(promoted, ct)
@@ -105,11 +115,22 @@ public sealed class RunDispatcher(
         }
     }
 
-    /// <summary>The source's last run, when it is a discovery run still open.</summary>
-    private async Task<RunSummary?> OpenRunAsync(ArtifactRef input, CancellationToken ct)
+    /// <summary>The source's last run, when it closed having read this very input.</summary>
+    private async Task<RunSummary?> FinishedRunAsync(string? runId, ArtifactRef input, CancellationToken ct)
     {
-        var progress = (await ledger.ProgressAsync([input.RunId], ct)).GetValueOrDefault(input.RunId);
-        if (progress?.RunId is not { } runId)
+        if (runId is null)
+        {
+            return null;
+        }
+
+        var finished = await ledger.FindClosedAsync(runId, ct);
+        return finished is not null && finished.Stages.Any(s => s.Inputs.Contains(input)) ? finished : null;
+    }
+
+    /// <summary>The source's last run, when it is a discovery run still open.</summary>
+    private async Task<RunSummary?> OpenRunAsync(string? runId, CancellationToken ct)
+    {
+        if (runId is null)
         {
             return null;
         }

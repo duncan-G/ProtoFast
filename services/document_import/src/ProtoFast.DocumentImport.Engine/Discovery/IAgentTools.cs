@@ -1,3 +1,4 @@
+using ProtoFast.DocumentImport.Engine.Briefing;
 using ProtoFast.DocumentImport.Engine.Executors;
 using ProtoFast.DocumentImport.Engine.Skills;
 using ProtoFast.DocumentImport.Engine.Storage;
@@ -28,6 +29,9 @@ public interface IAgentTools
     // Publishes the next version of the skill's id; its scripts must name uploaded code.
     Task<SkillRef>      DefineSkill(Skill skill);
 
+    // Hides every version from later runs; the family's history keeps them.
+    Task                RemoveSkill(string id, string reason);
+
     Task<ExecutorRef>   DefineExecutor(ExecutorSpec spec);
     Task<string>        DefineVerifier(VerifierSpec spec);
 
@@ -47,4 +51,7 @@ public interface IAgentTools
 
     // Dropped in a stage-scoped loop, like the transcript.
     Task                RecordSystemPrompt(int fromSequence, string prompt);
+
+    // What a model turn's tool calls did. Dropped in a stage-scoped loop, like the transcript.
+    Task                RecordStep(RunStep step);
 }

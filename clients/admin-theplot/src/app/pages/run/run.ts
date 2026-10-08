@@ -24,16 +24,28 @@ import {
   toDate,
   usd,
 } from '../../engine/format';
+import { RunSummary } from '../../engine/run-summary';
 import { RunTranscript } from '../../engine/run-transcript';
 import { StageAttempt } from '../../engine/stage-attempt';
 import { errorMessage, TheplotAdminApi } from '../../theplot-admin';
 
-type Tab = 'stages' | 'transcript';
+type Tab = 'summary' | 'stages' | 'transcript';
 
-/** One run: its outcome, every stage attempt with what it read and wrote, and the agent's conversation. */
+/**
+ * One run: its outcome, the brief of what it did, every stage attempt with what it read and wrote,
+ * and the agent's conversation.
+ */
 @Component({
   selector: 'app-run',
-  imports: [ArtifactPanel, DatePipe, PercentPipe, RouterLink, RunTranscript, StageAttempt],
+  imports: [
+    ArtifactPanel,
+    DatePipe,
+    PercentPipe,
+    RouterLink,
+    RunSummary,
+    RunTranscript,
+    StageAttempt,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <a routerLink="/runs" class="text-sm text-indigo-600 hover:underline">← Runs</a>
@@ -135,6 +147,11 @@ type Tab = 'stages' | 'transcript';
       </dl>
 
       <nav class="mt-8 flex gap-1 border-b border-gray-200 text-sm" aria-label="Run sections">
+        @if (reply.messageCount) {
+          <button type="button" [class]="tabClass('summary')" (click)="tab.set('summary')">
+            Summary
+          </button>
+        }
         <button type="button" [class]="tabClass('stages')" (click)="tab.set('stages')">
           Stages <span class="ml-1 text-gray-400">{{ reply.stages.length }}</span>
         </button>
@@ -143,7 +160,15 @@ type Tab = 'stages' | 'transcript';
         </button>
       </nav>
 
-      @if (tab() === 'stages') {
+      @if (tab() === 'summary') {
+        <section class="mt-6">
+          <app-run-summary
+            [runId]="run.runId"
+            [ended]="!!(run.closedUnixMs || run.abandonedUnixMs)"
+            (openMessage)="openMessage($event)"
+          />
+        </section>
+      } @else if (tab() === 'stages') {
         @if (reply.decisions.length) {
           <section class="mt-6 rounded-2xl border border-gray-200 bg-white p-5 text-sm shadow-sm">
             <h2 class="font-semibold text-gray-900">Run decisions</h2>
@@ -181,7 +206,7 @@ type Tab = 'stages' | 'transcript';
         </section>
       } @else {
         <section class="mt-6">
-          <app-run-transcript [runId]="run.runId" />
+          <app-run-transcript [runId]="run.runId" [focus]="focus()" />
         </section>
       }
     } @else if (!error()) {
@@ -214,6 +239,7 @@ export class Run {
   protected readonly reply = signal<GetRunReply | null>(null);
   protected readonly error = signal('');
   protected readonly tab = signal<Tab>('stages');
+  protected readonly focus = signal<number | null>(null);
   protected readonly facets = computed(() => Object.entries(this.reply()?.run?.facets ?? {}));
   protected readonly selected = computed(() =>
     this.artifact() ? parseArtifactParam(this.artifact()) : null,
@@ -230,6 +256,11 @@ export class Run {
     });
   }
 
+  protected openMessage(sequence: number): void {
+    this.focus.set(sequence);
+    this.tab.set('transcript');
+  }
+
   protected tabClass(tab: Tab): string {
     const base = '-mb-px border-b-2 px-3 py-2 font-medium';
     return this.tab() === tab
@@ -239,7 +270,11 @@ export class Run {
 
   private async load(): Promise<void> {
     try {
-      this.reply.set(await this.api.runs.getRun({ runId: this.id() }));
+      const reply = await this.api.runs.getRun({ runId: this.id() });
+      this.reply.set(reply);
+      if (reply.messageCount) {
+        this.tab.set('summary');
+      }
     } catch (err) {
       this.error.set(errorMessage(err));
     }

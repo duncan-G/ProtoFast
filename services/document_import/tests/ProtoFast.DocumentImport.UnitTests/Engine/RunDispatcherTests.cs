@@ -136,6 +136,34 @@ public class RunDispatcherTests
     }
 
     [Fact]
+    public async Task A_run_that_finished_on_the_same_input_is_reused_rather_than_run_again()
+    {
+        await ScriptDiscoveryAsync();
+        var input = await _h.InputAsync();
+        var finished = await Dispatcher.RunAsync(input, Ct);
+
+        var again = await Dispatcher.RunAsync(input, Ct);
+
+        Assert.Equal(finished.RunId, again.RunId);
+        Assert.Equal(1, _discoveryRuns);
+        Assert.Single(await _h.Ledger.RecentAsync(Family, RunMode.Discovery, 10, Ct));
+    }
+
+    [Fact]
+    public async Task A_source_whose_input_changed_since_its_finished_run_runs_again()
+    {
+        await ScriptDiscoveryAsync();
+        var input = await _h.InputAsync();
+        var finished = await Dispatcher.RunAsync(input, Ct);
+        var changed = await _h.Artifacts.PutAsync(input.RunId, ArtifactRef.InputStageId, Utf8("input, normalised"), Raw, Ct);
+
+        var again = await Dispatcher.RunAsync(changed, Ct);
+
+        Assert.NotEqual(finished.RunId, again.RunId);
+        Assert.Equal(2, _discoveryRuns);
+    }
+
+    [Fact]
     public async Task A_run_the_agent_gives_up_on_is_abandoned_and_never_resumed()
     {
         var runs = 0;

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ProtoFast.DocumentImport.Data.Postgres.Entities;
+using ProtoFast.DocumentImport.Engine.Briefing;
 using ProtoFast.DocumentImport.Engine.Executors;
 using ProtoFast.DocumentImport.Engine.Storage;
 using ProtoFast.DocumentImport.Engine.Workflows;
@@ -95,6 +96,14 @@ public sealed class PostgresRunInspector(IDbContextFactory<WorkflowEngineDbConte
                 .Select(p => new RunSystemPrompt(p.FromSequence, p.Prompt, p.RecordedAt))
                 .ToListAsync(ct);
         return new TranscriptPage(page, total, prompts);
+    }
+
+    public async Task<RunReview> ReviewAsync(string runId, CancellationToken ct)
+    {
+        await using var db = await contexts.CreateDbContextAsync(ct);
+        return new RunReview(
+            await PostgresRunLedger.StepsAsync(db, runId, ct),
+            await PostgresRunBriefs.FindAsync(db, runId, ct));
     }
 
     private static async Task<IReadOnlyList<RunHeader>> HeadersAsync(

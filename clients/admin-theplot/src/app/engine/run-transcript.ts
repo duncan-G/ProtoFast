@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  ElementRef,
   inject,
   input,
   signal,
@@ -84,7 +85,7 @@ interface Entry {
           </li>
         }
         @if (entry.message; as message) {
-          <li>
+          <li [id]="'message-' + message.sequence">
             <article
               class="rounded-2xl border p-4 text-sm shadow-sm"
               [class]="
@@ -188,6 +189,11 @@ export class RunTranscript {
   private readonly api = inject(TheplotAdminApi);
 
   readonly runId = input.required<string>();
+  /** A message to scroll to once it has loaded. */
+  readonly focus = input<number | null>(null);
+
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private focused = false;
 
   protected readonly Role = TranscriptRole;
   protected readonly messages = signal<TranscriptMessage[]>([]);
@@ -229,6 +235,21 @@ export class RunTranscript {
     return prettyJson(text) ?? text;
   }
 
+  private scrollToFocus(loadedUpTo: number): void {
+    const focus = this.focus();
+    if (focus === null || this.focused || focus >= loadedUpTo) {
+      return;
+    }
+
+    this.focused = true;
+    // After the page just loaded has rendered.
+    setTimeout(() =>
+      this.host.nativeElement
+        .querySelector(`#message-${focus}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    );
+  }
+
   // Pages follow the sequence, so a long conversation streams in rather than arriving at once.
   private async loadAll(): Promise<void> {
     try {
@@ -248,6 +269,7 @@ export class RunTranscript {
         }
         this.messages.update((loaded) => [...loaded, ...reply.messages]);
         from = reply.messages[reply.messages.length - 1].sequence + 1;
+        this.scrollToFocus(from);
       } while (this.messages().length < this.total());
     } catch (err) {
       this.error.set(errorMessage(err));

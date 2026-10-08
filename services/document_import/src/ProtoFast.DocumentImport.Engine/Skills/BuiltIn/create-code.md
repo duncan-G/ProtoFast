@@ -37,4 +37,8 @@ Usings for System, collections, LINQ, text, regex, JSON and tasks are already in
 may only use those: no files, network, processes, environment, reflection, threads or `unsafe`.
 A script that does not compile is rejected with the compiler's errors. Scripts time out.
 
+A script must work on any document of the family: it finds what varies (names, cues, page headers)
+with patterns or takes it as args, and never lists one document's names or lines. The skill is
+checked as `create-skill` describes before the script is kept.
+
 Returns `{ "skill": { "id": "...", "version": 2 }, "script": "...", "hash": "..." }`.

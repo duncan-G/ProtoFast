@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
+using ProtoFast.DocumentImport.Engine.Briefing;
 using ProtoFast.DocumentImport.Engine.Executors;
 using ProtoFast.DocumentImport.Engine.Learning;
 using ProtoFast.DocumentImport.Engine.Policy;
@@ -192,6 +193,7 @@ public sealed partial class AgentTools : IAgentTools
             throw new ArgumentException("A skill needs a description and instructions.", nameof(skill));
         }
 
+        var sources = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var script in skill.Scripts)
         {
             if (!SkillName().IsMatch(script.Name) || skill.Scripts.Count(s => s.Name == script.Name) > 1)
@@ -203,11 +205,31 @@ public sealed partial class AgentTools : IAgentTools
             {
                 throw new ArgumentException($"No uploaded code has hash {script.CodeHash}.", nameof(skill));
             }
+
+            await using var code = await _engine.Registry.OpenCodeAsync(script.CodeHash, _ct);
+            using var reader = new StreamReader(code);
+            sources[script.Name] = await reader.ReadToEndAsync(_ct);
+        }
+
+        var verdicts = await _engine.SkillVerifiers.RunAsync(
+            new SkillReview(skill, sources, _runId, _documentSignature, _input), _ct);
+        if (verdicts.FirstOrDefault(v => v.Verdict == Verdict.Fail) is { } failed)
+        {
+            // No parameter name: it would trail the findings the agent reads.
+            throw new ArgumentException(Refusal(skill.Ref.Id, failed));
         }
 
         var published = await _engine.Registry.PublishAsync(skill, _ct);
         await _engine.Catalog.AddSkillAsync(Family, published, _ct);
         return published;
+    }
+
+    public async Task RemoveSkill(string id, string reason)
+    {
+        if (!await _engine.Catalog.RemoveSkillAsync(Family, id, reason, _ct))
+        {
+            throw new ArgumentException($"There is no skill '{id}' of yours to remove.", nameof(id));
+        }
     }
 
     public async Task<ExecutorRef> DefineExecutor(ExecutorSpec spec)
@@ -336,6 +358,13 @@ public sealed partial class AgentTools : IAgentTools
 
     public Task RecordSystemPrompt(int fromSequence, string prompt) =>
         _scope is null ? _engine.Ledger.RecordSystemPromptAsync(_runId, fromSequence, prompt, _ct) : Task.CompletedTask;
+
+    public Task RecordStep(RunStep step) =>
+        _scope is null ? _engine.Ledger.RecordStepAsync(_runId, step, _ct) : Task.CompletedTask;
+
+    private static string Refusal(string skill, VerifierResult failed) =>
+        string.Join('\n', failed.Findings.Select(f => $"- {f.Path}: {f.Message}")
+            .Prepend($"Skill '{skill}' was not published: {failed.VerifierId} failed. {failed.Reason}"));
 
     private void ValidateStructure(ExecutorSpec spec)
     {

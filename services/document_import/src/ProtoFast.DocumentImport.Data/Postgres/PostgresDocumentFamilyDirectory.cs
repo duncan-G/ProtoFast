@@ -27,7 +27,7 @@ public sealed class PostgresDocumentFamilyDirectory(
             .ToDictionaryAsync(g => g.Family, g => g.Generation, StringComparer.Ordinal, ct);
         var policies = await db.DocumentFamilyPolicies.AsNoTracking().ToDictionaryAsync(p => p.Family, StringComparer.Ordinal, ct);
         var runs = await RunCountsAsync(db.Runs.AsNoTracking(), ct);
-        var skills = await CountByFamilyAsync(db.DocumentFamilySkills.Select(s => s.Family), ct);
+        var skills = await CountByFamilyAsync(db.DocumentFamilySkills.Where(s => s.RemovedAt == null).Select(s => s.Family), ct);
         var executors = await CountByFamilyAsync(db.DocumentFamilyExecutors.Select(e => e.Family), ct);
         var verifiers = await CountByFamilyAsync(db.DocumentFamilyVerifiers.Select(v => v.Family), ct);
         var stagePolicies = await db.StagePolicies.AsNoTracking().Select(p => p.Family).Distinct().ToListAsync(ct);
@@ -75,7 +75,7 @@ public sealed class PostgresDocumentFamilyDirectory(
         var skills = await db.DocumentFamilySkills.AsNoTracking()
             .Where(s => s.Family == key)
             .OrderBy(s => s.AddedAt).ThenBy(s => s.SkillId).ThenBy(s => s.SkillVersion)
-            .Select(s => new FamilySkill(new SkillRef(s.SkillId, s.SkillVersion), s.AddedAt))
+            .Select(s => new FamilySkill(new SkillRef(s.SkillId, s.SkillVersion), s.AddedAt, s.RemovedAt, s.RemovalReason))
             .ToListAsync(ct);
         var executors = await db.DocumentFamilyExecutors.AsNoTracking()
             .Where(e => e.Family == key)

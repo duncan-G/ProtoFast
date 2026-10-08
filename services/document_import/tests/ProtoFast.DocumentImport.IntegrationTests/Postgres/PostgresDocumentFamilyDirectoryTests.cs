@@ -45,6 +45,23 @@ public class PostgresDocumentFamilyDirectoryTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task A_removed_skill_stays_in_the_family_history_but_is_not_counted()
+    {
+        await Catalog.AddSkillAsync(_family, new SkillRef("split", 1), Ct);
+        await Catalog.AddSkillAsync(_family, new SkillRef("outline", 1), Ct);
+        await Catalog.RemoveSkillAsync(_family, "split", "Hardcodes one title.", Ct);
+
+        var listed = Assert.Single(await Directory.ListAsync(Ct), f => f.Family == _family);
+        var detail = await Directory.FindAsync(_family, null, Ct);
+
+        Assert.Equal(1, listed.Skills);
+        var split = Assert.Single(detail!.Skills, s => s.Ref.Id == "split");
+        Assert.NotNull(split.RemovedAt);
+        Assert.Equal("Hardcodes one title.", split.RemovalReason);
+        Assert.Null(Assert.Single(detail.Skills, s => s.Ref.Id == "outline").RemovedAt);
+    }
+
+    [Fact]
     public async Task A_reset_family_shows_its_current_generation_and_sums_runs_across_them()
     {
         await Ledger.OpenAsync(DocumentImportIds.New(), Signature(_family), RunMode.Discovery, Ct);

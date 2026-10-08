@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
+using ProtoFast.DocumentImport.Engine.Briefing;
 using ProtoFast.DocumentImport.Engine.Discovery;
 using ProtoFast.DocumentImport.Engine.Executors;
 using ProtoFast.DocumentImport.Engine.Storage;
@@ -14,11 +15,15 @@ namespace ProtoFast.DocumentImport.Engine.Skills;
 public sealed class SkillRuntime
 {
     private const int MaxDepth = 4;
+    private const int MaxSummaryText = 200;
 
     private readonly EngineOptions _options;
     private readonly CancellationToken _ct;
     private readonly Lock _spendLock = new();
     private readonly ConcurrentDictionary<string, bool> _stages = new(StringComparer.Ordinal);
+    private readonly Lock _effectsLock = new();
+    private readonly List<StepEffect> _effects = [];
+    private readonly AsyncLocal<int> _depth = new();
     private IReadOnlyList<Skill>? _skills;
     private decimal _spentAmount;
     private TimeSpan _spentDuration;
@@ -44,14 +49,16 @@ public sealed class SkillRuntime
     {
         if (BuiltInSkills.All.TryGetValue(skill, out var builtIn))
         {
+            Note(StepEffectKind.SkillLoaded, $"Loaded built-in {skill}");
             return SkillResult.Ok(Render(skill, "built-in", builtIn.Description, builtIn.Instructions, [(builtIn.Script, builtIn.Description, null)]));
         }
 
         if (await FindSkillAsync(skill) is not { } own)
         {
-            return SkillResult.Error($"There is no skill '{skill}'.");
+            return Failed($"There is no skill '{skill}'.");
         }
 
+        Note(StepEffectKind.SkillLoaded, $"Loaded {own.Ref} ({own.Scripts.Count} scripts)", own.Ref.ToString());
         var scripts = new List<(string, string, string?)>();
         foreach (var script in own.Scripts)
         {
@@ -64,6 +71,19 @@ public sealed class SkillRuntime
     }
 
     public Task<SkillResult> RunAsync(string skill, string script, JsonElement args) => RunAsync(skill, script, args, depth: 0);
+
+    public static bool IsBuiltIn(string skill) => BuiltInSkills.All.ContainsKey(skill);
+
+    /// <summary>What the calls since the last take did, a script's own calls included, in the order they happened.</summary>
+    public IReadOnlyList<StepEffect> TakeEffects()
+    {
+        lock (_effectsLock)
+        {
+            var effects = _effects.ToList();
+            _effects.Clear();
+            return effects;
+        }
+    }
 
     /// <summary>Whether the stage's latest write or delegation, from the agent or a script, passed its verifiers.</summary>
     public bool HasPassed(string stageId) => _stages.TryGetValue(stageId, out var passed) && passed;
@@ -80,16 +100,18 @@ public sealed class SkillRuntime
 
     internal async Task<SkillResult> RunAsync(string skill, string script, JsonElement args, int depth)
     {
+        // Flows into the script and the built-ins it calls, and reverts when this call returns.
+        _depth.Value = depth;
         if (depth > MaxDepth)
         {
-            return SkillResult.Error($"Scripts may nest at most {MaxDepth} deep.");
+            return Failed($"Scripts may nest at most {MaxDepth} deep.");
         }
 
         if (BuiltInSkills.All.TryGetValue(skill, out var builtIn))
         {
             if (script != builtIn.Script)
             {
-                return SkillResult.Error($"The skill '{skill}' has one script, '{builtIn.Script}'.");
+                return Failed($"The skill '{skill}' has one script, '{builtIn.Script}'.");
             }
 
             try
@@ -98,20 +120,40 @@ public sealed class SkillRuntime
             }
             catch (Exception e) when (e is ArgumentException or KeyNotFoundException or JsonException or InvalidOperationException)
             {
+                Note(StepEffectKind.Failed, $"{skill} failed: {Clip(e.Message)}");
                 return SkillResult.Error(e.Message);
             }
         }
 
         if (await FindSkillAsync(skill) is not { } own)
         {
-            return SkillResult.Error($"There is no skill '{skill}'.");
+            return Failed($"There is no skill '{skill}'.");
         }
 
         if (own.Scripts.FirstOrDefault(s => s.Name == script) is not { } found)
         {
-            return SkillResult.Error($"The skill '{skill}' has no script '{script}'; it has {string.Join(", ", own.Scripts.Select(s => $"'{s.Name}'"))}.");
+            return Failed($"The skill '{skill}' has no script '{script}'; it has {string.Join(", ", own.Scripts.Select(s => $"'{s.Name}'"))}.");
         }
 
+        int at;
+        lock (_effectsLock)
+        {
+            at = _effects.Count;
+        }
+
+        var result = await RunScriptAsync(skill, script, found, args, depth);
+        var ran = $"Ran {own.Ref}/{script}" + (result.IsError ? $": {Clip(result.Content)}" : "");
+        lock (_effectsLock)
+        {
+            // Ahead of what the script itself did, which was noted while it ran.
+            _effects.Insert(Math.Min(at, _effects.Count), new StepEffect(StepEffectKind.ScriptRan, ran, depth, own.Ref.ToString()));
+        }
+
+        return result;
+    }
+
+    private async Task<SkillResult> RunScriptAsync(string skill, string script, SkillScript found, JsonElement args, int depth)
+    {
         var compiled = await Compiler.LoadAsync(found.CodeHash, _ct);
         var context = new ScriptContext(this, args, depth, _ct);
         try
@@ -146,6 +188,12 @@ public sealed class SkillRuntime
         return published;
     }
 
+    internal async Task RemoveSkillAsync(string id, string reason)
+    {
+        await Tools.RemoveSkill(id, reason);
+        _skills = null;
+    }
+
     /// <summary>Notes a stage's latest outcome; a resumed loop replays the run's records through it.</summary>
     public void Recorded(string stageId, bool passed) => _stages[stageId] = passed;
 
@@ -163,6 +211,26 @@ public sealed class SkillRuntime
             _spentDuration = TimeSpan.Zero;
             return spent;
         }
+    }
+
+    internal void Note(StepEffectKind kind, string summary, string? subject = null)
+    {
+        lock (_effectsLock)
+        {
+            _effects.Add(new StepEffect(kind, summary, _depth.Value, subject));
+        }
+    }
+
+    internal static string Clip(string text, int max = MaxSummaryText)
+    {
+        var line = text.ReplaceLineEndings(" ").Trim();
+        return line.Length <= max ? line : line[..max] + "…";
+    }
+
+    private SkillResult Failed(string message)
+    {
+        Note(StepEffectKind.Failed, Clip(message));
+        return SkillResult.Error(message);
     }
 
     private async Task<IReadOnlyList<Skill>> SkillsAsync() => _skills ??= await Tools.Skills();

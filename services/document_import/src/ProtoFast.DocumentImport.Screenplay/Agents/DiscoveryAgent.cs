@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using ProtoFast.DocumentImport.Engine.Briefing;
 using ProtoFast.DocumentImport.Engine.Discovery;
 using ProtoFast.DocumentImport.Engine.Executors;
 using ProtoFast.DocumentImport.Engine.Skills;
@@ -106,13 +107,20 @@ public sealed class DiscoveryAgent(
         {
             if (transcript.PendingCalls is { Count: > 0 } pending)
             {
+                var sequence = transcript.Messages.Count - 1;
                 var results = new List<ToolResult>(pending.Count);
+                var step = new List<StepCall>(pending.Count);
                 foreach (var call in pending)
                 {
-                    results.Add(await ExecuteAsync(runtime, call));
+                    var result = await ExecuteAsync(runtime, call);
+                    results.Add(result);
+                    step.Add(new StepCall(
+                        call.Id, call.Name, Text(call.Input, "skill"), call.Name == ExecuteCode ? Text(call.Input, "script") : null,
+                        result.IsError, runtime.TakeEffects()));
                 }
 
                 await transcript.AddAsync(ChatMessage.Results(results));
+                await tools.RecordStep(new RunStep(sequence, step));
             }
 
             if (transcript.Turns >= options.MaxTurns)
@@ -228,7 +236,9 @@ public sealed class DiscoveryAgent(
                Models decide boundaries and labels and reply with references into the source (unit
                numbers, offsets, anchors); code cuts the source's own characters and places them.
             5. Before you finish, keep what you learned with `create-skill` and `create-code`, so the next
-               run of this family is cheaper. Update a skill rather than add a near-duplicate.
+               run of this family is cheaper. Update a skill rather than add a near-duplicate. A skill is
+               for every document of the family: what is particular to this one stays out of it, and a
+               skill of yours that only fits the documents it was written on is removed (`remove-skill`).
             6. You are done when the deliverable stage has passed its verifiers. Then stop calling tools.
 
             Skills:

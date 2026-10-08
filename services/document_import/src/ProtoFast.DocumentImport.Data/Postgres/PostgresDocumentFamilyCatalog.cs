@@ -95,11 +95,22 @@ public sealed class PostgresDocumentFamilyCatalog(
         }
     }
 
+    public async Task<bool> RemoveSkillAsync(string family, string skillId, string reason, CancellationToken ct)
+    {
+        await using var db = await contexts.CreateDbContextAsync(ct);
+        var removed = await db.DocumentFamilySkills
+            .Where(s => s.Family == family && s.SkillId == skillId && s.RemovedAt == null)
+            .ExecuteUpdateAsync(set => set
+                .SetProperty(s => s.RemovedAt, time.GetUtcNow())
+                .SetProperty(s => s.RemovalReason, reason), ct);
+        return removed > 0;
+    }
+
     public async Task<IReadOnlyList<SkillRef>> SkillsAsync(string family, CancellationToken ct)
     {
         await using var db = await contexts.CreateDbContextAsync(ct);
         return await db.DocumentFamilySkills.AsNoTracking()
-            .Where(s => s.Family == family)
+            .Where(s => s.Family == family && s.RemovedAt == null)
             .OrderBy(s => s.AddedAt).ThenBy(s => s.SkillId).ThenBy(s => s.SkillVersion)
             .Select(s => new SkillRef(s.SkillId, s.SkillVersion))
             .ToListAsync(ct);

@@ -5,6 +5,7 @@ using Npgsql;
 using ProtoFast.DocumentImport.Data.Postgres;
 using ProtoFast.DocumentImport.Data.S3;
 using ProtoFast.DocumentImport.Data.Sqs;
+using ProtoFast.DocumentImport.Engine.Briefing;
 using ProtoFast.DocumentImport.Engine.Discovery;
 using ProtoFast.DocumentImport.Engine.Families;
 using ProtoFast.DocumentImport.Engine.Learning;
@@ -33,6 +34,7 @@ public static class DurableStoresServiceCollectionExtensions
         services.AddSingleton<IDocumentFamilyGenerations, PostgresDocumentFamilyGenerations>();
         services.AddSingleton<IDocumentFamilyRegistry, PostgresDocumentFamilyRegistry>();
         services.AddSingleton<IMinedWorkflowStore, PostgresMinedWorkflowStore>();
+        services.TryAddSingleton<IRunBriefs, PostgresRunBriefs>();
 
         services.AddSingleton<IOutcomeQueue, SqsOutcomeQueue>();
         services.AddHostedService<OutcomeQueueConsumer>();
@@ -41,13 +43,14 @@ public static class DurableStoresServiceCollectionExtensions
 
     /// <summary>
     /// What the admin console reads and changes, for a service that runs nothing (the api): the
-    /// ledger and its inspector, the family directory, registry and generations, artifacts and the
-    /// registry. Needs an <c>NpgsqlDataSource</c> and an <c>IObjectStore</c>.
+    /// ledger and its inspector, run briefs, the family directory, registry and generations,
+    /// artifacts and the registry. Needs an <c>NpgsqlDataSource</c> and an <c>IObjectStore</c>.
     /// </summary>
     public static IServiceCollection AddDurableEngineAdministration(this IServiceCollection services)
     {
         services.AddDurableRunLedger();
         services.TryAddSingleton<IRunInspector, PostgresRunInspector>();
+        services.TryAddSingleton<IRunBriefs, PostgresRunBriefs>();
         services.TryAddSingleton<IDocumentFamilyDirectory, PostgresDocumentFamilyDirectory>();
         services.TryAddSingleton<IDocumentFamilyRegistry, PostgresDocumentFamilyRegistry>();
         services.TryAddSingleton<IDocumentFamilyGenerations, PostgresDocumentFamilyGenerations>();

@@ -96,7 +96,8 @@ public static class StoryGoal
 
         - Code first cuts the manuscript into numbered units (lines, paragraphs, and within a
           paragraph the quoted speech and the narrative between quotes), dropping the non-story matter
-          above wherever a pattern finds it.
+          above wherever a pattern finds it. The manuscript arrives normalised: every apostrophe and
+          single quote is a straight `'` and line breaks are `\n`, so code needs no handling of its own.
         - A model - you, or a delegate on a page at a time - only labels the units: which scene each
           starts, each scene's heading, each unit's element type, speaker, extension and
           parenthetical, and where a unit splits further. Its reply holds unit numbers and short

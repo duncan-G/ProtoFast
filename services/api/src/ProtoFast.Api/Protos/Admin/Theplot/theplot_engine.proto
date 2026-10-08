@@ -17,6 +17,12 @@ service TheplotRuns {
     // The discovery agent's conversation, oldest first, a page at a time.
     rpc GetTranscript (GetTranscriptRequest) returns (GetTranscriptReply);
 
+    // What each step of the agent's conversation did, and the brief the worker writes once a run ends.
+    rpc GetRunReview (GetRunReviewRequest) returns (GetRunReviewReply);
+
+    // Drops the run's brief so the worker writes it again.
+    rpc RebriefRun (RebriefRunRequest) returns (RebriefRunReply);
+
     // The bytes an attempt read or wrote, with the contract they were written against.
     rpc GetArtifact (GetArtifactRequest) returns (GetArtifactReply);
 
@@ -149,6 +155,8 @@ message RunHeader {
     int64 cost_usd_micros = 14;
     // The upload the run worked on, when its progress still names this run.
     string source_id = 15;
+    // The uploaded file's name; empty when the run has no source.
+    string name = 16;
 }
 
 message ListRunsRequest {
@@ -260,6 +268,83 @@ message GetTranscriptReply {
     repeated SystemPrompt system_prompts = 3;
 }
 
+message GetRunReviewRequest {
+    string run_id = 1;
+}
+
+message StepEffect {
+    // StepEffectKind: ArtifactWritten, SkillPublished, ScriptRan, Failed, …
+    string kind = 1;
+    string summary = 2;
+    // 0 for the call itself; a script's own calls to other skills are one deeper.
+    int32 depth = 3;
+    // A skill as id@version or an artifact as stage/hash; empty when there is none.
+    string subject = 4;
+}
+
+message StepCall {
+    string call_id = 1;
+    string tool = 2;
+    string skill = 3;
+    // Empty when the call loaded the skill instead of running a script.
+    string script = 4;
+    bool is_error = 5;
+    string headline = 6;
+    // Empty for a step recorded from the transcript after the run.
+    repeated StepEffect effects = 7;
+}
+
+message RunStep {
+    // The assistant message that made the calls.
+    int32 sequence = 1;
+    string headline = 2;
+    repeated StepCall calls = 3;
+    // A model's account of the step; empty when the headline says it all.
+    string brief = 4;
+}
+
+enum BriefStatus {
+    BRIEF_STATUS_UNSPECIFIED = 0;
+    BRIEF_STATUS_BRIEFING = 1;
+    BRIEF_STATUS_BRIEFED = 2;
+    BRIEF_STATUS_FAILED = 3;
+}
+
+message BriefFlag {
+    string kind = 1;
+    string detail = 2;
+    // The step it is about; 0 when it is about the whole run.
+    int32 sequence = 3;
+}
+
+message RunBrief {
+    BriefStatus status = 1;
+    int32 attempts = 2;
+    string outcome = 3;
+    string overview = 4;
+    repeated BriefFlag flags = 5;
+    string model_id = 6;
+    // What the briefing cost; never part of the run's cost.
+    int64 cost_usd_micros = 7;
+    // Why the last attempt failed.
+    string error = 8;
+    int64 updated_unix_ms = 9;
+}
+
+message GetRunReviewReply {
+    // Unset until the worker takes the run up, which it does once the run has ended.
+    RunBrief brief = 1;
+    // Oldest first.
+    repeated RunStep steps = 2;
+}
+
+message RebriefRunRequest {
+    string run_id = 1;
+}
+
+message RebriefRunReply {
+}
+
 message GetArtifactRequest {
     ArtifactRef artifact = 1;
     // Content bytes to return; 0 means 1 MiB, at most 4 MiB.
@@ -368,6 +453,9 @@ message SkillEntry {
     string id = 1;
     int32 version = 2;
     int64 added_unix_ms = 3;
+    // Set once the skill is removed: no run sees it any more, but it stays in the family's history.
+    int64 removed_unix_ms = 4;
+    string removal_reason = 5;
 }
 
 message ExecutorEntry {

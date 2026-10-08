@@ -63,7 +63,7 @@ public class SkillRuntimeTests
         Assert.All(skills, s => Assert.True(s.BuiltIn));
         Assert.Equal(
             ["context", "read-artifact", "write-artifact", "define-playbook", "define-executor", "define-verifier",
-             "delegate", "record-decision", "create-skill", "create-code"],
+             "delegate", "record-decision", "create-skill", "create-code", "remove-skill"],
             skills.Select(s => s.Id));
         Assert.All(skills, s => Assert.False(string.IsNullOrWhiteSpace(s.Description)));
         Assert.Contains("public static class Script", create.Content);
@@ -148,7 +148,93 @@ public class SkillRuntimeTests
         Assert.True(runtime.HasPassed("lines"));
     }
 
+    [Fact]
+    public async Task A_skill_tied_to_one_document_is_refused_with_what_to_fix()
+    {
+        var (_, _, runtime) = await OpenRunAsync();
+        await CreateLineCountAsync(runtime);
+
+        var instructions = await runtime.RunAsync(BuiltInSkills.CreateSkill, "create", Args(new
+        {
+            name = "line-count", description = "Count lines.", instructions = "Sweetfoot has 120 lines.",
+        }));
+        var code = await runtime.RunAsync(BuiltInSkills.CreateCode, "create", Args(new
+        {
+            skill = "line-count", script = "sweetfoot", description = "counts",
+            source = CountLines.Replace("text.Split", "\"Sweetfoot\".Length + text.Split"),
+        }));
+
+        Assert.True(instructions.IsError);
+        Assert.Equal("Skill 'line-count' was not published: no-sweetfoot failed. Tied to Sweetfoot.\n- instructions: names Sweetfoot", instructions.Content);
+        Assert.True(code.IsError);
+        Assert.EndsWith("- scripts/sweetfoot: names Sweetfoot", code.Content);
+        var loaded = (await runtime.LoadAsync("line-count")).Content;
+        Assert.Contains("(version 1)", loaded);
+        Assert.DoesNotContain("Sweetfoot", loaded);
+    }
+
+    [Fact]
+    public async Task Updating_a_skill_can_drop_scripts()
+    {
+        var (_, input, runtime) = await OpenRunAsync();
+        await CreateLineCountAsync(runtime);
+        await OkAsync(runtime.RunAsync(BuiltInSkills.CreateCode, "create", Args(new
+        {
+            skill = "line-count", script = "count", description = "counts", source = CountLines,
+        })));
+
+        var unknown = await runtime.RunAsync(BuiltInSkills.CreateSkill, "create", Args(new
+        {
+            name = "line-count", description = "Count lines.", instructions = "i", remove = new[] { "tally" },
+        }));
+        await OkAsync(runtime.RunAsync(BuiltInSkills.CreateSkill, "create", Args(new
+        {
+            name = "line-count", description = "Count lines.", instructions = "i", remove = new[] { "count" },
+        })));
+        var run = await runtime.RunAsync("line-count", "count", Args(new { artifact = input }));
+
+        Assert.Contains("has no script 'tally' to remove", unknown.Content);
+        Assert.True(run.IsError);
+        Assert.Contains("has no script 'count'", run.Content);
+        Assert.Contains("removed `count`", string.Join('\n', runtime.TakeEffects().Select(e => e.Summary)));
+    }
+
+    [Fact]
+    public async Task A_removed_skill_is_gone_from_later_runs_but_kept_in_the_family_history()
+    {
+        var (_, input, first) = await OpenRunAsync();
+        await CreateLineCountAsync(first);
+        await OkAsync(first.RunAsync(BuiltInSkills.CreateCode, "create", Args(new
+        {
+            skill = "line-count", script = "count", description = "counts", source = CountLines,
+        })));
+
+        var removed = await OkAsync(first.RunAsync(BuiltInSkills.RemoveSkill, "remove", Args(new
+        {
+            name = "line-count", reason = "Only fit one manuscript.",
+        })));
+        var again = await first.RunAsync(BuiltInSkills.RemoveSkill, "remove", Args(new { name = "line-count", reason = "r" }));
+        var (_, _, next) = await OpenRunAsync();
+        var listed = await next.ListAsync();
+        var run = await next.RunAsync("line-count", "count", Args(new { artifact = input }));
+        await CreateLineCountAsync(next);
+        var fresh = await next.LoadAsync("line-count");
+
+        Assert.Equal("line-count", removed.GetProperty("removed").GetString());
+        Assert.Contains("no skill 'line-count' of yours to remove", again.Content);
+        Assert.Contains("Removed line-count@2: Only fit one manuscript.", string.Join('\n', first.TakeEffects().Select(e => e.Summary)));
+        Assert.All(listed, s => Assert.True(s.BuiltIn));
+        Assert.Contains("There is no skill 'line-count'", run.Content);
+        Assert.Contains("# line-count (version 3)", fresh.Content);
+        Assert.DoesNotContain("- `count`", fresh.Content);
+        Assert.Equal(
+            [new SkillRef("line-count", 3)],
+            await _h.Get<IDocumentFamilyCatalog>().SkillsAsync(_h.DocumentSignature.Family, Ct));
+    }
+
     [Theory]
+    [InlineData("remove-skill", "remove", """{ "name": "missing", "reason": "r" }""", "no skill 'missing' of yours to remove")]
+    [InlineData("remove-skill", "remove", """{ "name": "missing", "reason": " " }""", "Say why")]
     [InlineData("nope", "run", "{}", "There is no skill 'nope'.")]
     [InlineData("delegate", "run", "{}", "has one script, 'delegate'")]
     [InlineData("write-artifact", "write-artifact", "{}", "'stageId' is required.")]

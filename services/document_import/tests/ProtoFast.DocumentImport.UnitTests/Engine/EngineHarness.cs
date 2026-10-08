@@ -37,6 +37,7 @@ internal sealed class EngineHarness
         services.AddSingleton<IRubricVerifierFactory>(new ContentRubricFactory(this));
         services.AddSingleton<IVerifier>(sp => new ContentVerifier("no-bad", deterministic: true, sp.GetRequiredService<IArtifactStore>()));
         services.AddSingleton<IVerifier>(sp => new ContentVerifier("judge", deterministic: false, sp.GetRequiredService<IArtifactStore>()));
+        services.AddSingleton<ISkillVerifier, ContentSkillVerifier>();
         services.AddAgentWorkflowEngine(o =>
         {
             o.Thresholds = new Thresholds(MinObservations: 3, MineAfterRuns: 3, ShadowSampleRate: shadowRate);

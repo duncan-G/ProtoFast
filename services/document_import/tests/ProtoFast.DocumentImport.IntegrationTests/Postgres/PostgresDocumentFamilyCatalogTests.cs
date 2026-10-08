@@ -54,4 +54,22 @@ public class PostgresDocumentFamilyCatalogTests(PostgresFixture postgres)
         Assert.Equal([first, second], await Catalog.SkillsAsync(_family, Ct));
         Assert.Empty(await Catalog.SkillsAsync($"{_family}-other", Ct));
     }
+
+    [Fact]
+    public async Task Removing_a_skill_hides_every_version_until_one_is_added_again()
+    {
+        await Catalog.AddSkillAsync(_family, new SkillRef("split-scenes", 1), Ct);
+        await Catalog.AddSkillAsync(_family, new SkillRef("split-scenes", 2), Ct);
+        await Catalog.AddSkillAsync(_family, new SkillRef("outline", 1), Ct);
+        await Catalog.AddSkillAsync($"{_family}-other", new SkillRef("split-scenes", 1), Ct);
+
+        Assert.True(await Catalog.RemoveSkillAsync(_family, "split-scenes", "One manuscript only.", Ct));
+        Assert.False(await Catalog.RemoveSkillAsync(_family, "split-scenes", "again", Ct));
+        var hidden = await Catalog.SkillsAsync(_family, Ct);
+        await Catalog.AddSkillAsync(_family, new SkillRef("split-scenes", 3), Ct);
+
+        Assert.Equal([new SkillRef("outline", 1)], hidden);
+        Assert.Equal([new SkillRef("outline", 1), new SkillRef("split-scenes", 3)], await Catalog.SkillsAsync(_family, Ct));
+        Assert.Single(await Catalog.SkillsAsync($"{_family}-other", Ct));
+    }
 }

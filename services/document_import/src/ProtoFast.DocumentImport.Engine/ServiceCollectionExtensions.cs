@@ -32,6 +32,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<DocumentSignatures>();
         services.TryAddSingleton<VerifierCatalog>();
         services.TryAddSingleton<VerifierRunner>();
+        services.TryAddSingleton<SkillVerifierRunner>();
         services.TryAddSingleton<IExecutorResolver, RegistryExecutorResolver>();
         services.TryAddSingleton<StageAttempts>();
         services.TryAddSingleton<PolicyGate>();

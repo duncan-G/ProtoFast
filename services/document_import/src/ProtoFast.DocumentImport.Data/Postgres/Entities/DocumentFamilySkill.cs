@@ -9,4 +9,8 @@ public sealed class DocumentFamilySkill
     public int SkillVersion { get; set; }
 
     public DateTimeOffset AddedAt { get; set; }
+
+    public DateTimeOffset? RemovedAt { get; set; }
+
+    public string? RemovalReason { get; set; }
 }

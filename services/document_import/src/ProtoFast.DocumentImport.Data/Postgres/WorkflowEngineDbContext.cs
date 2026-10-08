@@ -33,6 +33,10 @@ public sealed class WorkflowEngineDbContext(DbContextOptions<WorkflowEngineDbCon
 
     public DbSet<RunSystemPromptEntry> RunSystemPrompts => Set<RunSystemPromptEntry>();
 
+    public DbSet<RunStepEntry> RunSteps => Set<RunStepEntry>();
+
+    public DbSet<RunBriefEntry> RunBriefs => Set<RunBriefEntry>();
+
     public DbSet<RunProgressEntry> RunProgress => Set<RunProgressEntry>();
 
     public DbSet<StagePolicyEntry> StagePolicies => Set<StagePolicyEntry>();
@@ -142,6 +146,23 @@ public sealed class WorkflowEngineDbContext(DbContextOptions<WorkflowEngineDbCon
             entity.HasKey(e => new { e.RunId, e.FromSequence });
             entity.Property(e => e.RunId).HasMaxLength(IdLength);
             entity.Property(e => e.Prompt).IsRequired();
+            entity.HasOne<RunEntry>().WithMany().HasForeignKey(e => e.RunId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RunStepEntry>(entity =>
+        {
+            entity.HasKey(e => new { e.RunId, e.Sequence });
+            entity.Property(e => e.RunId).HasMaxLength(IdLength);
+            entity.Property(e => e.Step).IsRequired().HasColumnType("jsonb");
+            entity.HasOne<RunEntry>().WithMany().HasForeignKey(e => e.RunId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RunBriefEntry>(entity =>
+        {
+            entity.HasKey(e => e.RunId);
+            entity.Property(e => e.RunId).HasMaxLength(IdLength);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(EnumLength);
+            entity.Property(e => e.Brief).HasColumnType("jsonb");
             entity.HasOne<RunEntry>().WithMany().HasForeignKey(e => e.RunId).OnDelete(DeleteBehavior.Cascade);
         });
 

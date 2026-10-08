@@ -3,6 +3,8 @@ using Grpc.Core;
 using Microsoft.Extensions.DependencyInjection;
 using ProtoFast.Api.Admin.Theplot;
 using ProtoFast.Api.Services.Admin;
+using ProtoFast.Data.ThePlot.Repositories;
+using ProtoFast.Database.Abstractions;
 using ProtoFast.DocumentImport.Core;
 using Xunit;
 using Engine = ProtoFast.DocumentImport.Engine;
@@ -76,6 +78,74 @@ public sealed class EngineAdminAccessTests(StoryDatabase database)
         Assert.Equal(("execute_skill", 12_500L, 3_500L), (turn.ToolCalls[0].Name, turn.Spend.UsdMicros, turn.Spend.DurationMs));
         // jsonb re-spaces what it stores, so the input is compared as JSON.
         Assert.Equal("context", JsonNode.Parse(turn.ToolCalls[0].InputJson)!["skill"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Theplots_operator_sees_a_run_named_after_another_writers_upload()
+    {
+        var runId = await OpenRunAsync("screenplay");
+        var uploadId = DocumentImportIds.New();
+        await using (var scope = database.Services.CreateAsyncScope())
+        {
+            using var user = scope.ServiceProvider.GetRequiredService<UserContext>().SetCurrentUser($"writer-{Guid.NewGuid():N}");
+            using var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWorkFactory>().CreateReadWrite("seed");
+            await scope.ServiceProvider.GetRequiredService<IDocumentUploadRepository>().AddAsync(new Data.ThePlot.Entities.DocumentUpload
+            {
+                UploadId = uploadId, FileName = "the-quiet-year.fdx", SizeBytes = 10, MediaType = "application/xml", FileExtension = ".fdx",
+            }, default);
+            await unitOfWork.CommitAsync(default);
+        }
+
+        await Ledger.ReportAsync(uploadId, new Engine.Storage.RunProgress(Engine.Storage.RunPhase.Running, runId), default);
+        var unnamed = await OpenRunAsync("screenplay");
+
+        var listed = await _theplot.Call<TheplotRunsService, ListRunsReply>(
+            (s, c) => s.ListRuns(new ListRunsRequest { Family = "screenplay", PageSize = 100 }, c));
+        var run = await _theplot.Call<TheplotRunsService, GetRunReply>((s, c) => s.GetRun(new GetRunRequest { RunId = runId }, c));
+
+        Assert.Equal("the-quiet-year.fdx", Assert.Single(listed.Runs, r => r.RunId == runId).Name);
+        Assert.Equal("", Assert.Single(listed.Runs, r => r.RunId == unnamed).Name);
+        Assert.Equal("the-quiet-year.fdx", run.Run.Name);
+    }
+
+    [Fact]
+    public async Task Theplots_operator_reads_a_runs_steps_with_its_brief_and_asks_for_another()
+    {
+        var runId = await OpenRunAsync("screenplay");
+        await Ledger.AppendTranscriptAsync(runId, 0, """{"message":{"role":"User","text":"Import this."}}""", default);
+        await Ledger.RecordStepAsync(runId, new Engine.Briefing.RunStep(1,
+        [
+            new Engine.Briefing.StepCall("c1", "execute_code", "importer", "import", false,
+            [
+                new Engine.Briefing.StepEffect(Engine.Briefing.StepEffectKind.ScriptRan, "Ran importer@2/import", 0, "importer@2"),
+                new Engine.Briefing.StepEffect(Engine.Briefing.StepEffectKind.ArtifactWritten, "Wrote stage `story`: passed", 1, "story/h"),
+            ]),
+        ]), default);
+        await Ledger.CloseAsync(runId, null, default);
+        var briefs = database.Services.GetRequiredService<Engine.Briefing.IRunBriefs>();
+        Assert.True(await briefs.ClaimAsync(runId, 3, TimeSpan.FromMinutes(15), default));
+        await briefs.CompleteAsync(runId, new Engine.Briefing.RunBrief(
+            "Delivered.", "Ran the importer.", [new Engine.Briefing.BriefFlag("manuscript-specific-skill", "Hardcoded cast.", 1)],
+            [new Engine.Briefing.StepBrief(1, "Ran the family's importer, which hardcodes the cast.")], "scripted", 0.0042m), default);
+
+        var review = await _theplot.Call<TheplotRunsService, GetRunReviewReply>(
+            (s, c) => s.GetRunReview(new GetRunReviewRequest { RunId = runId }, c));
+        await _theplot.Call<TheplotRunsService, RebriefRunReply>((s, c) => s.RebriefRun(new RebriefRunRequest { RunId = runId }, c));
+        var rebriefing = await _theplot.Call<TheplotRunsService, GetRunReviewReply>(
+            (s, c) => s.GetRunReview(new GetRunReviewRequest { RunId = runId }, c));
+        var missing = await Assert.ThrowsAsync<RpcException>(() => _theplot.Call<TheplotRunsService, RebriefRunReply>(
+            (s, c) => s.RebriefRun(new RebriefRunRequest { RunId = "no-such-run" }, c)));
+
+        Assert.Equal((BriefStatus.Briefed, "Delivered.", 4_200L), (review.Brief.Status, review.Brief.Outcome, review.Brief.CostUsdMicros));
+        Assert.Equal(("manuscript-specific-skill", 1), (review.Brief.Flags[0].Kind, review.Brief.Flags[0].Sequence));
+        var step = Assert.Single(review.Steps);
+        Assert.Equal(
+            (1, "Ran importer@2/import; Wrote stage `story`: passed", "Ran the family's importer, which hardcodes the cast."),
+            (step.Sequence, step.Headline, step.Brief));
+        Assert.Equal(["ScriptRan", "ArtifactWritten"], step.Calls[0].Effects.Select(e => e.Kind));
+        Assert.Null(rebriefing.Brief);
+        Assert.Equal("", rebriefing.Steps[0].Brief);
+        Assert.Equal(StatusCode.NotFound, missing.StatusCode);
     }
 
     [Fact]

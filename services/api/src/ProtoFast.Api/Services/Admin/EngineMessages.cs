@@ -196,6 +196,7 @@ internal static class EngineMessages
         message.Skills.AddRange(detail.Skills.Select(s => new Proto.SkillEntry
         {
             Id = s.Ref.Id, Version = s.Ref.Version, AddedUnixMs = Millis(s.AddedAt),
+            RemovedUnixMs = Millis(s.RemovedAt), RemovalReason = s.RemovalReason ?? "",
         }));
         message.Executors.AddRange(detail.Executors.Select(e => new Proto.ExecutorEntry
         {
