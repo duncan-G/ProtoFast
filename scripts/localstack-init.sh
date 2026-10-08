@@ -23,7 +23,9 @@ ORIGINS="${EXTRA_CORS_ALLOWED_ORIGINS:-}"
 
 # Queue shapes, kept together so they are tunable in one place rather than buried in the JSON.
 # Fourteen days is SQS's maximum retention and what a dead-letter queue wants — the default four
-# would quietly discard the failures the queue exists to preserve.
+# would quietly discard the failures the queue exists to preserve. The visibility timeout is only
+# the queue's default: our consumers set their own on each receive (SqsQueueOptions) and renew it
+# while they work (MessageLease), so a long import is not delivered twice.
 readonly VISIBILITY_TIMEOUT=900
 readonly MESSAGE_RETENTION=1209600
 readonly RECEIVE_WAIT=20

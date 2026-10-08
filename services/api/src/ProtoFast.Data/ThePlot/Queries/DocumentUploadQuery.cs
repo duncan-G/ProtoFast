@@ -11,6 +11,12 @@ public sealed class DocumentUploadQuery : Query<DocumentUpload>, IDocumentUpload
         return this;
     }
 
+    public IDocumentUploadQuery WithUploadIds(IReadOnlyCollection<string> uploadIds)
+    {
+        Where(u => uploadIds.Contains(u.UploadId));
+        return this;
+    }
+
     public IDocumentUploadQuery WithFileName(string fileName)
     {
         Where(u => u.FileName == fileName);

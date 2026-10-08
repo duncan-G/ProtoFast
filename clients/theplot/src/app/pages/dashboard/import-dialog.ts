@@ -21,22 +21,16 @@ export interface ImportDraft {
 
 /**
  * What the dialog is showing. Before a job exists it reflects the draft (nothing, a file that
- * passed, a file that was turned down); once one does, it follows the job's phase.
+ * passed, a file that was turned down); once one does, it follows the job's phase. There is no
+ * finished state: the page closes the dialog once the upload is handed off, and the tray and the
+ * desk follow the import from there.
  */
-type DialogState =
-  | 'empty'
-  | 'ready'
-  | 'rejected'
-  | 'presign'
-  | 'uploading'
-  | 'saving'
-  | 'done'
-  | 'failed';
+type DialogState = 'empty' | 'ready' | 'rejected' | 'presign' | 'uploading' | 'saving' | 'failed';
 
 const STEPS = [
   ['Prepare', 'Secure upload link'],
   ['Upload', 'Straight to storage'],
-  ['Save', 'Onto your desk'],
+  ['Hand off', 'Queued to be read'],
 ] as const;
 
 const STEP_INDEX: Record<DialogState, number> = {
@@ -46,14 +40,13 @@ const STEP_INDEX: Record<DialogState, number> = {
   presign: 1,
   uploading: 2,
   saving: 3,
-  done: 4,
   failed: 0,
 };
 
 /**
  * The import dialog: pick a file, see it checked locally, start the import and watch the three
- * steps go by. It is a view over state the page owns — the draft and the job — so closing it
- * mid-upload loses nothing: the job carries on in the tray.
+ * upload steps go by. It is a view over state the page owns — the draft and the job — so closing
+ * it mid-upload loses nothing: the job carries on in the tray.
  *
  * The hidden file input lives here because the drop zone and the "choose a file" link both
  * open it; drag-and-drop lands on the same handler.
@@ -79,7 +72,8 @@ const STEP_INDEX: Record<DialogState, number> = {
               Import a file
             </h2>
             <p class="m-0 text-muted text-[14px] leading-[1.5] [text-wrap:pretty]">
-              It's added to your desk as soon as the upload finishes.
+              Once it’s uploaded, ThePlot reads it into a story on your desk. That takes a few
+              minutes; you can follow it from the Imports tray.
             </p>
           </div>
           <button type="button" class="icon-btn h-8 w-8 flex-none border border-[var(--color-divider)]" aria-label="Close" (click)="close.emit()">
@@ -177,14 +171,14 @@ const STEP_INDEX: Record<DialogState, number> = {
             </div>
           }
 
-          <!-- From a picked file to a finished import, what sits under the file card changes at
-               every step. It all shares one cell, held open by a hidden copy of the finished
-               panel (the tallest of them), so the dialog keeps its height and its place on
+          <!-- From a picked file to a handed-off upload, what sits under the file card changes
+               at every step. It all shares one cell, held open by a hidden copy of the progress
+               block (the tallest of them), so the dialog keeps its height and its place on
                screen as the steps go by. -->
           @if (state() !== 'empty' && state() !== 'rejected') {
             <div class="dialog-stage">
-              <div class="panel-success invisible flex items-start gap-3.5" aria-hidden="true">
-                <ng-container *ngTemplateOutlet="finished; context: { $implicit: fileName() }" />
+              <div class="invisible" aria-hidden="true">
+                <ng-container *ngTemplateOutlet="working" />
               </div>
 
               @switch (state()) {
@@ -199,11 +193,6 @@ const STEP_INDEX: Record<DialogState, number> = {
                     <div class="text-[13px] text-muted">Type and size are checked when you start.</div>
                   }
                 }
-                @case ('done') {
-                  <div class="panel-success rise flex items-start gap-3.5" role="status">
-                    <ng-container *ngTemplateOutlet="finished; context: { $implicit: job()?.document?.name }" />
-                  </div>
-                }
                 @case ('failed') {
                   <div class="panel-danger" role="alert">
                     <div class="text-[14px] font-medium text-[var(--color-danger-200)]">The import didn’t finish</div>
@@ -213,22 +202,8 @@ const STEP_INDEX: Record<DialogState, number> = {
                   </div>
                 }
                 @default {
-                  <!-- One block for all three steps, so the bar and its labels stay put and only
-                       their text moves on. -->
-                  <div class="flex flex-col gap-2" role="status">
-                    <div class="progress">
-                      @if (state() === 'uploading') {
-                        <div class="progress-bar" [style.width.%]="job()?.progress ?? 0"></div>
-                      } @else {
-                        <div class="progress-indeterminate"></div>
-                      }
-                    </div>
-                    <div class="meta flex justify-between gap-3">
-                      <span>{{ progressText() }}</span><span class="flex-none">{{ progressAside() }}</span>
-                    </div>
-                    <div class="text-[12px] text-[var(--color-neutral-600)]">
-                      Keep this tab open until the import finishes. You can close this window.
-                    </div>
+                  <div role="status">
+                    <ng-container *ngTemplateOutlet="working" />
                   </div>
                 }
               }
@@ -236,13 +211,22 @@ const STEP_INDEX: Record<DialogState, number> = {
           }
         </div>
 
-        <ng-template #finished let-name>
-          <div class="check check-lg">✓</div>
-          <div class="flex flex-col gap-1.5">
-            <div class="font-[family-name:var(--font-heading)] text-[22px] leading-[1.15]">On your desk</div>
-            <div class="text-[13px] leading-[1.55] text-[var(--color-neutral-300)] [text-wrap:pretty]">
-              “{{ name }}” is uploaded and listed in
-              <b class="font-medium text-[var(--color-text)]">Write</b>.
+        <!-- One block for all three steps, so the bar and its labels stay put and only their
+             text moves on. -->
+        <ng-template #working>
+          <div class="flex flex-col gap-2">
+            <div class="progress">
+              @if (state() === 'uploading') {
+                <div class="progress-bar" [style.width.%]="job()?.progress ?? 0"></div>
+              } @else {
+                <div class="progress-indeterminate"></div>
+              }
+            </div>
+            <div class="meta flex justify-between gap-3">
+              <span>{{ progressText() }}</span><span class="flex-none">{{ progressAside() }}</span>
+            </div>
+            <div class="text-[12px] text-[var(--color-neutral-600)]">
+              Keep this tab open until the upload finishes. You can close this window.
             </div>
           </div>
         </ng-template>
@@ -262,10 +246,6 @@ const STEP_INDEX: Record<DialogState, number> = {
             @case ('rejected') {
               <button type="button" class="btn btn-secondary" (click)="close.emit()">Cancel</button>
               <button type="button" class="btn btn-primary" (click)="browse(picker)">Choose another file</button>
-            }
-            @case ('done') {
-              <button type="button" class="btn btn-secondary" (click)="importAnother(picker)">Import another</button>
-              <button type="button" class="btn btn-primary" (click)="close.emit()">Continue working</button>
             }
             @case ('failed') {
               <button type="button" class="btn btn-secondary" (click)="cancel.emit()">Discard</button>
@@ -293,7 +273,7 @@ export class ImportDialog {
   readonly start = output<void>();
   /** Drop the draft and go back to the empty state. */
   readonly remove = output<void>();
-  /** Close the dialog; a live import keeps going in the tray. */
+  /** Close the dialog; a live upload keeps going in the tray. */
   readonly close = output<void>();
   /** Stop the live import (or discard a failed one) and close. */
   readonly cancel = output<void>();
@@ -307,7 +287,8 @@ export class ImportDialog {
   protected readonly state = computed<DialogState>(() => {
     const job = this.job();
     if (job) {
-      return job.phase;
+      // The page closes the dialog on hand-off; until it does, the last step stays up.
+      return job.phase === 'uploaded' ? 'saving' : job.phase;
     }
     const draft = this.draft();
     if (!draft) {
@@ -340,7 +321,6 @@ export class ImportDialog {
           ? `${size} · over the ${this.limit()} limit`
           : `${size} · unsupported type`;
       case 'saving':
-      case 'done':
         return `${size} · uploaded`;
       default:
         return size;
@@ -355,7 +335,7 @@ export class ImportDialog {
       case 'uploading':
         return job ? `${formatBytes(job.loadedBytes)} of ${formatBytes(job.sizeBytes)}` : 'Uploading…';
       default:
-        return 'Adding it to your desk…';
+        return 'Handing it on to be read…';
     }
   });
 
@@ -399,19 +379,12 @@ export class ImportDialog {
       case 'uploading':
       case 'saving':
         return 'Closing won’t stop the import';
-      case 'done':
-        return '';
       default:
         return '';
     }
   });
 
   protected browse(picker: HTMLInputElement): void {
-    picker.click();
-  }
-
-  protected importAnother(picker: HTMLInputElement): void {
-    this.remove.emit();
     picker.click();
   }
 

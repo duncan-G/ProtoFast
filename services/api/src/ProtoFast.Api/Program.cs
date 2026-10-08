@@ -2,6 +2,8 @@ using ProtoFast.Api.Services;
 using ProtoFast.Api.Services.Admin;
 using ProtoFast.Api.Services.Screenplays;
 using ProtoFast.Data.ThePlot;
+using ProtoFast.DocumentImport.Core;
+using ProtoFast.DocumentImport.Data;
 using ProtoFast.Grpc;
 using ProtoFast.ServiceDefaults;
 using ProtoFast.ServiceDefaults.InternalAuth;
@@ -30,10 +32,18 @@ builder.Services.AddGrpc(options =>
 
 builder.AddNpgsqlDataSource("protofast"); // NpgsqlDataSource for the ThePlotDbContext
 builder.Services.AddThePlotData();
+
+// Import progress is read from the document import engine's run ledger, in the same database;
+// theplot's console reads the rest of the engine through the same stores.
+builder.Services.AddDurableEngineAdministration();
 builder.Services.AddScoped<StoryScope>();
 builder.Services.AddScoped<StoryLibrary>();
 
 builder.Services.AddS3ObjectStorage(options => builder.Configuration.GetSection("S3").Bind(options));
+
+// Completed uploads are handed to the document-import worker over this queue.
+builder.Services.AddSqsQueue(
+    DocumentImportQueues.ImportQueueKey, options => builder.Configuration.GetSection("Sqs:DocumentImport").Bind(options));
 
 builder.AddRedisClient("redis");
 
@@ -46,6 +56,8 @@ app.MapGrpcService<DocumentService>();
 app.MapGrpcService<StoryService>();
 app.MapGrpcService<AdminOverviewService>();
 app.MapGrpcService<TheplotAdminService>();
+app.MapGrpcService<TheplotRunsService>();
+app.MapGrpcService<TheplotFamiliesService>();
 app.MapGet("/", () => "Communication with gRPC endpoints must be made through a gRPC client. To learn how to create a client, visit: https://go.microsoft.com/fwlink/?linkid=2086909");
 
 app.Run();

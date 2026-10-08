@@ -2,9 +2,14 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using ProtoFast.Api.IntegrationTests;
+using ProtoFast.Api.Services;
 using ProtoFast.Api.Services.Admin;
 using ProtoFast.Api.Services.Screenplays;
 using ProtoFast.Data.ThePlot;
+using ProtoFast.DocumentImport.Data;
+using ProtoFast.DocumentImport.Data.Postgres;
+using ProtoFast.DocumentImport.Engine.InMemory;
+using ProtoFast.DocumentImport.Engine.Storage;
 using Testcontainers.PostgreSql;
 using Xunit;
 
@@ -32,12 +37,24 @@ public sealed class StoryDatabase : IAsyncLifetime
         services.AddScoped<StoryScope>();
         services.AddScoped<StoryLibrary>();
         services.AddScoped<StoryService>();
+        // The real engine tables, so the console's reads see what the ledger writes; artifacts and
+        // registry content would need an object store, so those two stay in memory.
+        services.AddSingleton<IArtifactStore, InMemoryArtifactStore>();
+        services.AddSingleton<IRegistry, InMemoryRegistry>();
+        services.AddDurableEngineAdministration();
+        services.AddScoped<DocumentService>();
         services.AddScoped<AdminOverviewService>();
         services.AddScoped<TheplotAdminService>();
+        services.AddScoped<TheplotRunsService>();
+        services.AddScoped<TheplotFamiliesService>();
         Services = services.BuildServiceProvider();
 
         await using var scope = Services.CreateAsyncScope();
         await scope.ServiceProvider.GetRequiredService<ThePlotDbContext>().Database.MigrateAsync();
+        await using var engine = await scope.ServiceProvider
+            .GetRequiredService<IDbContextFactory<WorkflowEngineDbContext>>()
+            .CreateDbContextAsync();
+        await engine.Database.MigrateAsync();
     }
 
     public async ValueTask DisposeAsync()

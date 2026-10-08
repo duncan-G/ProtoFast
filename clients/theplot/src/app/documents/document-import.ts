@@ -6,18 +6,20 @@ import {
   describeError,
   DocumentApi,
   DocumentSummary,
+  ImportProgress,
   UploadTicket,
 } from './document-api';
 import { extensionLabel, extensionOf } from './format';
+import { isImportActive } from './import-progress';
 
 /**
- * Where an import is. The three live phases mirror the three steps the dialog draws:
+ * Where an upload is. The three live phases mirror the three steps the dialog draws:
  * `presign` asks the API for a signed POST, `uploading` posts the file straight to storage, and
- * `saving` tells the API the object landed so it records the document. Nothing further happens
- * to the file after that — chapters and adaptation are not built yet — so `done` means "on your
- * desk", not "processed".
+ * `saving` tells the API the object landed so it records the document and queues its import.
+ * `uploaded` is only the hand-off: the server then reads the file into a story, which `progress`
+ * follows.
  */
-export type ImportPhase = 'presign' | 'uploading' | 'saving' | 'done' | 'failed';
+export type ImportPhase = 'presign' | 'uploading' | 'saving' | 'uploaded' | 'failed';
 
 export const LIVE_PHASES: ReadonlySet<ImportPhase> = new Set(['presign', 'uploading', 'saving']);
 
@@ -38,15 +40,38 @@ export interface ImportJob {
   /** The phase that failed, so a retry can resume rather than start over. */
   readonly failedAt: ImportPhase | null;
   readonly error: string | null;
-  /** The document the API recorded, once `phase` is `done`. */
+  /** The document the API recorded, once `phase` is `uploaded`. */
   readonly document: DocumentSummary | null;
   readonly startedAt: Date;
 }
 
+/** Where a job stands end to end: its upload, then the import the server runs on it. */
+export type JobStatus = 'uploading' | 'importing' | 'done' | 'failed';
+
+export function jobStatus(job: ImportJob, progress: ImportProgress | undefined): JobStatus {
+  switch (job.phase) {
+    case 'failed':
+      return 'failed';
+    case 'uploaded':
+      if (!progress || isImportActive(progress)) {
+        return 'importing';
+      }
+      return progress.state === 'done' ? 'done' : 'failed';
+    default:
+      return 'uploading';
+  }
+}
+
+const POLL_MS = 60_000;
+// The API answers for at most this many uploads per call.
+const POLL_BATCH = 50;
+
 /**
  * Runs document imports and keeps them alive across the app: the tray, the dialog and the desk
  * all read the one `jobs` list, so closing the dialog or switching modes never loses an upload.
- * Root-provided for that reason; browser-only in effect, since nothing here is called during SSR.
+ * Once uploaded, each document's import is polled until it is done or has failed; `progress`
+ * holds the latest word on every import it has been told about. Root-provided for that reason;
+ * browser-only in effect, since nothing here is called during SSR.
  */
 @Injectable({ providedIn: 'root' })
 export class DocumentImportService {
@@ -54,6 +79,8 @@ export class DocumentImportService {
   private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
 
   private readonly jobsState = signal<ImportJob[]>([]);
+  private readonly progressState = signal<ReadonlyMap<string, ImportProgress>>(new Map());
+  private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly formatsState = signal<AcceptedFormats | null>(null);
   private readonly formatsErrorState = signal<string | null>(null);
   private formatsRequest: Promise<AcceptedFormats> | null = null;
@@ -70,8 +97,13 @@ export class DocumentImportService {
   readonly formats = this.formatsState.asReadonly();
   readonly formatsError = this.formatsErrorState.asReadonly();
 
-  /** Fires once per import that reaches `done`. */
-  readonly completed$ = new Subject<ImportJob>();
+  /** Server-side import progress by upload (document) id. */
+  readonly progress = this.progressState.asReadonly();
+
+  /** Fires once per upload that reaches `uploaded`. */
+  readonly uploaded$ = new Subject<ImportJob>();
+  /** Fires once per import seen to turn into a story. */
+  readonly finished$ = new Subject<ImportProgress>();
 
   constructor() {
     if (this.isBrowser) {
@@ -82,8 +114,26 @@ export class DocumentImportService {
         }
       };
       window.addEventListener('beforeunload', warn);
-      inject(DestroyRef).onDestroy(() => window.removeEventListener('beforeunload', warn));
+      inject(DestroyRef).onDestroy(() => {
+        window.removeEventListener('beforeunload', warn);
+        this.stopPolling();
+      });
     }
+  }
+
+  /** Takes the latest word on these imports and polls the ones still running. */
+  track(progress: ImportProgress[]): void {
+    if (progress.length === 0) {
+      return;
+    }
+    this.progressState.update((known) => {
+      const next = new Map(known);
+      for (const p of progress) {
+        next.set(p.uploadId, p);
+      }
+      return next;
+    });
+    this.schedulePoll();
   }
 
   /**
@@ -185,7 +235,7 @@ export class DocumentImportService {
   /** Removes a finished or failed import from the tray. */
   dismiss(id: number): void {
     const job = this.find(id);
-    if (job && !LIVE_PHASES.has(job.phase)) {
+    if (job && this.isFinished(job)) {
       this.cancel(id);
     }
   }
@@ -193,10 +243,20 @@ export class DocumentImportService {
   /** Removes every finished or failed import; live ones keep going. */
   dismissFinished(): void {
     for (const job of this.jobsState()) {
-      if (!LIVE_PHASES.has(job.phase)) {
+      if (this.isFinished(job)) {
         this.cancel(job.id);
       }
     }
+  }
+
+  /** The job's server-side import, once it has one. */
+  progressOf(job: ImportJob): ImportProgress | undefined {
+    return job.document ? this.progressState().get(job.document.id) : undefined;
+  }
+
+  private isFinished(job: ImportJob): boolean {
+    const status = jobStatus(job, this.progressOf(job));
+    return status === 'done' || status === 'failed';
   }
 
   find(id: number): ImportJob | undefined {
@@ -234,10 +294,11 @@ export class DocumentImportService {
         return;
       }
       this.tickets.delete(id);
-      this.patch(id, { phase: 'done', document });
-      const finished = this.find(id);
-      if (finished) {
-        this.completed$.next(finished);
+      this.patch(id, { phase: 'uploaded', document });
+      this.track([document.import]);
+      const uploaded = this.find(id);
+      if (uploaded) {
+        this.uploaded$.next(uploaded);
       }
     } catch (err) {
       if (!this.find(id)) {
@@ -298,6 +359,63 @@ export class DocumentImportService {
     });
   }
 
+  private schedulePoll(): void {
+    if (!this.isBrowser || this.pollTimer !== null) {
+      return;
+    }
+    if (![...this.progressState().values()].some(isImportActive)) {
+      return;
+    }
+    this.pollTimer = setTimeout(() => void this.poll(), POLL_MS);
+  }
+
+  private stopPolling(): void {
+    if (this.pollTimer !== null) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = null;
+    }
+  }
+
+  /** A failed poll is simply tried again on the next tick. */
+  private async poll(): Promise<void> {
+    const active = [...this.progressState().values()]
+      .filter(isImportActive)
+      .map((p) => p.uploadId)
+      .slice(0, POLL_BATCH);
+    if (active.length === 0) {
+      this.pollTimer = null;
+      return;
+    }
+    try {
+      const latest = await this.api.getImportProgress(active);
+      const answered = new Set(latest.map((p) => p.uploadId));
+      const finished = latest.filter(
+        (p) => p.state === 'done' && this.progressState().get(p.uploadId)?.state !== 'done',
+      );
+      this.progressState.update((known) => {
+        const next = new Map(known);
+        for (const id of active) {
+          // Left out means it is no longer the caller's or never became a document.
+          if (!answered.has(id)) {
+            next.delete(id);
+          }
+        }
+        for (const p of latest) {
+          next.set(p.uploadId, p);
+        }
+        return next;
+      });
+      for (const p of finished) {
+        this.finished$.next(p);
+      }
+    } catch {
+      // Kept as it was; the next tick asks again.
+    } finally {
+      this.pollTimer = null;
+      this.schedulePoll();
+    }
+  }
+
   private patch(id: number, changes: Partial<ImportJob>): void {
     this.jobsState.update((jobs) =>
       jobs.map((job) => (job.id === id ? { ...job, ...changes } : job)),
@@ -308,8 +426,8 @@ export class DocumentImportService {
 const FAILURE_MESSAGES: Record<ImportPhase, string> = {
   presign: 'A secure upload link could not be created.',
   uploading: 'The upload to storage failed.',
-  saving: 'The file was uploaded but could not be added to your desk.',
-  done: 'The import failed.',
+  saving: 'The file was uploaded but could not be handed on to be read.',
+  uploaded: 'The import failed.',
   failed: 'The import failed.',
 };
 

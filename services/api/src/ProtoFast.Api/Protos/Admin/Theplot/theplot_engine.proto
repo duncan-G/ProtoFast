@@ -1,0 +1,551 @@
+syntax = "proto3";
+
+option csharp_namespace = "ProtoFast.Api.Admin.Theplot";
+
+package admin.theplot;
+
+// The document import engine as theplot's console sees it: the run ledger, each attempt's
+// artifacts, the discovery agent's conversation, and what every document family has learned.
+// Every RPC needs admin-theplot. Timestamps are Unix milliseconds; 0 means unset.
+service TheplotRuns {
+
+    // Newest first.
+    rpc ListRuns (ListRunsRequest) returns (ListRunsReply);
+
+    rpc GetRun (GetRunRequest) returns (GetRunReply);
+
+    // The discovery agent's conversation, oldest first, a page at a time.
+    rpc GetTranscript (GetTranscriptRequest) returns (GetTranscriptReply);
+
+    // What each step of the agent's conversation did, and the brief the worker writes once a run ends.
+    rpc GetRunReview (GetRunReviewRequest) returns (GetRunReviewReply);
+
+    // Drops the run's brief so the worker writes it again.
+    rpc RebriefRun (RebriefRunRequest) returns (RebriefRunReply);
+
+    // The bytes an attempt read or wrote, with the contract they were written against.
+    rpc GetArtifact (GetArtifactRequest) returns (GetArtifactReply);
+
+    rpc GetExecutor (GetExecutorRequest) returns (GetExecutorReply);
+
+    rpc GetSkill (GetSkillRequest) returns (GetSkillReply);
+}
+
+service TheplotFamilies {
+
+    rpc ListFamilies (ListFamiliesRequest) returns (ListFamiliesReply);
+
+    rpc GetFamily (GetFamilyRequest) returns (GetFamilyReply);
+
+    // Registers a family before the classifier has produced a run for it.
+    rpc CreateFamily (CreateFamilyRequest) returns (CreateFamilyReply);
+
+    rpc UpdateFamily (UpdateFamilyRequest) returns (UpdateFamilyReply);
+
+    // Starts the family's next generation: its runs see none of what earlier generations learned.
+    rpc ResetFamily (ResetFamilyRequest) returns (ResetFamilyReply);
+}
+
+enum RunMode {
+    RUN_MODE_UNSPECIFIED = 0;
+    RUN_MODE_DISCOVERY = 1;
+    RUN_MODE_SCHEDULED = 2;
+}
+
+enum RunStatus {
+    RUN_STATUS_UNSPECIFIED = 0;
+    RUN_STATUS_OPEN = 1;
+    RUN_STATUS_CLOSED = 2;
+    RUN_STATUS_ABANDONED = 3;
+}
+
+enum ExecutorTier {
+    EXECUTOR_TIER_UNSPECIFIED = 0;
+    EXECUTOR_TIER_ORCHESTRATOR = 1;
+    EXECUTOR_TIER_DELEGATE_LARGE = 2;
+    EXECUTOR_TIER_DELEGATE_MEDIUM = 3;
+    EXECUTOR_TIER_DELEGATE_SMALL = 4;
+    EXECUTOR_TIER_CODIFIED = 5;
+}
+
+enum ExecutorOrigin {
+    EXECUTOR_ORIGIN_UNSPECIFIED = 0;
+    EXECUTOR_ORIGIN_SEED = 1;
+    EXECUTOR_ORIGIN_AGENT_DEFINED = 2;
+    EXECUTOR_ORIGIN_DISTILLED = 3;
+}
+
+enum Verdict {
+    VERDICT_UNSPECIFIED = 0;
+    VERDICT_PASS = 1;
+    VERDICT_DEGRADED = 2;
+    VERDICT_FAIL = 3;
+}
+
+enum ProgressPhase {
+    PROGRESS_PHASE_UNSPECIFIED = 0;
+    PROGRESS_PHASE_PREPARING = 1;
+    PROGRESS_PHASE_RUNNING = 2;
+    PROGRESS_PHASE_FINISHING = 3;
+    PROGRESS_PHASE_FINISHED = 4;
+    PROGRESS_PHASE_RETRYING = 5;
+    PROGRESS_PHASE_FAILED = 6;
+}
+
+enum TranscriptRole {
+    TRANSCRIPT_ROLE_UNSPECIFIED = 0;
+    TRANSCRIPT_ROLE_USER = 1;
+    TRANSCRIPT_ROLE_ASSISTANT = 2;
+}
+
+message ArtifactRef {
+    string run_id = 1;
+    // "$input" for the run's own input.
+    string stage_id = 2;
+    string hash = 3;
+}
+
+message ContractRef {
+    string schema_id = 1;
+    int32 version = 2;
+}
+
+message Spend {
+    int64 usd_micros = 1;
+    int64 duration_ms = 2;
+}
+
+message DecisionRecord {
+    string key = 1;
+    string choice = 2;
+    string rationale = 3;
+    double confidence = 4;
+    // Unset for a decision recorded on a stage attempt.
+    int64 recorded_unix_ms = 5;
+}
+
+message VerdictFinding {
+    string path = 1;
+    string message = 2;
+}
+
+message VerifierVerdict {
+    string verifier_id = 1;
+    Verdict verdict = 2;
+    string reason = 3;
+    repeated VerdictFinding findings = 4;
+}
+
+message RunHeader {
+    string run_id = 1;
+    // The bare family name and the generation the run belonged to.
+    string family = 2;
+    int32 generation = 3;
+    map<string, string> facets = 4;
+    RunMode mode = 5;
+    RunStatus status = 6;
+    int64 opened_unix_ms = 7;
+    int64 closed_unix_ms = 8;
+    int64 abandoned_unix_ms = 9;
+    string failure = 10;
+    string trace_id = 11;
+    int32 stage_attempts = 12;
+    // The last real attempt at every stage passed.
+    bool passed = 13;
+    int64 cost_usd_micros = 14;
+    // The upload the run worked on, when its progress still names this run.
+    string source_id = 15;
+    // The uploaded file's name; empty when the run has no source.
+    string name = 16;
+}
+
+message ListRunsRequest {
+    // A bare family name selects every generation; empty selects all families.
+    string family = 1;
+    RunMode mode = 2;
+    RunStatus status = 3;
+    // At most 100; 0 means 25.
+    int32 page_size = 4;
+    // Zero-based.
+    int32 page = 5;
+}
+
+message ListRunsReply {
+    repeated RunHeader runs = 1;
+    int32 total = 2;
+}
+
+message StageAttempt {
+    string stage_id = 1;
+    repeated string depends_on = 2;
+    ContractRef input_contract = 3;
+    ContractRef output_contract = 4;
+    repeated string verifier_ids = 5;
+    string executor_id = 6;
+    int32 executor_version = 7;
+    ExecutorTier tier = 8;
+    bool shadow = 9;
+    repeated ArtifactRef inputs = 10;
+    // Unset when the executor produced nothing.
+    ArtifactRef output = 11;
+    string trace_id = 12;
+    Spend spend = 13;
+    repeated DecisionRecord decisions = 14;
+    repeated VerifierVerdict verdicts = 15;
+    bool passed = 16;
+    bool degraded = 17;
+    int64 recorded_unix_ms = 18;
+}
+
+message SourceProgress {
+    string source_id = 1;
+    ProgressPhase phase = 2;
+    string stage_id = 3;
+    string message = 4;
+    string result_id = 5;
+    int64 cost_usd_micros = 6;
+}
+
+message GetRunRequest {
+    string run_id = 1;
+}
+
+message GetRunReply {
+    RunHeader run = 1;
+    // In ledger order.
+    repeated StageAttempt stages = 2;
+    // The loop owner's decisions; each attempt's own are on it.
+    repeated DecisionRecord decisions = 3;
+    SourceProgress progress = 4;
+    int32 message_count = 5;
+}
+
+message GetTranscriptRequest {
+    string run_id = 1;
+    // Messages from this sequence onwards; sequences start at 0.
+    int32 from_sequence = 2;
+    // At most 100; 0 means 50.
+    int32 take = 3;
+}
+
+message TranscriptToolCall {
+    string id = 1;
+    string name = 2;
+    string input_json = 3;
+}
+
+message TranscriptToolResult {
+    string call_id = 1;
+    string name = 2;
+    string content = 3;
+    bool is_error = 4;
+}
+
+message TranscriptMessage {
+    int32 sequence = 1;
+    TranscriptRole role = 2;
+    string text = 3;
+    repeated TranscriptToolCall tool_calls = 4;
+    repeated TranscriptToolResult tool_results = 5;
+    // Set on the assistant turns a model produced.
+    Spend spend = 6;
+    int64 recorded_unix_ms = 7;
+}
+
+// The system prompt the model ran under from one message onwards. A resumed run can have a second
+// one, because the prompt lists the family's skills and the first attempt may have written some.
+message SystemPrompt {
+    int32 from_sequence = 1;
+    string text = 2;
+    int64 recorded_unix_ms = 3;
+}
+
+message GetTranscriptReply {
+    repeated TranscriptMessage messages = 1;
+    // Messages in the whole transcript.
+    int32 total = 2;
+    // Oldest first, on the reply for from_sequence 0 only. Empty for runs that predate journaling it.
+    repeated SystemPrompt system_prompts = 3;
+}
+
+message GetRunReviewRequest {
+    string run_id = 1;
+}
+
+message StepEffect {
+    // StepEffectKind: ArtifactWritten, SkillPublished, ScriptRan, Failed, …
+    string kind = 1;
+    string summary = 2;
+    // 0 for the call itself; a script's own calls to other skills are one deeper.
+    int32 depth = 3;
+    // A skill as id@version or an artifact as stage/hash; empty when there is none.
+    string subject = 4;
+}
+
+message StepCall {
+    string call_id = 1;
+    string tool = 2;
+    string skill = 3;
+    // Empty when the call loaded the skill instead of running a script.
+    string script = 4;
+    bool is_error = 5;
+    string headline = 6;
+    // Empty for a step recorded from the transcript after the run.
+    repeated StepEffect effects = 7;
+}
+
+message RunStep {
+    // The assistant message that made the calls.
+    int32 sequence = 1;
+    string headline = 2;
+    repeated StepCall calls = 3;
+    // A model's account of the step; empty when the headline says it all.
+    string brief = 4;
+}
+
+enum BriefStatus {
+    BRIEF_STATUS_UNSPECIFIED = 0;
+    BRIEF_STATUS_BRIEFING = 1;
+    BRIEF_STATUS_BRIEFED = 2;
+    BRIEF_STATUS_FAILED = 3;
+}
+
+message BriefFlag {
+    string kind = 1;
+    string detail = 2;
+    // The step it is about; 0 when it is about the whole run.
+    int32 sequence = 3;
+}
+
+message RunBrief {
+    BriefStatus status = 1;
+    int32 attempts = 2;
+    string outcome = 3;
+    string overview = 4;
+    repeated BriefFlag flags = 5;
+    string model_id = 6;
+    // What the briefing cost; never part of the run's cost.
+    int64 cost_usd_micros = 7;
+    // Why the last attempt failed.
+    string error = 8;
+    int64 updated_unix_ms = 9;
+}
+
+message GetRunReviewReply {
+    // Unset until the worker takes the run up, which it does once the run has ended.
+    RunBrief brief = 1;
+    // Oldest first.
+    repeated RunStep steps = 2;
+}
+
+message RebriefRunRequest {
+    string run_id = 1;
+}
+
+message RebriefRunReply {
+}
+
+message GetArtifactRequest {
+    ArtifactRef artifact = 1;
+    // Content bytes to return; 0 means 1 MiB, at most 4 MiB.
+    int32 max_bytes = 2;
+}
+
+message GetArtifactReply {
+    ContractRef contract = 1;
+    int64 size = 2;
+    bytes content = 3;
+    bool truncated = 4;
+}
+
+message GetExecutorRequest {
+    string id = 1;
+    int32 version = 2;
+}
+
+message PlaybookExample {
+    ArtifactRef input = 1;
+    ArtifactRef output = 2;
+}
+
+message ExecutorPlaybook {
+    string id = 1;
+    int32 version = 2;
+    string instructions = 3;
+    repeated PlaybookExample examples = 4;
+    // Learned rules keyed by the decision they settle.
+    map<string, string> rules = 5;
+}
+
+message GetExecutorReply {
+    string id = 1;
+    int32 version = 2;
+    ExecutorTier tier = 3;
+    string model_class = 4;
+    repeated string tools = 5;
+    string code_assembly = 6;
+    ExecutorOrigin origin = 7;
+    bool promoted = 8;
+    ExecutorPlaybook playbook = 9;
+}
+
+message GetSkillRequest {
+    string id = 1;
+    int32 version = 2;
+}
+
+message SkillScriptSource {
+    string name = 1;
+    string description = 2;
+    string code_hash = 3;
+    // The C# source.
+    string source = 4;
+}
+
+message GetSkillReply {
+    string id = 1;
+    int32 version = 2;
+    string description = 3;
+    string instructions = 4;
+    repeated SkillScriptSource scripts = 5;
+}
+
+message FamilyInfo {
+    string display_name = 1;
+    string description = 2;
+    string created_by = 3;
+    int64 created_unix_ms = 4;
+    int64 updated_unix_ms = 5;
+}
+
+message FamilySummary {
+    string family = 1;
+    // Unset for a family only the classifier knows.
+    FamilyInfo info = 2;
+    int32 generation = 3;
+    // The current generation's.
+    RunMode mode = 4;
+    string workflow_id = 5;
+    int32 workflow_version = 6;
+    // Across every generation.
+    int32 runs = 7;
+    int32 open_runs = 8;
+    int64 last_run_unix_ms = 9;
+    // The current generation's.
+    int32 skills = 10;
+    int32 executors = 11;
+    int32 verifiers = 12;
+}
+
+message ListFamiliesRequest {}
+
+message ListFamiliesReply {
+    repeated FamilySummary families = 1;
+}
+
+message GetFamilyRequest {
+    string family = 1;
+    // Unset reads the current generation.
+    optional int32 generation = 2;
+}
+
+message SkillEntry {
+    string id = 1;
+    int32 version = 2;
+    int64 added_unix_ms = 3;
+    // Set once the skill is removed: no run sees it any more, but it stays in the family's history.
+    int64 removed_unix_ms = 4;
+    string removal_reason = 5;
+}
+
+message ExecutorEntry {
+    string id = 1;
+    int32 version = 2;
+    int64 added_unix_ms = 3;
+}
+
+message VerifierEntry {
+    string id = 1;
+    string stage_id = 2;
+    string rubric = 3;
+    int64 added_unix_ms = 4;
+}
+
+message LadderRung {
+    ExecutorTier tier = 1;
+    string executor_id = 2;
+    int32 executor_version = 3;
+}
+
+message StagePolicy {
+    string stage_id = 1;
+    repeated LadderRung ladder = 2;
+    ExecutorTier primary = 3;
+    // Pass-rate posterior: its mean and effective observation count.
+    double confidence_mean = 4;
+    double confidence_observations = 5;
+    optional ExecutorTier shadow = 6;
+    double shadow_mean = 7;
+    double shadow_observations = 8;
+    int64 updated_unix_ms = 9;
+}
+
+message MinedWorkflowSummary {
+    string id = 1;
+    int32 version = 2;
+    int32 stages = 3;
+    int64 mined_unix_ms = 4;
+    bool promoted = 5;
+}
+
+message GenerationRunCounts {
+    int32 generation = 1;
+    int32 runs = 2;
+    int32 open_runs = 3;
+    int64 last_run_unix_ms = 4;
+}
+
+message GetFamilyReply {
+    string family = 1;
+    FamilyInfo info = 2;
+    int32 current_generation = 3;
+    int64 reset_unix_ms = 4;
+    // The generation the rest of the reply describes.
+    int32 generation = 5;
+    RunMode mode = 6;
+    string workflow_id = 7;
+    int32 workflow_version = 8;
+    double confidence_mean = 9;
+    double confidence_observations = 10;
+    repeated SkillEntry skills = 11;
+    repeated ExecutorEntry executors = 12;
+    repeated VerifierEntry verifiers = 13;
+    repeated StagePolicy stage_policies = 14;
+    repeated MinedWorkflowSummary mined_workflows = 15;
+    repeated GenerationRunCounts runs_by_generation = 16;
+}
+
+message CreateFamilyRequest {
+    // Lowercase letters, digits, '-' and '_', starting with a letter; at most 64 characters.
+    string family = 1;
+    string display_name = 2;
+    string description = 3;
+}
+
+message CreateFamilyReply {}
+
+message UpdateFamilyRequest {
+    string family = 1;
+    string display_name = 2;
+    string description = 3;
+}
+
+message UpdateFamilyReply {}
+
+message ResetFamilyRequest {
+    string family = 1;
+}
+
+message ResetFamilyReply {
+    int32 generation = 1;
+}

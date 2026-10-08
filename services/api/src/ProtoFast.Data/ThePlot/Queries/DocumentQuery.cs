@@ -11,6 +11,12 @@ public sealed class DocumentQuery : Query<Document>, IDocumentQuery
         return this;
     }
 
+    public IDocumentQuery WithIds(IReadOnlyCollection<string> ids)
+    {
+        Where(d => ids.Contains(d.Id));
+        return this;
+    }
+
     public IDocumentQuery WithName(string name)
     {
         Where(d => d.Name == name);

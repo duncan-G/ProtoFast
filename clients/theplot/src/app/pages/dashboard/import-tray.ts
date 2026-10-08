@@ -1,20 +1,34 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { ImportJob, LIVE_PHASES } from '../../documents/document-import';
+import { DocumentSummary, ImportProgress } from '../../documents/document-api';
+import { ImportJob, jobStatus } from '../../documents/document-import';
+import { extensionLabel } from '../../documents/format';
+import { describeCost, describeImport, IMPORT_STEPS } from '../../documents/import-progress';
 
 /** One row of the expanded tray, reduced to what it shows. */
 interface TrayRow {
-  job: ImportJob;
+  key: string;
+  /** Null for an import this session did not upload. */
+  job: ImportJob | null;
+  fileName: string;
+  extension: string;
   kind: 'active' | 'done' | 'failed';
   status: string;
-  showProgress: boolean;
+  /** Width of the thin bar, or null for none. */
+  percent: number | null;
   note: string | null;
+  /** What the server's import has spent so far. */
+  cost: string | null;
   action: 'open' | 'retry' | null;
+  /** Only an upload can be stopped; once handed off, the server's import runs on. */
+  cancellable: boolean;
 }
 
 /**
- * The imports tray: a pill pinned bottom-right that sums up every import this session, and
- * opens into a list with one row per job. It floats over every mode, which is what lets a
- * writer keep reading while a file goes up.
+ * The imports tray: a pill pinned bottom-right that sums up every import this session and any
+ * the server is still running from an earlier one, and opens into a list with one row each. It
+ * floats over every mode, which is what lets a writer keep reading while a file goes up and is
+ * read into a story. A row follows the upload,
+ * then the server's import of it, and offers Open only once the story exists.
  */
 @Component({
   selector: 'app-import-tray',
@@ -28,13 +42,13 @@ interface TrayRow {
             <span class="meta">{{ countText() }}</span>
             <button type="button" class="icon-btn" aria-label="Minimise imports" (click)="toggle.emit()">▾</button>
           </div>
-          @for (row of rows(); track row.job.id) {
+          @for (row of rows(); track row.key) {
             <div class="flex items-start gap-3 border-t border-[var(--color-divider)] px-4 py-3">
-              <div class="file-ext file-ext-sm">{{ row.job.extension }}</div>
+              <div class="file-ext file-ext-sm">{{ row.extension }}</div>
               <div class="flex min-w-0 flex-1 flex-col gap-[5px]">
-                <div class="truncate text-[13px] font-medium">{{ row.job.fileName }}</div>
+                <div class="truncate text-[13px] font-medium">{{ row.fileName }}</div>
                 <div
-                  class="meta flex items-center gap-1.5"
+                  class="meta flex items-center gap-1.5 text-[11px]"
                   [class.text-[var(--color-accent-bright)]]="row.kind === 'active'"
                   [class.text-[var(--color-success)]]="row.kind === 'done'"
                   [class.text-[var(--color-danger-300)]]="row.kind === 'failed'"
@@ -46,28 +60,35 @@ interface TrayRow {
                   }
                   <span>{{ row.status }}</span>
                 </div>
-                @if (row.showProgress) {
+                @if (row.cost) {
+                  <div class="meta text-[11px] text-[var(--color-neutral-600)]">{{ row.cost }}</div>
+                }
+                @if (row.percent !== null) {
                   <div class="progress progress-thin">
-                    <div class="progress-bar" [style.width.%]="row.job.progress"></div>
+                    <div class="progress-bar" [style.width.%]="row.percent"></div>
                   </div>
                 }
                 @if (row.note) {
                   <div class="text-[12px] leading-[1.4] text-muted [text-wrap:pretty]">{{ row.note }}</div>
                 }
-                @if (row.action === 'open') {
-                  <div class="mt-0.5">
-                    <button type="button" class="btn btn-secondary px-2.5 py-[5px] text-[12px]" (click)="open.emit(row.job)">Open</button>
-                  </div>
-                } @else if (row.action === 'retry') {
-                  <div class="mt-0.5 flex gap-1.5">
-                    <button type="button" class="btn btn-secondary px-2.5 py-[5px] text-[12px]" (click)="retry.emit(row.job)">Retry</button>
-                  </div>
+                @if (row.job; as job) {
+                  @if (row.action === 'open') {
+                    <div class="mt-0.5">
+                      <button type="button" class="btn btn-secondary px-2.5 py-[5px] text-[12px]" (click)="open.emit(job)">Open</button>
+                    </div>
+                  } @else if (row.action === 'retry') {
+                    <div class="mt-0.5 flex gap-1.5">
+                      <button type="button" class="btn btn-secondary px-2.5 py-[5px] text-[12px]" (click)="retry.emit(job)">Retry</button>
+                    </div>
+                  }
                 }
               </div>
-              @if (row.kind === 'active') {
-                <button type="button" class="icon-btn h-6 w-6 text-[13px]" aria-label="Cancel import" (click)="cancel.emit(row.job)">×</button>
-              } @else {
-                <button type="button" class="icon-btn h-6 w-6 text-[15px]" aria-label="Dismiss" (click)="dismiss.emit(row.job)">×</button>
+              @if (row.job; as job) {
+                @if (row.cancellable) {
+                  <button type="button" class="icon-btn h-6 w-6 text-[13px]" aria-label="Cancel upload" (click)="cancel.emit(job)">×</button>
+                } @else if (row.kind !== 'active') {
+                  <button type="button" class="icon-btn h-6 w-6 text-[15px]" aria-label="Dismiss" (click)="dismiss.emit(job)">×</button>
+                }
               }
             </div>
           }
@@ -99,6 +120,10 @@ interface TrayRow {
 })
 export class ImportTray {
   readonly jobs = input.required<ImportJob[]>();
+  /** Server-side import progress by document id. */
+  readonly progress = input<ReadonlyMap<string, ImportProgress>>(new Map());
+  /** Documents still importing that no job covers, so a reload still shows them. */
+  readonly serverImports = input<DocumentSummary[]>([]);
   readonly expanded = input(false);
 
   readonly toggle = output<void>();
@@ -109,9 +134,15 @@ export class ImportTray {
   /** Drop every finished or failed import at once; live ones stay. */
   readonly clearAll = output<void>();
 
-  protected readonly active = computed(() => this.jobs().filter((j) => LIVE_PHASES.has(j.phase)).length);
-  protected readonly done = computed(() => this.jobs().filter((j) => j.phase === 'done').length);
-  protected readonly failed = computed(() => this.jobs().filter((j) => j.phase === 'failed').length);
+  private readonly statuses = computed(() => [
+    ...this.jobs().map((job) => jobStatus(job, this.progressOf(job))),
+    ...this.serverImports().map(() => 'importing' as const),
+  ]);
+  protected readonly active = computed(
+    () => this.statuses().filter((s) => s === 'uploading' || s === 'importing').length,
+  );
+  protected readonly done = computed(() => this.statuses().filter((s) => s === 'done').length);
+  protected readonly failed = computed(() => this.statuses().filter((s) => s === 'failed').length);
   protected readonly finished = computed(() => this.done() + this.failed());
 
   protected readonly summary = computed(() => {
@@ -137,34 +168,95 @@ export class ImportTray {
       .join(' · '),
   );
 
-  protected readonly rows = computed<TrayRow[]>(() =>
-    this.jobs().map((job) => {
+  protected readonly rows = computed<TrayRow[]>(() => [
+    ...this.jobs().map((job): TrayRow => {
+      const row = {
+        key: `job-${job.id}`,
+        job,
+        fileName: job.fileName,
+        extension: job.extension,
+        percent: null,
+        note: null,
+        cost: null,
+        action: null,
+        cancellable: false,
+      } as const;
       switch (job.phase) {
         case 'presign':
-          return { job, kind: 'active', status: 'Preparing upload…', showProgress: false, note: null, action: null };
+          return { ...row, kind: 'active', status: 'Preparing upload…', cancellable: true };
         case 'uploading':
           return {
-            job,
+            ...row,
             kind: 'active',
             status: `Uploading · ${job.progress}%`,
-            showProgress: true,
+            percent: job.progress,
             note: 'Keep this tab open until the upload finishes.',
-            action: null,
+            cancellable: true,
           };
         case 'saving':
-          return { job, kind: 'active', status: 'Adding to your desk…', showProgress: false, note: null, action: null };
-        case 'done':
-          return { job, kind: 'done', status: 'Ready · on your desk in Write', showProgress: false, note: null, action: 'open' };
+          return { ...row, kind: 'active', status: 'Handing it on to be read…', cancellable: true };
         case 'failed':
           return {
-            job,
+            ...row,
             kind: 'failed',
-            status: 'Import didn’t finish',
-            showProgress: false,
+            status: 'Upload didn’t finish',
             note: job.error,
             action: 'retry',
           };
+        case 'uploaded':
+          return this.importRow(row, this.progressOf(job));
       }
     }),
-  );
+    ...this.serverImports().map((document) =>
+      this.importRow(
+        {
+          key: `document-${document.id}`,
+          job: null,
+          fileName: document.fileName,
+          extension: extensionLabel(document.fileName),
+        },
+        this.progress().get(document.id) ?? document.import,
+      ),
+    ),
+  ]);
+
+  private importRow(
+    { key, job, fileName, extension }: Pick<TrayRow, 'key' | 'job' | 'fileName' | 'extension'>,
+    progress: ImportProgress | undefined,
+  ): TrayRow {
+    const row = {
+      key,
+      job,
+      fileName,
+      extension,
+      percent: null,
+      note: null,
+      cost: progress ? describeCost(progress) : null,
+      action: null,
+      cancellable: false,
+    } as const;
+    if (!progress) {
+      return { ...row, kind: 'active', status: 'Waiting to be read' };
+    }
+    const { label, step } = describeImport(progress);
+    switch (progress.state) {
+      case 'done':
+        return { ...row, kind: 'done', status: 'Ready · in Write', action: 'open' };
+      case 'failed':
+        return { ...row, kind: 'failed', status: label, note: progress.message || null };
+      case 'retrying':
+        return { ...row, kind: 'active', status: label, note: progress.message || null };
+      default:
+        return {
+          ...row,
+          kind: 'active',
+          status: `${label} · ${step} of ${IMPORT_STEPS}`,
+          percent: step === null ? null : (step / IMPORT_STEPS) * 100,
+        };
+    }
+  }
+
+  private progressOf(job: ImportJob): ImportProgress | undefined {
+    return job.document ? (this.progress().get(job.document.id) ?? job.document.import) : undefined;
+  }
 }

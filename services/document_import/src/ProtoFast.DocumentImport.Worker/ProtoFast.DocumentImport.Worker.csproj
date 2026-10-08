@@ -8,11 +8,23 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Aspire.Npgsql" Version="13.5.4" />
         <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.12"/>
     </ItemGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\..\..\api\src\ProtoFast.Data\ProtoFast.Data.csproj" />
         <ProjectReference Include="..\..\..\shared\ServiceDefaults\ServiceDefaults.csproj" />
+        <ProjectReference Include="..\..\..\shared\Storage.Abstractions\Storage.Abstractions.csproj" />
+        <ProjectReference Include="..\..\..\shared\Storage\Storage.csproj" />
+        <ProjectReference Include="..\ProtoFast.DocumentImport.Core\ProtoFast.DocumentImport.Core.csproj" />
+        <ProjectReference Include="..\ProtoFast.DocumentImport.Data\ProtoFast.DocumentImport.Data.csproj" />
+        <ProjectReference Include="..\ProtoFast.DocumentImport.Screenplay\ProtoFast.DocumentImport.Screenplay.csproj" />
+        <ProjectReference Include="..\ProtoFast.DocumentImport.Storage\ProtoFast.DocumentImport.Storage.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="ProtoFast.DocumentImport.UnitTests" />
     </ItemGroup>
 
 </Project>

@@ -148,20 +148,61 @@
         }
 
         @for (row of deskRows(); track row.kind + row.id) {
+          @if (row.import; as imp) {
+            <!-- A document is on the desk only while it is read into a story; its row is the import. -->
+            <div class="desk-row" [class.desk-row-pending]="!imp.failed" [class.desk-row-failed]="imp.failed">
+              <div class="flex min-w-0 items-center gap-3.5">
+                <div class="desk-cover desk-cover-pending" [class.desk-cover-failed]="imp.failed" aria-hidden="true">
+                  @if (imp.failed) {
+                    !
+                  } @else {
+                    <span class="spinner"></span>
+                  }
+                </div>
+                <div class="flex min-w-0 flex-col gap-1">
+                  <span class="font-[family-name:var(--font-heading)] text-[21px] leading-[1.1] text-[var(--color-neutral-300)]">{{ row.title }}</span>
+                  <span class="meta truncate">{{ row.state }}</span>
+                  @if (imp.note) {
+                    <span
+                      class="text-[12px] leading-[1.4] [text-wrap:pretty]"
+                      [class.text-[var(--color-danger-300)]]="imp.failed"
+                      [class.text-muted]="!imp.failed"
+                      >{{ imp.note }}</span
+                    >
+                  }
+                </div>
+              </div>
+              <span class="meta desk-cell-md text-[13px]">—</span>
+              <span class="meta desk-cell-md text-[13px]">—</span>
+              <span class="flex min-w-0 flex-col gap-1.5" role="status">
+                <span
+                  class="meta"
+                  [class.text-[var(--color-accent-bright)]]="!imp.failed"
+                  [class.text-[var(--color-danger-300)]]="imp.failed"
+                  >{{ imp.label }}</span
+                >
+                @if (imp.percent !== null) {
+                  <span class="progress progress-thin block max-w-[220px]">
+                    <span class="progress-bar block" [style.width.%]="imp.percent"></span>
+                  </span>
+                }
+                @if (imp.cost) {
+                  <span class="meta text-[11px] text-[var(--color-neutral-600)]">{{ imp.cost }}</span>
+                }
+              </span>
+              <span class="meta desk-cell-md">{{ imp.failed ? row.updated : 'Importing' }}</span>
+            </div>
+          } @else {
           <div class="desk-row" [class.desk-row-new]="row.isNew" [class.rise]="row.isNew">
             <div class="flex min-w-0 items-center gap-3.5">
               <div class="desk-cover" [style.background]="row.cover" aria-hidden="true"></div>
               <div class="flex min-w-0 flex-col gap-1">
                 <div class="flex flex-wrap items-center gap-2">
-                  @if (row.kind === 'story') {
-                    <a
-                      class="font-[family-name:var(--font-heading)] text-[21px] leading-[1.1] text-[var(--color-text)] no-underline hover:text-[var(--color-accent-bright)]"
-                      [routerLink]="['/app/stories', row.id]"
-                      >{{ row.title }}</a
-                    >
-                  } @else {
-                    <span class="font-[family-name:var(--font-heading)] text-[21px] leading-[1.1]">{{ row.title }}</span>
-                  }
+                  <a
+                    class="font-[family-name:var(--font-heading)] text-[21px] leading-[1.1] text-[var(--color-text)] no-underline hover:text-[var(--color-accent-bright)]"
+                    [routerLink]="['/app/stories', row.id]"
+                    >{{ row.title }}</a
+                  >
                   @if (row.isNew) {
                     <span class="tag tag-imported">Imported</span>
                   }
@@ -176,18 +217,17 @@
             </span>
             <span class="flex items-center justify-between gap-2">
               <span class="meta">{{ row.updated }}</span>
-              @if (row.kind === 'story') {
-                <button
-                  type="button"
-                  class="btn btn-ghost btn-danger px-2 py-1 text-[13px]"
-                  [attr.aria-label]="'Delete “' + row.title + '”'"
-                  (click)="confirmingDeleteId.set(row.id)"
-                >
-                  ×
-                </button>
-              }
+              <button
+                type="button"
+                class="btn btn-ghost btn-danger px-2 py-1 text-[13px]"
+                [attr.aria-label]="'Delete “' + row.title + '”'"
+                (click)="confirmingDeleteId.set(row.id)"
+              >
+                ×
+              </button>
             </span>
           </div>
+          }
           @if (confirmingDeleteId() === row.id) {
             <div class="strip-danger rise flex flex-wrap items-center gap-3 px-[17px] py-3">
               <p class="m-0 min-w-0 flex-[1_1_210px] text-[13px] leading-[1.5]">
@@ -245,14 +285,16 @@
         <span class="truncate text-[13px] font-medium">{{ t.title }}</span>
         <span class="meta truncate text-[11px]">{{ t.sub }}</span>
       </div>
-      <button type="button" class="btn btn-secondary px-2.5 py-1.5 text-[12px]" (click)="openDocument(t.documentId)">Open</button>
+      <button type="button" class="btn btn-secondary px-2.5 py-1.5 text-[12px]" (click)="openStory(t.storyId)">Open</button>
     </div>
   }
 
   <!-- ─────────────────────────── tray ─────────────────────────── -->
-  @if (jobs().length > 0) {
+  @if (jobs().length > 0 || serverImports().length > 0) {
     <app-import-tray
       [jobs]="jobs()"
+      [progress]="importProgress()"
+      [serverImports]="serverImports()"
       [expanded]="trayOpen()"
       (toggle)="toggleTray()"
       (open)="openJob($event)"

@@ -14,6 +14,9 @@ public interface IObjectStore
 
     Task<IReadOnlyList<T>> ReadJsonLinesAsync<T>(string key, CancellationToken ct = default);
 
+    /// <summary>Null when the object does not exist. The caller disposes the stream.</summary>
+    Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default);
+
     Task<ObjectRef> WriteAsync<T>(string key, T value, string idempotencyKey, CancellationToken ct = default);
 
     Task<ObjectRef> WriteTextAsync(
@@ -27,6 +30,10 @@ public interface IObjectStore
     /// storage-level fact rather than a convention.
     /// </summary>
     Task<ObjectRef> WriteFrozenAsync<T>(string key, T value, string idempotencyKey, CancellationToken ct = default);
+
+    /// <inheritdoc cref="WriteFrozenAsync{T}"/>
+    Task<ObjectRef> WriteFrozenBytesAsync(
+        string key, byte[] content, string contentType, string idempotencyKey, CancellationToken ct = default);
 
     Task CopyAsync(string sourceKey, string destinationKey, CancellationToken ct = default);
 

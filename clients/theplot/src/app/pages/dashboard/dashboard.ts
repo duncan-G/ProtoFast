@@ -15,9 +15,20 @@ import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
 import { AuthIdentityService } from '../../auth/auth-identity';
-import { describeError, DocumentApi, DocumentSummary } from '../../documents/document-api';
+import {
+  describeError,
+  DocumentApi,
+  DocumentSummary,
+  ImportProgress,
+} from '../../documents/document-api';
 import { DocumentImportService, ImportJob, LIVE_PHASES } from '../../documents/document-import';
 import { coverStripe, formatBytes, relativeTime, titleFromFileName } from '../../documents/format';
+import {
+  describeCost,
+  describeImport,
+  IMPORT_STEPS,
+  isImportActive,
+} from '../../documents/import-progress';
 import { AccountMenu } from '../../shared/account-menu';
 import { StorySummary } from '../../stories/model/story-summary';
 import { StoryApi } from '../../stories/story-api';
@@ -26,7 +37,7 @@ import { DESK_MODES, DeskMode, MODES, parseMode } from './dashboard.data';
 import { ImportDialog, ImportDraft } from './import-dialog';
 import { ImportTray } from './import-tray';
 
-/** A row on the desk that is still on its way in. */
+/** A row on the desk that is still uploading. */
 interface PendingRow {
   job: ImportJob;
   title: string;
@@ -34,7 +45,23 @@ interface PendingRow {
   status: string;
 }
 
-/** A row on the desk: a story or an imported document, with what the columns show for it. */
+/** How a document's import reads on its row. */
+interface DeskImport {
+  label: string;
+  /** What went wrong, while retrying or once failed. */
+  note: string | null;
+  failed: boolean;
+  active: boolean;
+  /** What the import has spent on model calls, once it has spent anything. */
+  cost: string | null;
+  /** Width of the thin bar under the label, or null for none. */
+  percent: number | null;
+}
+
+/**
+ * A row on the desk: a story, or a document that is being read into one, with what the columns
+ * show for it.
+ */
 interface DeskRow {
   kind: 'story' | 'document';
   id: string;
@@ -44,12 +71,14 @@ interface DeskRow {
   updated: string;
   lastModifiedAt: Date;
   isNew: boolean;
+  /** Set for a document, whose row is its import. */
+  import: DeskImport | null;
 }
 
 interface Toast {
   title: string;
   sub: string;
-  documentId: string;
+  storyId: string;
 }
 
 const TOAST_MS = 7000;
@@ -107,10 +136,11 @@ export class Dashboard {
   private readonly newStoryField = viewChild<ElementRef<HTMLInputElement>>('newStoryField');
   /** The story whose delete confirmation is open under its row. */
   protected readonly confirmingDeleteId = signal<string | null>(null);
-  /** Documents that arrived this session, so their rows carry the Imported tag. */
-  private readonly newDocumentIds = signal<ReadonlySet<string>>(new Set());
+  /** Stories imports produced this session, so their rows carry the Imported tag. */
+  private readonly newStoryIds = signal<ReadonlySet<string>>(new Set());
 
   protected readonly jobs = this.imports.jobs;
+  protected readonly importProgress = this.imports.progress;
   protected readonly formats = this.imports.formats;
   protected readonly formatsError = this.imports.formatsError;
 
@@ -146,7 +176,7 @@ export class Dashboard {
             ? 'Preparing upload…'
             : job.phase === 'uploading'
               ? `Uploading · ${job.progress}%`
-              : 'Adding to your desk…',
+              : 'Handing it on to be read…',
       })),
   );
 
@@ -158,7 +188,8 @@ export class Dashboard {
     const query = this.search().trim().toLowerCase();
     const matches = (...texts: string[]) =>
       query.length === 0 || texts.some((t) => t.toLowerCase().includes(query));
-    const isNew = this.newDocumentIds();
+    const isNew = this.newStoryIds();
+    const progress = this.importProgress();
     const stories = this.stories()
       .filter((story) => matches(story.title))
       .map<DeskRow>((story) => ({
@@ -169,7 +200,8 @@ export class Dashboard {
         state: 'Screenplay',
         updated: relativeTime(story.lastModifiedAt),
         lastModifiedAt: story.lastModifiedAt,
-        isNew: false,
+        isNew: isNew.has(story.id),
+        import: null,
       }));
     const documents = this.documents()
       .filter((d) => matches(d.name, d.fileName))
@@ -178,13 +210,25 @@ export class Dashboard {
         id: document.id,
         title: document.name,
         cover: coverStripe(document.id),
-        state: `Imported from ${document.fileName} · ${formatBytes(document.sizeBytes)}`,
+        state: `${document.fileName} · ${formatBytes(document.sizeBytes)}`,
         updated: relativeTime(document.lastModifiedAt),
         lastModifiedAt: document.lastModifiedAt,
-        isNew: isNew.has(document.id),
+        isNew: false,
+        import: deskImport(progress.get(document.id) ?? document.import),
       }));
+    const importing = (row: DeskRow) => (row.import?.active ? 0 : 1);
     return [...stories, ...documents].sort(
-      (a, b) => b.lastModifiedAt.getTime() - a.lastModifiedAt.getTime(),
+      (a, b) =>
+        importing(a) - importing(b) || b.lastModifiedAt.getTime() - a.lastModifiedAt.getTime(),
+    );
+  });
+
+  /** Imports still running on the server that no upload this session covers, e.g. after a reload. */
+  protected readonly serverImports = computed<DocumentSummary[]>(() => {
+    const progress = this.importProgress();
+    const tracked = new Set(this.jobs().map((job) => job.document?.id));
+    return this.documents().filter(
+      (d) => !tracked.has(d.id) && isImportActive(progress.get(d.id) ?? d.import),
     );
   });
 
@@ -206,9 +250,12 @@ export class Dashboard {
 
     effect(() => this.newStoryField()?.nativeElement.focus());
 
-    this.imports.completed$
+    this.imports.uploaded$
       .pipe(takeUntilDestroyed(destroyRef))
-      .subscribe((job) => this.onImported(job));
+      .subscribe((job) => this.onUploaded(job));
+    this.imports.finished$
+      .pipe(takeUntilDestroyed(destroyRef))
+      .subscribe((progress) => this.onImported(progress));
 
     // Browser-only: the session cookie never reaches the SSR render, so asking there would
     // paint an empty desk and then correct itself on hydration.
@@ -237,6 +284,7 @@ export class Dashboard {
     ]);
     if (documents.status === 'fulfilled') {
       this.documents.set(documents.value);
+      this.imports.track(documents.value.map((d) => d.import));
     }
     if (stories.status === 'fulfilled') {
       this.stories.set(stories.value);
@@ -326,7 +374,7 @@ export class Dashboard {
     this.dialogJobId.set(job.id);
   }
 
-  /** Closes the dialog. A live import moves to the tray, which opens so it is seen to continue. */
+  /** Closes the dialog. A live upload moves to the tray, which opens so it is seen to continue. */
   protected closeImport(): void {
     const job = this.dialogJob();
     this.dialogOpen.set(false);
@@ -387,23 +435,25 @@ export class Dashboard {
     }
   }
 
-  /** Shows the imported document on the desk. */
-  protected openDocument(documentId: string): void {
-    this.setMode('write');
-    this.tab.set(0);
-    this.search.set('');
+  /** Opens the story an import produced. */
+  protected openStory(storyId: string): void {
     this.trayOpen.set(false);
     this.clearToast();
-    this.newDocumentIds.update((ids) => new Set([...ids, documentId]));
+    void this.router.navigate(['/app/stories', storyId]);
   }
 
   protected openJob(job: ImportJob): void {
-    if (job.document) {
-      this.openDocument(job.document.id);
+    const storyId = this.imports.progressOf(job)?.storyId;
+    if (storyId) {
+      this.openStory(storyId);
     }
   }
 
-  private onImported(job: ImportJob): void {
+  /**
+   * The upload is handed off, so the dialog has nothing left to show: it closes, and the tray
+   * opens to follow the import. The document joins the desk as an importing row.
+   */
+  private onUploaded(job: ImportJob): void {
     const document = job.document;
     if (!document) {
       return;
@@ -411,13 +461,29 @@ export class Dashboard {
     this.documents.update((docs) =>
       docs.some((d) => d.id === document.id) ? docs : [document, ...docs],
     );
-    this.newDocumentIds.update((ids) => new Set([...ids, document.id]));
+    if (this.dialogJobId() === job.id) {
+      this.dialogOpen.set(false);
+      this.draft.set(null);
+      this.dialogJobId.set(null);
+    }
+    this.trayOpen.set(true);
+  }
+
+  /** The document became a story: the desk reloads to swap one for the other. */
+  private onImported(progress: ImportProgress): void {
+    const storyId = progress.storyId;
+    if (!storyId) {
+      return;
+    }
+    const document = this.documents().find((d) => d.id === progress.uploadId);
+    this.newStoryIds.update((ids) => new Set([...ids, storyId]));
+    void this.loadDesk();
 
     this.clearToast();
     this.toast.set({
-      title: `“${document.name}” is on your desk`,
-      sub: `Added to Write · ${document.fileName}`,
-      documentId: document.id,
+      title: document ? `“${document.name}” is ready` : 'Your import is ready',
+      sub: document ? `Imported into Write · ${document.fileName}` : 'Imported into Write',
+      storyId,
     });
     this.toastTimer = setTimeout(() => this.toast.set(null), TOAST_MS);
   }
@@ -429,4 +495,17 @@ export class Dashboard {
     }
     this.toast.set(null);
   }
+}
+
+function deskImport(progress: ImportProgress): DeskImport {
+  const { label, step } = describeImport(progress);
+  const noted = progress.state === 'failed' || progress.state === 'retrying';
+  return {
+    label: step === null ? label : `${label} · ${step} of ${IMPORT_STEPS}`,
+    note: noted ? progress.message || null : null,
+    failed: progress.state === 'failed',
+    active: isImportActive(progress),
+    cost: describeCost(progress),
+    percent: step === null ? null : (step / IMPORT_STEPS) * 100,
+  };
 }

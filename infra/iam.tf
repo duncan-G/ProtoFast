@@ -140,6 +140,35 @@ resource "aws_iam_role_policy" "instance_documents" {
   policy = data.aws_iam_policy_document.instance_documents.json
 }
 
+# The document import queues (queues.tf). The api sends to the import queue; the worker drains
+# it and both sends and drains the outcomes queue. ChangeMessageVisibility renews a message's
+# lease during a long import; GetQueueAttributes reads the redrive policy's receive limit.
+# Nothing in the app reads the dead-letter queues, so they get no grant here.
+data "aws_iam_policy_document" "instance_queues" {
+  statement {
+    sid    = "DocumentImportQueues"
+    effect = "Allow"
+    actions = [
+      "sqs:GetQueueUrl",
+      "sqs:GetQueueAttributes",
+      "sqs:SendMessage",
+      "sqs:ReceiveMessage",
+      "sqs:DeleteMessage",
+      "sqs:ChangeMessageVisibility",
+    ]
+    resources = [
+      aws_sqs_queue.document_import.arn,
+      aws_sqs_queue.workflow_outcomes.arn,
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "instance_queues" {
+  name   = "${var.project}-instance-queues"
+  role   = aws_iam_role.instance.id
+  policy = data.aws_iam_policy_document.instance_queues.json
+}
+
 data "aws_iam_policy_document" "instance_secrets" {
   statement {
     sid       = "ReadAppSecret"

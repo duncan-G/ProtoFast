@@ -32,10 +32,11 @@ process, built on a platform layer we own and the agent cannot change.
 | `admin` client removed from the protofast realm; `protofast-web` no longer answers on the admin dev port | `protofast-realm.json` |
 | `TenantConfig.RequiredRoles`: no session without one of them; a session that loses its last one is dropped at the next refresh | [AuthFlow](../../services/auth/src/ProtoFast.Auth.Api/Endpoints/AuthFlow.cs), [SessionResolver](../../services/auth/src/ProtoFast.Auth.Api/Sessions/SessionResolver.cs) |
 | `CallerIdentity.Tenant`, `AdminAccess.Require` / `RequireRow` / `RequirePlatform` | [services/shared/Grpc](../../services/shared/Grpc/AdminAccess.cs) |
-| Admin RPCs: `Admin/Shared` (`AdminOverview`) and `Admin/Theplot` (`TheplotAdmin`) | `services/api/.../Protos/Admin`, `Services/Admin` |
+| Admin RPCs: `Admin/Shared` (`AdminOverview`) and `Admin/Theplot` (`TheplotAdmin`, `TheplotRuns`, `TheplotFamilies`) | `services/api/.../Protos/Admin`, `Services/Admin` |
+| The engine as the console reads it: `IRunInspector`, `IDocumentFamilyDirectory` (+ `engine.document_families`), registered in the api by `AddDurableEngineAdministration()` | `ProtoFast.DocumentImport.Engine/Storage`, `Engine/Families`, `Data/Postgres`; see [admin-run-ledger.md](admin-run-ledger.md) |
 | `clients/admin-kit`: identity, guards, gRPC transport, telemetry, shell, account menu, 403/404 pages, the SSR server and its gate | consumed through a `src/admin-kit` symlink |
 | `clients/admin`: the platform console — the console list, `/app/platform`, `/app/account`, `/forbidden` | |
-| `clients/admin-theplot`: theplot's console at `/theplot/` — overview, stories | |
+| `clients/admin-theplot`: theplot's console at `/theplot/` — overview, stories, runs (stage attempts, artifacts, the agent's conversation), document families (describe, register, reset), executors, skills | |
 | Envoy console routes and CSP | `proxy/envoy.console-routes.yaml.tmpl`, `proxy/envoy.admin-csp.yaml.tmpl` |
 | Its own container in prod (`clients-admin-theplot`), its own dev server in dev | `deploy/docker-compose.host-edge.yml`, `apphost/Program.cs` |
 | Its own pipeline; isolation checks in CI; CODEOWNERS | `.github/workflows/deploy-client-admin-theplot.yml`, `scripts/check-admin-console.py`, `.github/CODEOWNERS` |

@@ -117,4 +117,31 @@ public static class LocalStackResourceBuilderExtensions
             .WithEnvironment($"{envPrefix}S3__AwsRegion", awsRegion)
             .WithEnvironment($"{envPrefix}S3__ObjectLockEnabled", "false");
     }
+
+    /// <summary>
+    /// Points one of a service's named <c>Sqs:{section}</c> option blocks at a LocalStack queue.
+    /// The queue name is set in every mode; the endpoint and region only in dev, for the same
+    /// reason as <see cref="WithLocalStackS3"/>.
+    /// </summary>
+    public static IResourceBuilder<ProjectResource> WithLocalStackSqs(
+        this IResourceBuilder<ProjectResource> project,
+        IResourceBuilder<LocalStackResource> localstack,
+        string envPrefix,
+        string section,
+        string queue)
+    {
+        project.WithEnvironment($"{envPrefix}Sqs__{section}__QueueName", queue);
+        if (project.ApplicationBuilder.ExecutionContext.IsPublishMode)
+        {
+            return project;
+        }
+
+        var awsRegion = project.ApplicationBuilder.Configuration[AwsRegion]
+            ?? throw new InvalidOperationException("AWS region not configured");
+
+        return project
+            .WaitFor(localstack)
+            .WithEnvironment($"{envPrefix}Sqs__{section}__ServiceUrl", LocalStackResource.GatewayUrl)
+            .WithEnvironment($"{envPrefix}Sqs__{section}__AwsRegion", awsRegion);
+    }
 }
