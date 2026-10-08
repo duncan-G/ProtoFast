@@ -107,6 +107,16 @@ data "aws_iam_policy_document" "infra" {
     resources = [local.documents_bucket_arn, "${local.documents_bucket_arn}/*"]
   }
 
+  # The document import queues and their dead-letter queues (infra/queues.tf). Queue names are
+  # not suffixed like the buckets, so the grant is scoped to the project prefix; sqs:* for the
+  # same reason as the buckets, since Terraform reads every queue attribute on refresh.
+  statement {
+    sid       = "Queues"
+    effect    = "Allow"
+    actions   = ["sqs:*"]
+    resources = ["arn:aws:sqs:${var.aws_region}:${local.account_id}:${var.project}-*"]
+  }
+
   # The single application secret (infra/secrets.tf). The infra plane owns only the
   # empty SHELL's lifecycle — create/describe/tag/delete — never its value. Terraform
   # manages no version, and the values are written out-of-band (console /

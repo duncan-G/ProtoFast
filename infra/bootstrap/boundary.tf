@@ -16,6 +16,7 @@ data "aws_iam_policy_document" "boundary" {
       "ecr:*",
       "ecr-public:*",
       "s3:*",
+      "sqs:*",
       "ssm:*",
       "ssmmessages:*",
       "ec2messages:*",
