@@ -14,7 +14,8 @@
      The button stays in the markup, for two cases that both need a real click:
      a browser that refuses a WebAuthn call without user activation (Safari), and
      a browser with no module support at all, where nothing below runs and the
-     button is the whole page — base's behaviour, unregressed.
+     button is the whole page — base's behaviour, unregressed. It also comes back
+     if the auto-started prompt never appears (see STALL_MS).
 
   2. No list of registered authenticators, and no allowCredentials. Base renders
      a list when `shouldDisplayAuthenticators` is set, to pick a credential
@@ -112,41 +113,59 @@
             // been drawn, a dismissal takes as long as a person takes.
             const REFUSAL_MS = 400;
 
-            let running = false;
+            // A passkey manager extension (1Password on an auto-started call) can take
+            // the ceremony and never draw its prompt, leaving a promise that never
+            // settles. After this long the button comes back, so a real click can
+            // start a fresh ceremony, which aborts the stuck one.
+            const STALL_MS = 4000;
 
-            function setWaiting(isWaiting) {
-                const state = isWaiting ? waiting : resting;
-                title.textContent = state.title;
-                body.textContent = state.body;
-                cta.textContent = state.cta;
-                button.disabled = isWaiting;
-                if (isWaiting) {
+            let attempt = 0;
+            let stallTimer;
+
+            function setButtonBusy(isBusy) {
+                cta.textContent = isBusy ? waiting.cta : resting.cta;
+                button.disabled = isBusy;
+                if (isBusy) {
                     button.setAttribute('aria-busy', 'true');
                 } else {
                     button.removeAttribute('aria-busy');
                 }
             }
 
+            function setWaiting(isWaiting) {
+                const state = isWaiting ? waiting : resting;
+                title.textContent = state.title;
+                body.textContent = state.body;
+                setButtonBusy(isWaiting);
+            }
+
             async function authenticate(auto) {
-                if (running) {
-                    return;
-                }
-                running = true;
+                const current = ++attempt;
                 setWaiting(true);
+                clearTimeout(stallTimer);
+                stallTimer = setTimeout(() => setButtonBusy(false), STALL_MS);
 
                 const startedAt = Date.now();
                 try {
                     const result = await doAuthenticate({ ...input, allowCredentials: [] });
+                    if (current !== attempt) {
+                        return;
+                    }
+                    clearTimeout(stallTimer);
                     // Undefined means doAuthenticate already posted the
                     // unsupported-browser error and this page is on its way out.
                     if (result) {
                         returnSuccess(result);
                     }
                 } catch (error) {
+                    // A later click aborted this ceremony to start its own.
+                    if (current !== attempt) {
+                        return;
+                    }
+                    clearTimeout(stallTimer);
                     if (auto && error && error.name === 'NotAllowedError' && Date.now() - startedAt < REFUSAL_MS) {
                         // Nobody was asked anything, so there is nothing to report as
                         // a failure. Hand the page back with its button.
-                        running = false;
                         setWaiting(false);
                         return;
                     }
