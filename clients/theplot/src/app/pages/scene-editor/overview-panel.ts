@@ -57,14 +57,19 @@ import { SceneEditorStore } from './scene-editor-store';
     </section>
 
     <section>
-      <div class="se-kicker se-overview-title">Props in play</div>
-      @for (entry of props(); track entry.name) {
+      <div class="se-kicker se-overview-title">
+        <span>Props in scene</span
+        ><span class="text-[var(--se-muted-2)]"
+          >{{ props().length }} of {{ store.props().length }}</span
+        >
+      </div>
+      @for (entry of props(); track entry.id) {
         <div class="se-stat">
           <span class="se-stat-name se-script font-bold text-[13px]">◆ {{ entry.name }}</span>
-          <span class="se-stat-meta" [class.is-unused]="entry.unused">{{ entry.meta }}</span>
+          <span class="se-stat-meta">{{ entry.meta }}</span>
         </div>
       } @empty {
-        <p class="se-flow-meta m-0">The library has no props.</p>
+        <p class="se-flow-meta m-0">No props are referenced yet.</p>
       }
     </section>
   `,
@@ -125,13 +130,11 @@ export class OverviewPanel {
 
   protected readonly props = computed(() => {
     const mentions = this.store.stats().mentions;
-    return this.store.props().map((prop) => {
-      const count = mentions.get(prop.id) ?? 0;
-      return {
-        name: prop.name,
-        unused: count === 0,
-        meta: count ? plural(count, 'reference') : 'unused',
-      };
-    });
+    return this.store
+      .props()
+      .map((prop) => ({ prop, count: mentions.get(prop.id) ?? 0 }))
+      .filter((p) => p.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .map((p) => ({ id: p.prop.id, name: p.prop.name, meta: plural(p.count, 'reference') }));
   });
 }
