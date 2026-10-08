@@ -190,6 +190,7 @@ variable "ecr_repositories" {
     "protofast-api",
     "protofast-api-migrations",
     "protofast-conversion",
+    "protofast-document-import",
     "protofast-otel-collector",
   ]
 }
