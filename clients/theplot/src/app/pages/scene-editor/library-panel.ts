@@ -1,11 +1,20 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  afterNextRender,
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  ElementRef,
+  inject,
+  Injector,
+  signal,
+} from '@angular/core';
 import { nameProblem, NAME_MAX } from '../../stories/library-names';
 import { Character } from '../../stories/model/character';
 import { Location } from '../../stories/model/location';
 import { Prop } from '../../stories/model/prop';
 import { ReferenceTarget } from '../../stories/model/reference-target';
 import { Avatar } from './avatar';
-import { initials, parseLocationQuery, plural, settingPrefix } from './format';
+import { initials, parseLocationQuery, settingPrefix } from './format';
 import { KindPicker } from './kind-picker';
 import { LibraryTab } from './library-tab';
 import { SceneEditorStore } from './scene-editor-store';
@@ -44,6 +53,8 @@ const TABS: { tab: LibraryTab; label: string; noun: string; hint: string; placeh
 })
 export class LibraryPanel {
   protected readonly store = inject(SceneEditorStore);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
 
   protected readonly tabs = TABS;
   protected readonly info = computed(() => TABS.find((t) => t.tab === this.store.libraryTab())!);
@@ -97,26 +108,6 @@ export class LibraryPanel {
     return settingPrefix(location.setting).slice(0, 3);
   }
 
-  protected characterMeta(character: Character): string {
-    const stats = this.store.stats();
-    return `${plural(stats.lines.get(character.id) ?? 0, 'line')} · ${plural(stats.mentions.get(character.id) ?? 0, 'mention')}`;
-  }
-
-  protected locationMeta(location: Location): string {
-    const stats = this.store.stats();
-    const headings = stats.headings.get(location.id) ?? 0;
-    const mentions = stats.mentions.get(location.id) ?? 0;
-    const parts = [
-      headings ? `in scene ×${headings}` : '',
-      mentions ? plural(mentions, 'mention') : '',
-    ];
-    return parts.filter(Boolean).join(' · ') || 'not in scene';
-  }
-
-  protected propMeta(prop: Prop): string {
-    return plural(this.store.stats().mentions.get(prop.id) ?? 0, 'reference');
-  }
-
   // ─── adding ────────────────────────────────────────────────────────────
 
   protected async add(): Promise<void> {
@@ -125,7 +116,7 @@ export class LibraryPanel {
       return;
     }
     const tab = this.store.libraryTab();
-    let result: unknown;
+    let result: { id: string } | string;
     if (tab === 'characters') {
       result = await this.store.addCharacter(draft);
     } else if (tab === 'locations') {
@@ -140,6 +131,14 @@ export class LibraryPanel {
     }
     this.draft.set('');
     this.addError.set('');
+    const { id } = result;
+    afterNextRender(
+      () =>
+        this.host.nativeElement
+          .querySelector(`[data-entry-id="${id}"]`)
+          ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }),
+      { injector: this.injector },
+    );
   }
 
   // ─── renaming ──────────────────────────────────────────────────────────
