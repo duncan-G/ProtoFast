@@ -17,6 +17,7 @@ public sealed class SkillRuntime
     private const int MaxDepth = 4;
     private const int MaxSummaryText = 200;
 
+    private readonly IReadOnlyList<IScriptSafetyReviewer> _reviewers;
     private readonly EngineOptions _options;
     private readonly CancellationToken _ct;
     private readonly Lock _spendLock = new();
@@ -28,10 +29,13 @@ public sealed class SkillRuntime
     private decimal _spentAmount;
     private TimeSpan _spentDuration;
 
-    internal SkillRuntime(IAgentTools tools, ScriptCompiler compiler, EngineOptions options, CancellationToken ct)
+    internal SkillRuntime(
+        IAgentTools tools, ScriptCompiler compiler, IReadOnlyList<IScriptSafetyReviewer> reviewers, EngineOptions options,
+        CancellationToken ct)
     {
         Tools = tools;
         Compiler = compiler;
+        _reviewers = reviewers;
         _options = options;
         _ct = ct;
     }
@@ -192,6 +196,31 @@ public sealed class SkillRuntime
     {
         await Tools.RemoveSkill(id, reason);
         _skills = null;
+    }
+
+    /// <summary>Throws the refusal the agent reads; a reviewer that faults refuses too.</summary>
+    internal async Task EnsureSafeAsync(ScriptSafetyReview review)
+    {
+        foreach (var reviewer in _reviewers)
+        {
+            ScriptSafetyVerdict verdict;
+            try
+            {
+                verdict = await reviewer.ReviewAsync(review, _ct);
+            }
+            catch (Exception e) when (e is not OperationCanceledException || !_ct.IsCancellationRequested)
+            {
+                throw new ArgumentException($"Script '{review.Script}' was refused: it could not be checked. Try again later.");
+            }
+
+            Spend(verdict.Cost);
+            if (!verdict.Safe)
+            {
+                // No parameter name: it would trail the findings the agent reads.
+                throw new ArgumentException(string.Join('\n', verdict.Findings.Select(f => $"- {f.Path}: {f.Message}")
+                    .Prepend($"Script '{review.Script}' was refused: {verdict.Reason}")));
+            }
+        }
     }
 
     /// <summary>Notes a stage's latest outcome; a resumed loop replays the run's records through it.</summary>

@@ -307,4 +307,58 @@ public class SkillRuntimeTests
         Assert.Contains("'System.Environment' is not available to scripts.", result.Content);
         Assert.DoesNotContain("`leak`", (await runtime.LoadAsync("line-count")).Content);
     }
+
+    [Fact]
+    public async Task Code_the_safety_review_refuses_is_never_stored()
+    {
+        var (_, _, runtime) = await OpenRunAsync();
+        await CreateLineCountAsync(runtime);
+
+        var result = await runtime.RunAsync(BuiltInSkills.CreateCode, "create", Args(new
+        {
+            skill = "line-count", script = "tally", description = "counts", source = CountLines.Replace("return", "// exfiltrate\n        return"),
+        }));
+
+        Assert.True(result.IsError);
+        Assert.Equal("Script 'tally' was refused: It copies data out of the run.\n- line 5: exfiltrates", result.Content);
+        var review = Assert.Single(_h.ScriptReviewer.Reviews);
+        Assert.Equal(("line-count", "tally", "counts"), (review.Skill, review.Script, review.Description));
+        Assert.DoesNotContain("`tally`", (await runtime.LoadAsync("line-count")).Content);
+        Assert.Equal(0.02m, runtime.DrainSpend()?.Amount);
+    }
+
+    [Fact]
+    public async Task Code_is_refused_when_the_safety_review_faults()
+    {
+        var (_, _, runtime) = await OpenRunAsync();
+        await CreateLineCountAsync(runtime);
+
+        var result = await runtime.RunAsync(BuiltInSkills.CreateCode, "create", Args(new
+        {
+            skill = "line-count", script = "tally", description = "counts", source = CountLines.Replace("return", "// unreviewable\n        return"),
+        }));
+
+        Assert.True(result.IsError);
+        Assert.Equal("Script 'tally' was refused: it could not be checked. Try again later.", result.Content);
+        Assert.DoesNotContain("`tally`", (await runtime.LoadAsync("line-count")).Content);
+    }
+
+    [Fact]
+    public async Task Code_that_does_not_compile_is_not_reviewed_and_the_agent_is_never_told_of_the_review()
+    {
+        var (_, _, runtime) = await OpenRunAsync();
+        await CreateLineCountAsync(runtime);
+
+        var result = await runtime.RunAsync(BuiltInSkills.CreateCode, "create", Args(new
+        {
+            skill = "line-count", script = "count", description = "counts", source = "not C#",
+        }));
+
+        Assert.True(result.IsError);
+        Assert.Empty(_h.ScriptReviewer.Reviews);
+        foreach (var skill in (await runtime.ListAsync()).Select(s => s.Id))
+        {
+            Assert.DoesNotContain("safety", (await runtime.LoadAsync(skill)).Content, StringComparison.OrdinalIgnoreCase);
+        }
+    }
 }

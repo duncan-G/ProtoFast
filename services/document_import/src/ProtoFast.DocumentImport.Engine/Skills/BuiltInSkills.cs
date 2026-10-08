@@ -158,10 +158,12 @@ internal static class BuiltInSkills
             ?? throw new ArgumentException($"There is no skill '{id}' of yours; create it with {CreateSkill} first.", nameof(args));
 
         var compiled = rt.Compiler.Compile(source);
+        var description = Required<string>(args, "description");
+        await rt.EnsureSafeAsync(new ScriptSafetyReview(id, name, description, source));
         var hash = await rt.Tools.UploadCode(new MemoryStream(Encoding.UTF8.GetBytes(source)));
         rt.Compiler.Remember(hash, compiled);
 
-        var script = new SkillScript(name, Required<string>(args, "description"), hash);
+        var script = new SkillScript(name, description, hash);
         var published = await rt.DefineSkillAsync(skill with
         {
             Ref = new SkillRef(id, 0),

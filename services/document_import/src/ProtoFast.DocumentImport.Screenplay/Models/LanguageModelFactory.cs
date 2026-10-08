@@ -12,6 +12,9 @@ public sealed class LanguageModelFactory(
 
     public ILanguageModel For(string modelClass) => _models.GetOrAdd(modelClass, Create);
 
+    public ILanguageModel For(string modelClass, string provider) =>
+        _models.GetOrAdd($"{provider.ToLowerInvariant()}/{modelClass}", _ => Create(provider, modelClass));
+
     private ILanguageModel Create(string modelClass)
     {
         var primary = Create(options.Default, modelClass);

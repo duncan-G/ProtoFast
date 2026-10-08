@@ -8,6 +8,7 @@ using ProtoFast.DocumentImport.Engine.InMemory;
 using ProtoFast.DocumentImport.Engine.Learning;
 using ProtoFast.DocumentImport.Engine.Policy;
 using ProtoFast.DocumentImport.Engine.Scheduling;
+using ProtoFast.DocumentImport.Engine.Skills;
 using ProtoFast.DocumentImport.Engine.Storage;
 using ProtoFast.DocumentImport.Engine.Verification;
 using ProtoFast.DocumentImport.Engine.Workflows;
@@ -38,6 +39,7 @@ internal sealed class EngineHarness
         services.AddSingleton<IVerifier>(sp => new ContentVerifier("no-bad", deterministic: true, sp.GetRequiredService<IArtifactStore>()));
         services.AddSingleton<IVerifier>(sp => new ContentVerifier("judge", deterministic: false, sp.GetRequiredService<IArtifactStore>()));
         services.AddSingleton<ISkillVerifier, ContentSkillVerifier>();
+        services.AddSingleton<IScriptSafetyReviewer>(ScriptReviewer);
         services.AddAgentWorkflowEngine(o =>
         {
             o.Thresholds = new Thresholds(MinObservations: 3, MineAfterRuns: 3, ShadowSampleRate: shadowRate);
@@ -55,6 +57,7 @@ internal sealed class EngineHarness
     public ScriptedExecutorFactory Executors { get; } = new();
     public FixedSampler Sampler { get; } = new();
     public RecordingDistiller Distiller { get; } = new();
+    public ContentScriptSafetyReviewer ScriptReviewer { get; } = new();
     public ServiceProvider Services { get; }
 
     public T Get<T>() where T : notnull => Services.GetRequiredService<T>();

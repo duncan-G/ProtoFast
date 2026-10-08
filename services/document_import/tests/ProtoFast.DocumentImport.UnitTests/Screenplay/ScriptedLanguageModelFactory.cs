@@ -35,6 +35,9 @@ internal sealed class ScriptedLanguageModelFactory : ILanguageModelFactory
 
     public ILanguageModel For(string modelClass) => new ScriptedModel(modelClass, this);
 
+    /// <summary>Scripted by <c>{provider}/{modelClass}</c>.</summary>
+    public ILanguageModel For(string modelClass, string provider) => new ScriptedModel($"{provider}/{modelClass}", this);
+
     private static T Next<T>(ConcurrentDictionary<string, ConcurrentQueue<T>> scripts, string modelClass)
     {
         var queue = scripts.GetValueOrDefault(modelClass)
