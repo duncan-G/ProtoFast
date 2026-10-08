@@ -15,6 +15,10 @@ service Documents {
     // never completed as a document, are left out.
     rpc GetImportProgress (GetImportProgressRequest) returns (GetImportProgressReply);
 
+    // Stops the upload's import, if it is still running, and takes its document off the desk.
+    // Repeating it is a no-op; an import that already became a story is FAILED_PRECONDITION.
+    rpc CancelImport (CancelImportRequest) returns (CancelImportReply);
+
 }
 
 message Document {
@@ -48,6 +52,8 @@ enum ImportState {
     IMPORT_STATE_FAILED = 6;
     // The document is now a story; see ImportProgress.story_id.
     IMPORT_STATE_DONE = 7;
+    // Its owner cancelled it; the document has left the desk.
+    IMPORT_STATE_CANCELLED = 8;
 }
 
 message ImportProgress {
@@ -70,6 +76,14 @@ message GetImportProgressRequest {
 
 message GetImportProgressReply {
     repeated ImportProgress imports = 1;
+}
+
+message CancelImportRequest {
+    string upload_id = 1;
+}
+
+message CancelImportReply {
+    ImportProgress import = 1;
 }
 
 message ListDocumentsRequest {}

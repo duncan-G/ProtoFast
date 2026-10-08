@@ -22,6 +22,7 @@ internal static class ImportProgressMessages
                 RunPhase.Finished => documentExists ? ImportState.Saving : ImportState.Done,
                 RunPhase.Retrying => ImportState.Retrying,
                 RunPhase.Failed => ImportState.Failed,
+                RunPhase.Cancelled => ImportState.Cancelled,
                 _ => ImportState.Unspecified,
             },
             Stage = progress is { Phase: RunPhase.Running or RunPhase.Finishing, StageId: { } stage } ? stage : "",

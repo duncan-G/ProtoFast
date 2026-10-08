@@ -146,6 +146,36 @@ public class PostgresRunLedgerTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task A_cancel_holds_against_later_reports_until_a_finish()
+    {
+        var source = DocumentImportIds.New();
+        var runId = DocumentImportIds.New();
+        await Ledger.ReportAsync(source, new RunProgress(RunPhase.Running, runId, "scenes"), Ct);
+        await Ledger.ReportAsync(source, new RunProgress(RunPhase.Cancelled), Ct);
+
+        await Ledger.ReportAsync(source, new RunProgress(RunPhase.Retrying, Message: "again"), Ct);
+        await Ledger.ReportAsync(source, new RunProgress(RunPhase.Running, DocumentImportIds.New()), Ct);
+        Assert.Equal(new RunProgress(RunPhase.Cancelled, runId), (await Ledger.ProgressAsync([source], Ct))[source]);
+
+        await Ledger.ReportAsync(source, new RunProgress(RunPhase.Finished, runId, ResultId: "story"), Ct);
+        await Ledger.ReportAsync(source, new RunProgress(RunPhase.Cancelled), Ct);
+        await Ledger.ReportAsync(source, new RunProgress(RunPhase.Retrying, Message: "again"), Ct);
+        Assert.Equal(
+            new RunProgress(RunPhase.Finished, runId, ResultId: "story"), (await Ledger.ProgressAsync([source], Ct))[source]);
+    }
+
+    [Fact]
+    public async Task A_cancel_can_be_the_first_report()
+    {
+        var source = DocumentImportIds.New();
+
+        await Ledger.ReportAsync(source, new RunProgress(RunPhase.Cancelled), Ct);
+        await Ledger.ReportAsync(source, new RunProgress(RunPhase.Preparing), Ct);
+
+        Assert.Equal(new RunProgress(RunPhase.Cancelled), (await Ledger.ProgressAsync([source], Ct))[source]);
+    }
+
+    [Fact]
     public async Task An_open_run_is_found_until_it_is_closed_or_abandoned_and_only_a_closed_one_as_finished()
     {
         var (closed, abandoned) = (DocumentImportIds.New(), DocumentImportIds.New());

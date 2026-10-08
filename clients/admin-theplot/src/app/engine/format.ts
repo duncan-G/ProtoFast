@@ -172,6 +172,7 @@ export const PHASE_LABEL: Record<ProgressPhase, string> = {
   [ProgressPhase.FINISHED]: 'Finished',
   [ProgressPhase.RETRYING]: 'Retrying',
   [ProgressPhase.FAILED]: 'Failed',
+  [ProgressPhase.CANCELLED]: 'Cancelled',
 };
 
 export const NEUTRAL_BADGE = `${BADGE} bg-gray-100 text-gray-700`;

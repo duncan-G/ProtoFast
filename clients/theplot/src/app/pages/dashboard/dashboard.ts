@@ -205,6 +205,7 @@ export class Dashboard {
       }));
     const documents = this.documents()
       .filter((d) => matches(d.name, d.fileName))
+      .filter((d) => (progress.get(d.id) ?? d.import).state !== 'cancelled')
       .map<DeskRow>((document) => ({
         kind: 'document',
         id: document.id,
@@ -232,7 +233,9 @@ export class Dashboard {
     );
   });
 
-  protected readonly emptyState = computed(() => this.info().empty[this.tab()] ?? this.info().empty[0]);
+  protected readonly emptyState = computed(
+    () => this.info().empty[this.tab()] ?? this.info().empty[0],
+  );
 
   /** True when the desk has entries but the search matched none of them. */
   protected readonly searchMissed = computed(
@@ -341,6 +344,19 @@ export class Dashboard {
       this.stories.update((stories) => stories.filter((s) => s.id !== storyId));
     } catch (err) {
       this.deskError.set(describeError(err, 'The story could not be deleted.'));
+    }
+  }
+
+  /** A running import is stopped, a failed one cleared; either way the document leaves the desk. */
+  protected async cancelDocumentImport(uploadId: string): Promise<void> {
+    this.confirmingDeleteId.set(null);
+    try {
+      await this.imports.cancelImport(uploadId);
+      this.documents.update((documents) => documents.filter((d) => d.id !== uploadId));
+    } catch (err) {
+      // Refused most likely because it just became a story, which the reload shows.
+      await this.loadDesk();
+      this.deskError.set(describeError(err, 'The import could not be cancelled.'));
     }
   }
 

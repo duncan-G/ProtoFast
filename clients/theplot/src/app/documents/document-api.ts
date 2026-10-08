@@ -30,7 +30,8 @@ export interface AcceptedFormats {
 
 /**
  * Where the import the server runs on an upload stands, as the document import engine's run
- * ledger records it. `done` means the document has become a story and left the desk.
+ * ledger records it. `done` means the document has become a story and left the desk;
+ * `cancelled` that its owner stopped it and the document left the desk without one.
  */
 export type ImportState =
   | 'queued'
@@ -39,7 +40,8 @@ export type ImportState =
   | 'saving'
   | 'retrying'
   | 'failed'
-  | 'done';
+  | 'done'
+  | 'cancelled';
 
 export interface ImportProgress {
   uploadId: string;
@@ -144,6 +146,15 @@ export class DocumentApi {
     const reply = await this.documents.getImportProgress({ uploadIds });
     return reply.imports.map(toProgress);
   }
+
+  /** Stops the import and takes its document off the desk; FailedPrecondition once it is a story. */
+  async cancelImport(uploadId: string): Promise<ImportProgress> {
+    const reply = await this.documents.cancelImport({ uploadId });
+    if (!reply.import) {
+      throw new Error('The import was cancelled but the API returned no progress.');
+    }
+    return toProgress(reply.import);
+  }
 }
 
 const IMPORT_STATES: Record<ImportStateMessage, ImportState> = {
@@ -155,6 +166,7 @@ const IMPORT_STATES: Record<ImportStateMessage, ImportState> = {
   [ImportStateMessage.RETRYING]: 'retrying',
   [ImportStateMessage.FAILED]: 'failed',
   [ImportStateMessage.DONE]: 'done',
+  [ImportStateMessage.CANCELLED]: 'cancelled',
 };
 
 function toProgress(message: ImportProgressMessage): ImportProgress {

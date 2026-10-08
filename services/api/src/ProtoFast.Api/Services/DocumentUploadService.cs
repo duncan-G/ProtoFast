@@ -3,6 +3,7 @@ using ProtoFast.Data.ThePlot.Queries;
 using ProtoFast.Data.ThePlot.Repositories;
 using ProtoFast.Database.Abstractions;
 using ProtoFast.DocumentImport.Core;
+using ProtoFast.DocumentImport.Engine.Storage;
 using ProtoFast.DocumentImport.Storage;
 using ProtoFast.Grpc;
 using ProtoFast.Grpc.RateLimiting;
@@ -20,6 +21,7 @@ public class DocumentUploadService(
     IQueryFactory<DocumentUploadRecord, IDocumentUploadQuery> documentUploadQueries,
     IDocumentRepository documentRepository,
     [FromKeyedServices(DocumentImportQueues.ImportQueueKey)] IMessageQueue importQueue,
+    IRunLedger ledger,
     ILogger<DocumentUploadService> logger) : DocumentUpload.DocumentUploadBase
 {
     // Each minted URL is a standing permission to write into the bucket, so the budget per caller
@@ -135,6 +137,13 @@ public class DocumentUploadService(
         {
             // Progress is left for the client to poll; the document itself is what this call confirms.
             return new CompleteDocumentUploadReply { Document = DocumentService.ToMessage(existing, progress: null) };
+        }
+
+        // A cancel removes the document, so without this a late completion would bring it back.
+        var progress = await ledger.ProgressAsync([upload.UploadId], context.CancellationToken);
+        if (progress.GetValueOrDefault(upload.UploadId)?.Phase == RunPhase.Cancelled)
+        {
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, "This import was cancelled."));
         }
 
         var storageKey = ArtifactKeys.UploadSource(caller.Subject, upload.UploadId, upload.FileExtension);

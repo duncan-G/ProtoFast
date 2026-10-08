@@ -98,4 +98,22 @@ describe('ImportTray', () => {
     expect(text()).toContain('DOCX');
     expect(text()).toContain('Reading the file · 1 of 6');
   });
+
+  it('cancels a running import by its upload id, but not one that has stopped', async () => {
+    const cancelled: string[] = [];
+    fixture.componentInstance.cancelImport.subscribe((id) => cancelled.push(id));
+    const cancelButton = () =>
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+        'button[aria-label="Cancel import"]',
+      );
+
+    withProgress(progress({ state: 'retrying', message: 'Something went wrong.' }));
+    await fixture.whenStable();
+    cancelButton()!.click();
+    expect(cancelled).toEqual([DOCUMENT_ID]);
+
+    withProgress(progress({ state: 'failed' }));
+    await fixture.whenStable();
+    expect(cancelButton()).toBeNull();
+  });
 });

@@ -19,8 +19,10 @@ interface TrayRow {
   /** What the server's import has spent so far. */
   cost: string | null;
   action: 'open' | 'retry' | null;
-  /** Only an upload can be stopped; once handed off, the server's import runs on. */
+  /** The upload is still going up and can be stopped here. */
   cancellable: boolean;
+  /** The server's import that × cancels, while it runs. */
+  importId: string | null;
 }
 
 /**
@@ -28,7 +30,8 @@ interface TrayRow {
  * the server is still running from an earlier one, and opens into a list with one row each. It
  * floats over every mode, which is what lets a writer keep reading while a file goes up and is
  * read into a story. A row follows the upload,
- * then the server's import of it, and offers Open only once the story exists.
+ * then the server's import of it, and offers Open only once the story exists. Either can be
+ * cancelled while it runs.
  */
 @Component({
   selector: 'app-import-tray',
@@ -83,7 +86,9 @@ interface TrayRow {
                   }
                 }
               </div>
-              @if (row.job; as job) {
+              @if (row.importId; as importId) {
+                <button type="button" class="icon-btn h-6 w-6 text-[13px]" aria-label="Cancel import" (click)="cancelImport.emit(importId)">×</button>
+              } @else if (row.job; as job) {
                 @if (row.cancellable) {
                   <button type="button" class="icon-btn h-6 w-6 text-[13px]" aria-label="Cancel upload" (click)="cancel.emit(job)">×</button>
                 } @else if (row.kind !== 'active') {
@@ -130,6 +135,8 @@ export class ImportTray {
   readonly open = output<ImportJob>();
   readonly retry = output<ImportJob>();
   readonly cancel = output<ImportJob>();
+  /** Stop the server's import of this upload id. */
+  readonly cancelImport = output<string>();
   readonly dismiss = output<ImportJob>();
   /** Drop every finished or failed import at once; live ones stay. */
   readonly clearAll = output<void>();
@@ -180,6 +187,7 @@ export class ImportTray {
         cost: null,
         action: null,
         cancellable: false,
+        importId: null,
       } as const;
       switch (job.phase) {
         case 'presign':
@@ -234,6 +242,7 @@ export class ImportTray {
       cost: progress ? describeCost(progress) : null,
       action: null,
       cancellable: false,
+      importId: null,
     } as const;
     if (!progress) {
       return { ...row, kind: 'active', status: 'Waiting to be read' };
@@ -244,12 +253,21 @@ export class ImportTray {
         return { ...row, kind: 'done', status: 'Ready · in Write', action: 'open' };
       case 'failed':
         return { ...row, kind: 'failed', status: label, note: progress.message || null };
+      case 'cancelled':
+        return { ...row, kind: 'failed', status: label };
       case 'retrying':
-        return { ...row, kind: 'active', status: label, note: progress.message || null };
+        return {
+          ...row,
+          kind: 'active',
+          status: label,
+          note: progress.message || null,
+          importId: progress.uploadId,
+        };
       default:
         return {
           ...row,
           kind: 'active',
+          importId: progress.uploadId,
           status: `${label} · ${step} of ${IMPORT_STEPS}`,
           percent: step === null ? null : (step / IMPORT_STEPS) * 100,
         };

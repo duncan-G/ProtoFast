@@ -45,9 +45,10 @@ describe('describeImport', () => {
     );
   });
 
-  it('counts only done and failed as finished', () => {
+  it('counts only done, failed and cancelled as finished', () => {
     expect(isImportActive(progress({ state: 'retrying' }))).toBe(true);
     expect(isImportActive(progress({ state: 'failed' }))).toBe(false);
     expect(isImportActive(progress({ state: 'done' }))).toBe(false);
+    expect(isImportActive(progress({ state: 'cancelled' }))).toBe(false);
   });
 });

@@ -232,6 +232,16 @@ export class DocumentImportService {
     this.jobsState.update((jobs) => jobs.filter((job) => job.id !== id));
   }
 
+  /**
+   * Stops the server's import of an upload; the jobs that made it leave the tray. Rejects when
+   * the API refuses, e.g. once the import has become a story.
+   */
+  async cancelImport(uploadId: string): Promise<void> {
+    const cancelled = await this.api.cancelImport(uploadId);
+    this.progressState.update((known) => new Map(known).set(uploadId, cancelled));
+    this.dropCancelled();
+  }
+
   /** Removes a finished or failed import from the tray. */
   dismiss(id: number): void {
     const job = this.find(id);
@@ -405,6 +415,7 @@ export class DocumentImportService {
         }
         return next;
       });
+      this.dropCancelled();
       for (const p of finished) {
         this.finished$.next(p);
       }
@@ -414,6 +425,13 @@ export class DocumentImportService {
       this.pollTimer = null;
       this.schedulePoll();
     }
+  }
+
+  /** Cancelled here or in another tab, an import is no longer the tray's to show. */
+  private dropCancelled(): void {
+    this.jobsState.update((jobs) =>
+      jobs.filter((job) => this.progressOf(job)?.state !== 'cancelled'),
+    );
   }
 
   private patch(id: number, changes: Partial<ImportJob>): void {

@@ -57,6 +57,42 @@ public class DocumentProgressTests(StoryDatabase database)
         Assert.Equal((ImportState.Failed, "unreadable"), (document.Import.State, document.Import.Message));
     }
 
+    [Fact]
+    public async Task Cancelling_takes_the_document_off_the_desk_and_holds_against_the_worker()
+    {
+        var running = await UploadAsync(_owner, onDesk: true);
+        await Ledger.ReportAsync(running, new RunProgress(RunPhase.Running, "run", "scenes", Cost: 0.25m), default);
+
+        var reply = await CallAsync(_owner, (s, c) => s.CancelImport(new CancelImportRequest { UploadId = running }, c));
+        await Ledger.ReportAsync(running, new RunProgress(RunPhase.Retrying, Message: "again"), default);
+        var again = await CallAsync(_owner, (s, c) => s.CancelImport(new CancelImportRequest { UploadId = running }, c));
+
+        Assert.Equal((ImportState.Cancelled, 250_000), (reply.Import.State, reply.Import.CostUsdMicros));
+        Assert.Equal(ImportState.Cancelled, again.Import.State);
+        Assert.Empty((await CallAsync(_owner, (s, c) => s.ListDocuments(new ListDocumentsRequest(), c))).Documents);
+        var progress = await CallAsync(_owner, (s, c) => s.GetImportProgress(
+            new GetImportProgressRequest { UploadIds = { running } }, c));
+        Assert.Equal(ImportState.Cancelled, Assert.Single(progress.Imports).State);
+    }
+
+    [Fact]
+    public async Task Only_the_owner_can_cancel_and_only_before_the_story_is_saved()
+    {
+        var theirs = await UploadAsync(_stranger, onDesk: true);
+        var done = await UploadAsync(_owner, onDesk: false);
+        await Ledger.ReportAsync(done, new RunProgress(RunPhase.Finished, "run", ResultId: Guid.NewGuid().ToString()), default);
+
+        var notFound = await Assert.ThrowsAsync<RpcException>(() =>
+            CallAsync(_owner, (s, c) => s.CancelImport(new CancelImportRequest { UploadId = theirs }, c)));
+        var finished = await Assert.ThrowsAsync<RpcException>(() =>
+            CallAsync(_owner, (s, c) => s.CancelImport(new CancelImportRequest { UploadId = done }, c)));
+
+        Assert.Equal(StatusCode.NotFound, notFound.StatusCode);
+        Assert.Equal(StatusCode.FailedPrecondition, finished.StatusCode);
+        Assert.Equal(RunPhase.Finished, (await Ledger.ProgressAsync([done], default))[done].Phase);
+        Assert.Single((await CallAsync(_stranger, (s, c) => s.ListDocuments(new ListDocumentsRequest(), c))).Documents);
+    }
+
     private async Task<string> UploadAsync(string userId, bool onDesk)
     {
         var id = DocumentImportIds.New();

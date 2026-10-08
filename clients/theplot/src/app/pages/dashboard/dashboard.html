@@ -190,7 +190,17 @@
                   <span class="meta text-[11px] text-[var(--color-neutral-600)]">{{ imp.cost }}</span>
                 }
               </span>
-              <span class="meta desk-cell-md">{{ imp.failed ? row.updated : 'Importing' }}</span>
+              <span class="flex items-center justify-between gap-2">
+                <span class="meta desk-cell-md">{{ imp.failed ? row.updated : 'Importing' }}</span>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-danger px-2 py-1 text-[13px]"
+                  [attr.aria-label]="(imp.active ? 'Cancel importing “' : 'Remove “') + row.title + '”'"
+                  (click)="confirmingDeleteId.set(row.id)"
+                >
+                  ×
+                </button>
+              </span>
             </div>
           } @else {
           <div class="desk-row" [class.desk-row-new]="row.isNew" [class.rise]="row.isNew">
@@ -230,15 +240,33 @@
           }
           @if (confirmingDeleteId() === row.id) {
             <div class="strip-danger rise flex flex-wrap items-center gap-3 px-[17px] py-3">
-              <p class="m-0 min-w-0 flex-[1_1_210px] text-[13px] leading-[1.5]">
-                Delete “{{ row.title }}”? Its scenes, characters, locations and props go with it.
-              </p>
-              <div class="flex gap-2">
-                <button type="button" class="btn btn-danger" (click)="deleteStory(row.id)">Delete story</button>
-                <button type="button" class="btn btn-ghost text-[var(--color-text)]" (click)="confirmingDeleteId.set(null)">
-                  Keep
-                </button>
-              </div>
+              @if (row.import; as imp) {
+                <p class="m-0 min-w-0 flex-[1_1_210px] text-[13px] leading-[1.5]">
+                  @if (imp.active) {
+                    Cancel importing “{{ row.title }}”? It comes off your desk; import the file again to start over.
+                  } @else {
+                    Remove “{{ row.title }}” from your desk?
+                  }
+                </p>
+                <div class="flex gap-2">
+                  <button type="button" class="btn btn-danger" (click)="cancelDocumentImport(row.id)">
+                    {{ imp.active ? 'Cancel import' : 'Remove' }}
+                  </button>
+                  <button type="button" class="btn btn-ghost text-[var(--color-text)]" (click)="confirmingDeleteId.set(null)">
+                    {{ imp.active ? 'Keep importing' : 'Keep' }}
+                  </button>
+                </div>
+              } @else {
+                <p class="m-0 min-w-0 flex-[1_1_210px] text-[13px] leading-[1.5]">
+                  Delete “{{ row.title }}”? Its scenes, characters, locations and props go with it.
+                </p>
+                <div class="flex gap-2">
+                  <button type="button" class="btn btn-danger" (click)="deleteStory(row.id)">Delete story</button>
+                  <button type="button" class="btn btn-ghost text-[var(--color-text)]" (click)="confirmingDeleteId.set(null)">
+                    Keep
+                  </button>
+                </div>
+              }
             </div>
           }
         }
@@ -300,6 +328,7 @@
       (open)="openJob($event)"
       (retry)="retryJob($event)"
       (cancel)="cancelJob($event)"
+      (cancelImport)="cancelDocumentImport($event)"
       (dismiss)="dismissJob($event)"
       (clearAll)="clearFinishedJobs()"
     />
