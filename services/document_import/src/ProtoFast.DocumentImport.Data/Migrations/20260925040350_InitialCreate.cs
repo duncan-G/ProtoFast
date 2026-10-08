@@ -16,6 +16,23 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                 name: "engine");
 
             migrationBuilder.CreateTable(
+                name: "document_families",
+                schema: "engine",
+                columns: table => new
+                {
+                    family = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    display_name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    description = table.Column<string>(type: "text", nullable: false),
+                    created_by = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
+                    created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_document_families", x => x.family);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "document_family_executors",
                 schema: "engine",
                 columns: table => new
@@ -28,6 +45,20 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("pk_document_family_executors", x => new { x.family, x.executor_id, x.executor_version });
+                });
+
+            migrationBuilder.CreateTable(
+                name: "document_family_generations",
+                schema: "engine",
+                columns: table => new
+                {
+                    family = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    generation = table.Column<int>(type: "integer", nullable: false),
+                    reset_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_document_family_generations", x => x.family);
                 });
 
             migrationBuilder.CreateTable(
@@ -46,6 +77,23 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("pk_document_family_policies", x => x.family);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "document_family_skills",
+                schema: "engine",
+                columns: table => new
+                {
+                    family = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    skill_id = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    skill_version = table.Column<int>(type: "integer", nullable: false),
+                    added_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    removed_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    removal_reason = table.Column<string>(type: "text", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_document_family_skills", x => new { x.family, x.skill_id, x.skill_version });
                 });
 
             migrationBuilder.CreateTable(
@@ -98,6 +146,25 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "run_progress",
+                schema: "engine",
+                columns: table => new
+                {
+                    source_id = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    phase = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                    run_id = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
+                    stage_id = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
+                    message = table.Column<string>(type: "text", nullable: true),
+                    result_id = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
+                    cost = table.Column<decimal>(type: "numeric(18,6)", precision: 18, scale: 6, nullable: false),
+                    updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_run_progress", x => x.source_id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "runs",
                 schema: "engine",
                 columns: table => new
@@ -108,7 +175,9 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                     mode = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
                     trace_id = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
                     opened_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    closed_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                    closed_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    abandoned_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    failure = table.Column<string>(type: "text", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -137,6 +206,31 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "run_briefs",
+                schema: "engine",
+                columns: table => new
+                {
+                    run_id = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    status = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                    attempts = table.Column<int>(type: "integer", nullable: false),
+                    claimed_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    brief = table.Column<string>(type: "jsonb", nullable: true),
+                    error = table.Column<string>(type: "text", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_run_briefs", x => x.run_id);
+                    table.ForeignKey(
+                        name: "fk_run_briefs_runs_run_id",
+                        column: x => x.run_id,
+                        principalSchema: "engine",
+                        principalTable: "runs",
+                        principalColumn: "run_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "run_decisions",
                 schema: "engine",
                 columns: table => new
@@ -155,6 +249,72 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                     table.PrimaryKey("pk_run_decisions", x => x.sequence);
                     table.ForeignKey(
                         name: "fk_run_decisions_runs_run_id",
+                        column: x => x.run_id,
+                        principalSchema: "engine",
+                        principalTable: "runs",
+                        principalColumn: "run_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "run_messages",
+                schema: "engine",
+                columns: table => new
+                {
+                    run_id = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    sequence = table.Column<int>(type: "integer", nullable: false),
+                    message = table.Column<string>(type: "jsonb", nullable: false),
+                    recorded_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_run_messages", x => new { x.run_id, x.sequence });
+                    table.ForeignKey(
+                        name: "fk_run_messages_runs_run_id",
+                        column: x => x.run_id,
+                        principalSchema: "engine",
+                        principalTable: "runs",
+                        principalColumn: "run_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "run_steps",
+                schema: "engine",
+                columns: table => new
+                {
+                    run_id = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    sequence = table.Column<int>(type: "integer", nullable: false),
+                    step = table.Column<string>(type: "jsonb", nullable: false),
+                    recorded_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_run_steps", x => new { x.run_id, x.sequence });
+                    table.ForeignKey(
+                        name: "fk_run_steps_runs_run_id",
+                        column: x => x.run_id,
+                        principalSchema: "engine",
+                        principalTable: "runs",
+                        principalColumn: "run_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "run_system_prompts",
+                schema: "engine",
+                columns: table => new
+                {
+                    run_id = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    from_sequence = table.Column<int>(type: "integer", nullable: false),
+                    prompt = table.Column<string>(type: "text", nullable: false),
+                    recorded_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_run_system_prompts", x => new { x.run_id, x.from_sequence });
+                    table.ForeignKey(
+                        name: "fk_run_system_prompts_runs_run_id",
                         column: x => x.run_id,
                         principalSchema: "engine",
                         principalTable: "runs",
@@ -193,10 +353,23 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                 columns: new[] { "run_id", "sequence" });
 
             migrationBuilder.CreateIndex(
+                name: "ix_run_progress_run_id",
+                schema: "engine",
+                table: "run_progress",
+                column: "run_id");
+
+            migrationBuilder.CreateIndex(
                 name: "ix_runs_family_mode_closed_at",
                 schema: "engine",
                 table: "runs",
                 columns: new[] { "family", "mode", "closed_at" });
+
+            migrationBuilder.CreateIndex(
+                name: "ix_runs_opened_at",
+                schema: "engine",
+                table: "runs",
+                column: "opened_at",
+                descending: new bool[0]);
 
             migrationBuilder.CreateIndex(
                 name: "ix_stage_records_run_id_sequence",
@@ -209,11 +382,23 @@ namespace ProtoFast.DocumentImport.Data.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
+                name: "document_families",
+                schema: "engine");
+
+            migrationBuilder.DropTable(
                 name: "document_family_executors",
                 schema: "engine");
 
             migrationBuilder.DropTable(
+                name: "document_family_generations",
+                schema: "engine");
+
+            migrationBuilder.DropTable(
                 name: "document_family_policies",
+                schema: "engine");
+
+            migrationBuilder.DropTable(
+                name: "document_family_skills",
                 schema: "engine");
 
             migrationBuilder.DropTable(
@@ -229,7 +414,27 @@ namespace ProtoFast.DocumentImport.Data.Migrations
                 schema: "engine");
 
             migrationBuilder.DropTable(
+                name: "run_briefs",
+                schema: "engine");
+
+            migrationBuilder.DropTable(
                 name: "run_decisions",
+                schema: "engine");
+
+            migrationBuilder.DropTable(
+                name: "run_messages",
+                schema: "engine");
+
+            migrationBuilder.DropTable(
+                name: "run_progress",
+                schema: "engine");
+
+            migrationBuilder.DropTable(
+                name: "run_steps",
+                schema: "engine");
+
+            migrationBuilder.DropTable(
+                name: "run_system_prompts",
                 schema: "engine");
 
             migrationBuilder.DropTable(
