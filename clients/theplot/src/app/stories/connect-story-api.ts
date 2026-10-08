@@ -294,6 +294,7 @@ function toMention(message: SceneElementMentionMessage): SceneElementMention {
     propId: target.case === 'propId' ? target.value : null,
     offset: message.offset,
     length: message.length,
+    isTag: message.isTag,
   };
 }
 
@@ -355,5 +356,6 @@ function fromMention(mention: SceneElementMention) {
           : { case: undefined },
     offset: mention.offset,
     length: mention.length,
+    isTag: mention.isTag,
   };
 }

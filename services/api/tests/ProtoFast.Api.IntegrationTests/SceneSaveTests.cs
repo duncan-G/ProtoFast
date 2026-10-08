@@ -45,8 +45,9 @@ public class SceneSaveTests(StoryDatabase database)
     {
         var story = await _writer.CreateStoryAsync();
         var mara = await _writer.CreateCharacterAsync(story.Id, "Mara");
-        const string text = "@Mara waits.";
-        var scene = await _writer.WriteFirstSceneAsync(story, Heading(), Action(text, Mention(text, "@Mara", mara)));
+        const string text = "@Mara waits. She sighs.";
+        var scene = await _writer.WriteFirstSceneAsync(
+            story, Heading(), Action(text, Mention(text, "@Mara", mara), Tag(text, "She", mara)));
 
         await _writer.SaveSceneAsync(scene);
 
@@ -123,6 +124,8 @@ public class SceneSaveTests(StoryDatabase database)
     [InlineData("without a target")]
     [InlineData("target from another story")]
     [InlineData("on a heading")]
+    [InlineData("empty tag")]
+    [InlineData("tag overlapping a mention")]
     public async Task Invalid_mentions_are_refused(string problem)
     {
         var story = await _writer.CreateStoryAsync();
@@ -139,6 +142,8 @@ public class SceneSaveTests(StoryDatabase database)
             "overlapping" => Action(text, mention, With(Mention(text, "@Mara", mara), m => m.Length = 3)),
             "without a target" => Action(text, With(mention, m => m.ClearTarget())),
             "target from another story" => Action(text, Mention(text, "@Mara", stranger)),
+            "empty tag" => Action(text, With(Tag(text, "waits", mara), m => m.Length = 0)),
+            "tag overlapping a mention" => Action(text, mention, Tag(text, "Mara", mara)),
             _ => With(Heading(), r => r.Mentions.Add(mention)),
         };
 
