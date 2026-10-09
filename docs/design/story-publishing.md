@@ -518,9 +518,16 @@ wrong is fixed once, for every scene. Every audio item depends on it.
 
 ### 5.2 Images
 
-No real images are generated yet, but every rule below still applies. The placeholder generator
-consumes the same request a real model would, and the verifiers run on the request, not on the
-pixels.
+Images are made by Meta's Muse Image (`muse-image-1.0`) through the Responses API
+(`Services/Imaging`). Muse reasons over the images it is given, so it is the orchestrator for
+references: code collects the pictures that already exist and could help (the library pictures of
+whoever and whatever is in the frame, the nearest pictured frames around it in its scene, and the
+latest pictured frames of earlier scenes in the same place or with the same people) and sends each
+one with a caption saying what it is and whether it is out of date. Muse decides what to take from
+each. Nothing is generated just to serve as a reference: a frame in the middle of an unpictured scene
+is composed from whatever exists. A scene-wide pass pictures the scene's missing library entries
+first, then the frames in order, so each frame can use the one before it. Muse's own image search,
+web search and shell are off. Its reasoning summary is kept on the asset as `notes`.
 
 **I1. Identity is separate from state.** A character's `Identity` (face, age, build, hair, skin,
 marks) lives on the sheet and never changes within a story. What does change lives in the scene's

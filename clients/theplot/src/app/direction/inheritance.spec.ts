@@ -30,6 +30,7 @@ function frame(patch: Partial<Frame> = {}): Frame {
     placements: [],
     props: [],
     edited: true,
+    image: null,
     ...patch,
   };
 }
@@ -55,24 +56,42 @@ function scene(patch: Partial<SceneDirection> = {}): SceneDirection {
 
 describe('inheritance', () => {
   it('takes the scene framing until the frame sets its own', () => {
-    expect(framingOf(scene(), frame(), 'shot')).toEqual({ value: 'medium', overridden: false });
+    expect(framingOf(scene(), frame(), 'shot')).toEqual({
+      value: 'medium',
+      overridden: false,
+    });
     expect(framingOf(scene(), frame({ shot: 'wide' }), 'shot')).toEqual({
       value: 'wide',
       overridden: true,
     });
-    expect(framingOf(scene(), null, 'angle')).toEqual({ value: null, overridden: false });
+    expect(framingOf(scene(), null, 'angle')).toEqual({
+      value: null,
+      overridden: false,
+    });
   });
 
   it('puts everyone on screen unless the scene or the frame takes them off', () => {
-    const direction = scene({ appearances: [{ ...blankAppearance('mara'), onScreen: false }] });
+    const direction = scene({
+      appearances: [{ ...blankAppearance('mara'), onScreen: false }],
+    });
     expect(onScreenOf(scene(), frame(), 'bolt').value).toBe(true);
-    expect(onScreenOf(direction, frame(), 'mara')).toEqual({ value: false, overridden: false });
-    const shown = frame({ placements: withPlacement(frame(), 'mara', { onScreen: true }) });
-    expect(onScreenOf(direction, shown, 'mara')).toEqual({ value: true, overridden: true });
+    expect(onScreenOf(direction, frame(), 'mara')).toEqual({
+      value: false,
+      overridden: false,
+    });
+    const shown = frame({
+      placements: withPlacement(frame(), 'mara', { onScreen: true }),
+    });
+    expect(onScreenOf(direction, shown, 'mara')).toEqual({
+      value: true,
+      overridden: true,
+    });
   });
 
   it('keeps props in view unless the scene or the frame hides them', () => {
-    const direction = scene({ propStates: [{ ...blankPropState('radio'), inView: false }] });
+    const direction = scene({
+      propStates: [{ ...blankPropState('radio'), inView: false }],
+    });
     expect(inViewOf(scene(), frame(), 'radio').value).toBe(true);
     expect(inViewOf(direction, frame(), 'radio').value).toBe(false);
     expect(
@@ -81,15 +100,30 @@ describe('inheritance', () => {
   });
 
   it('wears the first wardrobe on the sheet, then the scene’s, then the frame’s', () => {
-    expect(wardrobeOf(scene(), frame(), MARA)).toEqual({ wardrobeId: 'field', source: 'library' });
-    const direction = scene({ appearances: [{ ...blankAppearance('mara'), wardrobeId: 'rain' }] });
-    expect(wardrobeOf(direction, frame(), MARA)).toEqual({ wardrobeId: 'rain', source: 'scene' });
-    const own = frame({ placements: withPlacement(frame(), 'mara', { wardrobeId: 'field' }) });
-    expect(wardrobeOf(direction, own, MARA)).toEqual({ wardrobeId: 'field', source: 'frame' });
+    expect(wardrobeOf(scene(), frame(), MARA)).toEqual({
+      wardrobeId: 'field',
+      source: 'library',
+    });
+    const direction = scene({
+      appearances: [{ ...blankAppearance('mara'), wardrobeId: 'rain' }],
+    });
+    expect(wardrobeOf(direction, frame(), MARA)).toEqual({
+      wardrobeId: 'rain',
+      source: 'scene',
+    });
+    const own = frame({
+      placements: withPlacement(frame(), 'mara', { wardrobeId: 'field' }),
+    });
+    expect(wardrobeOf(direction, own, MARA)).toEqual({
+      wardrobeId: 'field',
+      source: 'frame',
+    });
   });
 
   it('drops a placement that no longer says anything', () => {
-    const shown = frame({ placements: withPlacement(frame(), 'mara', { onScreen: false }) });
+    const shown = frame({
+      placements: withPlacement(frame(), 'mara', { onScreen: false }),
+    });
     expect(shown.placements).toHaveLength(1);
     expect(withPlacement(shown, 'mara', { onScreen: null })).toEqual([]);
   });

@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { overrideCount } from '../../../direction/inheritance';
 import { FrameSpan } from '../../../direction/frames';
 import { plural } from '../format';
+import { ImageState } from '../image-state';
 import { InspectorScope } from '../inspector-scope';
 import { InspectorTab } from '../inspector-tab';
 import { SceneEditorStore } from '../scene-editor-store';
@@ -16,8 +17,6 @@ const TABS: { tab: InspectorTab; label: string }[] = [
   { tab: 'place', label: 'Place' },
   { tab: 'lines', label: 'Lines' },
 ];
-
-const NO_PICTURES = 'Picture generation isn’t available yet';
 
 /** Edits the selected frame, or the defaults every frame of the scene follows. */
 @Component({
@@ -89,9 +88,8 @@ const NO_PICTURES = 'Picture generation isn’t available yet';
             <span class="dr-kicker">Generation</span>
             @if (!summaryOpen()) {
               <span class="dr-media-summary"
-                >Images 0/{{ store.frameSpans().length }} · Audio {{ readyLines(allLines()) }}/{{
-                  allLines().length
-                }}</span
+                >Images {{ imageCount('ready') }}/{{ store.frameSpans().length }} · Audio
+                {{ readyLines(allLines()) }}/{{ allLines().length }}</span
               >
             }
             <span class="flex-1"></span>
@@ -100,27 +98,60 @@ const NO_PICTURES = 'Picture generation isn’t available yet';
           @if (summaryOpen()) {
             <div class="dr-thumbs">
               @for (span of store.frameSpans(); track span.frame.firstElementId; let i = $index) {
+                @let state = store.frameImageStates().get(span.frame.firstElementId) ?? 'none';
                 <button
                   type="button"
                   class="dr-thumb"
-                  [title]="'Frame ' + (i + 1) + ' · no picture yet'"
+                  [class]="'is-' + state"
+                  [title]="'Frame ' + (i + 1) + ' · ' + stateLabel(state)"
                   (click)="store.selectFrame(span.frame.firstElementId)"
-                ></button>
+                >
+                  @if (span.frame.image; as image) {
+                    <img [src]="image.url" alt="" />
+                  }
+                </button>
               }
             </div>
             @if (store.frameSpans().length > 0) {
               <div class="dr-legend">
-                <span
-                  ><span class="dr-legend-key"></span>{{ store.frameSpans().length }} missing</span
-                >
+                @if (imageCount('ready')) {
+                  <span
+                    ><span class="dr-legend-key is-ready"></span
+                    >{{ imageCount('ready') }} ready</span
+                  >
+                }
+                @if (imageCount('stale')) {
+                  <span
+                    ><span class="dr-legend-key is-stale"></span>{{ imageCount('stale') }} out of
+                    date</span
+                  >
+                }
+                @if (imageCount('none')) {
+                  <span><span class="dr-legend-key"></span>{{ imageCount('none') }} missing</span>
+                }
+                @if (imageCount('generating')) {
+                  <span
+                    ><span class="dr-legend-key is-generating"></span
+                    >{{ imageCount('generating') }} drawing</span
+                  >
+                }
               </div>
             }
             <div class="dr-media-row">
               <span class="dr-media-label">Images</span>
               <span class="flex-1"
-                >0 of {{ plural(store.frameSpans().length, 'frame') }} ready</span
+                >{{ imageCount('ready') }} of
+                {{ plural(store.frameSpans().length, 'frame') }} ready</span
               >
-              <button type="button" class="dr-link" disabled [title]="noPictures">Generate</button>
+              <button
+                type="button"
+                class="dr-link"
+                [title]="sceneImagesTitle"
+                [disabled]="frameIds().length === 0"
+                (click)="pictureScene()"
+              >
+                {{ sceneImageAction() }}
+              </button>
             </div>
             <div class="dr-media-row">
               <span class="dr-media-label">Audio</span>
@@ -140,10 +171,37 @@ const NO_PICTURES = 'Picture generation isn’t available yet';
         </div>
       } @else if (store.selectedFrame()) {
         <div class="dr-media is-frame">
-          <div class="dr-picture" [title]="noPictures">No image</div>
+          @if (store.selectedFrame()?.frame?.image; as image) {
+            <a class="dr-picture is-image" [href]="image.url" target="_blank" rel="noopener">
+              <img [src]="image.url" [alt]="'Frame ' + store.selectedFrameNumber()" />
+            </a>
+          } @else {
+            <div class="dr-picture">
+              {{ frameImageState() === 'generating' ? 'Drawing…' : 'No image' }}
+            </div>
+          }
           <span class="dr-media-label">Image</span>
-          <span class="dr-media-value">Missing</span>
-          <button type="button" class="dr-link" disabled [title]="noPictures">Generate</button>
+          <span
+            class="dr-media-value"
+            [class.is-warn]="frameImageState() === 'stale'"
+            [title]="frameImageTitle()"
+            >{{ stateLabel(frameImageState()) }}</span
+          >
+          <button
+            type="button"
+            class="dr-link"
+            [class.is-done]="frameImageState() === 'ready'"
+            [class.is-working]="frameImageState() === 'generating'"
+            [disabled]="!store.selectedFrame()?.frame?.id || frameImageState() === 'generating'"
+            [title]="
+              store.selectedFrame()?.frame?.id
+                ? 'Composed from the pictures that already exist around it'
+                : 'Saving…'
+            "
+            (click)="pictureFrame()"
+          >
+            {{ frameImageAction() }}
+          </button>
           <span class="dr-media-label">Audio</span>
           <span
             class="dr-media-value"
@@ -278,13 +336,17 @@ export class DirectorInspector {
   protected readonly store = inject(SceneEditorStore);
 
   protected readonly tabs = TABS;
-  protected readonly noPictures = NO_PICTURES;
+  protected readonly sceneImagesTitle =
+    'Pictures the scene’s cast, places and props first when they have none, then each frame in order';
 
   /** The All frames generation summary, folded away until asked for. */
   protected readonly summaryOpen = signal(false);
   protected readonly scene = computed(() => this.store.inspectorScope() === 'scene');
   protected readonly scopes = computed<{ value: InspectorScope; label: string }[]>(() => [
-    { value: 'frame', label: `Frame ${this.store.selectedFrameNumber() || ''}`.trim() },
+    {
+      value: 'frame',
+      label: `Frame ${this.store.selectedFrameNumber() || ''}`.trim(),
+    },
     { value: 'scene', label: 'All frames' },
   ]);
 
@@ -308,6 +370,70 @@ export class DirectorInspector {
   protected readonly overrides = computed(() =>
     this.store.frameSpans().reduce((n, s) => n + overrideCount(s.frame), 0),
   );
+
+  protected readonly frameIds = computed(() =>
+    this.store.frameSpans().flatMap((s) => (s.frame.id ? [s.frame.id] : [])),
+  );
+  protected readonly frameImageState = computed<ImageState>(() => {
+    const span = this.store.selectedFrame();
+    return (span && this.store.frameImageStates().get(span.frame.firstElementId)) ?? 'none';
+  });
+  /** What the picture was offered to compose from, and how the image model says it used them. */
+  protected readonly frameImageTitle = computed(() => {
+    const image = this.store.selectedFrame()?.frame.image;
+    if (!image) {
+      return '';
+    }
+    const from = image.references.length
+      ? `Composed from ${image.references.join(', ')}.`
+      : 'Drawn from its description alone.';
+    return image.notes ? `${from}\n\n${image.notes}` : from;
+  });
+  protected readonly frameImageAction = computed(() => {
+    switch (this.frameImageState()) {
+      case 'generating':
+        return 'Drawing…';
+      case 'ready':
+        return 'Regenerate';
+      case 'stale':
+        return 'Update';
+      default:
+        return 'Generate';
+    }
+  });
+  protected readonly sceneImageAction = computed(() => {
+    const need = this.store.framesNeedingImages().length;
+    return need > 0 ? `Generate ${need}` : 'Regenerate all';
+  });
+
+  protected imageCount(state: ImageState): number {
+    return [...this.store.frameImageStates().values()].filter((s) => s === state).length;
+  }
+
+  protected stateLabel(state: ImageState): string {
+    return {
+      none: 'Missing',
+      ready: 'Ready',
+      stale: 'Out of date',
+      generating: 'Drawing…',
+    }[state];
+  }
+
+  protected pictureFrame(): void {
+    const id = this.store.selectedFrame()?.frame.id;
+    if (id) {
+      void this.store.generateFrameImages([id], this.frameImageState() === 'ready');
+    }
+  }
+
+  protected pictureScene(): void {
+    const need = this.store.framesNeedingImages();
+    void this.store.generateFrameImages(
+      need.length > 0 ? need : this.frameIds(),
+      need.length === 0,
+      true,
+    );
+  }
 
   protected plural(count: number, word: string): string {
     return plural(count, word);

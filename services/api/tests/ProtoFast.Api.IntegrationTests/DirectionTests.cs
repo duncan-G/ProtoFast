@@ -246,13 +246,13 @@ public class DirectionTests(StoryDatabase database)
         await _writer.SaveDirectionAsync(Direction(scene, mara, bolt, radio, suit));
         var line = scene.Elements[3];
         _writer.ScriptModel("""
-            Here you go: {"cues":[{"line":"e4","tags":["Sad","not-a-tag"],"inline":[{"beforeWord":3,"tag":"sighs"}],"gapBeforeMs":"250","interrupted":false}]}
+            Here you go: {"cues":[{"line":"e4","performance":"I [Sad] never [not-a-tag] do,[sighs]","gapBeforeMs":"250","interrupted":false}]}
             """);
 
         var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, CueElementId = line.Id });
 
         var cue = Assert.Single(directed.Cues, c => c.ElementId == line.Id);
-        Assert.Equal("[sad] I never [sighs] do.", cue.Performance);
+        Assert.Equal("I [sad] never do. [sighs]", cue.Performance);
         Assert.Equal(250, cue.GapBeforeMs);
         Assert.False(cue.Interrupted);
         Assert.False(cue.Edited);
@@ -263,21 +263,45 @@ public class DirectionTests(StoryDatabase database)
     }
 
     [Fact]
+    public async Task Directing_a_line_refuses_an_answer_that_rewrites_its_words()
+    {
+        var (_, scene, _, _, _, _) = await DirectedSceneAsync();
+        var line = scene.Elements[3];
+        _writer.ScriptModel("""{"cues":[{"line":"e4","performance":"I [sad] always do."}]}""");
+
+        var error = await Assert.ThrowsAsync<RpcException>(() =>
+            _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, CueElementId = line.Id }));
+
+        Assert.Equal(DirectionErrors.ModelUnusable, error.Status.Detail);
+    }
+
+    [Fact]
+    public async Task Directing_an_action_line_reads_it_as_written_without_asking_the_model()
+    {
+        var (_, scene, _, _, _, _) = await DirectedSceneAsync();
+
+        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, CueElementId = scene.Elements[1].Id });
+
+        Assert.Equal("Mara turns the Radio.", Assert.Single(directed.Cues).Performance);
+        Assert.Empty(_writer.ModelPrompts());
+    }
+
+    [Fact]
     public async Task Directing_every_cue_keeps_the_authors_edits_unless_told_to_replace_them()
     {
         var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
         await _writer.SaveDirectionAsync(Direction(scene, mara, bolt, radio, suit));
         _writer.ScriptModel(
-            """{"cues":[{"line":"e3","tags":["angry"]},{"line":"e4","tags":["calm"]}]}""",
-            """{"cues":[{"line":"e3","tags":["angry"]},{"line":"e4","tags":["calm"]}]}""");
+            """{"cues":[{"line":"e3","performance":"Don't [angry] move."},{"line":"e4","performance":"[calm] I never do."}]}""");
 
         var kept = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Cues = true });
-        // The action line is read as written: the answer gave it nothing.
+        // Both lines are the author's, so the model is not asked; the action line is read as written.
         Assert.Equal(["Mara turns the Radio.", "[whispers] Don't move.", "I never [deadpan] do."], kept.Cues.Select(c => c.Performance));
-        Assert.Contains("Direct every dialogue, narration and action line.", _writer.ModelPrompts()[0]);
+        Assert.Empty(_writer.ModelPrompts());
 
         var replaced = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Cues = true, ReplaceEdited = true });
-        Assert.Equal(["Mara turns the Radio.", "[angry] Don't move.", "[calm] I never do."], replaced.Cues.Select(c => c.Performance));
+        Assert.Equal(["Mara turns the Radio.", "Don't [angry] move.", "[calm] I never do."], replaced.Cues.Select(c => c.Performance));
+        Assert.Contains("Direct every dialogue line; narration and action are context.", _writer.ModelPrompts()[0]);
         Assert.All(replaced.Cues, c => Assert.False(c.Edited));
     }
 
@@ -438,12 +462,42 @@ public class DirectionTests(StoryDatabase database)
     }
 
     [Fact]
+    public async Task Directing_the_scene_brings_in_the_library_entries_the_text_implies()
+    {
+        var story = await _writer.CreateStoryAsync();
+        var mara = await _writer.CreateCharacterAsync(story.Id, "Mara");
+        var bolt = await _writer.CreateCharacterAsync(story.Id, "Bolt", "Robot");
+        var radio = await _writer.CreatePropAsync(story.Id, "Radio");
+        var docks = await _writer.CreateLocationAsync(story.Id, "Docks");
+        await _writer.CreateLocationAsync(story.Id, "Office");
+        const string text = "@Mara waits by the water. The robot hums, its radio crackling.";
+        var scene = await _writer.WriteFirstSceneAsync(story, Heading(), Action(text, Mention(text, "@Mara", mara)));
+        // Names outside the library, or already in the scene, are ignored.
+        _writer.ScriptModel(
+            """{"characters":["Bolt","Ghost","Mara"],"props":["Radio"],"locations":["Docks"]}""",
+            """{"storyDay":1}""",
+            """{"looks":[{"name":"Mara"},{"name":"Bolt"}],"props":[{"name":"Radio","state":["crackling"]}],"locations":[{"name":"Docks","change":"fog on the water"}]}""",
+            """{"frames":[{"from":"e1","to":"e2","shot":"wide","beat":"Mara and the robot at the water.","characters":[{"name":"Mara","screen":"left"},{"name":"Bolt","screen":"right"}],"props":["Radio"]}]}""");
+
+        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Scene = true });
+
+        Assert.Equal(new[] { mara.Id, bolt.Id }.Order(), directed.Appearances.Select(a => a.CharacterId).Order());
+        Assert.Equal(["crackling"], Assert.Single(directed.PropStates, p => p.PropId == radio.Id).State);
+        Assert.Equal("fog on the water", Assert.Single(directed.LocationStates, l => l.LocationId == docks.Id).Change);
+        Assert.Equal("right", Assert.Single(directed.Frames).Placements.Single(p => p.CharacterId == bolt.Id).Screen);
+        var presence = _writer.ModelPrompts()[0];
+        Assert.Contains("Other characters in the library:\n- Bolt", presence);
+        Assert.Contains("- Office", presence);
+        Assert.Contains("- Bolt", _writer.ModelPrompts()[2]);
+    }
+
+    [Fact]
     public async Task Describing_a_character_writes_the_sheet_and_keeps_existing_wardrobes()
     {
         var (story, _, mara, _, _, suit) = await DirectedSceneAsync();
         _writer.ScriptModel("""
-            {"description":"Mara runs the night shift at the docks.","identity":{"age":"late 30s","build":"wiry","face":"sharp","hair":"cropped black","skin":"olive","marks":["scar over left brow"]},"voice":{"description":"low, quick, Glaswegian","baseline":"dry"},"wardrobes":[{"label":"Work Suit","description":"newer overalls"},{"label":"rain coat","description":"yellow oilskin"}]}
-            """);
+            {"kind":"Human","description":"Mara runs the night shift at the docks.","identity":{"age":"late 30s","gender":"female","build":"wiry","face":"sharp","hair":"cropped black","skin":"olive","marks":["scar over left brow"]},"voice":{"description":"low, quick, Glaswegian","baseline":"dry"},"wardrobes":[{"label":"Work Suit","description":"newer overalls"},{"label":"rain coat","description":"yellow oilskin"}]}
+            """, """{"voice":"v2"}""");
 
         var reply = await _writer.Direct((d, c) => d.Describe(new DescribeRequest { CharacterId = mara.Id }, c));
 
@@ -456,6 +510,28 @@ public class DirectionTests(StoryDatabase database)
         Assert.Equal(suit.Id, character.Wardrobes[0].Id);
         Assert.Contains("they say: Don't move.", _writer.ModelPrompts()[0]);
         Assert.Equal(character, (await _writer.GetStoryAsync(story.Id)).Characters.Single(c => c.Id == mara.Id));
+    }
+
+    [Fact]
+    public async Task Describing_casts_a_voice_from_the_sheet_and_casting_again_picks_another()
+    {
+        var (_, _, mara, _, _, _) = await DirectedSceneAsync();
+        _writer.ScriptModel("""
+            {"kind":"Human","description":"Mara runs the night shift.","identity":{"age":"late 30s","gender":"Female","build":"","face":"","hair":"","skin":"","marks":[]},"voice":{"description":"low, quick, Glaswegian","baseline":"dry"},"wardrobes":[]}
+            """, """{"voice":"v2"}""");
+
+        var described = (await _writer.Direct((d, c) => d.Describe(new DescribeRequest { CharacterId = mara.Id }, c))).Character;
+
+        Assert.Equal("Human", described.Kind);
+        Assert.Equal(("c4", "Morag", "https://example.test/morag.mp3"), (described.Voice.VoiceId, described.Voice.VoiceName, described.Voice.PreviewUrl));
+        Assert.Equal("low, quick, Glaswegian", described.Voice.Description);
+        Assert.Contains("v1: Isla (female · middle aged · scottish)", _writer.ModelPrompts()[1]);
+
+        var recast = (await _writer.Direct((d, c) => d.CastVoice(new CastVoiceRequest { CharacterId = mara.Id }, c))).Character;
+
+        Assert.Equal(("c1", "Isla"), (recast.Voice.VoiceId, recast.Voice.VoiceName));
+        Assert.Equal("dry", recast.Voice.Baseline);
+        Assert.Equal(2, _writer.ModelPrompts().Count);
     }
 
     [Fact]

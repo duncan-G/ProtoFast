@@ -5,8 +5,11 @@ import {
   Direction,
   type DirectRequest,
   type Frame as FrameMessage,
+  type LibraryImage as LibraryImageMessage,
+  type MediaImage as MediaImageMessage,
   type SceneAppearance as SceneAppearanceMessage,
   type SceneDirection as SceneDirectionMessage,
+  type Voice as VoiceMessage,
   type SceneLocationState as SceneLocationStateMessage,
   type ScenePropState as ScenePropStateMessage,
 } from '../../lib/gen/direction_pb';
@@ -21,11 +24,14 @@ import { Cue } from './model/cue';
 import { DescribeTarget } from './model/describe-target';
 import { DirectTarget } from './model/direct-target';
 import { Frame } from './model/frame';
+import { LibraryImage } from './model/library-image';
+import { MediaImage } from './model/media-image';
 import { SceneAppearance } from './model/scene-appearance';
 import { SceneDirection } from './model/scene-direction';
 import { SceneLocationState } from './model/scene-location-state';
 import { ScenePropState } from './model/scene-prop-state';
 import { SpeechVoice } from './model/speech-voice';
+import { VoiceQuery } from './model/voice-query';
 
 /** The direction endpoints on the api service, over gRPC-Web through the edge, like `ConnectStoryApi`. */
 @Injectable({ providedIn: 'root' })
@@ -38,7 +44,9 @@ export class ConnectDirectionApi implements DirectionApi {
   }
 
   async saveSceneDirection(direction: SceneDirection): Promise<SceneDirection> {
-    const reply = await this.client.saveSceneDirection({ direction: fromDirection(direction) });
+    const reply = await this.client.saveSceneDirection({
+      direction: fromDirection(direction),
+    });
     return toDirection(required(reply.direction));
   }
 
@@ -55,7 +63,11 @@ export class ConnectDirectionApi implements DirectionApi {
     target: DirectTarget,
     replaceEdited = false,
   ): Promise<SceneDirection> {
-    const reply = await this.client.direct({ sceneId, replaceEdited, target: fromTarget(target) });
+    const reply = await this.client.direct({
+      sceneId,
+      replaceEdited,
+      target: fromTarget(target),
+    });
     return toDirection(required(reply.direction));
   }
 
@@ -72,22 +84,47 @@ export class ConnectDirectionApi implements DirectionApi {
     return toDirection(required(reply.direction));
   }
 
-  async listVoices(): Promise<{ provider: string; voices: SpeechVoice[] }> {
-    const reply = await this.client.listVoices({});
-    return {
-      provider: reply.provider,
-      voices: reply.voices.map((v) => ({ id: v.id, name: v.name })),
-    };
+  async searchVoices(query: VoiceQuery): Promise<SpeechVoice[]> {
+    const reply = await this.client.searchVoices({ language: 'en', ...query });
+    return reply.voices.map(toSpeechVoice);
+  }
+
+  async castVoice(characterId: string): Promise<Character> {
+    const reply = await this.client.castVoice({ characterId });
+    return toCharacter(required(reply.character));
+  }
+
+  async generateFrameImage(
+    sceneId: string,
+    frameId: string,
+    regenerate = false,
+  ): Promise<SceneDirection> {
+    const reply = await this.client.generateFrameImage({
+      sceneId,
+      frameId,
+      regenerate,
+    });
+    return toDirection(required(reply.direction));
+  }
+
+  async generateLibraryImage(
+    target: DescribeTarget,
+    regenerate = false,
+  ): Promise<LibraryImage | null> {
+    const reply = await this.client.generateLibraryImage({
+      subject: toSubject(target),
+      regenerate,
+    });
+    return reply.image ? toLibraryImage(reply.image) : null;
+  }
+
+  async listLibraryImages(storyId: string): Promise<LibraryImage[]> {
+    const reply = await this.client.listLibraryImages({ storyId });
+    return reply.images.flatMap((i) => toLibraryImage(i) ?? []);
   }
 
   async describe(target: DescribeTarget): Promise<Character | Location | Prop> {
-    const subject =
-      target.kind === 'character'
-        ? ({ case: 'characterId', value: target.id } as const)
-        : target.kind === 'location'
-          ? ({ case: 'locationId', value: target.id } as const)
-          : ({ case: 'propId', value: target.id } as const);
-    const reply = await this.client.describe({ subject });
+    const reply = await this.client.describe({ subject: toSubject(target) });
     switch (reply.subject.case) {
       case 'character':
         return toCharacter(reply.subject.value);
@@ -106,6 +143,36 @@ function required<T>(message: T | undefined): T {
     throw new Error('The API returned an empty reply.');
   }
   return message;
+}
+
+function toSubject(target: DescribeTarget) {
+  return target.kind === 'character'
+    ? ({ case: 'characterId', value: target.id } as const)
+    : target.kind === 'location'
+      ? ({ case: 'locationId', value: target.id } as const)
+      : ({ case: 'propId', value: target.id } as const);
+}
+
+function toMediaImage(message: MediaImageMessage): MediaImage {
+  return {
+    assetId: message.assetId,
+    url: message.url,
+    contentType: message.contentType,
+    stale: message.stale,
+    references: [...message.references],
+    notes: message.notes,
+  };
+}
+
+function toLibraryImage(message: LibraryImageMessage): LibraryImage | null {
+  const kind = message.subjectKind;
+  if (!message.image || (kind !== 'character' && kind !== 'location' && kind !== 'prop')) {
+    return null;
+  }
+  return {
+    target: { kind, id: message.subjectId },
+    image: toMediaImage(message.image),
+  };
 }
 
 function fromTarget(target: DirectTarget): DirectRequest['target'] {
@@ -172,6 +239,7 @@ function toFrame(message: FrameMessage): Frame {
     })),
     props: message.props.map((p) => ({ propId: p.propId, inView: p.inView })),
     edited: message.edited,
+    image: message.image ? toMediaImage(message.image) : null,
   };
 }
 
@@ -284,5 +352,15 @@ export function fromDirection(direction: SceneDirection) {
       edited: p.edited,
     })),
     locationStates: direction.locationStates.map((l) => ({ ...l })),
+  };
+}
+
+function toSpeechVoice(v: VoiceMessage): SpeechVoice {
+  return {
+    id: v.id,
+    name: v.name,
+    description: v.description,
+    traits: v.traits,
+    previewUrl: v.previewUrl,
   };
 }

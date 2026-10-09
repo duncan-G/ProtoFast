@@ -1,5 +1,6 @@
 using Grpc.Core;
 using Microsoft.Extensions.DependencyInjection;
+using ProtoFast.Api.Services.Speech;
 using Xunit;
 using static ProtoFast.Api.IntegrationTests.Rows;
 
@@ -130,6 +131,12 @@ public class AudioTests(StoryDatabase database)
         var voices = await _writer.Direct((d, c) => d.ListVoices(new ListVoicesRequest(), c));
         Assert.Equal("scripted", voices.Provider);
         Assert.Equal(["Vivian", "Ryan"], voices.Voices.Select(v => v.Name));
+
+        var narrators = await _writer.Direct((d, c) => d.SearchVoices(
+            new SearchVoicesRequest { Search = "warm", Gender = "female", Age = "middle_aged", Accent = "british", Narration = true }, c));
+        var ada = Assert.Single(narrators.Voices);
+        Assert.Equal(("n1", "female · middle aged · british", "https://example.test/ada.mp3"), (ada.Id, ada.Traits, ada.PreviewUrl));
+        Assert.Equal(new VoiceQuery("en", "warm", "female", "middle_aged", "british", Narration: true), Speech.Searches[^1]);
     }
 
     [Fact]

@@ -35,17 +35,19 @@ public sealed class SheetDescriber(ILanguageModelFactory models, DirectorOptions
     public async Task DescribeAsync(
         CharacterRecord character, StoryRecord story, IReadOnlyList<SceneElementRecord> excerpts, CancellationToken ct)
     {
+        var kinds = VocabularyLabels.CharacterKinds(story.Vocabulary);
         var prompt = $$"""
             Character: {{character.Name}} ({{character.Kind}}).
             Everything the story says about or through them, in story order (scene, line):
             {{Excerpts(story, excerpts, character.Id)}}
-            Write their sheet. "description": one or two sentences introducing them to a reader.
+            Write their sheet. "kind": what they are, exactly one of {{string.Join(", ", kinds)}}.
+            "description": one or two sentences introducing them to a reader.
             "identity": "age", "gender" (empty when the story does not say), "build", "face", "hair", "skin" as short phrases, and "marks": scars,
             glasses, tattoos or other things a picture has to keep (empty when none). "voice":
             "description" (age, texture, pace, accent) and "baseline" (how they deliver a line when
             nothing is marked, e.g. "dry, understated"). "wardrobes": the outfits the text implies,
             at least one, each with a short "label" (two or three words) and a "description".
-            Reply: {"description":"…","identity":{"age":"…","gender":"…","build":"…","face":"…","hair":"…","skin":"…","marks":[]},"voice":{"description":"…","baseline":"…"},"wardrobes":[{"label":"…","description":"…"}]}
+            Reply: {"kind":"{{kinds[0]}}","description":"…","identity":{"age":"…","gender":"…","build":"…","face":"…","hair":"…","skin":"…","marks":[]},"voice":{"description":"…","baseline":"…"},"wardrobes":[{"label":"…","description":"…"}]}
             """;
 
         using var json = await AskAsync(prompt, ct);
@@ -57,6 +59,11 @@ public sealed class SheetDescriber(ILanguageModelFactory models, DirectorOptions
         }
 
         character.Description = SheetText.Description(Clip(description, SheetText.DescriptionMaxLength));
+        if (kinds.FirstOrDefault(k => LibraryNames.Same(k, ModelJson.Str(root, "kind") ?? "")) is { } kind)
+        {
+            character.Kind = kind;
+        }
+
         if (root.TryGetProperty("identity", out var identity))
         {
             character.Appearance = new CharacterIdentityRecord
@@ -73,7 +80,14 @@ public sealed class SheetDescriber(ILanguageModelFactory models, DirectorOptions
 
         if (root.TryGetProperty("voice", out var voice))
         {
-            character.Voice = new VoiceProfileRecord { Description = Field(voice, "description"), Baseline = Field(voice, "baseline") };
+            character.Voice = new VoiceProfileRecord
+            {
+                Description = Field(voice, "description"),
+                Baseline = Field(voice, "baseline"),
+                VoiceId = character.Voice?.VoiceId,
+                VoiceName = character.Voice?.VoiceName ?? "",
+                PreviewUrl = character.Voice?.PreviewUrl ?? "",
+            };
         }
 
         var wardrobes = ModelJson.Array(root, "wardrobes")

@@ -37,6 +37,25 @@ service Direction {
     // The speech provider's voices, for casting.
     rpc ListVoices (ListVoicesRequest) returns (ListVoicesReply);
 
+    // The speech provider's voice library, to cast a character or add a narrator from.
+    rpc SearchVoices (SearchVoicesRequest) returns (ListVoicesReply);
+
+    // Casts the character a library voice that fits their sheet and that the story doesn't use yet,
+    // never the one they have. Describe casts one too, when the character has none.
+    rpc CastVoice (CastVoiceRequest) returns (CastVoiceReply);
+
+    // Pictures one frame with the image model, unless its picture is current or regenerate is set.
+    // The pictures that already exist around it (the library's, neighbouring frames, earlier scenes
+    // in the same place or with the same people) are offered as captioned references; nothing is
+    // generated just to serve as one.
+    rpc GenerateFrameImage (GenerateFrameImageRequest) returns (GenerateFrameImageReply);
+
+    // Pictures a character, location or prop from its sheet: what frames are kept consistent with.
+    rpc GenerateLibraryImage (GenerateLibraryImageRequest) returns (GenerateLibraryImageReply);
+
+    // Every library picture in the story, with whether its sheet has moved on.
+    rpc ListLibraryImages (ListLibraryImagesRequest) returns (ListLibraryImagesReply);
+
 }
 
 message SceneDirection {
@@ -83,6 +102,28 @@ message Frame {
     string location_change = 15;
     // Written by hand; a directing pass leaves it alone.
     bool edited = 12;
+    // Unset until the frame has been pictured. Read only: saves ignore it.
+    optional MediaImage image = 17;
+}
+
+message MediaImage {
+    string asset_id = 1;
+    // Presigned; it expires, so it comes with every load.
+    string url = 2;
+    string content_type = 3;
+    // What it pictures has changed since, or a library picture it was composed from was redone.
+    bool stale = 4;
+    // The pictures it was offered to compose from: "MARA", "Frame 2", "Frame 4 of THE DOCKS".
+    repeated string references = 5;
+    // The image model's summary of how it made the picture.
+    string notes = 6;
+}
+
+message LibraryImage {
+    // character | location | prop
+    string subject_kind = 1;
+    string subject_id = 2;
+    MediaImage image = 3;
 }
 
 message Placement {
@@ -261,7 +302,63 @@ message ListVoicesReply {
     repeated Voice voices = 2;
 }
 
+message CastVoiceRequest {
+    string character_id = 1;
+}
+
+message CastVoiceReply {
+    story.Character character = 1;
+}
+
+message SearchVoicesRequest {
+    // ISO 639-1; empty is "en".
+    string language = 1;
+    string search = 2;
+    // The provider's labels, e.g. "female", "middle_aged", "british"; empty is any.
+    string gender = 3;
+    string age = 4;
+    string accent = 5;
+    // Only voices made for narration.
+    bool narration = 6;
+}
+
 message Voice {
     string id = 1;
     string name = 2;
+    string description = 3;
+    // "male · middle aged · british"
+    string traits = 4;
+    // A short sample to audition the voice; may be empty.
+    string preview_url = 5;
+}
+
+message GenerateFrameImageRequest {
+    string scene_id = 1;
+    string frame_id = 2;
+    bool regenerate = 3;
+}
+
+message GenerateFrameImageReply {
+    SceneDirection direction = 1;
+}
+
+message GenerateLibraryImageRequest {
+    oneof subject {
+        string character_id = 1;
+        string location_id = 2;
+        string prop_id = 3;
+    }
+    bool regenerate = 4;
+}
+
+message GenerateLibraryImageReply {
+    LibraryImage image = 1;
+}
+
+message ListLibraryImagesRequest {
+    string story_id = 1;
+}
+
+message ListLibraryImagesReply {
+    repeated LibraryImage images = 1;
 }

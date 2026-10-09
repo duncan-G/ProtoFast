@@ -47,6 +47,10 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("hue");
 
+                    b.Property<Guid?>("ImageAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("image_asset_id");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -71,6 +75,9 @@ namespace ProtoFast.Data.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_characters");
+
+                    b.HasIndex("ImageAssetId")
+                        .HasDatabaseName("ix_characters_image_asset_id");
 
                     b.HasIndex("StoryId", "Name")
                         .IsUnique()
@@ -372,6 +379,10 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("hold_ms");
 
+                    b.Property<Guid?>("ImageAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("image_asset_id");
+
                     b.Property<Guid>("LastElementId")
                         .HasColumnType("uuid")
                         .HasColumnName("last_element_id");
@@ -413,6 +424,9 @@ namespace ProtoFast.Data.Migrations
 
                     b.HasIndex("FirstElementId")
                         .HasDatabaseName("ix_frames_first_element_id");
+
+                    b.HasIndex("ImageAssetId")
+                        .HasDatabaseName("ix_frames_image_asset_id");
 
                     b.HasIndex("LastElementId")
                         .HasDatabaseName("ix_frames_last_element_id");
@@ -535,6 +549,10 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("hue");
 
+                    b.Property<Guid?>("ImageAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("image_asset_id");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -559,6 +577,9 @@ namespace ProtoFast.Data.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_locations");
+
+                    b.HasIndex("ImageAssetId")
+                        .HasDatabaseName("ix_locations_image_asset_id");
 
                     b.HasIndex("StoryId", "Name")
                         .IsUnique()
@@ -620,6 +641,14 @@ namespace ProtoFast.Data.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
                         .HasColumnName("model");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("Prompt")
+                        .HasColumnType("text")
+                        .HasColumnName("prompt");
 
                     b.Property<string>("Provider")
                         .IsRequired()
@@ -716,6 +745,10 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("description");
 
+                    b.Property<Guid?>("ImageAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("image_asset_id");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -734,6 +767,9 @@ namespace ProtoFast.Data.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_props");
+
+                    b.HasIndex("ImageAssetId")
+                        .HasDatabaseName("ix_props_image_asset_id");
 
                     b.HasIndex("StoryId", "Name")
                         .IsUnique()
@@ -1152,6 +1188,12 @@ namespace ProtoFast.Data.Migrations
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Character", b =>
                 {
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.MediaAsset", "Image")
+                        .WithMany()
+                        .HasForeignKey("ImageAssetId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_characters_media_assets_image_asset_id");
+
                     b.HasOne("ProtoFast.Data.ThePlot.Entities.Story", "Story")
                         .WithMany("Characters")
                         .HasForeignKey("StoryId")
@@ -1169,7 +1211,13 @@ namespace ProtoFast.Data.Migrations
                             b1.Property<string>("Description")
                                 .IsRequired();
 
+                            b1.Property<string>("PreviewUrl")
+                                .IsRequired();
+
                             b1.Property<string>("VoiceId");
+
+                            b1.Property<string>("VoiceName")
+                                .IsRequired();
 
                             b1.HasKey("CharacterId");
 
@@ -1223,6 +1271,8 @@ namespace ProtoFast.Data.Migrations
                         });
 
                     b.Navigation("Appearance");
+
+                    b.Navigation("Image");
 
                     b.Navigation("Story");
 
@@ -1309,6 +1359,12 @@ namespace ProtoFast.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_frames_scene_elements_first_element_id");
 
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.MediaAsset", "Image")
+                        .WithMany()
+                        .HasForeignKey("ImageAssetId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_frames_media_assets_image_asset_id");
+
                     b.HasOne("ProtoFast.Data.ThePlot.Entities.SceneElement", "LastElement")
                         .WithMany()
                         .HasForeignKey("LastElementId")
@@ -1330,6 +1386,8 @@ namespace ProtoFast.Data.Migrations
                         .HasConstraintName("fk_frames_scenes_scene_id");
 
                     b.Navigation("FirstElement");
+
+                    b.Navigation("Image");
 
                     b.Navigation("LastElement");
 
@@ -1390,6 +1448,12 @@ namespace ProtoFast.Data.Migrations
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Location", b =>
                 {
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.MediaAsset", "Image")
+                        .WithMany()
+                        .HasForeignKey("ImageAssetId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_locations_media_assets_image_asset_id");
+
                     b.HasOne("ProtoFast.Data.ThePlot.Entities.Story", "Story")
                         .WithMany("Locations")
                         .HasForeignKey("StoryId")
@@ -1472,6 +1536,8 @@ namespace ProtoFast.Data.Migrations
 
                     b.Navigation("Appearance");
 
+                    b.Navigation("Image");
+
                     b.Navigation("Story");
                 });
 
@@ -1483,6 +1549,41 @@ namespace ProtoFast.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_media_assets_stories_story_id");
+
+                    b.OwnsMany("ProtoFast.Data.ThePlot.Entities.MediaReference", "References", b1 =>
+                        {
+                            b1.Property<Guid>("MediaAssetId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<Guid>("AssetId");
+
+                            b1.Property<string>("ContentHash")
+                                .IsRequired();
+
+                            b1.Property<string>("Label")
+                                .IsRequired();
+
+                            b1.Property<string>("Source")
+                                .IsRequired();
+
+                            b1.Property<Guid>("SubjectId");
+
+                            b1.HasKey("MediaAssetId", "__synthesizedOrdinal");
+
+                            b1.ToTable("media_assets", "plot");
+
+                            b1
+                                .ToJson("references")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("MediaAssetId")
+                                .HasConstraintName("fk_media_assets_media_assets_media_asset_id");
+                        });
+
+                    b.Navigation("References");
 
                     b.Navigation("Story");
                 });
@@ -1506,7 +1607,13 @@ namespace ProtoFast.Data.Migrations
                             b1.Property<string>("Description")
                                 .IsRequired();
 
+                            b1.Property<string>("PreviewUrl")
+                                .IsRequired();
+
                             b1.Property<string>("VoiceId");
+
+                            b1.Property<string>("VoiceName")
+                                .IsRequired();
 
                             b1.HasKey("NarratorId")
                                 .HasName("pk_narrators");
@@ -1530,12 +1637,20 @@ namespace ProtoFast.Data.Migrations
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Prop", b =>
                 {
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.MediaAsset", "Image")
+                        .WithMany()
+                        .HasForeignKey("ImageAssetId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_props_media_assets_image_asset_id");
+
                     b.HasOne("ProtoFast.Data.ThePlot.Entities.Story", "Story")
                         .WithMany("Props")
                         .HasForeignKey("StoryId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_props_stories_story_id");
+
+                    b.Navigation("Image");
 
                     b.Navigation("Story");
                 });

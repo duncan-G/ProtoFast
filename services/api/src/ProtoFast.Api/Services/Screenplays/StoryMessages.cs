@@ -240,6 +240,9 @@ public static class StoryMessages
         Description = voice.Description,
         Baseline = voice.Baseline,
         VoiceId = voice.VoiceId ?? "",
+        // Voices cast before their names were kept have no such keys in their JSON.
+        VoiceName = voice.VoiceName ?? "",
+        PreviewUrl = voice.PreviewUrl ?? "",
     };
 
     public static Wardrobe ToMessage(CharacterWardrobeRecord wardrobe) => new()
@@ -320,6 +323,8 @@ public static class StoryMessages
         Description = SheetText.Field(voice.Description, "voice"),
         Baseline = SheetText.Field(voice.Baseline, "voice baseline"),
         VoiceId = SheetText.Field(voice.VoiceId, "voice id") is { Length: > 0 } id ? id : null,
+        VoiceName = SheetText.Field(voice.VoiceName, "voice name"),
+        PreviewUrl = SheetText.Field(voice.PreviewUrl, "voice preview"),
     };
 
     public static LocationAppearanceRecord FromMessage(LocationAppearance appearance, IReadOnlyList<string> timesOfDay) => new()

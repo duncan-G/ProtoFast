@@ -1,10 +1,11 @@
+using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
 using ProtoFast.Api.Services.Directing;
 
 namespace ProtoFast.Api.Services.Speech;
 
-/// <summary>ElevenLabs text to speech. Eleven v3 performs the delivery tags in the text; older models get the words alone.</summary>
+/// <summary>ElevenLabs text to speech. Eleven v3 and v4 perform the delivery tags in the text; older models get the words alone.</summary>
 public sealed class ElevenLabsSpeechSynthesizer(ElevenLabsSpeechOptions options, HttpClient http) : ISpeechSynthesizer
 {
     public const string HttpClientName = "speech-elevenlabs";
@@ -21,7 +22,8 @@ public sealed class ElevenLabsSpeechSynthesizer(ElevenLabsSpeechOptions options,
             throw new SpeechException("Cast a voice first: this speaker has no voice id and no default voice is configured.");
         }
 
-        var performsTags = options.Model.StartsWith("eleven_v3", StringComparison.OrdinalIgnoreCase);
+        var performsTags = options.Model.StartsWith("eleven_v3", StringComparison.OrdinalIgnoreCase)
+            || options.Model.StartsWith("eleven_v4", StringComparison.OrdinalIgnoreCase);
         return new SpeechRequest(performsTags ? Performances.Collapse(performance) : Performances.Strip(performance), null, voice);
     }
 
@@ -54,8 +56,38 @@ public sealed class ElevenLabsSpeechSynthesizer(ElevenLabsSpeechOptions options,
             : [];
     }
 
+    public async Task<IReadOnlyList<SpeechVoice>> SearchVoicesAsync(VoiceQuery filter, CancellationToken ct)
+    {
+        var query = string.Join('&', new (string Key, string Value)[]
+            {
+                ("page_size", Math.Clamp(filter.Limit, 1, 100).ToString(CultureInfo.InvariantCulture)), ("sort", "trending"),
+                ("use_cases", filter.Narration ? options.NarratorUseCase : ""), ("language", filter.Language),
+                ("search", filter.Search), ("gender", filter.Gender), ("age", filter.Age), ("accent", filter.Accent),
+            }
+            .Where(p => !string.IsNullOrWhiteSpace(p.Value))
+            .Select(p => $"{p.Key}={Uri.EscapeDataString(p.Value.Trim())}"));
+
+        using var message = new HttpRequestMessage(HttpMethod.Get, $"{options.BaseUrl.TrimEnd('/')}/v1/shared-voices?{query}");
+        Authorize(message);
+        using var response = await SendAsync(message, ct);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        return json.RootElement.TryGetProperty("voices", out var voices) && voices.ValueKind == JsonValueKind.Array
+            ? voices.EnumerateArray()
+                .Select(v => new SpeechVoice(
+                    ModelJson.Str(v, "voice_id") ?? "",
+                    ModelJson.Str(v, "name") ?? "",
+                    ModelJson.Str(v, "description") ?? "",
+                    string.Join(" · ", new[] { "gender", "age", "accent" }
+                        .Select(k => ModelJson.Str(v, k)?.Replace('_', ' '))
+                        .Where(t => !string.IsNullOrWhiteSpace(t))),
+                    ModelJson.Str(v, "preview_url") ?? ""))
+                .Where(v => v.Id.Length > 0)
+                .ToList()
+            : [];
+    }
+
     private void Authorize(HttpRequestMessage message) =>
-        message.Headers.Add("xi-api-key", options.ApiKey ?? throw new SpeechException("No ElevenLabs API key is configured (Speech:ElevenLabs:ApiKey)."));
+        message.Headers.Add("xi-api-key", options.ApiKey ?? throw new SpeechException("No ElevenLabs API key is configured (Providers:ElevenLabs:ApiKey)."));
 
     private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage message, CancellationToken ct)
     {

@@ -1,23 +1,16 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { Narrator } from '../../../stories/model/narrator';
-import { VoiceProfile } from '../../../stories/model/voice-profile';
 import { plural } from '../format';
 import { SceneEditorStore } from '../scene-editor-store';
 
-/** One voice that reads action and narration; the first is the story's default. */
+/** A narration voice picked from the provider's library; the first is the story's default. */
 @Component({
   selector: 'app-library-narrator-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'dr-card is-open is-flat' },
   template: `
     <div class="dr-narrator-head">
-      <input
-        class="dr-bare-input"
-        aria-label="Narrator name"
-        maxlength="255"
-        [value]="narrator().name"
-        (change)="rename($any($event.target).value)"
-      />
+      <span class="dr-voice-name flex-1">{{ narrator().name }}</span>
       @if (isDefault()) {
         <span class="dr-default">Default</span>
       } @else {
@@ -31,33 +24,13 @@ import { SceneEditorStore } from '../scene-editor-store';
         </button>
       }
     </div>
-    <label class="dr-field">
-      <span class="dr-kicker">Voice</span>
-      <textarea
-        class="dr-input is-soft"
-        rows="2"
-        placeholder="How it sounds, e.g. warm, low, unhurried"
-        maxlength="1000"
-        [value]="narrator().voice.description"
-        (change)="voice({ description: $any($event.target).value.trim() })"
-      ></textarea>
-    </label>
-    <label class="dr-field">
-      <span class="dr-kicker">Speech voice</span>
-      <select
-        class="dr-input"
-        (focus)="store.loadVoices()"
-        (mousedown)="store.loadVoices()"
-        (change)="voice({ voiceId: $any($event.target).value })"
-      >
-        <option value="" [selected]="!narrator().voice.voiceId">Provider default</option>
-        @for (v of voices(); track v.id) {
-          <option [value]="v.id" [selected]="v.id === narrator().voice.voiceId">
-            {{ v.name }}
-          </option>
-        }
-      </select>
-    </label>
+    @if (!narrator().voice.voiceId) {
+      <span class="dr-hint">
+        No speech voice. Add a narrator from the voice library and make it the default.
+      </span>
+    } @else if (narrator().voice.description) {
+      <span class="dr-voice-about">{{ narrator().voice.description }}</span>
+    }
     <div class="dr-row-actions">
       <span class="dr-hint flex-1">{{ usage() }}</span>
       @if (!isDefault()) {
@@ -76,13 +49,6 @@ export class LibraryNarratorCard {
 
   protected readonly isDefault = computed(() => this.index() === 0);
 
-  /** The saved voice id stays choosable before the provider's list has loaded. */
-  protected readonly voices = computed(() => {
-    const listed = this.store.voices() ?? [];
-    const own = this.narrator().voice.voiceId;
-    return own && !listed.some((v) => v.id === own) ? [{ id: own, name: own }, ...listed] : listed;
-  });
-
   protected readonly usage = computed(() => {
     const ids = new Set(this.store.narrators().map((n) => n.id));
     const cues = this.store.cueByElement();
@@ -98,15 +64,4 @@ export class LibraryNarratorCard {
     const count = lines.filter((id) => id === this.narrator().id).length;
     return `Picked on ${plural(count, 'line')} in Scene ${scene}`;
   });
-
-  protected rename(name: string): void {
-    const next = name.trim();
-    if (next && next !== this.narrator().name) {
-      this.store.updateNarrator(this.index(), { name: next });
-    }
-  }
-
-  protected voice(patch: Partial<VoiceProfile>): void {
-    this.store.updateNarrator(this.index(), { voice: { ...this.narrator().voice, ...patch } });
-  }
 }

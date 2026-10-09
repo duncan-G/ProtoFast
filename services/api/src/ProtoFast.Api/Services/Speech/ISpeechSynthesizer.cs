@@ -16,4 +16,7 @@ public interface ISpeechSynthesizer
     Task<SpokenLine> SpeakAsync(SpeechRequest request, CancellationToken ct);
 
     Task<IReadOnlyList<SpeechVoice>> ListVoicesAsync(CancellationToken ct);
+
+    /// <summary>The provider's voice library, most used first.</summary>
+    Task<IReadOnlyList<SpeechVoice>> SearchVoicesAsync(VoiceQuery query, CancellationToken ct);
 }

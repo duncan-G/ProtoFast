@@ -6,8 +6,10 @@ import { Scene } from '../stories/model/scene';
 import { ConnectDirectionApi } from './connect-direction-api';
 import { DescribeTarget } from './model/describe-target';
 import { DirectTarget } from './model/direct-target';
+import { LibraryImage } from './model/library-image';
 import { SceneDirection } from './model/scene-direction';
 import { SpeechVoice } from './model/speech-voice';
+import { VoiceQuery } from './model/voice-query';
 
 /**
  * The director layer over a scene. Rows are known by their place in the scene (a cue by its line,
@@ -41,5 +43,27 @@ export abstract class DirectionApi {
     regenerate?: boolean,
   ): Promise<SceneDirection>;
 
-  abstract listVoices(): Promise<{ provider: string; voices: SpeechVoice[] }>;
+  /** The provider's English voice library, most used first. */
+  abstract searchVoices(query: VoiceQuery): Promise<SpeechVoice[]>;
+
+  /** Casts the character a library voice that fits their sheet, never the one they have. */
+  abstract castVoice(characterId: string): Promise<Character>;
+
+  /**
+   * Pictures a frame, unless its picture is current or `regenerate`. The pictures that already
+   * exist around it are offered as references; nothing else is pictured to serve as one.
+   */
+  abstract generateFrameImage(
+    sceneId: string,
+    frameId: string,
+    regenerate?: boolean,
+  ): Promise<SceneDirection>;
+
+  /** Pictures a library entry from its sheet; null when the API has nothing to show for it. */
+  abstract generateLibraryImage(
+    target: DescribeTarget,
+    regenerate?: boolean,
+  ): Promise<LibraryImage | null>;
+
+  abstract listLibraryImages(storyId: string): Promise<LibraryImage[]>;
 }

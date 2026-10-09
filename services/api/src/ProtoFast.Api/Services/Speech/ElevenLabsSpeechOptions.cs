@@ -6,8 +6,11 @@ public sealed class ElevenLabsSpeechOptions
 
     public string? ApiKey { get; set; }
 
-    /// <summary>v3 performs the delivery tags; older models would read them out, so they are stripped there.</summary>
-    public string Model { get; set; } = "eleven_v3";
+    /// <summary>v3 and v4 perform the delivery tags; older models would read them out, so they are stripped there.</summary>
+    public string Model { get; set; } = "eleven_v4";
+
+    /// <summary>The voice library's use case narrators are offered from.</summary>
+    public string NarratorUseCase { get; set; } = "narrative_story";
 
     /// <summary>The voice a character without one is spoken in; empty means every speaker must be cast.</summary>
     public string DefaultVoiceId { get; set; } = "";

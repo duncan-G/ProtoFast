@@ -1,6 +1,17 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  OnDestroy,
+  signal,
+} from '@angular/core';
 import { onScreenOf, wardrobeOf } from '../../../direction/inheritance';
 import { emptyDirection } from '../../../direction/model/scene-direction';
+import { SpeechVoice } from '../../../direction/model/speech-voice';
+import { VoiceQuery } from '../../../direction/model/voice-query';
+import { accentLabel, ageLabel, genderLabel } from '../../../direction/voice-filters';
 import { Character } from '../../../stories/model/character';
 import { CharacterIdentity, EMPTY_IDENTITY } from '../../../stories/model/character-identity';
 import { Wardrobe } from '../../../stories/model/wardrobe';
@@ -8,6 +19,8 @@ import { Avatar } from '../avatar';
 import { initials, plural } from '../format';
 import { SceneEditorStore } from '../scene-editor-store';
 import { SheetEditor } from '../sheet-editor';
+import { LibraryPicture } from './library-picture';
+import { VoicePicker } from './voice-picker';
 
 const GENDERS = ['Female', 'Male', 'Non-binary'];
 const SHOWN = 3;
@@ -16,7 +29,7 @@ const SHOWN = 3;
 @Component({
   selector: 'app-library-cast-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Avatar, SheetEditor],
+  imports: [Avatar, LibraryPicture, SheetEditor, VoicePicker],
   host: { class: 'dr-card', '[class.is-open]': 'open()' },
   template: `
     @let c = character();
@@ -43,6 +56,17 @@ const SHOWN = 3;
 
     @if (open()) {
       <div class="dr-card-body">
+        <button
+          type="button"
+          class="dr-btn is-small self-start"
+          title="Have the model write the whole sheet from the story, then cast a voice if none is"
+          [class.is-working]="store.describing() === c.id"
+          [disabled]="store.describing() !== null"
+          (click)="store.describe({ kind: 'character', id: c.id })"
+        >
+          {{ store.describing() === c.id ? 'Suggesting…' : 'Suggest character' }}
+        </button>
+        <app-library-picture [target]="{ kind: 'character', id: c.id }" [name]="c.name" />
         <div class="dr-card-grid">
           <label class="dr-field">
             <span class="dr-kicker">Type</span>
@@ -81,20 +105,7 @@ const SHOWN = 3;
         </div>
 
         <div class="dr-field">
-          <div class="dr-field-head">
-            <span class="dr-kicker">Description</span>
-            <span class="flex-1"></span>
-            <button
-              type="button"
-              class="dr-link"
-              title="Have the model write the sheet from the story"
-              [class.is-working]="store.describing() === c.id"
-              [disabled]="store.describing() !== null"
-              (click)="store.describe({ kind: 'character', id: c.id })"
-            >
-              {{ store.describing() === c.id ? 'Writing…' : 'Suggest' }}
-            </button>
-          </div>
+          <span class="dr-kicker">Description</span>
           <textarea
             class="dr-input"
             rows="4"
@@ -103,6 +114,50 @@ const SHOWN = 3;
             [value]="c.description ?? ''"
             (change)="save({ description: $any($event.target).value.trim() || null })"
           ></textarea>
+        </div>
+
+        <div class="dr-field">
+          <div class="dr-field-head">
+            <span class="dr-kicker">Voice</span>
+            <span class="flex-1"></span>
+            <button
+              type="button"
+              class="dr-link"
+              title="Cast a library voice that fits the sheet and no one else uses"
+              [class.is-working]="store.castingVoice() === c.id"
+              [disabled]="store.castingVoice() !== null || store.describing() === c.id"
+              (click)="store.castVoice(c.id)"
+            >
+              {{ store.castingVoice() === c.id ? 'Casting…' : 'Suggest' }}
+            </button>
+          </div>
+          @if (pickingVoice()) {
+            <app-voice-picker
+              title="Cast a voice"
+              action="Cast"
+              chosenLabel="Current"
+              [chosen]="castVoices()"
+              [initial]="voiceFilters()"
+              (picked)="castVoice($event)"
+              (closed)="pickingVoice.set(false)"
+            />
+          } @else {
+            <div class="dr-narrator-head">
+              <button
+                type="button"
+                class="dr-voice-play"
+                [disabled]="!c.voice?.previewUrl"
+                [attr.aria-label]="(playing() ? 'Stop ' : 'Play ') + voiceLabel()"
+                (click)="preview()"
+              >
+                {{ playing() ? '■' : '▶' }}
+              </button>
+              <span class="dr-voice-name flex-1">{{ voiceLabel() }}</span>
+              <button type="button" class="dr-btn is-small" (click)="pickingVoice.set(true)">
+                {{ c.voice?.voiceId ? 'Change' : 'Choose' }}
+              </button>
+            </div>
+          }
         </div>
 
         <div class="dr-field">
@@ -167,7 +222,9 @@ const SHOWN = 3;
                       maxlength="1000"
                       [value]="w.wardrobe.description"
                       (change)="
-                        updateWardrobe(w.wardrobe, { description: $any($event.target).value })
+                        updateWardrobe(w.wardrobe, {
+                          description: $any($event.target).value,
+                        })
                       "
                     ></textarea>
                     <span class="dr-hint">{{ w.usage }}</span>
@@ -196,7 +253,9 @@ const SHOWN = 3;
                 }
               </div>
             } @empty {
-              <div class="dr-wardrobe-empty">{{ query() ? 'No match' : 'No wardrobes yet' }}</div>
+              <div class="dr-wardrobe-empty">
+                {{ query() ? 'No match' : 'No wardrobes yet' }}
+              </div>
             }
             @if (!query() && sortedWardrobes().length > shown) {
               <button type="button" class="dr-wardrobe-more" (click)="all.set(!all())">
@@ -207,7 +266,7 @@ const SHOWN = 3;
         </div>
 
         <button type="button" class="dr-link self-start" (click)="details.set(!details())">
-          Identity &amp; voice {{ details() ? '▴' : '▾' }}
+          Identity &amp; delivery {{ details() ? '▴' : '▾' }}
         </button>
         @if (details()) {
           <app-sheet-editor [target]="{ kind: 'character', id: c.id }" [details]="true" />
@@ -226,7 +285,7 @@ const SHOWN = 3;
     }
   `,
 })
-export class LibraryCastCard {
+export class LibraryCastCard implements OnDestroy {
   protected readonly store = inject(SceneEditorStore);
 
   readonly character = input.required<Character>();
@@ -237,6 +296,9 @@ export class LibraryCastCard {
   protected readonly editing = signal<string | null>(null);
   protected readonly details = signal(false);
   protected readonly problem = signal('');
+  protected readonly pickingVoice = signal(false);
+  protected readonly playing = signal(false);
+  private audio: HTMLAudioElement | null = null;
 
   protected readonly open = computed(
     () => this.store.directorLibraryEntry() === this.character().id,
@@ -253,6 +315,19 @@ export class LibraryCastCard {
       .filter(Boolean)
       .join(' · '),
   );
+  protected readonly voiceLabel = computed(() => {
+    const voice = this.character().voice;
+    return voice?.voiceName || voice?.voiceId || 'No voice cast';
+  });
+  protected readonly castVoices = computed(
+    () => new Set([this.character().voice?.voiceId].filter((id): id is string => !!id)),
+  );
+  /** The picker opens on what the sheet already says. */
+  protected readonly voiceFilters = computed<Partial<VoiceQuery>>(() => ({
+    gender: genderLabel(this.identity().gender),
+    age: ageLabel(this.identity().age),
+    accent: accentLabel(this.character().voice?.description, this.character().description),
+  }));
   protected readonly sceneNumber = computed(() => (this.store.place()?.index ?? 0) + 1);
 
   /** Frame numbers in this scene that show the character, by the wardrobe they wear there. */
@@ -337,6 +412,31 @@ export class LibraryCastCard {
       .join(' · ');
   });
 
+  ngOnDestroy(): void {
+    this.audio?.pause();
+  }
+
+  protected preview(): void {
+    this.audio?.pause();
+    const url = this.character().voice?.previewUrl;
+    if (this.playing() || !url) {
+      this.playing.set(false);
+      return;
+    }
+    const audio = new Audio(url);
+    audio.onended = () => this.playing.set(false);
+    this.audio = audio;
+    this.playing.set(true);
+    audio.play().catch(() => this.playing.set(false));
+  }
+
+  protected async castVoice(voice: SpeechVoice): Promise<void> {
+    this.pickingVoice.set(false);
+    this.audio?.pause();
+    this.playing.set(false);
+    this.problem.set((await this.store.setCharacterVoice(this.character(), voice)) ?? '');
+  }
+
   protected initialsOf(name: string): string {
     return initials(name);
   }
@@ -351,7 +451,10 @@ export class LibraryCastCard {
 
   protected async save(patch: Partial<Character>): Promise<void> {
     this.problem.set(
-      (await this.store.saveCharacterSheet({ ...this.character(), ...patch })) ?? '',
+      (await this.store.saveCharacterSheet({
+        ...this.character(),
+        ...patch,
+      })) ?? '',
     );
   }
 
@@ -397,6 +500,8 @@ export class LibraryCastCard {
 
   protected removeWardrobe(wardrobe: Wardrobe): void {
     this.editing.set(null);
-    void this.save({ wardrobes: this.character().wardrobes.filter((w) => w !== wardrobe) });
+    void this.save({
+      wardrobes: this.character().wardrobes.filter((w) => w !== wardrobe),
+    });
   }
 }

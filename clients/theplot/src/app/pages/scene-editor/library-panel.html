@@ -308,26 +308,20 @@
   }
 </div>
 
-<form class="se-library-add" (submit)="$event.preventDefault(); add()">
-  <div>
-    <input
-      class="se-field"
-      [class.is-invalid]="draftProblem() || addError()"
-      [attr.aria-label]="info().placeholder"
-      [placeholder]="info().placeholder"
-      [attr.maxlength]="nameMax"
-      [value]="draft()"
-      (input)="draft.set($any($event.target).value); addError.set('')"
-    />
-    <button
-      type="submit"
-      class="se-btn se-btn-primary"
-      [disabled]="!draft().trim() || !!draftProblem()"
-    >
-      Add
-    </button>
-  </div>
-  @if (draftProblem() ?? addError(); as problem) {
-    <p class="se-error">{{ problem }}</p>
-  }
+<form class="dr-library-add" (submit)="$event.preventDefault(); add()">
+  <input
+    class="dr-input"
+    [class.is-invalid]="draftProblem() || addError()"
+    [attr.aria-label]="info().placeholder"
+    [placeholder]="info().placeholder"
+    [attr.maxlength]="nameMax"
+    [value]="draft()"
+    (input)="draft.set($any($event.target).value); addError.set('')"
+  />
+  <button type="submit" class="dr-btn is-dark" [disabled]="!draft().trim() || !!draftProblem()">
+    Add
+  </button>
 </form>
+@if (draftProblem() ?? addError(); as problem) {
+  <span class="dr-error dr-library-problem">{{ problem }}</span>
+}

@@ -10,7 +10,9 @@ namespace ProtoFast.Api.Services.Directing;
 public static class DirectionMessages
 {
     /// <param name="audio">Each cue's audio as the client plays it; null leaves the cues silent.</param>
-    public static SceneDirection ToMessage(SceneRecord scene, Func<CueRecord, CueAudio?>? audio = null)
+    /// <param name="image">Each frame's picture as the client shows it; null leaves the frames unpictured.</param>
+    public static SceneDirection ToMessage(
+        SceneRecord scene, Func<CueRecord, CueAudio?>? audio = null, Func<FrameRecord, MediaImage?>? image = null)
     {
         var message = new SceneDirection { SceneId = scene.Id.ToString() };
         if (scene.StoryDay is { } day)
@@ -33,7 +35,16 @@ public static class DirectionMessages
             message.Movement = scene.Movement;
         }
 
-        message.Frames.AddRange(scene.Frames.OrderBy(p => p.Position).ThenBy(p => p.Id).Select(ToMessage));
+        message.Frames.AddRange(scene.Frames.OrderBy(p => p.Position).ThenBy(p => p.Id).Select(frame =>
+        {
+            var frameMessage = ToMessage(frame);
+            if (image?.Invoke(frame) is { } pictured)
+            {
+                frameMessage.Image = pictured;
+            }
+
+            return frameMessage;
+        }));
         var order = scene.Elements.ToDictionary(e => e.Id, e => e.Position);
         message.Cues.AddRange(scene.Cues
             .OrderBy(c => order.TryGetValue(c.ElementId, out var position) ? position : int.MaxValue)

@@ -42,7 +42,7 @@ import { SceneSummary } from './model/scene-summary';
 import { Story } from './model/story';
 import { StorySummary } from './model/story-summary';
 import { StoryVocabulary } from './model/story-vocabulary';
-import { VoiceProfile } from './model/voice-profile';
+import { EMPTY_VOICE, VoiceProfile } from './model/voice-profile';
 
 const ELEMENT_TYPES: Record<SceneElementType, SceneElementTypeMessage> = {
   Heading: SceneElementTypeMessage.HEADING,
@@ -370,12 +370,18 @@ function toNarrator(message: NarratorMessage): Narrator {
   return {
     id: message.id,
     name: message.name,
-    voice: message.voice ? toVoice(message.voice) : { description: '', baseline: '', voiceId: '' },
+    voice: message.voice ? toVoice(message.voice) : EMPTY_VOICE,
   };
 }
 
 function toVoice(message: VoiceProfileMessage): VoiceProfile {
-  return { description: message.description, baseline: message.baseline, voiceId: message.voiceId };
+  return {
+    description: message.description,
+    baseline: message.baseline,
+    voiceId: message.voiceId,
+    voiceName: message.voiceName,
+    previewUrl: message.previewUrl,
+  };
 }
 
 function toIdentity(message: CharacterIdentityMessage): CharacterIdentity {

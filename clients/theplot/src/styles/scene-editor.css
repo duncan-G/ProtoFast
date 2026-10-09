@@ -778,18 +778,6 @@
     line-height: 1.45;
   }
 
-  .se-library-add {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 12px 16px 16px;
-    border-top: 1px solid var(--se-line);
-  }
-  .se-library-add > div {
-    display: flex;
-    gap: 6px;
-  }
-
   .se-kind-pop {
     top: 100%;
     left: 0;

@@ -1,5 +1,6 @@
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
+using ProtoFast.Api.Services.Imaging;
 using ProtoFast.Api.Services.Screenplays;
 using ProtoFast.Api.Services.Speech;
 using ProtoFast.Data.ThePlot.Queries;
@@ -12,6 +13,7 @@ using PropRecord = ProtoFast.Data.ThePlot.Entities.Prop;
 using SceneElementRecord = ProtoFast.Data.ThePlot.Entities.SceneElement;
 using SceneElementTypeRecord = ProtoFast.Data.ThePlot.Entities.SceneElementType;
 using StoryRecord = ProtoFast.Data.ThePlot.Entities.Story;
+using VoiceProfileRecord = ProtoFast.Data.ThePlot.Entities.VoiceProfile;
 
 namespace ProtoFast.Api.Services.Directing;
 
@@ -27,8 +29,12 @@ public class DirectionService(
     SceneSaver sceneSaver,
     SceneDirector director,
     SheetDescriber describer,
+    VoiceCaster caster,
     CueAudioGenerator audioGenerator,
     CueAudioMessages audioMessages,
+    FrameImageGenerator frameImages,
+    LibraryImageGenerator libraryImages,
+    ImageMessages imageMessages,
     ISpeechSynthesizer speech,
     IStoryRepository storyRepository,
     IQueryFactory<StoryRecord, IStoryQuery> storyQueries,
@@ -123,7 +129,7 @@ public class DirectionService(
             var (scene, storyId) = await audioGenerator.GenerateAsync(sceneId, elementId, request.Regenerate, context.CancellationToken);
             using var unitOfWork = unitOfWorkFactory.CreateReadOnly(nameof(GenerateAudio));
             var story = await StoryAsync(storyId, context.CancellationToken);
-            return new GenerateAudioReply { Direction = DirectionMessages.ToMessage(scene, audioMessages.For(scene, story)) };
+            return new GenerateAudioReply { Direction = ToMessage(new DirectedScene(scene, story, [], DirectionScope.References(scene, story))) };
         }
         catch (SpeechException e)
         {
@@ -147,8 +153,137 @@ public class DirectionService(
         }
     }
 
+    public override async Task<CastVoiceReply> CastVoice(CastVoiceRequest request, ServerCallContext context)
+    {
+        var cancellationToken = context.CancellationToken;
+        var id = StoryIds.Existing(request.CharacterId, CharacterNotFound);
+        CharacterRecord subject;
+        StoryRecord story;
+        using (unitOfWorkFactory.CreateReadOnly(nameof(CastVoice)))
+        {
+            subject = await characterRepository.GetFirstByQueryAsync(characterQueries.Create().WithId(id), cancellationToken)
+                      ?? throw StoryErrors.NotFound(CharacterNotFound);
+            story = await StoryAsync(subject.StoryId, cancellationToken);
+        }
+
+        VoiceProfileRecord voice;
+        try
+        {
+            voice = await AskAsync(() => caster.CastAsync(subject, story, cancellationToken))
+                    ?? throw new RpcException(new Status(StatusCode.FailedPrecondition, $"No other library voice fits {subject.Name}."));
+        }
+        catch (SpeechException e)
+        {
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, e.Message));
+        }
+
+        using var unitOfWork = unitOfWorkFactory.CreateReadWrite(nameof(CastVoice));
+        await storyScope.LockAsync(story.Id, cancellationToken);
+        var character = await characterRepository.GetFirstByQueryAsync(
+                            characterQueries.Create().WithId(id).WithWardrobes(), cancellationToken)
+                        ?? throw StoryErrors.NotFound(CharacterNotFound);
+        character.Voice = new VoiceProfileRecord
+        {
+            Description = voice.Description,
+            Baseline = voice.Baseline,
+            VoiceId = voice.VoiceId,
+            VoiceName = voice.VoiceName,
+            PreviewUrl = voice.PreviewUrl,
+        };
+        await unitOfWork.CommitAsync(cancellationToken);
+        return new CastVoiceReply { Character = StoryMessages.ToMessage(character) };
+    }
+
+    public override async Task<ListVoicesReply> SearchVoices(SearchVoicesRequest request, ServerCallContext context)
+    {
+        try
+        {
+            var query = new VoiceQuery(
+                string.IsNullOrWhiteSpace(request.Language) ? "en" : request.Language.Trim(),
+                request.Search, request.Gender, request.Age, request.Accent, request.Narration);
+            var reply = new ListVoicesReply { Provider = speech.Provider };
+            reply.Voices.AddRange((await speech.SearchVoicesAsync(query, context.CancellationToken))
+                .Select(v => new Voice { Id = v.Id, Name = v.Name, Description = v.Description, Traits = v.Traits, PreviewUrl = v.PreviewUrl }));
+            return reply;
+        }
+        catch (SpeechException e)
+        {
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, e.Message));
+        }
+    }
+
     private SceneDirection ToMessage(DirectedScene directed) =>
-        DirectionMessages.ToMessage(directed.Scene, audioMessages.For(directed.Scene, directed.Story));
+        DirectionMessages.ToMessage(
+            directed.Scene, audioMessages.For(directed.Scene, directed.Story), imageMessages.ForFrames(directed));
+
+    public override async Task<GenerateFrameImageReply> GenerateFrameImage(GenerateFrameImageRequest request, ServerCallContext context)
+    {
+        var sceneId = StoryIds.Existing(request.SceneId, StoryErrors.SceneNotFound);
+        var frameId = StoryIds.Existing(request.FrameId, DirectionErrors.FrameNotFound);
+        try
+        {
+            var directed = await frameImages.GenerateAsync(sceneId, frameId, request.Regenerate, context.CancellationToken);
+            return new GenerateFrameImageReply { Direction = ToMessage(directed) };
+        }
+        catch (ImageException e)
+        {
+            logger.LogWarning(e, "A frame could not be pictured");
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, e.Message));
+        }
+    }
+
+    public override async Task<GenerateLibraryImageReply> GenerateLibraryImage(GenerateLibraryImageRequest request, ServerCallContext context)
+    {
+        var cancellationToken = context.CancellationToken;
+        var (source, id, storyId) = request.SubjectCase switch
+        {
+            GenerateLibraryImageRequest.SubjectOneofCase.CharacterId => await SubjectAsync(
+                ReferenceSource.Character, StoryIds.Existing(request.CharacterId, CharacterNotFound), CharacterNotFound,
+                (id, ct) => characterRepository.GetFirstByQueryAsync(characterQueries.Create().WithId(id), c => (Guid?)c.StoryId, ct),
+                cancellationToken),
+            GenerateLibraryImageRequest.SubjectOneofCase.LocationId => await SubjectAsync(
+                ReferenceSource.Location, StoryIds.Existing(request.LocationId, LocationNotFound), LocationNotFound,
+                (id, ct) => locationRepository.GetFirstByQueryAsync(locationQueries.Create().WithId(id), l => (Guid?)l.StoryId, ct),
+                cancellationToken),
+            GenerateLibraryImageRequest.SubjectOneofCase.PropId => await SubjectAsync(
+                ReferenceSource.Prop, StoryIds.Existing(request.PropId, PropNotFound), PropNotFound,
+                (id, ct) => propRepository.GetFirstByQueryAsync(propQueries.Create().WithId(id), p => (Guid?)p.StoryId, ct),
+                cancellationToken),
+            _ => throw StoryErrors.Invalid("Say which library entry to picture."),
+        };
+
+        try
+        {
+            var story = await libraryImages.GenerateAsync(storyId, source, id, request.Regenerate, cancellationToken);
+            var kind = ReferenceSources.Of(source);
+            var image = imageMessages.ForLibrary(story).FirstOrDefault(i => i.SubjectKind == kind && i.SubjectId == id.ToString())
+                        ?? new LibraryImage { SubjectKind = kind, SubjectId = id.ToString() };
+            return new GenerateLibraryImageReply { Image = image };
+        }
+        catch (ImageException e)
+        {
+            logger.LogWarning(e, "A library entry could not be pictured");
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, e.Message));
+        }
+    }
+
+    public override async Task<ListLibraryImagesReply> ListLibraryImages(ListLibraryImagesRequest request, ServerCallContext context)
+    {
+        var storyId = StoryIds.Existing(request.StoryId, StoryErrors.StoryNotFound);
+        using var unitOfWork = unitOfWorkFactory.CreateReadOnly(nameof(ListLibraryImages));
+        var story = await StoryAsync(storyId, context.CancellationToken);
+        var reply = new ListLibraryImagesReply();
+        reply.Images.AddRange(imageMessages.ForLibrary(story));
+        return reply;
+    }
+
+    /// <summary>The library entry's story, read as its owner; anyone else's entry reads as not found.</summary>
+    private async Task<(ReferenceSource Source, Guid Id, Guid StoryId)> SubjectAsync(
+        ReferenceSource source, Guid id, string notFound, Func<Guid, CancellationToken, Task<Guid?>> storyOf, CancellationToken ct)
+    {
+        using var unitOfWork = unitOfWorkFactory.CreateReadOnly(nameof(SubjectAsync));
+        return (source, id, await storyOf(id, ct) ?? throw StoryErrors.NotFound(notFound));
+    }
 
     public override async Task<DescribeReply> Describe(DescribeRequest request, ServerCallContext context)
     {
@@ -175,12 +310,25 @@ public class DirectionService(
                 }
 
                 await AskAsync(() => describer.DescribeAsync(subject, story, excerpts, cancellationToken));
+                if (string.IsNullOrEmpty(subject.Voice?.VoiceId))
+                {
+                    // The sheet is worth keeping when the library can't be reached; casting can be retried on its own.
+                    try
+                    {
+                        subject.Voice = await AskAsync(() => caster.CastAsync(subject, story, cancellationToken)) ?? subject.Voice;
+                    }
+                    catch (SpeechException e)
+                    {
+                        logger.LogWarning(e, "No voice was cast for {Character}", id);
+                    }
+                }
 
                 using var unitOfWork = unitOfWorkFactory.CreateReadWrite(nameof(Describe));
                 await storyScope.LockAsync(story.Id, cancellationToken);
                 var character = await characterRepository.GetFirstByQueryAsync(
                                     characterQueries.Create().WithId(id).WithWardrobes(), cancellationToken)
                                 ?? throw StoryErrors.NotFound(CharacterNotFound);
+                character.Kind = subject.Kind;
                 character.Description = subject.Description;
                 character.Appearance = subject.Appearance;
                 character.Voice = subject.Voice;

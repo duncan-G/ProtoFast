@@ -1,6 +1,7 @@
 using ProtoFast.Api.Services;
 using ProtoFast.Api.Services.Admin;
 using ProtoFast.Api.Services.Directing;
+using ProtoFast.Api.Services.Imaging;
 using ProtoFast.Api.Services.Screenplays;
 using ProtoFast.Api.Services.Speech;
 using ProtoFast.Data.ThePlot;
@@ -50,12 +51,23 @@ builder.Services.AddLanguageModels(options => builder.Configuration.GetSection("
 builder.Services.AddSingleton(builder.Configuration.GetSection("Director").Get<DirectorOptions>() ?? new DirectorOptions());
 builder.Services.AddSingleton<SceneDirector>();
 builder.Services.AddSingleton<SheetDescriber>();
+builder.Services.AddSingleton<VoiceCaster>();
 builder.Services.AddScoped<DirectionScope>();
 
-// Audio: the speech provider that speaks a scene's lines. ElevenLabs in production (its key from
-// Secrets Manager as Api_Speech__ElevenLabs__ApiKey); in development Qwen3-TTS on vLLM-Omni, an
-// OpenAI-style speech server, at Speech:OpenAi:BaseUrl.
-builder.Services.AddSpeechSynthesis(options => builder.Configuration.GetSection("Speech").Bind(options));
+// Audio: ElevenLabs speaks a scene's lines; its key sits with the model providers' (Api_Providers__elevenlabs__ApiKey).
+builder.Services.AddSpeechSynthesis(options =>
+{
+    builder.Configuration.GetSection("Speech").Bind(options);
+    options.ElevenLabs.ApiKey = builder.Configuration["Providers:ElevenLabs:ApiKey"];
+});
+
+// Pictures: Muse draws frames and library entries; its key sits with the model providers' (Api_Providers__meta__ApiKey).
+builder.Services.AddImageGeneration(options =>
+{
+    builder.Configuration.GetSection("Imaging").Bind(options);
+    options.Muse.ApiKey = builder.Configuration["Providers:Meta:ApiKey"];
+    options.CaptureMessageContent = builder.Configuration.GetValue<bool>("Providers:CaptureMessageContent");
+});
 
 builder.Services.AddS3ObjectStorage(options => builder.Configuration.GetSection("S3").Bind(options));
 

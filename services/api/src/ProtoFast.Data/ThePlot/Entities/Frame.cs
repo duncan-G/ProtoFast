@@ -54,4 +54,9 @@ public sealed class Frame
 
     /// <summary>Only the props this frame shows or hides against the scene.</summary>
     public List<FrameProp> Props { get; set; } = [];
+
+    /// <summary>The frame pictured, if generated; stale once what it shows changed.</summary>
+    public Guid? ImageAssetId { get; set; }
+
+    public MediaAsset? Image { get; set; }
 }

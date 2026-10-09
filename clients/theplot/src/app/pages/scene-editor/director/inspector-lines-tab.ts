@@ -30,8 +30,8 @@ function lineTokens(performance: string): Token[] {
 }
 
 /**
- * How each line is delivered: delivery cues placed between its words, the silence before it, and
- * whether the next line cuts it off. Action and narration pick their narrator here too.
+ * How each dialogue line is delivered: delivery cues placed between its words, the silence before
+ * it, and whether the next line cuts it off. Narration and action are read as written.
  */
 @Component({
   selector: 'app-inspector-lines-tab',
@@ -58,21 +58,7 @@ function lineTokens(performance: string): Token[] {
               speaker.name.toUpperCase()
             }}</span>
           } @else {
-            <select
-              class="dr-narrator is-inline"
-              aria-label="Narrator"
-              (change)="store.setNarrator(line.element.id, $any($event.target).value || null)"
-            >
-              <option value="" [selected]="!line.cue?.narratorId">
-                {{ defaultNarrator() }} (default)
-              </option>
-              @for (n of otherNarrators(); track n.id) {
-                <option [value]="n.id" [selected]="n.id === line.cue?.narratorId">
-                  {{ n.name }}
-                </option>
-              }
-            </select>
-            <span class="dr-line-kind">{{ line.element.type }}</span>
+            <span class="dr-line-kind">Dialogue</span>
           }
           <span class="flex-1"></span>
           <span class="dr-source">{{ source(line.cue) }}</span>
@@ -164,7 +150,9 @@ function lineTokens(performance: string): Token[] {
               step="100"
               [value]="line.cue?.gapBeforeMs ?? 0"
               (change)="
-                store.updateCue(line.element.id, { gapBeforeMs: +$any($event.target).value || 0 })
+                store.updateCue(line.element.id, {
+                  gapBeforeMs: +$any($event.target).value || 0,
+                })
               "
             />
             ms</label
@@ -175,7 +163,9 @@ function lineTokens(performance: string): Token[] {
               type="checkbox"
               [checked]="line.cue?.interrupted ?? false"
               (change)="
-                store.updateCue(line.element.id, { interrupted: $any($event.target).checked })
+                store.updateCue(line.element.id, {
+                  interrupted: $any($event.target).checked,
+                })
               "
             />
             Cut off
@@ -184,8 +174,8 @@ function lineTokens(performance: string): Token[] {
       </div>
     } @empty {
       <p class="dr-empty">
-        No lines in this {{ frame() ? 'frame' : 'scene' }}. Use <b>Hold</b> on the Shot tab to time
-        it.
+        No dialogue in this {{ frame() ? 'frame' : 'scene' }}. Use <b>Hold</b> on the Shot tab to
+        time it.
       </p>
     }
   `,
@@ -200,16 +190,6 @@ export class InspectorLinesTab {
   protected readonly frame = computed(() =>
     this.store.inspectorScope() === 'frame' ? this.store.selectedFrame() : null,
   );
-  protected readonly defaultNarrator = computed(
-    () => this.store.narrators()[0]?.name ?? 'Narrator',
-  );
-  protected readonly otherNarrators = computed(() =>
-    this.store
-      .narrators()
-      .slice(1)
-      .filter((n) => n.id),
-  );
-
   protected readonly lines = computed(() => {
     const span = this.frame();
     const elements = this.store.elements();
@@ -218,18 +198,16 @@ export class InspectorLinesTab {
       const at = elements.indexOf(element);
       return !span || (at >= span.first && at <= span.last);
     };
-    return this.store
-      .spokenElements()
-      .filter(inRange)
+    return elements
+      .filter((element) => element.type === 'Dialogue' && inRange(element))
       .map((element) => {
         const cue = cues.get(element.id) ?? null;
         return {
           element,
           cue,
-          speaker:
-            element.type === 'Dialogue' && element.speakerId
-              ? (this.store.characterById().get(element.speakerId) ?? null)
-              : null,
+          speaker: element.speakerId
+            ? (this.store.characterById().get(element.speakerId) ?? null)
+            : null,
           tokens: lineTokens(cue?.performance ?? (element.text ?? '').replace(/@/g, '')),
         };
       });

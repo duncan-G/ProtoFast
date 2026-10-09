@@ -3,15 +3,36 @@ import { Character } from '../stories/model/character';
 import { Location } from '../stories/model/location';
 import { Prop } from '../stories/model/prop';
 import { Scene } from '../stories/model/scene';
+import { EMPTY_VOICE } from '../stories/model/voice-profile';
 import { StoryApi } from '../stories/story-api';
 import type { DirectionApi } from './direction-api';
 import { DescribeTarget } from './model/describe-target';
 import { DirectTarget } from './model/direct-target';
+import { LibraryImage } from './model/library-image';
+import { MediaImage } from './model/media-image';
 import { emptyDirection, SceneDirection } from './model/scene-direction';
 import { SpeechVoice } from './model/speech-voice';
+import { VoiceQuery } from './model/voice-query';
 import { isSpoken } from './direction-changes';
 import { Cue } from './model/cue';
 import { renumber } from './frames';
+
+const MEMORY_VOICES: SpeechVoice[] = [
+  {
+    id: 'narrator',
+    name: 'Narrator',
+    description: 'Warm and unhurried.',
+    traits: 'female · middle aged · british',
+    previewUrl: '',
+  },
+  {
+    id: 'gravel',
+    name: 'Gravel',
+    description: 'Low and rough.',
+    traits: 'male · old · american',
+    previewUrl: '',
+  },
+];
 
 /**
  * Keeps the API's rules in memory: rows are matched by their place in the scene, changed rows are
@@ -21,6 +42,7 @@ import { renumber } from './frames';
 @Injectable({ providedIn: 'root' })
 export class InMemoryDirectionApi implements DirectionApi {
   private readonly directions = new Map<string, SceneDirection>();
+  private readonly libraryImages = new Map<string, LibraryImage>();
 
   constructor(private readonly stories: StoryApi) {}
 
@@ -83,6 +105,7 @@ export class InMemoryDirectionApi implements DirectionApi {
           placements: [],
           props: [],
           edited: false,
+          image: null,
         },
       ];
     }
@@ -103,7 +126,10 @@ export class InMemoryDirectionApi implements DirectionApi {
     const current = structuredClone(this.directions.get(sceneId) ?? emptyDirection(sceneId));
     for (const element of scene.elements) {
       if (isSpoken(element.type) && !current.cues.some((c) => c.elementId === element.id)) {
-        current.cues.push({ ...plainCue(element.id, element.text ?? ''), id: crypto.randomUUID() });
+        current.cues.push({
+          ...plainCue(element.id, element.text ?? ''),
+          id: crypto.randomUUID(),
+        });
       }
     }
     for (const cue of current.cues) {
@@ -121,8 +147,30 @@ export class InMemoryDirectionApi implements DirectionApi {
     return current;
   }
 
-  async listVoices(): Promise<{ provider: string; voices: SpeechVoice[] }> {
-    return { provider: 'memory', voices: [{ id: 'default', name: 'Default' }] };
+  async searchVoices(query: VoiceQuery): Promise<SpeechVoice[]> {
+    const search = query.search.trim().toLowerCase();
+    return MEMORY_VOICES.filter(
+      (v) =>
+        (!search || v.name.toLowerCase().includes(search)) &&
+        [query.gender, query.age.replace('_', ' '), query.accent].every(
+          (label) => !label || v.traits.includes(label),
+        ),
+    );
+  }
+
+  async castVoice(characterId: string): Promise<Character> {
+    const story = await this.storyOf(characterId);
+    const character = story.characters.find((c) => c.id === characterId)!;
+    const voice = MEMORY_VOICES.find((v) => v.id !== character.voice?.voiceId) ?? MEMORY_VOICES[0];
+    return this.stories.updateCharacterSheet({
+      ...character,
+      voice: {
+        ...(character.voice ?? EMPTY_VOICE),
+        voiceId: voice.id,
+        voiceName: voice.name,
+        previewUrl: voice.previewUrl,
+      },
+    });
   }
 
   async describe(target: DescribeTarget): Promise<Character | Location | Prop> {
@@ -182,12 +230,25 @@ export class InMemoryDirectionApi implements DirectionApi {
             const was = stored.frames.find((s) => s.firstElementId === p.firstElementId);
             const changed =
               !was ||
-              JSON.stringify({ ...was, id: '', edited: false, position: 0 }) !==
-                JSON.stringify({ ...p, id: '', edited: false, position: 0 });
+              JSON.stringify({
+                ...was,
+                id: '',
+                edited: false,
+                position: 0,
+                image: null,
+              }) !==
+                JSON.stringify({
+                  ...p,
+                  id: '',
+                  edited: false,
+                  position: 0,
+                  image: null,
+                });
             return {
               ...p,
               id: was?.id ?? crypto.randomUUID(),
               edited: changed ? byAuthor : (was?.edited ?? false),
+              image: was?.image ?? null,
             };
           }),
         scene.elements,
@@ -230,6 +291,33 @@ export class InMemoryDirectionApi implements DirectionApi {
     return structuredClone(next);
   }
 
+  async generateFrameImage(sceneId: string, frameId: string): Promise<SceneDirection> {
+    const current = structuredClone(this.directions.get(sceneId) ?? emptyDirection(sceneId));
+    const frame = current.frames.find((f) => f.id === frameId);
+    if (!frame) {
+      throw new Error('That frame is no longer in the scene.');
+    }
+    frame.image = placeholderImage(frame.beat || `Frame ${frame.position + 1}`);
+    this.directions.set(sceneId, structuredClone(current));
+    return current;
+  }
+
+  async generateLibraryImage(target: DescribeTarget): Promise<LibraryImage | null> {
+    const story = await this.storyOf(target.id);
+    const name =
+      [...story.characters, ...story.locations, ...story.props].find((e) => e.id === target.id)
+        ?.name ?? '';
+    const image: LibraryImage = { target, image: placeholderImage(name) };
+    this.libraryImages.set(target.id, image);
+    return structuredClone(image);
+  }
+
+  async listLibraryImages(storyId: string): Promise<LibraryImage[]> {
+    const story = await this.stories.getStory(storyId);
+    const ids = new Set([...story.characters, ...story.locations, ...story.props].map((e) => e.id));
+    return structuredClone([...this.libraryImages.values()].filter((i) => ids.has(i.target.id)));
+  }
+
   private async storyOf(entryId: string) {
     for (const summary of await this.stories.listStories()) {
       const story = await this.stories.getStory(summary.id);
@@ -255,5 +343,19 @@ function plainCue(elementId: string, text: string): Cue {
     narratorId: null,
     edited: false,
     audio: null,
+  };
+}
+
+/** A grey card with its subject written on it, standing in for the image model. */
+function placeholderImage(label: string): MediaImage {
+  const text = label.replace(/[<&"]/g, ' ').slice(0, 40);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200"><rect width="300" height="200" fill="#57534e"/><text x="150" y="105" fill="#e7e5e4" font-family="serif" font-size="16" text-anchor="middle">${text}</text></svg>`;
+  return {
+    assetId: crypto.randomUUID(),
+    url: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
+    contentType: 'image/svg+xml',
+    stale: false,
+    references: [],
+    notes: '',
   };
 }

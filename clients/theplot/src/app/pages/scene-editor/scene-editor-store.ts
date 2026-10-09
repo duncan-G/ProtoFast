@@ -14,10 +14,12 @@ import { DescribeTarget } from '../../direction/model/describe-target';
 import { covers, DirectTarget } from '../../direction/model/direct-target';
 import { DIRECTION_VOCABULARY } from '../../direction/model/direction-vocabulary';
 import { Frame } from '../../direction/model/frame';
+import { LibraryImage } from '../../direction/model/library-image';
 import { blankAppearance, SceneAppearance } from '../../direction/model/scene-appearance';
 import { emptyDirection, isDirected, SceneDirection } from '../../direction/model/scene-direction';
 import { blankPropState, ScenePropState } from '../../direction/model/scene-prop-state';
 import { SpeechVoice } from '../../direction/model/speech-voice';
+import { VoiceQuery } from '../../direction/model/voice-query';
 import { ScenePlayer } from '../../direction/scene-player';
 import {
   cover,
@@ -49,6 +51,7 @@ import { SceneElement } from '../../stories/model/scene-element';
 import { SceneElementType } from '../../stories/model/scene-element-type';
 import { Story } from '../../stories/model/story';
 import { StoryVocabulary } from '../../stories/model/story-vocabulary';
+import { EMPTY_VOICE } from '../../stories/model/voice-profile';
 import { Narrator } from '../../stories/model/narrator';
 import { isBeat, moveBlock, swapElement } from '../../stories/scene-blocks';
 import { StoryApi } from '../../stories/story-api';
@@ -60,12 +63,15 @@ import { SceneRow } from './scene-row';
 import { SceneStats } from './scene-stats';
 import { EditorMode } from './editor-mode';
 import { AudioState } from './audio-state';
+import { ImageState } from './image-state';
 import { DirectorLibraryTab } from './director-library-tab';
 import { InspectorScope } from './inspector-scope';
 import { InspectorTab } from './inspector-tab';
 
 const SAVE_DELAY_MS = 400;
 const UNTITLED = 'Untitled scene';
+/** The API caps a narrator's name and voice description at this. */
+const NARRATOR_TEXT_MAX = 1000;
 
 /**
  * Scene edits save shortly after typing stops; library and outline changes save at once. In
@@ -97,13 +103,18 @@ export class SceneEditorStore implements OnDestroy {
   readonly directing = signal<readonly DirectTarget[]>([]);
   /** The library entry the model is describing. */
   readonly describing = signal<string | null>(null);
+  /** The entry ids of the describe run under way, in order. */
+  readonly describeRun = signal<readonly string[]>([]);
   /** Element ids whose lines are being spoken; 'scene' while a whole-scene pass runs. */
   readonly generating = signal<ReadonlySet<string>>(new Set());
   /** Lines queued or being spoken, by element id. */
   readonly generatingLines = signal<ReadonlySet<string>>(new Set());
-  /** The speech provider's voices, loaded when a sheet first needs them. */
-  readonly voices = signal<SpeechVoice[] | null>(null);
-  readonly speechProvider = signal('');
+  /** The character whose voice is being cast. */
+  readonly castingVoice = signal<string | null>(null);
+  /** The story's library pictures, by entry id. */
+  readonly libraryImages = signal<ReadonlyMap<string, LibraryImage>>(new Map());
+  /** Frame ids and library entry ids queued or being pictured. */
+  readonly picturing = signal<ReadonlySet<string>>(new Set());
 
   readonly editingId = signal<string | null>(null);
   readonly libraryTab = signal<LibraryTab>('characters');
@@ -166,9 +177,21 @@ export class SceneEditorStore implements OnDestroy {
 
   /** In `REFERENCE_ORDER`, as the autocomplete lists them. */
   readonly referables = computed<Referable[]>(() => [
-    ...this.characters().map((c) => ({ kind: 'character' as const, id: c.id, name: c.name })),
-    ...this.locations().map((l) => ({ kind: 'location' as const, id: l.id, name: l.name })),
-    ...this.props().map((p) => ({ kind: 'prop' as const, id: p.id, name: p.name })),
+    ...this.characters().map((c) => ({
+      kind: 'character' as const,
+      id: c.id,
+      name: c.name,
+    })),
+    ...this.locations().map((l) => ({
+      kind: 'location' as const,
+      id: l.id,
+      name: l.name,
+    })),
+    ...this.props().map((p) => ({
+      kind: 'prop' as const,
+      id: p.id,
+      name: p.name,
+    })),
   ]);
 
   readonly elements = computed(() => this.scene()?.elements ?? []);
@@ -191,7 +214,11 @@ export class SceneEditorStore implements OnDestroy {
   });
 
   readonly stats = computed<SceneStats>(() => {
-    const stats: SceneStats = { lines: new Map(), mentions: new Map(), headings: new Map() };
+    const stats: SceneStats = {
+      lines: new Map(),
+      mentions: new Map(),
+      headings: new Map(),
+    };
     const bump = (map: Map<string, number>, id: string | null) => {
       if (id) {
         map.set(id, (map.get(id) ?? 0) + 1);
@@ -264,14 +291,15 @@ export class SceneEditorStore implements OnDestroy {
     }
     return this.props().filter((p) => ids.has(p.id));
   });
-  /** Where the scene's headings put it, in scene order. */
+  /** Where the scene's headings put it in scene order, then places only the director layer names. */
   readonly locationsInScene = computed(() => {
     const ids = [
-      ...new Set(
-        this.elements().flatMap((e) =>
+      ...new Set([
+        ...this.elements().flatMap((e) =>
           e.type === 'Heading' && e.locationId ? [e.locationId] : [],
         ),
-      ),
+        ...(this.direction()?.locationStates.map((l) => l.locationId) ?? []),
+      ]),
     ];
     return ids.flatMap((id) => this.locationById().get(id) ?? []);
   });
@@ -303,6 +331,39 @@ export class SceneEditorStore implements OnDestroy {
         (id) => this.audioStates().get(id) === 'none' || this.audioStates().get(id) === 'stale',
       ),
   );
+
+  /** Each frame's picture, by the frame's first element id. */
+  readonly frameImageStates = computed(() => {
+    const picturing = this.picturing();
+    return new Map<string, ImageState>(
+      (this.direction()?.frames ?? []).map((f) => [
+        f.firstElementId,
+        picturing.has(f.id) ? 'generating' : imageState(f.image),
+      ]),
+    );
+  });
+  /** Saved frames without a picture, or whose picture has fallen behind, in scene order. */
+  readonly framesNeedingImages = computed(() =>
+    this.frameSpans()
+      .map((s) => s.frame)
+      .filter((f) => f.id && ['none', 'stale'].includes(imageState(f.image)))
+      .map((f) => f.id),
+  );
+  /** The scene's cast, places and props, as library targets. */
+  readonly sceneEntries = computed<ReferenceTarget[]>(() => [
+    ...this.cast().map((c) => ({ kind: 'character' as const, id: c.id })),
+    ...this.locationsInScene().map((l) => ({
+      kind: 'location' as const,
+      id: l.id,
+    })),
+    ...this.propsInScene().map((p) => ({ kind: 'prop' as const, id: p.id })),
+  ]);
+
+  libraryImageState(id: string): ImageState {
+    return this.picturing().has(id)
+      ? 'generating'
+      : imageState(this.libraryImages().get(id)?.image);
+  }
 
   /** What the story text has outgrown in the director layer, in scene order. */
   readonly changes = computed(() => {
@@ -352,7 +413,9 @@ export class SceneEditorStore implements OnDestroy {
     try {
       if (this.story()?.id !== storyId) {
         this.loading.set(true);
+        this.libraryImages.set(new Map());
         this.story.set(await this.api.getStory(storyId));
+        void this.refreshLibraryImages();
       }
       const target = sceneId ?? this.places()[0]?.summary.id;
       if (!target) {
@@ -506,7 +569,9 @@ export class SceneEditorStore implements OnDestroy {
     this.updateElement(id, { text: value.text, mentions: value.mentions });
     const cue = this.cueByElement().get(id);
     if (this.mode() === 'director' && cue && stripTags(cue.performance) !== value.text.trim()) {
-      this.updateCue(id, { performance: reanchor(cue.performance, value.text) });
+      this.updateCue(id, {
+        performance: reanchor(cue.performance, value.text),
+      });
     }
   }
 
@@ -691,7 +756,10 @@ export class SceneEditorStore implements OnDestroy {
     await this.run(async () => {
       this.flushSave();
       const container = await this.api.createContainer(story.id, label);
-      const scene = this.blankScene(container.id, 0, { locationId: null, timeOfDay: null });
+      const scene = this.blankScene(container.id, 0, {
+        locationId: null,
+        timeOfDay: null,
+      });
       await this.api.createScene(scene);
       await this.refreshOutline();
       this.openNew(scene);
@@ -854,12 +922,20 @@ export class SceneEditorStore implements OnDestroy {
       if (target.kind === 'character') {
         await this.api.deleteCharacter(target.id);
         this.story.update(
-          (s) => s && { ...s, characters: s.characters.filter((c) => c.id !== target.id) },
+          (s) =>
+            s && {
+              ...s,
+              characters: s.characters.filter((c) => c.id !== target.id),
+            },
         );
       } else if (target.kind === 'location') {
         await this.api.deleteLocation(target.id);
         this.story.update(
-          (s) => s && { ...s, locations: s.locations.filter((l) => l.id !== target.id) },
+          (s) =>
+            s && {
+              ...s,
+              locations: s.locations.filter((l) => l.id !== target.id),
+            },
         );
       } else {
         await this.api.deleteProp(target.id);
@@ -867,7 +943,10 @@ export class SceneEditorStore implements OnDestroy {
       }
       this.scene.update(
         (scene) =>
-          scene && { ...scene, elements: scene.elements.map((e) => forgetInElement(e, target)) },
+          scene && {
+            ...scene,
+            elements: scene.elements.map((e) => forgetInElement(e, target)),
+          },
       );
     }, 'That could not be removed.');
   }
@@ -1066,7 +1145,9 @@ export class SceneEditorStore implements OnDestroy {
   removeCueTag(elementId: string, tag: string): void {
     const cue = this.cueByElement().get(elementId);
     if (cue) {
-      this.updateCue(elementId, { performance: removeTag(cue.performance, tag) });
+      this.updateCue(elementId, {
+        performance: removeTag(cue.performance, tag),
+      });
     }
   }
 
@@ -1075,7 +1156,9 @@ export class SceneEditorStore implements OnDestroy {
     const cue = this.cueByElement().get(elementId);
     const element = this.elements().find((e) => e.id === elementId);
     if (cue && element) {
-      this.updateCue(elementId, { performance: reanchor(cue.performance, element.text ?? '') });
+      this.updateCue(elementId, {
+        performance: reanchor(cue.performance, element.text ?? ''),
+      });
     }
   }
 
@@ -1146,7 +1229,9 @@ export class SceneEditorStore implements OnDestroy {
     if (frameKey === null) {
       this.updateDirection((d) => ({ ...d, [key]: value }));
     } else {
-      this.updateFrame(frameKey, { [key]: value === direction[key] ? null : value });
+      this.updateFrame(frameKey, {
+        [key]: value === direction[key] ? null : value,
+      });
     }
   }
 
@@ -1162,7 +1247,9 @@ export class SceneEditorStore implements OnDestroy {
     }
     const scene = onScreenOf(direction, null, characterId).value;
     this.updateFrame(frameKey, {
-      placements: withPlacement(frame, characterId, { onScreen: on === scene ? null : on }),
+      placements: withPlacement(frame, characterId, {
+        onScreen: on === scene ? null : on,
+      }),
     });
   }
 
@@ -1189,7 +1276,9 @@ export class SceneEditorStore implements OnDestroy {
     if (frame) {
       this.updateFrame(frameKey, {
         placements: frame.placements.flatMap((p) =>
-          withPlacement({ ...frame, placements: [p] }, p.characterId, { onScreen: null }),
+          withPlacement({ ...frame, placements: [p] }, p.characterId, {
+            onScreen: null,
+          }),
         ),
       });
     }
@@ -1207,7 +1296,9 @@ export class SceneEditorStore implements OnDestroy {
     frameKey: string | null,
   ): void {
     if (frameKey === null) {
-      this.setAppearance(characterId, { [field]: value ?? (field === 'wardrobeId' ? null : '') });
+      this.setAppearance(characterId, {
+        [field]: value ?? (field === 'wardrobeId' ? null : ''),
+      });
       return;
     }
     const frame = this.frameByKey(frameKey);
@@ -1246,7 +1337,11 @@ export class SceneEditorStore implements OnDestroy {
       ...d,
       frames: d.frames.map((p) =>
         p.placements.some((pl) => pl.characterId === characterId && pl[field])
-          ? { ...p, placements: withPlacement(p, characterId, { [field]: blank }), edited: true }
+          ? {
+              ...p,
+              placements: withPlacement(p, characterId, { [field]: blank }),
+              edited: true,
+            }
           : p,
       ),
     }));
@@ -1420,18 +1515,28 @@ export class SceneEditorStore implements OnDestroy {
   }
 
   async describe(target: DescribeTarget): Promise<void> {
-    if (this.describing() !== null) {
+    await this.describeAll([target]);
+  }
+
+  /** Writes the sheets one at a time, stopping at the first that fails. */
+  async describeAll(targets: readonly DescribeTarget[]): Promise<void> {
+    if (this.describing() !== null || targets.length === 0) {
       return;
     }
-    this.describing.set(target.id);
+    this.describing.set(targets[0].id);
+    this.describeRun.set(targets.map((t) => t.id));
     try {
       await this.flushSave();
-      const entry = await this.directionApi.describe(target);
-      this.replaceEntry(target, entry);
+      for (const target of targets) {
+        this.describing.set(target.id);
+        this.replaceEntry(target, await this.directionApi.describe(target));
+      }
+      await Promise.all([this.refreshMedia(), this.refreshLibraryImages()]);
     } catch (err) {
       this.error.set(describeError(err, 'The sheet could not be written.'));
     } finally {
       this.describing.set(null);
+      this.describeRun.set([]);
     }
   }
 
@@ -1475,11 +1580,118 @@ export class SceneEditorStore implements OnDestroy {
       return {
         ...mine,
         cues: [
-          ...mine.cues.map((c) => ({ ...c, audio: theirs.get(c.elementId)?.audio ?? null })),
+          ...mine.cues.map((c) => ({
+            ...c,
+            audio: theirs.get(c.elementId)?.audio ?? null,
+          })),
           ...direction.cues.filter((c) => !known.has(c.elementId)),
         ],
       };
     });
+  }
+
+  // ─── director mode: pictures ──────────────────────────────────────────
+
+  /**
+   * Pictures the frames one at a time in scene order, so each can be composed from the one before
+   * it. A scene run first pictures the scene's library entries that have no current picture, since
+   * those keep faces and places the same from frame to frame.
+   */
+  async generateFrameImages(
+    frameIds: readonly string[],
+    regenerate = false,
+    withLibrary = false,
+  ): Promise<void> {
+    const scene = this.scene();
+    const queued = frameIds.filter((id) => id && !this.picturing().has(id));
+    if (!scene || queued.length === 0) {
+      return;
+    }
+    this.picturing.update((ids) => new Set([...ids, ...queued]));
+    try {
+      await this.flushSave();
+      if (withLibrary) {
+        const entries = this.sceneEntries().filter((t) =>
+          ['none', 'stale'].includes(this.libraryImageState(t.id)),
+        );
+        await this.generateLibraryImages(entries);
+      }
+      const order = this.frameSpans().map((s) => s.frame.id);
+      for (const id of [...queued].sort((a, b) => order.indexOf(a) - order.indexOf(b))) {
+        if (this.scene()?.id !== scene.id) {
+          return;
+        }
+        this.adoptImages(
+          await this.directionApi.generateFrameImage(scene.id, id, regenerate),
+          scene.id,
+        );
+        this.picturing.update((ids) => new Set([...ids].filter((i) => i !== id)));
+      }
+    } catch (err) {
+      this.error.set(describeError(err, 'The frame could not be pictured.'));
+    } finally {
+      this.picturing.update((ids) => new Set([...ids].filter((i) => !queued.includes(i))));
+    }
+  }
+
+  /** Pictures library entries one at a time; frames composed from a redone picture go stale. */
+  async generateLibraryImages(
+    targets: readonly ReferenceTarget[],
+    regenerate = false,
+  ): Promise<void> {
+    const queued = targets.filter((t) => !this.picturing().has(t.id));
+    if (queued.length === 0) {
+      return;
+    }
+    this.picturing.update((ids) => new Set([...ids, ...queued.map((t) => t.id)]));
+    try {
+      for (const target of queued) {
+        const image = await this.directionApi.generateLibraryImage(target, regenerate);
+        if (image) {
+          this.libraryImages.update((m) => new Map(m).set(target.id, image));
+        }
+        this.picturing.update((ids) => new Set([...ids].filter((i) => i !== target.id)));
+      }
+      await this.refreshMedia();
+    } catch (err) {
+      this.error.set(describeError(err, 'The picture could not be made.'));
+    } finally {
+      const done = new Set(queued.map((t) => t.id));
+      this.picturing.update((ids) => new Set([...ids].filter((i) => !done.has(i))));
+    }
+  }
+
+  /** Only the pictures come from the reply. */
+  private adoptImages(direction: SceneDirection, sceneId: string): void {
+    if (this.scene()?.id !== sceneId) {
+      return;
+    }
+    const theirs = new Map(direction.frames.map((f) => [f.firstElementId, f.image]));
+    this.direction.update(
+      (mine) =>
+        mine && {
+          ...mine,
+          frames: mine.frames.map((f) => ({
+            ...f,
+            image: theirs.get(f.firstElementId) ?? null,
+          })),
+        },
+    );
+  }
+
+  private async refreshLibraryImages(): Promise<void> {
+    const story = this.story();
+    if (!story) {
+      return;
+    }
+    try {
+      const images = await this.directionApi.listLibraryImages(story.id);
+      if (this.story()?.id === story.id) {
+        this.libraryImages.set(new Map(images.map((i) => [i.target.id, i])));
+      }
+    } catch {
+      // Pictures are an extra: the editor works without them.
+    }
   }
 
   /** Lines in order that have audio to play, from the given element ids. */
@@ -1491,31 +1703,68 @@ export class SceneEditorStore implements OnDestroy {
     }
   }
 
-  async loadVoices(): Promise<void> {
-    if (this.voices() !== null) {
+  /** Errors are reported, and come back as no voices. */
+  async searchVoices(query: VoiceQuery): Promise<SpeechVoice[]> {
+    try {
+      return await this.directionApi.searchVoices(query);
+    } catch (err) {
+      this.error.set(describeError(err, 'The voices could not be listed.'));
+      return [];
+    }
+  }
+
+  async castVoice(characterId: string): Promise<void> {
+    if (this.castingVoice() !== null) {
       return;
     }
+    this.castingVoice.set(characterId);
     try {
-      const { provider, voices } = await this.directionApi.listVoices();
-      this.speechProvider.set(provider);
-      this.voices.set(voices);
+      await this.flushSave();
+      this.replaceEntry(
+        { kind: 'character', id: characterId },
+        await this.directionApi.castVoice(characterId),
+      );
+      await this.refreshMedia();
     } catch (err) {
-      this.voices.set([]);
-      this.error.set(describeError(err, 'The voices could not be listed.'));
+      this.error.set(describeError(err, 'No voice could be cast.'));
+    } finally {
+      this.castingVoice.set(null);
     }
+  }
+
+  setCharacterVoice(character: Character, voice: SpeechVoice): Promise<string | null> {
+    return this.saveCharacterSheet({
+      ...character,
+      voice: {
+        ...(character.voice ?? EMPTY_VOICE),
+        voiceId: voice.id,
+        voiceName: voice.name,
+        previewUrl: voice.previewUrl,
+      },
+    });
   }
 
   // ─── narrators ─────────────────────────────────────────────────────────
 
-  addNarrator(): void {
+  /** The story's first narrator becomes its default. */
+  addNarrator(voice: SpeechVoice): void {
+    if (this.narrators().some((n) => n.voice.voiceId === voice.id)) {
+      return;
+    }
     void this.saveNarrators([
       ...this.narrators(),
-      { id: '', name: 'New narrator', voice: { description: '', baseline: '', voiceId: '' } },
+      {
+        id: '',
+        name: voice.name.slice(0, NARRATOR_TEXT_MAX),
+        voice: {
+          ...EMPTY_VOICE,
+          description: voice.description.slice(0, NARRATOR_TEXT_MAX),
+          voiceId: voice.id,
+          voiceName: voice.name,
+          previewUrl: voice.previewUrl,
+        },
+      },
     ]);
-  }
-
-  updateNarrator(index: number, patch: Partial<Narrator>): void {
-    void this.saveNarrators(this.narrators().map((n, i) => (i === index ? { ...n, ...patch } : n)));
   }
 
   /** The default goes first; lines that picked it now take it by default. */
@@ -1561,15 +1810,17 @@ export class SceneEditorStore implements OnDestroy {
             ),
           },
       );
-      await this.refreshAudio();
+      await this.refreshMedia();
     }, 'The narrators could not be saved.');
   }
 
-  /** Whether each line's audio is still current is the server's call; a voice change moves it. */
-  private async refreshAudio(): Promise<void> {
+  /** Whether audio and pictures are still current is the server's call; a voice or a sheet change moves it. */
+  private async refreshMedia(): Promise<void> {
     const scene = this.scene();
     if (scene && this.direction()) {
-      this.adoptAudio(await this.directionApi.getSceneDirection(scene.id), scene.id);
+      const direction = await this.directionApi.getSceneDirection(scene.id);
+      this.adoptAudio(direction, scene.id);
+      this.adoptImages(direction, scene.id);
     }
   }
 
@@ -1597,9 +1848,7 @@ export class SceneEditorStore implements OnDestroy {
   ): Promise<string | null> {
     try {
       this.replaceEntry(target, await call());
-      if (target.kind === 'character') {
-        await this.refreshAudio();
-      }
+      await Promise.all([this.refreshMedia(), this.refreshLibraryImages()]);
       return null;
     } catch (err) {
       return describeError(err, 'The sheet could not be saved.');
@@ -1640,4 +1889,8 @@ export class SceneEditorStore implements OnDestroy {
       this.error.set(describeError(err, fallback));
     }
   }
+}
+
+function imageState(image: { stale: boolean } | null | undefined): ImageState {
+  return !image ? 'none' : image.stale ? 'stale' : 'ready';
 }

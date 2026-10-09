@@ -16,6 +16,11 @@ public sealed class Prop : IDateStamped
 
     public string? Description { get; set; }
 
+    /// <summary>The library's picture of it, if generated; stale once the sheet changed.</summary>
+    public Guid? ImageAssetId { get; set; }
+
+    public MediaAsset? Image { get; set; }
+
     public DateTime DateCreated { get; set; }
 
     public DateTime DateLastModified { get; set; }

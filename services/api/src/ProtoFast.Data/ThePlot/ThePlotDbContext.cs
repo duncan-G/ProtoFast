@@ -290,6 +290,13 @@ public sealed class ThePlotDbContext(
             entity.OwnsOne(c => c.Appearance, appearance => appearance.ToJson());
             entity.OwnsOne(c => c.Voice, voice => voice.ToJson());
 
+            // Deleting an asset leaves it unpictured, to be generated again.
+            entity.HasOne(c => c.Image)
+                .WithMany()
+                .HasForeignKey(c => c.ImageAssetId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(c => c.ImageAssetId);
+
             entity.HasIndex(c => new { c.StoryId, c.Name }).IsUnique();
             entity.ToTable(t => t.HasCheckConstraint("ck_characters_hue", "hue BETWEEN 0 AND 359"));
         });
@@ -327,6 +334,13 @@ public sealed class ThePlotDbContext(
             });
             entity.OwnsOne(l => l.Acoustics, acoustics => acoustics.ToJson());
 
+            // Deleting an asset leaves it unpictured, to be generated again.
+            entity.HasOne(l => l.Image)
+                .WithMany()
+                .HasForeignKey(l => l.ImageAssetId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(l => l.ImageAssetId);
+
             entity.HasIndex(l => new { l.StoryId, l.Name }).IsUnique();
             entity.ToTable(t => t.HasCheckConstraint("ck_locations_hue", "hue BETWEEN 0 AND 359"));
         });
@@ -341,6 +355,13 @@ public sealed class ThePlotDbContext(
                 .WithMany(s => s.Props)
                 .HasForeignKey(p => p.StoryId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // Deleting an asset leaves it unpictured, to be generated again.
+            entity.HasOne(p => p.Image)
+                .WithMany()
+                .HasForeignKey(p => p.ImageAssetId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(p => p.ImageAssetId);
 
             entity.HasIndex(p => new { p.StoryId, p.Name }).IsUnique();
         });
@@ -454,7 +475,14 @@ public sealed class ThePlotDbContext(
                 .HasForeignKey(p => p.LocationId)
                 .OnDelete(DeleteBehavior.SetNull);
 
+            // Deleting an asset leaves it unpictured, to be generated again.
+            entity.HasOne(p => p.Image)
+                .WithMany()
+                .HasForeignKey(p => p.ImageAssetId)
+                .OnDelete(DeleteBehavior.SetNull);
+
             entity.HasIndex(p => new { p.SceneId, p.Position });
+            entity.HasIndex(p => p.ImageAssetId);
             entity.HasIndex(p => p.FirstElementId);
             entity.HasIndex(p => p.LastElementId);
             entity.HasIndex(p => p.LocationId);
@@ -556,6 +584,7 @@ public sealed class ThePlotDbContext(
             entity.Property(a => a.Provider).IsRequired().HasMaxLength(LabelLength);
             entity.Property(a => a.Model).IsRequired().HasMaxLength(NameLength);
             entity.Property(a => a.Voice).HasMaxLength(NameLength);
+            entity.OwnsMany(a => a.References, references => references.ToJson());
 
             entity.HasOne(a => a.Story)
                 .WithMany()

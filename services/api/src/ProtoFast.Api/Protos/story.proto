@@ -245,6 +245,9 @@ message VoiceProfile {
     string baseline = 2;
     // The speech provider's voice; empty takes the provider's default.
     string voice_id = 3;
+    string voice_name = 4;
+    // A short sample of the voice; may be empty.
+    string preview_url = 5;
 }
 
 // An outfit; a scene's look names one by id. Labels are unique per character.

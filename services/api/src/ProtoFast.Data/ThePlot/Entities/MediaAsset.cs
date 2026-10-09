@@ -18,7 +18,7 @@ public sealed class MediaAsset : IDateStamped
 
     public MediaAssetKind Kind { get; set; }
 
-    /// <summary><c>stories/{storyId}/audio/{sha256}.mp3</c></summary>
+    /// <summary><c>stories/{storyId}/audio/{sha256}.mp3</c> or <c>stories/{storyId}/images/{sha256}.webp</c></summary>
     public required string StorageKey { get; set; }
 
     public required string ContentType { get; set; }
@@ -37,6 +37,15 @@ public sealed class MediaAsset : IDateStamped
 
     /// <summary>The provider's voice id the speech was made with.</summary>
     public string? Voice { get; set; }
+
+    /// <summary>What an image was asked for, as sent; null for audio.</summary>
+    public string? Prompt { get; set; }
+
+    /// <summary>The images an image was offered to compose from; the image model chose what to take.</summary>
+    public List<MediaReference> References { get; set; } = [];
+
+    /// <summary>The image model's summary of how it made the picture.</summary>
+    public string? Notes { get; set; }
 
     public int? DurationMs { get; set; }
 

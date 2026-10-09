@@ -5,6 +5,7 @@ using ProtoFast.Api.IntegrationTests;
 using ProtoFast.Api.Services;
 using ProtoFast.Api.Services.Admin;
 using ProtoFast.Api.Services.Directing;
+using ProtoFast.Api.Services.Imaging;
 using ProtoFast.Api.Services.Screenplays;
 using ProtoFast.Api.Services.Speech;
 using ProtoFast.Data.ThePlot;
@@ -48,6 +49,7 @@ public sealed class StoryDatabase : IAsyncLifetime
         services.AddSingleton(new DirectorOptions());
         services.AddSingleton<SceneDirector>();
         services.AddSingleton<SheetDescriber>();
+        services.AddSingleton<VoiceCaster>();
         services.AddScoped<DirectionScope>();
         services.AddScoped<DirectionService>();
         services.AddSingleton<ScriptedSpeechSynthesizer>();
@@ -57,6 +59,15 @@ public sealed class StoryDatabase : IAsyncLifetime
         services.AddSingleton<IPresignedUrlFactory>(sp => sp.GetRequiredService<MemoryObjectStore>());
         services.AddScoped<CueAudioGenerator>();
         services.AddScoped<CueAudioMessages>();
+        services.AddSingleton(new ImagingOptions());
+        services.AddSingleton<ScriptedImageGenerator>();
+        services.AddSingleton<IImageGenerator>(sp => sp.GetRequiredService<ScriptedImageGenerator>());
+        services.AddSingleton<ImageStaleness>();
+        services.AddSingleton<ReferenceCollector>();
+        services.AddScoped<ImageAssets>();
+        services.AddScoped<ImageMessages>();
+        services.AddScoped<FrameImageGenerator>();
+        services.AddScoped<LibraryImageGenerator>();
         // The real engine tables, so the console's reads see what the ledger writes; artifacts and
         // registry content would need an object store, so those two stay in memory.
         services.AddSingleton<IArtifactStore, InMemoryArtifactStore>();

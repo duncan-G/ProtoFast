@@ -80,18 +80,20 @@ export class InspectorPlaceTab {
     const elements = this.store.elements();
     const spans = this.store.frameSpans();
     const states = this.store.locationStateByLocation();
+    // Rows no heading places are where the director layer puts the scene.
+    const unheaded = this.store
+      .locationsInScene()
+      .find((l) => !elements.some((e) => e.type === 'Heading' && e.locationId === l.id));
+    const placeAt = (index: number) => headingAt(elements, index)?.locationId ?? unheaded?.id;
     const framesAt = (locationId: string) =>
       spans.flatMap((s, i) =>
-        s.frame.locationChange && headingAt(elements, s.first)?.locationId === locationId
-          ? [i + 1]
-          : [],
+        s.frame.locationChange && placeAt(s.first) === locationId ? [i + 1] : [],
       );
     const span = this.span();
     if (span) {
       const heading = headingAt(elements, span.first);
-      const location = heading?.locationId
-        ? this.store.locationById().get(heading.locationId)
-        : undefined;
+      const placed = placeAt(span.first);
+      const location = placed ? this.store.locationById().get(placed) : undefined;
       return location
         ? [
             {

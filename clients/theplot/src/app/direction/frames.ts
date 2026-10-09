@@ -20,7 +20,13 @@ export function frameSpans(
       const last = index.get(frame.lastElementId);
       return first === undefined || last === undefined
         ? []
-        : [{ frame, first: Math.min(first, last), last: Math.max(first, last) }];
+        : [
+            {
+              frame,
+              first: Math.min(first, last),
+              last: Math.max(first, last),
+            },
+          ];
     })
     .sort((a, b) => a.first - b.first);
 }
@@ -59,6 +65,7 @@ export function blankFrame(elements: readonly SceneElement[], first: number, las
     placements: [],
     props: [],
     edited: true,
+    image: null,
   };
 }
 
@@ -73,7 +80,11 @@ export function splitAt(
   if (!span || span.first === index) {
     return null;
   }
-  const head = { ...span.frame, lastElementId: elements[index - 1].id, edited: true };
+  const head = {
+    ...span.frame,
+    lastElementId: elements[index - 1].id,
+    edited: true,
+  };
   const tail = blankFrame(elements, index, span.last);
   return renumber([...frames.filter((p) => p !== span.frame), head, tail], elements);
 }
@@ -90,7 +101,11 @@ export function mergeUp(
   if (!span || !previous) {
     return null;
   }
-  const merged = { ...previous.frame, lastElementId: elements[span.last].id, edited: true };
+  const merged = {
+    ...previous.frame,
+    lastElementId: elements[span.last].id,
+    edited: true,
+  };
   return renumber(
     [...frames.filter((p) => p !== span.frame && p !== previous.frame), merged],
     elements,
@@ -131,7 +146,10 @@ export function removeFrame(
 
 /** Frames in scene order, positions renumbered. */
 export function renumber(frames: readonly Frame[], elements: readonly SceneElement[]): Frame[] {
-  return frameSpans(frames, elements).map((s, position) => ({ ...s.frame, position }));
+  return frameSpans(frames, elements).map((s, position) => ({
+    ...s.frame,
+    position,
+  }));
 }
 
 export function headingAt(elements: readonly SceneElement[], index: number): SceneElement | null {

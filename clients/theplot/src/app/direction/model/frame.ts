@@ -1,4 +1,5 @@
 import { FrameProp } from './frame-prop';
+import { MediaImage } from './media-image';
 import { Placement } from './placement';
 
 /** One picture of the scene, covering a contiguous run of its elements. Frames do not overlap. */
@@ -26,4 +27,6 @@ export interface Frame {
   props: FrameProp[];
   /** Written by hand; a directing pass leaves it alone. */
   edited: boolean;
+  /** Null until pictured. Read only: saves leave it alone. */
+  image: MediaImage | null;
 }

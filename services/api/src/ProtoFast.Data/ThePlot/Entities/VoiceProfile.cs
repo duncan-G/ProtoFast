@@ -11,4 +11,10 @@ public sealed class VoiceProfile
 
     /// <summary>The speech provider's voice for this character; null takes the provider's default.</summary>
     public string? VoiceId { get; set; }
+
+    /// <summary>The provider's name for <see cref="VoiceId"/>, kept so a sheet shows it without asking the provider.</summary>
+    public string VoiceName { get; set; } = "";
+
+    /// <summary>A short sample of <see cref="VoiceId"/>; empty when the provider has none.</summary>
+    public string PreviewUrl { get; set; } = "";
 }

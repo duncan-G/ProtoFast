@@ -12,7 +12,7 @@ import { EMPTY_IDENTITY } from '../../stories/model/character-identity';
 import { Location } from '../../stories/model/location';
 import { Prop } from '../../stories/model/prop';
 import { ReferenceTarget } from '../../stories/model/reference-target';
-import { VoiceProfile } from '../../stories/model/voice-profile';
+import { EMPTY_VOICE, VoiceProfile } from '../../stories/model/voice-profile';
 import { SceneEditorStore } from './scene-editor-store';
 import { StateChips } from './state-chips';
 
@@ -57,7 +57,11 @@ import { StateChips } from './state-chips';
               aria-label="Description"
               maxlength="4000"
               [value]="c.description ?? ''"
-              (change)="saveCharacter(c, { description: $any($event.target).value || null })"
+              (change)="
+                saveCharacter(c, {
+                  description: $any($event.target).value || null,
+                })
+              "
             ></textarea>
           }
           <div class="se-kicker">Identity · never changes</div>
@@ -77,7 +81,9 @@ import { StateChips } from './state-chips';
             [state]="c.appearance?.marks ?? []"
             placeholder="marks: scar, glasses…"
             (change)="
-              saveCharacter(c, { appearance: { ...(c.appearance ?? empty), marks: $event } })
+              saveCharacter(c, {
+                appearance: { ...(c.appearance ?? empty), marks: $event },
+              })
             "
           />
           <div class="se-kicker">Voice</div>
@@ -97,21 +103,6 @@ import { StateChips } from './state-chips';
             [value]="c.voice?.baseline ?? ''"
             (change)="saveVoice(c, { baseline: $any($event.target).value })"
           />
-          <input
-            class="se-field"
-            list="se-sheet-voices"
-            placeholder="cast: the speech provider’s voice id"
-            aria-label="Voice id"
-            maxlength="255"
-            [value]="c.voice?.voiceId ?? ''"
-            (focus)="store.loadVoices()"
-            (change)="saveVoice(c, { voiceId: $any($event.target).value.trim() })"
-          />
-          <datalist id="se-sheet-voices">
-            @for (voice of store.voices() ?? []; track voice.id) {
-              <option [value]="voice.id">{{ voice.name }}</option>
-            }
-          </datalist>
           @if (!details()) {
             <div class="se-kicker">Wardrobes</div>
             @for (wardrobe of c.wardrobes; track $index) {
@@ -122,7 +113,11 @@ import { StateChips } from './state-chips';
                   aria-label="Wardrobe label"
                   maxlength="255"
                   [value]="wardrobe.label"
-                  (change)="saveWardrobe(c, $index, { label: $any($event.target).value })"
+                  (change)="
+                    saveWardrobe(c, $index, {
+                      label: $any($event.target).value,
+                    })
+                  "
                 />
                 <input
                   class="se-field"
@@ -130,7 +125,11 @@ import { StateChips } from './state-chips';
                   aria-label="Wardrobe description"
                   maxlength="1000"
                   [value]="wardrobe.description"
-                  (change)="saveWardrobe(c, $index, { description: $any($event.target).value })"
+                  (change)="
+                    saveWardrobe(c, $index, {
+                      description: $any($event.target).value,
+                    })
+                  "
                 />
                 <button
                   type="button"
@@ -138,7 +137,9 @@ import { StateChips } from './state-chips';
                   title="Remove this wardrobe"
                   aria-label="Remove wardrobe"
                   (click)="
-                    saveCharacter(c, { wardrobes: c.wardrobes.filter((_, i) => i !== $index) })
+                    saveCharacter(c, {
+                      wardrobes: c.wardrobes.filter((_, i) => i !== $index),
+                    })
                   "
                 >
                   ×
@@ -161,7 +162,11 @@ import { StateChips } from './state-chips';
               aria-label="Description"
               maxlength="4000"
               [value]="l.description ?? ''"
-              (change)="saveLocation(l, { description: $any($event.target).value || null })"
+              (change)="
+                saveLocation(l, {
+                  description: $any($event.target).value || null,
+                })
+              "
             ></textarea>
           }
           <input
@@ -172,7 +177,10 @@ import { StateChips } from './state-chips';
             [value]="l.appearance?.layout ?? ''"
             (change)="
               saveLocation(l, {
-                appearance: { ...(l.appearance ?? emptyLook), layout: $any($event.target).value },
+                appearance: {
+                  ...(l.appearance ?? emptyLook),
+                  layout: $any($event.target).value,
+                },
               })
             "
           />
@@ -198,7 +206,11 @@ import { StateChips } from './state-chips';
                 class="se-field se-field-inline"
                 aria-label="Time of day"
                 [value]="light.timeOfDay"
-                (change)="saveLighting(l, $index, { timeOfDay: $any($event.target).value })"
+                (change)="
+                  saveLighting(l, $index, {
+                    timeOfDay: $any($event.target).value,
+                  })
+                "
               >
                 @for (time of store.timesOfDay(); track time) {
                   <option [value]="time">{{ time }}</option>
@@ -210,7 +222,11 @@ import { StateChips } from './state-chips';
                 aria-label="Lighting"
                 maxlength="1000"
                 [value]="light.description"
-                (change)="saveLighting(l, $index, { description: $any($event.target).value })"
+                (change)="
+                  saveLighting(l, $index, {
+                    description: $any($event.target).value,
+                  })
+                "
               />
               <button
                 type="button"
@@ -256,7 +272,10 @@ import { StateChips } from './state-chips';
             [value]="l.acoustics?.ambience ?? ''"
             (change)="
               saveLocation(l, {
-                acoustics: { space: l.acoustics?.space ?? '', ambience: $any($event.target).value },
+                acoustics: {
+                  space: l.acoustics?.space ?? '',
+                  ambience: $any($event.target).value,
+                },
               })
             "
           />
@@ -325,7 +344,7 @@ export class SheetEditor {
 
   protected saveVoice(character: Character, patch: Partial<VoiceProfile>): Promise<void> {
     return this.saveCharacter(character, {
-      voice: { description: '', baseline: '', voiceId: '', ...character.voice, ...patch },
+      voice: { ...EMPTY_VOICE, ...character.voice, ...patch },
     });
   }
 

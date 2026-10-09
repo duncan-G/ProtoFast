@@ -53,6 +53,7 @@ public sealed class SceneQuery : Query<Scene>, ISceneQuery
             .Include(s => s.Frames.OrderBy(p => p.Position).ThenBy(p => p.Id))
             .ThenInclude(p => p.Placements)
             .Include(s => s.Frames).ThenInclude(p => p.Props)
+            .Include(s => s.Frames).ThenInclude(p => p.Image)
             .Include(s => s.Cues).ThenInclude(c => c.Audio)
             .Include(s => s.Appearances)
             .Include(s => s.PropStates)

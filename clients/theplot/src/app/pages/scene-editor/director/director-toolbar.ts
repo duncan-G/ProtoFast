@@ -13,17 +13,36 @@ import { SceneEditorStore } from '../scene-editor-store';
 type Menu = 'suggest' | 'generate' | 'direct';
 
 const SUGGESTIONS: { label: string; hint: string; target: DirectTarget }[] = [
-  { label: 'Frames', hint: 'Split, shots, who is on screen', target: { kind: 'frames' } },
-  { label: 'Lines', hint: 'Delivery tags, gaps, cut-offs', target: { kind: 'cues' } },
-  { label: 'Looks', hint: 'Wardrobe, appearance, places', target: { kind: 'continuity' } },
-  { label: 'Story day', hint: 'Which day this happens on', target: { kind: 'storyDay' } },
+  {
+    label: 'Frames',
+    hint: 'Split, shots, who is on screen',
+    target: { kind: 'frames' },
+  },
+  {
+    label: 'Lines',
+    hint: 'Delivery tags, gaps, cut-offs',
+    target: { kind: 'cues' },
+  },
+  {
+    label: 'Looks',
+    hint: 'Wardrobe, appearance, places',
+    target: { kind: 'continuity' },
+  },
+  {
+    label: 'Story day',
+    hint: 'Which day this happens on',
+    target: { kind: 'storyDay' },
+  },
 ];
 
 /** The scene's slug and counts, and what the model and the speech provider can do for all of it. */
 @Component({
   selector: 'app-director-toolbar',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { class: 'dr-toolbar', '(document:mousedown)': 'onDocumentDown($event)' },
+  host: {
+    class: 'dr-toolbar',
+    '(document:mousedown)': 'onDocumentDown($event)',
+  },
   template: `
     <span class="dr-slug">{{ slug() }}</span>
     <span class="dr-toolbar-meta">
@@ -108,18 +127,27 @@ const SUGGESTIONS: { label: string; hint: string; target: DirectTarget }[] = [
           </button>
           <span class="dr-menu-rule"></span>
           <span class="dr-menu-kicker">Images · all frames</span>
-          @for (label of imageItems; track label) {
-            <button
-              type="button"
-              class="dr-menu-item"
-              role="menuitem"
-              disabled
-              title="Picture generation isn’t available yet"
-            >
-              <span class="flex-1">{{ label }}</span>
-              <span class="dr-menu-meta">{{ frames() }}</span>
-            </button>
-          }
+          <button
+            type="button"
+            class="dr-menu-item"
+            role="menuitem"
+            title="Pictures the scene's cast, places and props first when they have none, then each frame in order"
+            [disabled]="store.framesNeedingImages().length === 0"
+            (click)="picture(store.framesNeedingImages(), false)"
+          >
+            <span class="flex-1">Missing &amp; out of date</span>
+            <span class="dr-menu-meta">{{ framesLabel(store.framesNeedingImages().length) }}</span>
+          </button>
+          <button
+            type="button"
+            class="dr-menu-item"
+            role="menuitem"
+            [disabled]="frameIds().length === 0"
+            (click)="picture(frameIds(), true)"
+          >
+            <span class="flex-1">Regenerate everything</span>
+            <span class="dr-menu-meta">{{ framesLabel(frameIds().length) }}</span>
+          </button>
         </div>
       }
     </div>
@@ -128,7 +156,7 @@ const SUGGESTIONS: { label: string; hint: string; target: DirectTarget }[] = [
       <button
         type="button"
         class="dr-split-main"
-        title="The model writes the story day, looks, lines and frames; your own edits stay"
+        title="The model finds who and what is in the scene, then writes the story day, looks, lines and frames; your own edits stay"
         [class.is-working]="directingScene()"
         [disabled]="!canDirectScene()"
         (click)="store.direct({ kind: 'scene' })"
@@ -138,7 +166,6 @@ const SUGGESTIONS: { label: string; hint: string; target: DirectTarget }[] = [
       <button
         type="button"
         class="dr-split-more"
-        title="Redo from scratch"
         aria-label="More ways to direct"
         [attr.aria-expanded]="open() === 'direct'"
         (click)="toggle('direct')"
@@ -168,7 +195,6 @@ export class DirectorToolbar {
 
   protected readonly open = signal<Menu | null>(null);
   protected readonly suggestions = SUGGESTIONS;
-  protected readonly imageItems = ['Missing & out of date', 'Regenerate everything'];
 
   protected readonly directingScene = computed(() => this.store.isDirecting({ kind: 'scene' }));
   protected readonly canDirectScene = computed(() => this.store.canDirect({ kind: 'scene' }));
@@ -193,8 +219,16 @@ export class DirectorToolbar {
 
   protected readonly frames = computed(() => plural(this.store.frameSpans().length, 'frame'));
 
+  protected readonly frameIds = computed(() =>
+    this.store.frameSpans().flatMap((s) => (s.frame.id ? [s.frame.id] : [])),
+  );
+
   protected beats(count: number): string {
     return plural(count, 'beat');
+  }
+
+  protected framesLabel(count: number): string {
+    return plural(count, 'frame');
   }
 
   protected toggle(menu: Menu): void {
@@ -209,6 +243,11 @@ export class DirectorToolbar {
   protected generate(elementIds: readonly string[], regenerate: boolean): void {
     this.open.set(null);
     void this.store.generateAudio(elementIds, regenerate);
+  }
+
+  protected picture(frameIds: readonly string[], regenerate: boolean): void {
+    this.open.set(null);
+    void this.store.generateFrameImages(frameIds, regenerate, true);
   }
 
   protected redo(): void {

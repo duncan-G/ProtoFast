@@ -27,4 +27,25 @@ public sealed class ScriptedSpeechSynthesizer : ISpeechSynthesizer
 
     public Task<IReadOnlyList<SpeechVoice>> ListVoicesAsync(CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<SpeechVoice>>([new SpeechVoice("v1", "Vivian"), new SpeechVoice("v2", "Ryan")]);
+
+    public List<VoiceQuery> Searches { get; } = [];
+
+    /// <summary>Narration finds Ada alone; casting filters the library on its traits.</summary>
+    public Task<IReadOnlyList<SpeechVoice>> SearchVoicesAsync(VoiceQuery query, CancellationToken ct)
+    {
+        Searches.Add(query);
+        SpeechVoice[] library =
+        [
+            new("n1", "Ada", "Warm and unhurried.", "female · middle aged · british", "https://example.test/ada.mp3"),
+            new("c1", "Isla", "Bright and quick.", "female · middle aged · scottish", "https://example.test/isla.mp3"),
+            new("c2", "Fiona", "Light.", "female · young · scottish", ""),
+            new("c3", "Rob", "Gravel.", "male · old · american", ""),
+            new("c4", "Morag", "Low and dry.", "female · middle aged · scottish", "https://example.test/morag.mp3"),
+        ];
+        return Task.FromResult<IReadOnlyList<SpeechVoice>>(query.Narration
+            ? [library[0]]
+            : library.Where(v => new[] { query.Gender, query.Age.Replace('_', ' '), query.Accent }
+                    .All(label => label.Length == 0 || v.Traits.Split(" · ").Contains(label)))
+                .ToList());
+    }
 }

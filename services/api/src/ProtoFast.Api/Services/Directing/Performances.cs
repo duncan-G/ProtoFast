@@ -30,43 +30,45 @@ public static partial class Performances
     public static bool SameWords(string performance, string text) => Words(Strip(performance)).SequenceEqual(Words(text));
 
     /// <summary>
-    /// The line's words with tags placed: <paramref name="leading"/> at the start, each inline tag
-    /// before the word at its index. Over <see cref="MaxTags"/>, the later tags are dropped.
+    /// The line's own words with the tags of <paramref name="marked"/> (the line written back with
+    /// tags among its words), each before the word it preceded there; null when the words differ.
+    /// Tags <paramref name="accept"/> refuses, repeats, and those over <see cref="MaxTags"/> are dropped.
     /// </summary>
-    public static string Assemble(string text, IEnumerable<string> leading, IEnumerable<(int BeforeWord, string Tag)> inline)
+    public static string? Mark(string text, string marked, Func<string, string?> accept)
     {
         var tokens = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        var budget = MaxTags;
-        var used = new HashSet<string>(StringComparer.Ordinal);
+        var wordTokens = Enumerable.Range(0, tokens.Length).Where(i => Words(tokens[i]).Count > 0).ToList();
+        var seen = new List<string>();
         var before = new Dictionary<int, List<string>>();
-        var start = new List<string>();
-        foreach (var tag in leading.Select(Clean).Where(t => t.Length > 0))
+        var used = new HashSet<string>(StringComparer.Ordinal);
+        var spaced = TagPattern().Replace(marked, m => $" {m.Value} ");
+        foreach (var token in spaced.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
         {
-            if (budget > 0 && used.Add(tag))
+            if (TagPattern().Match(token) is { Success: true } match && match.Length == token.Length)
             {
-                start.Add(tag);
-                budget--;
+                if (used.Count < MaxTags && accept(Clean(match.Groups[1].Value)) is { } tag && used.Add(tag))
+                {
+                    var at = seen.Count < wordTokens.Count ? wordTokens[seen.Count] : tokens.Length;
+                    if (!before.TryGetValue(at, out var list))
+                    {
+                        before[at] = list = [];
+                    }
+
+                    list.Add(tag);
+                }
+            }
+            else
+            {
+                seen.AddRange(Words(token));
             }
         }
 
-        foreach (var (index, tag) in inline.Select(i => (i.BeforeWord, Clean(i.Tag))).Where(i => i.Item2.Length > 0).OrderBy(i => i.BeforeWord))
+        if (!seen.SequenceEqual(Words(text)))
         {
-            if (budget == 0 || !used.Add(tag))
-            {
-                continue;
-            }
-
-            var at = Math.Clamp(index, 0, tokens.Length);
-            if (!before.TryGetValue(at, out var list))
-            {
-                before[at] = list = [];
-            }
-
-            list.Add(tag);
-            budget--;
+            return null;
         }
 
-        var parts = new List<string>(start.Select(t => $"[{t}]"));
+        var parts = new List<string>();
         for (var i = 0; i <= tokens.Length; i++)
         {
             if (before.TryGetValue(i, out var tags))

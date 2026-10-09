@@ -1,39 +1,36 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { NAME_MAX } from '../../../stories/library-names';
 import { Avatar } from '../avatar';
 import { DirectorLibraryTab } from '../director-library-tab';
-import { initials, parseLocationQuery } from '../format';
+import { initials } from '../format';
 import { SceneEditorStore } from '../scene-editor-store';
 import { LibraryCastCard } from './library-cast-card';
 import { LibraryEntryCard } from './library-entry-card';
 import { LibraryNarratorCard } from './library-narrator-card';
+import { LibraryToolbar } from './library-toolbar';
+import { VoicePicker } from './voice-picker';
 
 const DEFAULTS = 'Scenes and frames can override them in the inspector.';
 
-const TABS: { tab: DirectorLibraryTab; label: string; hint: string; placeholder: string }[] = [
+const TABS: { tab: DirectorLibraryTab; label: string; hint: string }[] = [
   {
     tab: 'cast',
     label: 'Cast',
     hint: `How everyone looks and sounds across the story. ${DEFAULTS}`,
-    placeholder: 'New character…',
   },
   {
     tab: 'places',
     label: 'Places',
     hint: `What every location looks like. ${DEFAULTS}`,
-    placeholder: 'New place, e.g. EXT. Scrapyard',
   },
   {
     tab: 'props',
     label: 'Props',
     hint: `What every prop looks like. ${DEFAULTS}`,
-    placeholder: 'New prop…',
   },
   {
     tab: 'narrators',
     label: 'Narrators',
-    hint: 'The voices that read action and narration. The first is the default.',
-    placeholder: '',
+    hint: 'Voices picked to read action and narration. The first is the default.',
   },
 ];
 
@@ -41,7 +38,14 @@ const TABS: { tab: DirectorLibraryTab; label: string; hint: string; placeholder:
 @Component({
   selector: 'app-director-library',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Avatar, LibraryCastCard, LibraryEntryCard, LibraryNarratorCard],
+  imports: [
+    Avatar,
+    LibraryCastCard,
+    LibraryEntryCard,
+    LibraryNarratorCard,
+    LibraryToolbar,
+    VoicePicker,
+  ],
   host: {
     class: 'dr-library',
     '[class.is-open]': '!store.libraryCollapsed()',
@@ -178,9 +182,21 @@ const TABS: { tab: DirectorLibraryTab; label: string; hint: string; placeholder:
             @for (narrator of store.narrators(); track narrator.id || $index; let i = $index) {
               <app-library-narrator-card [narrator]="narrator" [index]="i" />
             }
-            <button type="button" class="dr-add-dashed" (click)="store.addNarrator()">
-              + Add narrator
-            </button>
+            @if (pickingNarrator()) {
+              <app-voice-picker
+                title="Add a narrator"
+                action="Add"
+                chosenLabel="Added"
+                [chosen]="narratorVoices()"
+                [initial]="{ narration: true }"
+                (picked)="store.addNarrator($event)"
+                (closed)="pickingNarrator.set(false)"
+              />
+            } @else {
+              <button type="button" class="dr-add-dashed" (click)="pickingNarrator.set(true)">
+                + Add narrator
+              </button>
+            }
             <span class="dr-hint"
               >The default narrates every action and narration line. Pick a different one on any
               line in the script.</span
@@ -189,22 +205,7 @@ const TABS: { tab: DirectorLibraryTab; label: string; hint: string; placeholder:
         }
       </div>
 
-      @if (placeholder(); as placeholder) {
-        <form class="dr-library-add" (submit)="$event.preventDefault(); add()">
-          <input
-            class="dr-input"
-            [placeholder]="placeholder"
-            [attr.aria-label]="placeholder"
-            [attr.maxlength]="nameMax"
-            [value]="draft()"
-            (input)="draft.set($any($event.target).value); problem.set('')"
-          />
-          <button type="submit" class="dr-btn is-dark" [disabled]="!draft().trim()">Add</button>
-        </form>
-        @if (problem()) {
-          <span class="dr-error dr-library-problem">{{ problem() }}</span>
-        }
-      }
+      <app-library-toolbar />
     }
   `,
 })
@@ -212,9 +213,10 @@ export class DirectorLibrary {
   protected readonly store = inject(SceneEditorStore);
 
   protected readonly tabs = TABS;
-  protected readonly nameMax = NAME_MAX;
-  protected readonly draft = signal('');
-  protected readonly problem = signal('');
+  protected readonly pickingNarrator = signal(false);
+  protected readonly narratorVoices = computed(
+    () => new Set(this.store.narrators().map((n) => n.voice.voiceId)),
+  );
 
   protected readonly hint = computed(
     () => TABS.find((t) => t.tab === this.store.directorLibraryTab())?.hint ?? '',
@@ -226,52 +228,17 @@ export class DirectorLibrary {
     narrators: this.store.narrators().length,
   }));
 
-  protected readonly placeholder = computed(
-    () => TABS.find((t) => t.tab === this.store.directorLibraryTab())?.placeholder ?? '',
-  );
-
   protected initialsOf(name: string): string {
     return initials(name);
   }
 
   protected selectTab(tab: DirectorLibraryTab): void {
     this.store.directorLibraryTab.set(tab);
-    this.draft.set('');
-    this.problem.set('');
   }
 
   protected openTo(tab: DirectorLibraryTab, entryId: string | null): void {
     this.store.libraryCollapsed.set(false);
     this.store.directorLibraryTab.set(tab);
     this.store.directorLibraryEntry.set(entryId);
-  }
-
-  protected async add(): Promise<void> {
-    const name = this.draft().trim();
-    if (!name) {
-      return;
-    }
-    let created: { id: string } | string;
-    switch (this.store.directorLibraryTab()) {
-      case 'cast':
-        created = await this.store.addCharacter(name);
-        break;
-      case 'places': {
-        const { setting, name: place } = parseLocationQuery(name);
-        created = await this.store.addLocation(place, setting ?? 'Interior');
-        break;
-      }
-      case 'props':
-        created = await this.store.addProp(name);
-        break;
-      default:
-        return;
-    }
-    if (typeof created === 'string') {
-      this.problem.set(created);
-      return;
-    }
-    this.draft.set('');
-    this.store.directorLibraryEntry.set(created.id);
   }
 }

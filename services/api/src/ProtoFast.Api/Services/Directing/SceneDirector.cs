@@ -42,6 +42,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         switch (request.TargetCase)
         {
             case DirectRequest.TargetOneofCase.Scene:
+                await PresenceAsync(brief, draft, ct);
                 await StoryDayAsync(brief, draft, ct);
                 await ContinuityAsync(brief, draft, null, null, replace, ct);
                 await CuesAsync(brief, draft, null, replace, ct);
@@ -76,6 +77,78 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         }
 
         return draft;
+    }
+
+    // ─── who and what is in the scene ──────────────────────────────────────
+
+    /// <summary>
+    /// Mentions and speakers name only part of a scene: "he", "the guard" and "the gun" point into
+    /// the library too. The model picks the library entries the text puts in the scene, and they
+    /// join the brief so the later passes give them looks, states and frames. A location is asked
+    /// for only where no heading names one.
+    /// </summary>
+    private async Task PresenceAsync(SceneBrief brief, DirectionDraft draft, CancellationToken ct)
+    {
+        var characters = brief.Context.Story.Characters.Where(c => !brief.Cast.Contains(c)).ToList();
+        var props = brief.Context.Story.Props.Where(p => !brief.Props.Contains(p)).ToList();
+        var locations = brief.Unplaced && brief.Locations.Count == 0 ? brief.Context.Story.Locations.ToList() : [];
+        if (brief.Elements.Count == 0 || characters.Count + props.Count + locations.Count == 0)
+        {
+            return;
+        }
+
+        static string Entries(IEnumerable<(string Name, string? Description)> entries)
+        {
+            var text = new StringBuilder();
+            foreach (var (name, description) in entries)
+            {
+                text.Append("- ").Append(name);
+                if (!string.IsNullOrWhiteSpace(description))
+                {
+                    text.Append(": ").Append(description);
+                }
+
+                text.AppendLine();
+            }
+
+            return text.Length == 0 ? "(none)\n" : text.ToString();
+        }
+
+        var prompt = $$"""
+            The scene below names some of its characters and props. Find the others: which of the
+            library entries listed is in this scene even though the text does not name it, through a
+            pronoun, a role ("the guard"), a description or plain context. A character counts only when
+            physically present, not when talked about or remembered. A prop counts when it is seen or
+            handled. {{(locations.Count == 0 ? "" : "The scene's heading names no place, so also pick the one location from the library where it happens, if the text makes it clear.")}}
+            Leave out anything you are unsure of; an empty list is a fine answer. Use names exactly as listed.
+
+            Characters already in the scene:
+            {{brief.CastSheet()}}
+            Props already in the scene:
+            {{brief.PropSheet()}}
+            Other characters in the library:
+            {{Entries(characters.Select(c => (c.Name, c.Description)))}}
+            Other props in the library:
+            {{Entries(props.Select(p => (p.Name, p.Description)))}}
+            {{(locations.Count == 0 ? "" : $"Locations in the library:\n{Entries(locations.Select(l => (l.Name, l.Description)))}")}}
+            Scene {{brief.Heading()}}:
+            {{brief.Script()}}
+            Reply: {"characters":["Name"],"props":["Name"],"locations":["Name"]}
+            """;
+
+        using var json = await AskAsync(prompt, ct);
+        var place = ModelJson.Strings(json.RootElement, "locations").Select(brief.LocationNamed)
+            .FirstOrDefault(l => l is not null && locations.Contains(l));
+        brief.Include(
+            ModelJson.Strings(json.RootElement, "characters").Select(brief.CharacterNamed)
+                .Where(c => c is not null && characters.Contains(c)).Select(c => c!.Id),
+            ModelJson.Strings(json.RootElement, "props").Select(brief.PropNamed)
+                .Where(p => p is not null && props.Contains(p)).Select(p => p!.Id),
+            place is null ? [] : [place.Id]);
+        if (place is not null && draft.LocationStates.All(l => l.LocationId != place.Id))
+        {
+            draft.LocationStates.Add(new SceneLocationStateRecord { LocationId = place.Id, Change = "" });
+        }
     }
 
     // ─── story day ─────────────────────────────────────────────────────────
@@ -412,30 +485,47 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         var lines = brief.Elements
             .Where(e => DirectionValidator.Spoken(e.Type))
             .Where(e => onlyElement is null || e.Id == onlyElement)
+            .Where(e => replaceEdited || draft.Cues.FirstOrDefault(c => c.ElementId == e.Id) is not { Edited: true })
             .ToList();
-        if (lines.Count == 0)
+        if (lines.Count == 0 && onlyElement is not null)
         {
-            if (onlyElement is not null)
-            {
-                throw StoryErrors.NotFound(DirectionErrors.LineNotFound);
-            }
+            throw StoryErrors.NotFound(DirectionErrors.LineNotFound);
+        }
 
+        // Narration and action are read as written; only dialogue takes delivery tags.
+        foreach (var line in lines.Where(e => e.Type != SceneElementTypeRecord.Dialogue))
+        {
+            var existing = draft.Cues.FirstOrDefault(c => c.ElementId == line.Id);
+            Replace(draft, new CueRecord
+            {
+                Id = existing?.Id ?? Guid.Empty,
+                ElementId = line.Id,
+                Performance = SceneBrief.Plain(line.Text),
+                GapBeforeMs = existing?.GapBeforeMs ?? 0,
+                Interrupted = existing?.Interrupted ?? false,
+                NarratorId = existing?.NarratorId,
+            });
+        }
+
+        var dialogue = lines.Where(e => e.Type == SceneElementTypeRecord.Dialogue).ToList();
+        if (dialogue.Count == 0)
+        {
             return;
         }
 
         var focus = onlyElement is { } id
             ? $"Direct only line {brief.Label(id)}; the other lines are context.\n"
-            : "Direct every dialogue, narration and action line.\n";
+            : "Direct every dialogue line; narration and action are context.\n";
         var prompt = $$"""
             Decide how each line is delivered. {{focus}}
-            For a line: "tags" are up to two delivery tags that set the whole line (emotion or manner);
-            "inline" places at most one more tag before a word, by 1-based word index, where the delivery
-            shifts mid-line or a non-verbal (a sigh, a pause) belongs. Honour parentheticals. Leave "tags"
-            empty when the speaker's baseline delivery fits: do not decorate every line. "gapBeforeMs" is
-            the minimum silence before the line in milliseconds, more than 0 only when an action or a
-            pause separates it from the line before; "interrupted" is true when the next line cuts this
-            one off. Narration and action lines are read aloud by a narrator, as written; tag them only
-            when the pace or the mood calls for it (slowly, tense).
+            Write the line back as "performance": its words exactly as given, with at most three delivery
+            tags in square brackets placed where each takes effect: before the word where the delivery
+            shifts mid-sentence, between sentences, or after the last word for a reaction (a sigh, a
+            laugh). Put a tag at the start only when it sets the whole line. Honour parentheticals. Leave
+            the words untagged when the speaker's baseline delivery fits: do not decorate every line.
+            "gapBeforeMs" is the minimum silence before the line in milliseconds, more than 0 only when an
+            action or a pause separates it from the line before; "interrupted" is true when the next line
+            cuts this one off.
 
             Tags you may use, spelled exactly: {{string.Join(", ", brief.Context.References.DeliveryTags)}}
 
@@ -443,7 +533,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             {{brief.CastSheet()}}
             Scene {{brief.Heading()}}:
             {{brief.Script()}}
-            Reply: {"cues":[{"line":"e3","tags":["sad"],"inline":[{"beforeWord":4,"tag":"sighs"}],"gapBeforeMs":0,"interrupted":false}]}
+            Reply: {"cues":[{"line":"e3","performance":"I'm sorry. [sighs] I [hesitant] didn't mean it.","gapBeforeMs":0,"interrupted":false}]}
             """;
 
         using var json = await AskAsync(prompt, ct);
@@ -458,24 +548,20 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         }
 
         var vocabulary = brief.Context.References.DeliveryTags;
-        foreach (var line in lines)
+        foreach (var line in dialogue)
         {
             var existing = draft.Cues.FirstOrDefault(c => c.ElementId == line.Id);
-            if (existing is { Edited: true } && !replaceEdited)
-            {
-                continue;
-            }
-
             var text = SceneBrief.Plain(line.Text);
             var cue = new CueRecord { Id = existing?.Id ?? Guid.Empty, ElementId = line.Id, Performance = text, NarratorId = existing?.NarratorId };
             if (answers.TryGetValue(line.Id, out var answer))
             {
-                var leading = ModelJson.Strings(answer, "tags").Select(t => Tag(t, vocabulary)).OfType<string>();
-                var inline = ModelJson.Array(answer, "inline")
-                    .Select(i => (Word: ModelJson.Int(i, "beforeWord") ?? 1, Tag: Tag(ModelJson.Str(i, "tag"), vocabulary)))
-                    .Where(i => i.Tag is not null)
-                    .Select(i => (Math.Max(i.Word - 1, 0), i.Tag!));
-                cue.Performance = Performances.Assemble(text, leading, inline);
+                var marked = Performances.Mark(text, ModelJson.Str(answer, "performance") ?? text, t => Tag(t, vocabulary));
+                if (marked is null && onlyElement is not null)
+                {
+                    throw new ModelOutputException("The answer changed the line's words.");
+                }
+
+                cue.Performance = marked ?? text;
                 cue.GapBeforeMs = Math.Clamp(ModelJson.Int(answer, "gapBeforeMs") ?? 0, -5_000, 60_000);
                 cue.Interrupted = ModelJson.Bool(answer, "interrupted");
             }
@@ -484,9 +570,14 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
                 throw new ModelOutputException("The answer skipped the line that was asked for.");
             }
 
-            draft.Cues.RemoveAll(c => c.ElementId == line.Id);
-            draft.Cues.Add(cue);
+            Replace(draft, cue);
         }
+    }
+
+    private static void Replace(DirectionDraft draft, CueRecord cue)
+    {
+        draft.Cues.RemoveAll(c => c.ElementId == cue.ElementId);
+        draft.Cues.Add(cue);
     }
 
     private static string? Tag(string? tag, IReadOnlyList<string> vocabulary) =>

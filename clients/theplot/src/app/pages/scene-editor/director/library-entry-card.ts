@@ -5,12 +5,13 @@ import { ReferenceTarget } from '../../../stories/model/reference-target';
 import { plural, settingPrefix } from '../format';
 import { SceneEditorStore } from '../scene-editor-store';
 import { SheetEditor } from '../sheet-editor';
+import { LibraryPicture } from './library-picture';
 
 /** A place or a prop: its description for every scene, and where this scene uses it. */
 @Component({
   selector: 'app-library-entry-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SheetEditor],
+  imports: [LibraryPicture, SheetEditor],
   host: { class: 'dr-card', '[class.is-open]': 'open()' },
   template: `
     @if (entry(); as e) {
@@ -31,6 +32,7 @@ import { SheetEditor } from '../sheet-editor';
       </div>
       @if (open()) {
         <div class="dr-card-body">
+          <app-library-picture [target]="target()" [name]="e.name" />
           <div class="dr-field">
             <div class="dr-field-head">
               <span class="dr-kicker">Description</span>
@@ -101,7 +103,12 @@ export class LibraryEntryCard {
     }
     const prop = this.store.propById().get(id);
     return prop
-      ? { name: prop.name, sub: 'Prop', hue: null, description: prop.description ?? '' }
+      ? {
+          name: prop.name,
+          sub: 'Prop',
+          hue: null,
+          description: prop.description ?? '',
+        }
       : null;
   });
 
@@ -112,8 +119,11 @@ export class LibraryEntryCard {
       const headings = this.store
         .elements()
         .filter((e) => e.type === 'Heading' && e.locationId === id).length;
-      return headings
-        ? `Heads ${plural(headings, 'part')} of Scene ${scene}`
+      if (headings) {
+        return `Heads ${plural(headings, 'part')} of Scene ${scene}`;
+      }
+      return this.store.locationsInScene().some((l) => l.id === id)
+        ? `In Scene ${scene}`
         : `Not in Scene ${scene}`;
     }
     if (!this.store.propsInScene().some((p) => p.id === id)) {

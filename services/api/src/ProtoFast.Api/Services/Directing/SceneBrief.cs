@@ -30,27 +30,45 @@ public sealed class SceneBrief
             _labels[Elements[i].Id] = label;
         }
 
+        // A row in the director layer keeps someone in the scene the text no longer names.
         var characterIds = Elements
             .SelectMany(e => e.Mentions.Select(m => m.CharacterId).Append(e.Type == SceneElementTypeRecord.Dialogue ? e.SpeakerId : null))
             .OfType<Guid>()
+            .Concat(context.Scene.Appearances.Select(a => a.CharacterId))
             .ToHashSet();
-        Cast = context.Story.Characters.Where(c => characterIds.Contains(c.Id)).ToList();
-        var propIds = Elements.SelectMany(e => e.Mentions.Select(m => m.PropId)).OfType<Guid>().ToHashSet();
-        Props = context.Story.Props.Where(p => propIds.Contains(p.Id)).ToList();
-        var locationIds = Elements.Select(e => e.LocationId).OfType<Guid>().ToHashSet();
-        Locations = context.Story.Locations.Where(l => locationIds.Contains(l.Id)).ToList();
+        var propIds = Elements.SelectMany(e => e.Mentions.Select(m => m.PropId)).OfType<Guid>()
+            .Concat(context.Scene.PropStates.Select(p => p.PropId))
+            .ToHashSet();
+        var locationIds = Elements.Select(e => e.LocationId).OfType<Guid>()
+            .Concat(context.Scene.LocationStates.Select(l => l.LocationId))
+            .ToHashSet();
+        Include(characterIds, propIds, locationIds);
     }
 
     public DirectedScene Context { get; }
 
     public List<SceneElementRecord> Elements { get; }
 
-    public IReadOnlyList<CharacterRecord> Cast { get; }
+    public IReadOnlyList<CharacterRecord> Cast { get; private set; } = [];
 
-    public IReadOnlyList<PropRecord> Props { get; }
+    public IReadOnlyList<PropRecord> Props { get; private set; } = [];
 
-    /// <summary>Where the scene's headings put it.</summary>
-    public IReadOnlyList<LocationRecord> Locations { get; }
+    /// <summary>Where the scene's headings put it, and where the director layer places the rest.</summary>
+    public IReadOnlyList<LocationRecord> Locations { get; private set; } = [];
+
+    /// <summary>Some row has no heading that names a location.</summary>
+    public bool Unplaced => Elements.Count > 0 && Elements.Select((_, i) => HeadingAt(i)?.LocationId).Any(id => id is null);
+
+    /// <summary>Adds library entries to the scene, keeping library order.</summary>
+    public void Include(IEnumerable<Guid> characterIds, IEnumerable<Guid> propIds, IEnumerable<Guid> locationIds)
+    {
+        var cast = Cast.Select(c => c.Id).Concat(characterIds).ToHashSet();
+        Cast = Context.Story.Characters.Where(c => cast.Contains(c.Id)).ToList();
+        var props = Props.Select(p => p.Id).Concat(propIds).ToHashSet();
+        Props = Context.Story.Props.Where(p => props.Contains(p.Id)).ToList();
+        var locations = Locations.Select(l => l.Id).Concat(locationIds).ToHashSet();
+        Locations = Context.Story.Locations.Where(l => locations.Contains(l.Id)).ToList();
+    }
 
     public string Label(Guid elementId) => _labels[elementId];
 
