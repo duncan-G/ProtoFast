@@ -4,6 +4,7 @@ import { DirectionApi } from '../../direction/direction-api';
 import { directionChanges, isSpoken } from '../../direction/direction-changes';
 import {
   ElementOrder,
+  extraOnScreenOf,
   Framing,
   inViewOf,
   joinChanges,
@@ -21,6 +22,7 @@ import { LookChange } from '../../direction/model/look-change';
 import { blankAppearance, SceneAppearance } from '../../direction/model/scene-appearance';
 import { emptyDirection, isDirected, SceneDirection } from '../../direction/model/scene-direction';
 import { blankPropState, ScenePropState } from '../../direction/model/scene-prop-state';
+import { blankSceneExtra } from '../../direction/model/scene-extra';
 import { SpeechVoice } from '../../direction/model/speech-voice';
 import { VoiceQuery } from '../../direction/model/voice-query';
 import { ScenePlayer } from '../../direction/scene-player';
@@ -43,6 +45,8 @@ import { insertReference, tagReference } from '../../stories/mentions';
 import { Character } from '../../stories/model/character';
 import { CharacterKind } from '../../stories/model/character-kind';
 import { DEFAULT_VOCABULARY } from '../../stories/model/default-vocabulary';
+import { Extra } from '../../stories/model/extra';
+import { LibraryTarget } from '../../stories/model/library-target';
 import { Location } from '../../stories/model/location';
 import { LocationSetting } from '../../stories/model/location-setting';
 import { MentionedText } from '../../stories/model/mentioned-text';
@@ -148,6 +152,8 @@ export class SceneEditorStore implements OnDestroy {
   readonly characterById = computed(() => new Map(this.characters().map((c) => [c.id, c])));
   readonly locationById = computed(() => new Map(this.locations().map((l) => [l.id, l])));
   readonly propById = computed(() => new Map(this.props().map((p) => [p.id, p])));
+  readonly extras = computed(() => this.story()?.extras ?? []);
+  readonly extraById = computed(() => new Map(this.extras().map((e) => [e.id, e])));
 
   private readonly vocabulary = computed<StoryVocabulary>(
     () =>
@@ -307,6 +313,11 @@ export class SceneEditorStore implements OnDestroy {
     }
     return this.props().filter((p) => ids.has(p.id));
   });
+  /** Extras are in a scene only through the director layer, never the text. */
+  readonly extrasInScene = computed(() => {
+    const ids = new Set(this.direction()?.extras.map((e) => e.extraId) ?? []);
+    return this.extras().filter((e) => ids.has(e.id));
+  });
   /** Where the scene's headings put it in scene order, then places only the director layer names. */
   readonly locationsInScene = computed(() => {
     const ids = [
@@ -365,14 +376,15 @@ export class SceneEditorStore implements OnDestroy {
       .filter((f) => f.id && ['none', 'stale'].includes(imageState(f.image)))
       .map((f) => f.id),
   );
-  /** The scene's cast, places and props, as library targets. */
-  readonly sceneEntries = computed<ReferenceTarget[]>(() => [
+  /** The scene's cast, places, props and extras, as library targets. */
+  readonly sceneEntries = computed<LibraryTarget[]>(() => [
     ...this.cast().map((c) => ({ kind: 'character' as const, id: c.id })),
     ...this.locationsInScene().map((l) => ({
       kind: 'location' as const,
       id: l.id,
     })),
     ...this.propsInScene().map((p) => ({ kind: 'prop' as const, id: p.id })),
+    ...this.extrasInScene().map((e) => ({ kind: 'extra' as const, id: e.id })),
   ]);
 
   libraryImageState(id: string): ImageState {
@@ -892,6 +904,55 @@ export class SceneEditorStore implements OnDestroy {
     );
   }
 
+  async addExtra(name: string): Promise<Extra | string> {
+    const story = this.story();
+    const problem = nameProblem(this.extras(), name, 'extra');
+    if (!story || problem) {
+      return problem ?? '';
+    }
+    return this.create(
+      () =>
+        this.api.createExtra(story.id, { name: name.trim(), description: null, wardrobe: null }),
+      (s, e) => ({ ...s, extras: [...s.extras, e] }),
+    );
+  }
+
+  /** Renames the extra or rewrites its sheet; the reply is what the API kept. */
+  async saveExtra(extra: Extra): Promise<string | null> {
+    const problem = nameProblem(this.extras(), extra.name, 'extra', extra.id);
+    if (problem) {
+      return problem;
+    }
+    return this.saveSheet({ kind: 'extra', id: extra.id }, () =>
+      this.api.updateExtra({ ...extra, name: extra.name.trim() }),
+    );
+  }
+
+  /** Takes them out of every scene and frame too. */
+  async removeExtra(id: string): Promise<void> {
+    await this.flushSave();
+    await this.run(async () => {
+      await this.api.deleteExtra(id);
+      this.story.update((s) => s && { ...s, extras: s.extras.filter((e) => e.id !== id) });
+      this.direction.update(
+        (d) =>
+          d && {
+            ...d,
+            extras: d.extras.filter((e) => e.extraId !== id),
+            frames: d.frames.map((f) => ({
+              ...f,
+              extras: f.extras.filter((e) => e.extraId !== id),
+            })),
+          },
+      );
+      this.libraryImages.update((m) => {
+        const next = new Map(m);
+        next.delete(id);
+        return next;
+      });
+    }, 'Those extras could not be removed.');
+  }
+
   private async create<T>(
     call: () => Promise<T>,
     add: (story: Story, entry: T) => Story,
@@ -1310,6 +1371,53 @@ export class SceneEditorStore implements OnDestroy {
     this.updateFrame(frameKey, { props: [] });
   }
 
+  setExtraOnScreen(extraId: string, on: boolean, frameKey: string | null): void {
+    if (frameKey === null) {
+      this.updateDirection((d) => ({
+        ...d,
+        extras: d.extras.map((e) =>
+          e.extraId === extraId ? { ...e, onScreen: on, edited: true } : e,
+        ),
+      }));
+      return;
+    }
+    const frame = this.frameByKey(frameKey);
+    const direction = this.direction();
+    if (!frame || !direction) {
+      return;
+    }
+    const scene = extraOnScreenOf(direction, null, extraId).value;
+    const rest = frame.extras.filter((e) => e.extraId !== extraId);
+    this.updateFrame(frameKey, {
+      extras: on === scene ? rest : [...rest, { extraId, onScreen: on }],
+    });
+  }
+
+  resetExtras(frameKey: string): void {
+    this.updateFrame(frameKey, { extras: [] });
+  }
+
+  addExtraToScene(extraId: string): void {
+    this.updateDirection((d) =>
+      d.extras.some((e) => e.extraId === extraId)
+        ? d
+        : { ...d, extras: [...d.extras, blankSceneExtra(extraId)] },
+    );
+  }
+
+  /** Frames stop saying anything about them too. */
+  removeExtraFromScene(extraId: string): void {
+    this.updateDirection((d) => ({
+      ...d,
+      extras: d.extras.filter((e) => e.extraId !== extraId),
+      frames: d.frames.map((f) =>
+        f.extras.some((e) => e.extraId === extraId)
+          ? { ...f, extras: f.extras.filter((e) => e.extraId !== extraId), edited: true }
+          : f,
+      ),
+    }));
+  }
+
   /** In the scene scope a wardrobe goes on the scene's look; in a frame, on its placement. */
   setLook(
     characterId: string,
@@ -1550,7 +1658,8 @@ export class SceneEditorStore implements OnDestroy {
     this.directing.update((running) => [...running, target]);
     try {
       await this.flushSave();
-      const direction = await this.directionApi.direct(scene.id, target, replaceEdited);
+      const { direction, extras } = await this.directionApi.direct(scene.id, target, replaceEdited);
+      this.story.update((s) => s && { ...s, extras });
       if (this.scene()?.id === direction.sceneId) {
         if (this.directionDirty) {
           // Edits made while the model worked are kept; the next save carries them over its result.
@@ -1609,6 +1718,12 @@ export class SceneEditorStore implements OnDestroy {
         theirs.locationStates,
         (l) => l.locationId,
         (l) => l.edited,
+      ),
+      extras: merge(
+        mine.extras,
+        theirs.extras,
+        (e) => e.extraId,
+        (e) => e.edited,
       ),
       frames: mine.frames.some((p) => p.edited) ? mine.frames : theirs.frames,
     };
@@ -1761,7 +1876,7 @@ export class SceneEditorStore implements OnDestroy {
 
   /** Pictures library entries one at a time; frames composed from a redone picture go stale. */
   async generateLibraryImages(
-    targets: readonly ReferenceTarget[],
+    targets: readonly LibraryTarget[],
     regenerate = false,
   ): Promise<void> {
     const queued = targets.filter((t) => !this.picturing().has(t.id));
@@ -1980,8 +2095,8 @@ export class SceneEditorStore implements OnDestroy {
   }
 
   private async saveSheet(
-    target: ReferenceTarget,
-    call: () => Promise<Character | Location | Prop>,
+    target: LibraryTarget,
+    call: () => Promise<Character | Location | Prop | Extra>,
   ): Promise<string | null> {
     try {
       this.replaceEntry(target, await call());
@@ -1992,7 +2107,7 @@ export class SceneEditorStore implements OnDestroy {
     }
   }
 
-  private replaceEntry(target: ReferenceTarget, entry: Character | Location | Prop): void {
+  private replaceEntry(target: LibraryTarget, entry: Character | Location | Prop | Extra): void {
     this.story.update((story) => {
       if (!story) {
         return story;
@@ -2014,6 +2129,11 @@ export class SceneEditorStore implements OnDestroy {
           return {
             ...story,
             props: story.props.map((p) => (p.id === target.id ? (entry as Prop) : p)),
+          };
+        case 'extra':
+          return {
+            ...story,
+            extras: story.extras.map((e) => (e.id === target.id ? (entry as Extra) : e)),
           };
       }
     });

@@ -50,6 +50,8 @@ public sealed class ThePlotDbContext(
 
     public DbSet<Prop> Props => Set<Prop>();
 
+    public DbSet<Extra> Extras => Set<Extra>();
+
     public DbSet<CharacterWardrobe> CharacterWardrobes => Set<CharacterWardrobe>();
 
     public DbSet<SceneAppearance> SceneAppearances => Set<SceneAppearance>();
@@ -57,6 +59,8 @@ public sealed class ThePlotDbContext(
     public DbSet<SceneLookChange> SceneLookChanges => Set<SceneLookChange>();
 
     public DbSet<ScenePropState> ScenePropStates => Set<ScenePropState>();
+
+    public DbSet<SceneExtra> SceneExtras => Set<SceneExtra>();
 
     public DbSet<Frame> Frames => Set<Frame>();
 
@@ -367,6 +371,26 @@ public sealed class ThePlotDbContext(
 
             entity.HasIndex(p => new { p.StoryId, p.Name }).IsUnique();
         });
+
+        modelBuilder.Entity<Extra>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.UserId).IsRequired().HasMaxLength(UserIdLength);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(NameLength);
+
+            entity.HasOne(e => e.Story)
+                .WithMany(s => s.Extras)
+                .HasForeignKey(e => e.StoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Image)
+                .WithMany()
+                .HasForeignKey(e => e.ImageAssetId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(e => e.ImageAssetId);
+
+            entity.HasIndex(e => new { e.StoryId, e.Name }).IsUnique();
+        });
     }
 
     /// <summary>
@@ -472,6 +496,24 @@ public sealed class ThePlotDbContext(
 
             entity.HasIndex(p => new { p.SceneId, p.PropId }).IsUnique();
             entity.HasIndex(p => p.ChangeElementId);
+        });
+
+        modelBuilder.Entity<SceneExtra>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasOne(e => e.Scene)
+                .WithMany(s => s.Extras)
+                .HasForeignKey(e => e.SceneId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Extra)
+                .WithMany()
+                .HasForeignKey(e => e.ExtraId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => new { e.SceneId, e.ExtraId }).IsUnique();
+            entity.HasIndex(e => e.ExtraId);
         });
 
         modelBuilder.Entity<SceneLocationState>(entity =>
@@ -584,6 +626,24 @@ public sealed class ThePlotDbContext(
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(p => p.PropId);
+        });
+
+        modelBuilder.Entity<FrameExtra>(entity =>
+        {
+            entity.ToTable("frame_extras");
+            entity.HasKey(e => new { e.FrameId, e.ExtraId });
+
+            entity.HasOne(e => e.Frame)
+                .WithMany(frame => frame.Extras)
+                .HasForeignKey(e => e.FrameId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Extra)
+                .WithMany()
+                .HasForeignKey(e => e.ExtraId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.ExtraId);
         });
 
         modelBuilder.Entity<Cue>(entity =>

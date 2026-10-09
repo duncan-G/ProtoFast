@@ -15,14 +15,16 @@ import {
   type ScenePropState as ScenePropStateMessage,
 } from '../../lib/gen/direction_pb';
 import { GRPC_TRANSPORT } from '../grpc-transport';
-import { fromScene, toCharacter, toLocation, toProp } from '../stories/connect-story-api';
+import { fromScene, toCharacter, toExtra, toLocation, toProp } from '../stories/connect-story-api';
 import { Character } from '../stories/model/character';
 import { Location } from '../stories/model/location';
+import { Extra } from '../stories/model/extra';
 import { Prop } from '../stories/model/prop';
 import { Scene } from '../stories/model/scene';
 import type { DirectionApi } from './direction-api';
 import { Cue } from './model/cue';
 import { DescribeTarget } from './model/describe-target';
+import { DirectResult } from './model/direct-result';
 import { DirectTarget } from './model/direct-target';
 import { Frame } from './model/frame';
 import { LibraryImage } from './model/library-image';
@@ -64,13 +66,13 @@ export class ConnectDirectionApi implements DirectionApi {
     sceneId: string,
     target: DirectTarget,
     replaceEdited = false,
-  ): Promise<SceneDirection> {
+  ): Promise<DirectResult> {
     const reply = await this.client.direct({
       sceneId,
       replaceEdited,
       target: fromTarget(target),
     });
-    return toDirection(required(reply.direction));
+    return { direction: toDirection(required(reply.direction)), extras: reply.extras.map(toExtra) };
   }
 
   async generateAudio(
@@ -140,7 +142,7 @@ export class ConnectDirectionApi implements DirectionApi {
     return reply.images.flatMap((i) => toLibraryImage(i) ?? []);
   }
 
-  async describe(target: DescribeTarget): Promise<Character | Location | Prop> {
+  async describe(target: DescribeTarget): Promise<Character | Location | Prop | Extra> {
     const reply = await this.client.describe({ subject: toSubject(target) });
     switch (reply.subject.case) {
       case 'character':
@@ -149,6 +151,8 @@ export class ConnectDirectionApi implements DirectionApi {
         return toLocation(reply.subject.value);
       case 'prop':
         return toProp(reply.subject.value);
+      case 'extra':
+        return toExtra(reply.subject.value);
       default:
         throw new Error('The API returned an empty reply.');
     }
@@ -163,11 +167,16 @@ function required<T>(message: T | undefined): T {
 }
 
 function toSubject(target: DescribeTarget) {
-  return target.kind === 'character'
-    ? ({ case: 'characterId', value: target.id } as const)
-    : target.kind === 'location'
-      ? ({ case: 'locationId', value: target.id } as const)
-      : ({ case: 'propId', value: target.id } as const);
+  switch (target.kind) {
+    case 'character':
+      return { case: 'characterId', value: target.id } as const;
+    case 'location':
+      return { case: 'locationId', value: target.id } as const;
+    case 'prop':
+      return { case: 'propId', value: target.id } as const;
+    case 'extra':
+      return { case: 'extraId', value: target.id } as const;
+  }
 }
 
 function toMediaImage(message: MediaImageMessage): MediaImage {
@@ -183,7 +192,10 @@ function toMediaImage(message: MediaImageMessage): MediaImage {
 
 function toLibraryImage(message: LibraryImageMessage): LibraryImage | null {
   const kind = message.subjectKind;
-  if (!message.image || (kind !== 'character' && kind !== 'location' && kind !== 'prop')) {
+  if (
+    !message.image ||
+    (kind !== 'character' && kind !== 'location' && kind !== 'prop' && kind !== 'extra')
+  ) {
     return null;
   }
   return {
@@ -198,6 +210,8 @@ function fromTarget(target: DirectTarget): DirectRequest['target'] {
       return { case: 'scene', value: true };
     case 'storyDay':
       return { case: 'storyDay', value: true };
+    case 'extras':
+      return { case: 'extras', value: true };
     case 'continuity':
       return { case: 'continuity', value: true };
     case 'appearance':
@@ -228,6 +242,12 @@ export function toDirection(message: SceneDirectionMessage): SceneDirection {
     lookChanges: message.lookChanges.map(toLookChange),
     propStates: message.propStates.map(toPropState),
     locationStates: message.locationStates.map(toLocationState),
+    extras: message.extras.map((e) => ({
+      id: e.id,
+      extraId: e.extraId,
+      onScreen: e.onScreen ?? true,
+      edited: e.edited,
+    })),
   };
 }
 
@@ -256,6 +276,7 @@ function toFrame(message: FrameMessage): Frame {
       appearanceChange: p.appearanceChange,
     })),
     props: message.props.map((p) => ({ propId: p.propId, inView: p.inView })),
+    extras: message.extras.map((e) => ({ extraId: e.extraId, onScreen: e.onScreen })),
     edited: message.edited,
     image: message.image ? toMediaImage(message.image) : null,
   };
@@ -360,6 +381,7 @@ export function fromDirection(direction: SceneDirection) {
         wardrobeId: pl.wardrobeId ?? undefined,
       })),
       props: p.props.map((pp) => ({ ...pp })),
+      extras: p.extras.map((e) => ({ ...e })),
       edited: p.edited,
     })),
     cues: direction.cues.map(({ audio: _audio, ...cue }) => ({
@@ -399,6 +421,7 @@ export function fromDirection(direction: SceneDirection) {
       edited: p.edited,
     })),
     locationStates: direction.locationStates.map((l) => ({ ...l })),
+    extras: direction.extras.map((e) => ({ ...e })),
   };
 }
 

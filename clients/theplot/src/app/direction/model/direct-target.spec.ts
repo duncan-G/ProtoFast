@@ -10,6 +10,8 @@ describe('covers', () => {
     expect(covers({ kind: 'frames' }, { kind: 'frame', frameId: 'p1' })).toBe(true);
     expect(covers({ kind: 'continuity' }, { kind: 'propState', propId: 'x' })).toBe(true);
     expect(covers({ kind: 'frame', frameId: 'p1' }, { kind: 'frames' })).toBe(false);
+    expect(covers({ kind: 'frames' }, { kind: 'extras' })).toBe(true);
+    expect(covers({ kind: 'extras' }, { kind: 'frames' })).toBe(false);
   });
 
   it('keeps separate parts apart', () => {

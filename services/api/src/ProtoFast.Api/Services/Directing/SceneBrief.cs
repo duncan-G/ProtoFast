@@ -7,13 +7,14 @@ using SceneAppearanceRecord = ProtoFast.Data.ThePlot.Entities.SceneAppearance;
 using SceneLookChangeRecord = ProtoFast.Data.ThePlot.Entities.SceneLookChange;
 using LocationRecord = ProtoFast.Data.ThePlot.Entities.Location;
 using PropRecord = ProtoFast.Data.ThePlot.Entities.Prop;
+using ExtraRecord = ProtoFast.Data.ThePlot.Entities.Extra;
 using SceneElementTypeRecord = ProtoFast.Data.ThePlot.Entities.SceneElementType;
 using LocationSettingRecord = ProtoFast.Data.ThePlot.Entities.LocationSetting;
 
 namespace ProtoFast.Api.Services.Directing;
 
 /// <summary>
-/// The scene as a model reads it: elements labelled <c>e1…eN</c>, and the cast, props and
+/// The scene as a model reads it: elements labelled <c>e1…eN</c>, and the cast, extras, props and
 /// locations by name. Labels and names map back to ids, so the model never sees a GUID.
 /// </summary>
 public sealed class SceneBrief
@@ -48,7 +49,12 @@ public sealed class SceneBrief
             .Concat(context.Scene.LocationStates.Select(l => l.LocationId))
             .ToHashSet();
         Include(characterIds, propIds, locationIds);
+        _library = [.. context.Story.Extras];
+        var extraIds = context.Scene.Extras.Select(e => e.ExtraId).ToHashSet();
+        Extras = _library.Where(e => extraIds.Contains(e.Id)).ToList();
     }
+
+    private readonly List<ExtraRecord> _library;
 
     public DirectedScene Context { get; }
 
@@ -57,6 +63,11 @@ public sealed class SceneBrief
     public IReadOnlyList<CharacterRecord> Cast { get; private set; } = [];
 
     public IReadOnlyList<PropRecord> Props { get; private set; } = [];
+
+    public IReadOnlyList<ExtraRecord> Extras { get; private set; } = [];
+
+    /// <summary>The story's extras and any a directing pass has added since.</summary>
+    public IReadOnlyList<ExtraRecord> ExtraLibrary => _library;
 
     /// <summary>Where the scene's headings put it, and where the director layer places the rest.</summary>
     public IReadOnlyList<LocationRecord> Locations { get; private set; } = [];
@@ -74,6 +85,17 @@ public sealed class SceneBrief
         var locations = Locations.Select(l => l.Id).Concat(locationIds).ToHashSet();
         Locations = Context.Story.Locations.Where(l => locations.Contains(l.Id)).ToList();
     }
+
+    /// <summary>Sets the scene's extras, adding new ones to the library the brief reads.</summary>
+    public void SetExtras(IEnumerable<ExtraRecord> extras)
+    {
+        var list = extras.Distinct().ToList();
+        _library.AddRange(list.Where(e => !_library.Contains(e)));
+        Extras = _library.Where(list.Contains).ToList();
+    }
+
+    public ExtraRecord? ExtraNamed(string? name) =>
+        name is null ? null : _library.FirstOrDefault(e => LibraryNames.Same(e.Name, name));
 
     public string Label(Guid elementId) => _labels[elementId];
 
@@ -238,6 +260,29 @@ public sealed class SceneBrief
             if (!string.IsNullOrWhiteSpace(prop.Description))
             {
                 text.Append(": ").Append(prop.Description);
+            }
+
+            text.AppendLine();
+        }
+
+        return text.Length == 0 ? "- (none)\n" : text.ToString();
+    }
+
+    /// <summary><c>- Pub regulars: a dozen drinkers in their sixties. Wearing: flat caps, cardigans.</c></summary>
+    public static string ExtraSheet(IEnumerable<ExtraRecord> extras)
+    {
+        var text = new StringBuilder();
+        foreach (var extra in extras)
+        {
+            text.Append("- ").Append(extra.Name);
+            if (!string.IsNullOrWhiteSpace(extra.Description))
+            {
+                text.Append(": ").Append(extra.Description.Trim());
+            }
+
+            if (!string.IsNullOrWhiteSpace(extra.Wardrobe))
+            {
+                text.Append(" Wearing: ").Append(extra.Wardrobe.Trim());
             }
 
             text.AppendLine();

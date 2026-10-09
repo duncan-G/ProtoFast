@@ -19,6 +19,9 @@ using SceneLocationStateRecord = ProtoFast.Data.ThePlot.Entities.SceneLocationSt
 using SceneElementTypeRecord = ProtoFast.Data.ThePlot.Entities.SceneElementType;
 using FramePlacementRecord = ProtoFast.Data.ThePlot.Entities.FramePlacement;
 using FramePropRecord = ProtoFast.Data.ThePlot.Entities.FrameProp;
+using FrameExtraRecord = ProtoFast.Data.ThePlot.Entities.FrameExtra;
+using ExtraRecord = ProtoFast.Data.ThePlot.Entities.Extra;
+using SceneExtraRecord = ProtoFast.Data.ThePlot.Entities.SceneExtra;
 
 namespace ProtoFast.Api.Services.Directing;
 
@@ -45,9 +48,9 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         doing. Where two or more are on screen, say how they are placed and turned toward each other
         (facing across the table, back to back, one behind the other, an arm's length apart). Place
         each of them in the location (at the window, on the bottom stair, behind the bar). Then
-        anything else happening in the picture: props in use, people or animals in the background,
+        anything else happening in the picture: props in use, extras and animals in the background,
         weather, light, smoke, movement. Only what a camera sees: no thoughts, sounds or dialogue.
-        Call props by their names as listed.
+        Call props and extras by their names as listed.
         """;
 
     /// <summary>A held prop is part of the look, so frames have to keep it in the holder's hands.</summary>
@@ -67,6 +70,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         {
             case DirectRequest.TargetOneofCase.Scene:
                 await PresenceAsync(brief, draft, ct);
+                await ExtrasAsync(brief, draft, replace, ct);
                 await StoryDayAsync(brief, draft, ct);
                 await ContinuityAsync(brief, draft, null, null, replace, ct);
                 await CuesAsync(brief, draft, null, replace, ct);
@@ -74,6 +78,9 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
                 break;
             case DirectRequest.TargetOneofCase.StoryDay:
                 await StoryDayAsync(brief, draft, ct);
+                break;
+            case DirectRequest.TargetOneofCase.Extras:
+                await ExtrasAsync(brief, draft, replace, ct);
                 break;
             case DirectRequest.TargetOneofCase.Continuity:
                 await ContinuityAsync(brief, draft, null, null, replace, ct);
@@ -90,10 +97,18 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             case DirectRequest.TargetOneofCase.CueElementId:
                 await CuesAsync(brief, draft, Id(request.CueElementId, DirectionErrors.LineNotFound), true, ct);
                 break;
+            // Frames name everyone in the picture, so the extras are found first; one frame only
+            // asks when the scene has none yet.
             case DirectRequest.TargetOneofCase.Frames:
+                await ExtrasAsync(brief, draft, replace, ct);
                 await FramesAsync(brief, draft, replace, true, ct);
                 break;
             case DirectRequest.TargetOneofCase.FrameId:
+                if (brief.Extras.Count == 0)
+                {
+                    await ExtrasAsync(brief, draft, false, ct);
+                }
+
                 await FrameAsync(brief, draft, Id(request.FrameId, DirectionErrors.FrameNotFound), ct);
                 break;
             default:
@@ -173,6 +188,93 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         {
             draft.LocationStates.Add(new SceneLocationStateRecord { LocationId = place.Id, Change = "" });
         }
+    }
+
+    // ─── extras ────────────────────────────────────────────────────────────
+
+    private const int MaxExtras = 8;
+
+    /// <summary>
+    /// Every picture names who is in it, so the uncast people a scene shows (a barman, commuters, a
+    /// crowd) are library entries too. The model reuses the library's where they fit and describes
+    /// the ones it lacks, which join the library when the pass is saved: an extra can come back in
+    /// later scenes. Extras the author put in the scene stay unless <paramref name="replaceEdited"/>.
+    /// </summary>
+    private async Task ExtrasAsync(SceneBrief brief, DirectionDraft draft, bool replaceEdited, CancellationToken ct)
+    {
+        if (brief.Elements.Count == 0)
+        {
+            return;
+        }
+
+        var prompt = $$"""
+            Who is in this scene besides the cast? Extras are the uncast people a picture of the scene
+            has to show: the barman serving, commuters on the platform, nurses passing, a crowd. List
+            each person or group the text puts physically in the scene, by its own words or by plain
+            context (a busy pub has drinkers; a hospital ward has staff). Leave out the cast, anyone only
+            talked about or remembered, and places the scene leaves empty. An empty list is a fine answer.
+            Reuse an extra from the library where one fits, named exactly as listed. Otherwise add one:
+            an extra can come back in later scenes, so name it for who they are ("Night-shift nurses",
+            "Pub regulars"), not for what they do here, and never with a cast member's name. A group is
+            one extra. For a new one give "description": who they are, how many, their ages and look, in
+            one or two sentences; and "wardrobe": what they wear. At most {{MaxExtras}} extras.
+
+            Cast (not extras):
+            {{brief.CastSheet()}}
+            Extras in the library:
+            {{SceneBrief.ExtraSheet(brief.ExtraLibrary)}}
+            Extras already in this scene:
+            {{SceneBrief.ExtraSheet(brief.Extras)}}
+            Scene {{brief.Heading()}}:
+            {{brief.Script()}}
+            Reply: {"extras":[{"name":"Pub regulars","description":"…","wardrobe":"…"}]}
+            """;
+
+        using var json = await AskAsync(prompt, ct);
+        if (!json.RootElement.TryGetProperty("extras", out var answered) || answered.ValueKind != JsonValueKind.Array)
+        {
+            throw new ModelOutputException("No extras in the answer.");
+        }
+
+        var kept = replaceEdited
+            ? []
+            : draft.Extras.Where(e => e.Edited).Select(e => brief.ExtraLibrary.FirstOrDefault(x => x.Id == e.ExtraId)).OfType<ExtraRecord>().ToList();
+        List<ExtraRecord> found = [];
+        foreach (var answer in answered.EnumerateArray().Where(a => a.ValueKind == JsonValueKind.Object).Take(MaxExtras))
+        {
+            var name = Trim(ModelJson.Str(answer, "name") ?? "", LibraryNames.MaxLength);
+            if (name.Length == 0 || brief.CharacterNamed(name) is not null)
+            {
+                continue;
+            }
+
+            var extra = brief.ExtraNamed(name) ?? found.FirstOrDefault(e => LibraryNames.Same(e.Name, name));
+            if (extra is null)
+            {
+                extra = new ExtraRecord
+                {
+                    Id = Guid.NewGuid(),
+                    StoryId = brief.Context.Story.Id,
+                    Name = name,
+                    Description = Sheet(ModelJson.Str(answer, "description")),
+                    Wardrobe = Sheet(ModelJson.Str(answer, "wardrobe")),
+                };
+                draft.NewExtras.Add(extra);
+            }
+
+            found.Add(extra);
+        }
+
+        var extras = kept.Concat(found).Distinct().ToList();
+        draft.Extras = extras.Select(e => draft.Extras.FirstOrDefault(x => x.ExtraId == e.Id)
+                                          ?? new SceneExtraRecord { ExtraId = e.Id }).ToList();
+        brief.SetExtras(extras);
+    }
+
+    private static string? Sheet(string? text)
+    {
+        var trimmed = Trim(text ?? "", SheetText.DescriptionMaxLength);
+        return trimmed.Length == 0 ? null : trimmed;
     }
 
     // ─── story day ─────────────────────────────────────────────────────────
@@ -833,8 +935,9 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             ({{string.Join("|", DirectionVocabulary.Angles)}}) and "movement" ({{string.Join("|", DirectionVocabulary.Movements)}}),
             "visible", "characters" on screen with "screen" ({{string.Join("|", DirectionVocabulary.ScreenSides)}}),
             a short "pose" and "expression" and any "change" to their look this frame alone shows (empty
-            when none), and "props" in view by name. Keep each character on the same screen side across
-            consecutive frames. Most frames share an angle and stay static; change them for a reason.
+            when none), "extras" in the picture and "props" in view, by name. Keep each character on the
+            same screen side across consecutive frames. Most frames share an angle and stay static;
+            change them for a reason.
             {{VisibleRule}}
             {{HoldingRule}}
             Natural beats, for guidance: {{beats}}
@@ -842,16 +945,19 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             {{brief.CastSheet()}}
             Looks:
             {{brief.LookSheet(draft.Appearances, draft.LookChanges)}}
+            Extras:
+            {{SceneBrief.ExtraSheet(brief.Extras)}}
             Props:
             {{brief.PropSheet()}}
             Places:
             {{brief.LocationSheet()}}
             Scene {{brief.Heading()}}:
             {{brief.Script()}}
-            Reply: {"frames":[{"from":"e1","to":"e2","shot":"wide","angle":"eye level","movement":"static","visible":"…","characters":[{"name":"Name","screen":"left","pose":"…","expression":"…","change":""}],"props":["Name"]}]}
+            Reply: {"frames":[{"from":"e1","to":"e2","shot":"wide","angle":"eye level","movement":"static","visible":"…","characters":[{"name":"Name","screen":"left","pose":"…","expression":"…","change":""}],"extras":["Name"],"props":["Name"]}]}
             """;
 
         using var json = await AskAsync(prompt, ct);
+        var sceneExtras = SceneExtras(brief, draft);
         var answered = new List<(int First, int Last, JsonElement Json)>();
         foreach (var frame in ModelJson.Array(json.RootElement, "frames"))
         {
@@ -873,7 +979,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
 
         if (directCuts)
         {
-            fixedFrames = fixedFrames.Select(f => (Frame: InCut(brief, answered, f.Frame, f.Range!.Value), f.Range)).ToList();
+            fixedFrames = fixedFrames.Select(f => (Frame: InCut(brief, answered, f.Frame, f.Range!.Value, sceneExtras), f.Range)).ToList();
         }
 
         // Fixed frames keep their rows; model frames are clipped around them, then gaps are closed
@@ -903,7 +1009,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
                 }
                 else if (pieceStart is { } start)
                 {
-                    frames.Add((start, i - 1, FrameFrom(brief, answer, start, i - 1)));
+                    frames.Add((start, i - 1, FrameFrom(brief, answer, start, i - 1, sceneExtras)));
                     pieceStart = null;
                 }
             }
@@ -942,7 +1048,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
                 }
                 else
                 {
-                    frames.Add((i, i, FrameFrom(brief, default, i, i)));
+                    frames.Add((i, i, FrameFrom(brief, default, i, i, sceneExtras)));
                 }
             }
 
@@ -981,7 +1087,8 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
 
     /// <summary>The answer that overlaps the author's cut most, framed over the cut's own rows.</summary>
     private static FrameRecord InCut(
-        SceneBrief brief, List<(int First, int Last, JsonElement Json)> answered, FrameRecord cut, (int First, int Last) range)
+        SceneBrief brief, List<(int First, int Last, JsonElement Json)> answered, FrameRecord cut, (int First, int Last) range,
+        IReadOnlySet<Guid> sceneExtras)
     {
         var best = answered
             .Select(a => (a.Json, Overlap: Math.Min(a.Last, range.Last) - Math.Max(a.First, range.First) + 1))
@@ -991,7 +1098,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             return cut;
         }
 
-        var directed = FrameFrom(brief, best.Json, range.First, range.Last);
+        var directed = FrameFrom(brief, best.Json, range.First, range.Last, sceneExtras);
         directed.Id = cut.Id;
         return directed;
     }
@@ -1070,6 +1177,22 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
                 frame.Props.Add(new FramePropRecord { PropId = prop.Id, InView = false });
             }
         }
+
+        foreach (var extra in brief.Extras)
+        {
+            var sceneOn = draft.Extras.FirstOrDefault(e => e.ExtraId == extra.Id)?.OnScreen ?? true;
+            var shown = frame.Extras.FirstOrDefault(e => e.ExtraId == extra.Id);
+            if ((shown is not null) == sceneOn)
+            {
+                frame.Extras.RemoveAll(e => e.ExtraId == extra.Id);
+            }
+            else if (shown is null)
+            {
+                frame.Extras.Add(new FrameExtraRecord { ExtraId = extra.Id, OnScreen = false });
+            }
+        }
+
+        frame.Extras.RemoveAll(e => !brief.Extras.Any(x => x.Id == e.ExtraId));
     }
 
     private async Task FrameAsync(SceneBrief brief, DirectionDraft draft, Guid frameId, CancellationToken ct)
@@ -1082,8 +1205,8 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             ({{string.Join("|", DirectionVocabulary.Angles)}}) and "movement" ({{string.Join("|", DirectionVocabulary.Movements)}}),
             "visible", "characters" on screen with "screen"
             ({{string.Join("|", DirectionVocabulary.ScreenSides)}}), a short "pose" and "expression" and any "change"
-            to their look this frame alone shows, and "props" in view by name. Keep characters on the
-            sides they hold in the other frames, listed below.
+            to their look this frame alone shows, "extras" in the picture and "props" in view, by name.
+            Keep characters on the sides they hold in the other frames, listed below.
             {{VisibleRule}}
             {{HoldingRule}}
             Other frames: {{string.Join("; ", draft.Frames.Where(p => p.Id != frameId).Select(p => Summary(brief, p)))}}
@@ -1092,13 +1215,15 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             {{brief.CastSheet()}}
             Looks:
             {{brief.LookSheet(draft.Appearances, draft.LookChanges)}}
+            Extras:
+            {{SceneBrief.ExtraSheet(brief.Extras)}}
             Props:
             {{brief.PropSheet()}}
             Places:
             {{brief.LocationSheet()}}
             Scene {{brief.Heading()}}:
             {{brief.Script()}}
-            Reply: {"shot":"medium","angle":"eye level","movement":"static","visible":"…","characters":[{"name":"Name","screen":"left","pose":"…","expression":"…","change":""}],"props":["Name"]}
+            Reply: {"shot":"medium","angle":"eye level","movement":"static","visible":"…","characters":[{"name":"Name","screen":"left","pose":"…","expression":"…","change":""}],"extras":["Name"],"props":["Name"]}
             """;
 
         using var json = await AskAsync(prompt, ct);
@@ -1108,7 +1233,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             throw new ModelOutputException("No frame in the answer.");
         }
 
-        var directed = FrameFrom(brief, answer, range.First, range.Last);
+        var directed = FrameFrom(brief, answer, range.First, range.Last, SceneExtras(brief, draft));
         await VisibleAsync(brief, draft, [directed], ct);
         AgainstScene(brief, draft, directed);
         directed.Id = frame.Id;
@@ -1116,7 +1241,8 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         draft.Frames[draft.Frames.IndexOf(frame)] = directed;
     }
 
-    private static FrameRecord FrameFrom(SceneBrief brief, JsonElement answer, int first, int last)
+    /// <param name="sceneExtras">The extras the scene puts on screen, which a frame whose answer says nothing about extras keeps.</param>
+    private static FrameRecord FrameFrom(SceneBrief brief, JsonElement answer, int first, int last, IReadOnlySet<Guid> sceneExtras)
     {
         var heading = brief.HeadingAt(first);
         var cast = brief.Cast;
@@ -1159,8 +1285,15 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             }
         }
 
+        var extras = answer.ValueKind == JsonValueKind.Object && answer.TryGetProperty("extras", out var named) && named.ValueKind == JsonValueKind.Array
+            ? ModelJson.Strings(answer, "extras").Select(brief.ExtraNamed).OfType<ExtraRecord>().Where(brief.Extras.Contains).Select(e => e.Id)
+            : sceneExtras;
+        frame.Extras.AddRange(extras.Distinct().Select(id => new FrameExtraRecord { ExtraId = id }));
         return frame;
     }
+
+    private static IReadOnlySet<Guid> SceneExtras(SceneBrief brief, DirectionDraft draft) =>
+        brief.Extras.Where(e => draft.Extras.FirstOrDefault(x => x.ExtraId == e.Id)?.OnScreen ?? true).Select(e => e.Id).ToHashSet();
 
     private static string? Visible(JsonElement answer) => ModelJson.Str(answer, "visible") ?? ModelJson.Str(answer, "beat");
 
@@ -1194,6 +1327,8 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             {{brief.CastSheet()}}
             Looks:
             {{brief.LookSheet(draft.Appearances, draft.LookChanges)}}
+            Extras:
+            {{SceneBrief.ExtraSheet(brief.Extras)}}
             Props:
             {{brief.PropSheet()}}
             Places:

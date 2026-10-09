@@ -42,6 +42,8 @@ public sealed class Scene : IDateStamped
 
     public List<SceneLocationState> LocationStates { get; set; } = [];
 
+    public List<SceneExtra> Extras { get; set; } = [];
+
     public DateTime DateCreated { get; set; }
 
     public DateTime DateLastModified { get; set; }

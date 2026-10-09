@@ -223,4 +223,37 @@ public class ImageTests(StoryDatabase database)
         Assert.Equal(6, Images.Requests.Count - before);
         Assert.Equal(pictured.AssetId, pier.Direction.Appearances.Single().Image.AssetId);
     }
+
+    [Fact]
+    public async Task A_frame_pictures_its_extras_from_their_library_picture()
+    {
+        var story = await _writer.CreateStoryAsync();
+        var mara = await _writer.CreateCharacterAsync(story.Id, "Mara");
+        var crowd = await _writer.CreateExtraAsync(story.Id, "Crowd", "Forty commuters.", "winter coats");
+        const string text = "@Mara waits on the platform.";
+        var scene = await _writer.WriteFirstSceneAsync(story, Heading(), Action(text, Mention(text, "@Mara", mara)));
+        var direction = new SceneDirection { SceneId = scene.Id };
+        direction.Extras.Add(new SceneExtra { ExtraId = crowd.Id });
+        direction.Frames.Add(new Frame { FirstElementId = scene.Elements[0].Id, LastElementId = scene.Elements[1].Id, Beat = "Mara among the Crowd." });
+        var saved = await _writer.SaveDirectionAsync(direction);
+
+        var library = await _writer.Direct((d, c) => d.GenerateLibraryImage(new GenerateLibraryImageRequest { ExtraId = crowd.Id }, c));
+        Assert.Equal(("extra", crowd.Id), (library.Image.SubjectKind, library.Image.SubjectId));
+        Assert.Contains("A reference picture of Crowd", Images.Requests[^1].Prompt);
+        Assert.Contains("Wearing: winter coats", Images.Requests[^1].Prompt);
+
+        var pictured = await _writer.Direct((d, c) => d.GenerateFrameImage(
+            new GenerateFrameImageRequest { SceneId = scene.Id, FrameId = saved.Frames[0].Id }, c));
+
+        Assert.Equal(["Crowd"], pictured.Direction.Frames[0].Image.References);
+        var request = Images.Requests[^1];
+        Assert.Contains("Crowd (extras, in the background):\nForty commuters.\nWearing: winter coats", request.Prompt);
+        Assert.Contains("Exactly one person in the picture besides the extras described.", request.Prompt);
+
+        // Changing the extras' sheet stales their picture and the frame composed from it.
+        await _writer.Call((s, c) => s.UpdateExtra(new UpdateExtraRequest { ExtraId = crowd.Id, Name = "Crowd", Description = "Ten commuters." }, c));
+        var images = await _writer.Direct((d, c) => d.ListLibraryImages(new ListLibraryImagesRequest { StoryId = story.Id }, c));
+        Assert.True(Assert.Single(images.Images).Image.Stale);
+        Assert.True((await _writer.GetDirectionAsync(scene.Id)).Frames[0].Image.Stale);
+    }
 }

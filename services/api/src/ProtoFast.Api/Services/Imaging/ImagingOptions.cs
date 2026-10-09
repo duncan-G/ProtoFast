@@ -18,6 +18,8 @@ public sealed class ImagingOptions
 
     public string PropSize { get; set; } = "1024x1024";
 
+    public string ExtraSize { get; set; } = "1536x1024";
+
     /// <summary>Records captions, prompts and reasoning on the image spans; copied from <c>Providers:CaptureMessageContent</c>.</summary>
     public bool CaptureMessageContent { get; set; }
 

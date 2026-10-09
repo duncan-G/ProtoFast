@@ -4,6 +4,8 @@ using ProtoFast.Data.ThePlot.Entities;
 using CueRecord = ProtoFast.Data.ThePlot.Entities.Cue;
 using FrameRecord = ProtoFast.Data.ThePlot.Entities.Frame;
 using FramePropRecord = ProtoFast.Data.ThePlot.Entities.FrameProp;
+using FrameExtraRecord = ProtoFast.Data.ThePlot.Entities.FrameExtra;
+using SceneExtraRecord = ProtoFast.Data.ThePlot.Entities.SceneExtra;
 using SceneAppearanceRecord = ProtoFast.Data.ThePlot.Entities.SceneAppearance;
 using SceneLocationStateRecord = ProtoFast.Data.ThePlot.Entities.SceneLocationState;
 using SceneLookChangeRecord = ProtoFast.Data.ThePlot.Entities.SceneLookChange;
@@ -42,6 +44,7 @@ public static class DirectionValidator
             LookChanges = LookChanges(message.LookChanges, references),
             PropStates = PropStates(message.PropStates, references),
             LocationStates = LocationStates(message.LocationStates, references),
+            Extras = Extras(message.Extras, references),
         };
     }
 
@@ -153,6 +156,7 @@ public static class DirectionValidator
                 HoldMs = frame.HasHoldMs ? frame.HoldMs : null,
                 Placements = Placements(frame.Placements, references, where),
                 Props = FrameProps(frame.Props, references, where),
+                Extras = FrameExtras(frame.Extras, references, where),
             };
             records.Add((record, first.Position, last.Position));
         }
@@ -212,6 +216,37 @@ public static class DirectionValidator
             if (records.All(p => p.PropId != id))
             {
                 records.Add(new FramePropRecord { PropId = id, InView = prop.InView });
+            }
+        }
+
+        return records;
+    }
+
+    private static List<FrameExtraRecord> FrameExtras(RepeatedField<FrameExtra> extras, DirectionReferences references, string where)
+    {
+        var records = new List<FrameExtraRecord>(extras.Count);
+        foreach (var extra in extras)
+        {
+            var id = Reference(extra.ExtraId, references.ExtraIds, where, "extra");
+            if (records.All(e => e.ExtraId != id))
+            {
+                records.Add(new FrameExtraRecord { ExtraId = id, OnScreen = extra.OnScreen });
+            }
+        }
+
+        return records;
+    }
+
+    private static List<SceneExtraRecord> Extras(RepeatedField<SceneExtra> extras, DirectionReferences references)
+    {
+        var records = new List<SceneExtraRecord>(extras.Count);
+        for (var index = 0; index < extras.Count; index++)
+        {
+            var extra = extras[index];
+            var id = Reference(extra.ExtraId, references.ExtraIds, $"Extra {index + 1}", "extra");
+            if (records.All(e => e.ExtraId != id))
+            {
+                records.Add(new SceneExtraRecord { ExtraId = id, OnScreen = !extra.HasOnScreen || extra.OnScreen });
             }
         }
 

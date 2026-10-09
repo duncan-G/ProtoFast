@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import {
   changesOf,
+  extraOnScreenOf,
   heldIn,
   inViewOf,
   joinChanges,
@@ -334,6 +335,68 @@ function isSheet(look: LookAt, character: Character): boolean {
 
     <div class="dr-field">
       <div class="dr-field-head">
+        <span class="dr-kicker">Extras</span>
+        <span class="flex-1"></span>
+        @if (frame(); as frame) {
+          @if (frame.extras.length > 0) {
+            <span class="dr-override"
+              >override ·
+              <button
+                type="button"
+                class="dr-link is-quiet"
+                (click)="store.resetExtras(frame.firstElementId)"
+              >
+                reset
+              </button></span
+            >
+          } @else {
+            <span class="dr-inherited">from scene</span>
+          }
+        } @else {
+          <button
+            type="button"
+            class="dr-link"
+            title="Have the model find who else the scene shows; extras the library lacks are added to it"
+            [class.is-working]="store.isDirecting({ kind: 'extras' })"
+            [disabled]="!store.canDirect({ kind: 'extras' })"
+            (click)="store.direct({ kind: 'extras' })"
+          >
+            {{ store.isDirecting({ kind: 'extras' }) ? 'Finding…' : 'Find extras' }}
+          </button>
+        }
+      </div>
+      <div class="dr-pills">
+        @for (extra of extras(); track extra.id) {
+          <button
+            type="button"
+            class="dr-prop"
+            [class.is-on]="extra.on"
+            [title]="extra.description"
+            (click)="store.setExtraOnScreen(extra.id, !extra.on, frameKey())"
+          >
+            @if (extra.on) {
+              {{ extra.name }} <span aria-hidden="true">×</span>
+            } @else {
+              + {{ extra.name }}
+            }
+          </button>
+        } @empty {
+          <span class="dr-hint">No extras in this scene yet.</span>
+        }
+      </div>
+      @if (!frame()) {
+        <select class="dr-input" aria-label="Add extras to the scene" (change)="addExtra($event)">
+          <option value="" selected>Add extras from the library…</option>
+          @for (extra of otherExtras(); track extra.id) {
+            <option [value]="extra.id">{{ extra.name }}</option>
+          }
+          <option value="new">New extras…</option>
+        </select>
+      }
+    </div>
+
+    <div class="dr-field">
+      <div class="dr-field-head">
         <span class="dr-kicker">Props</span>
         <span class="flex-1"></span>
         @if (frame(); as frame) {
@@ -512,6 +575,33 @@ export class InspectorCastTab {
       state: this.store.propStateByProp().get(prop.id)?.state.join(', ') ?? '',
     }));
   });
+
+  protected readonly extras = computed(() => {
+    const direction = this.store.direction() ?? emptyDirection('');
+    return this.store.extrasInScene().map((extra) => ({
+      id: extra.id,
+      name: extra.name,
+      description: extra.description ?? '',
+      on: extraOnScreenOf(direction, this.frame(), extra.id).value,
+    }));
+  });
+
+  protected readonly otherExtras = computed(() => {
+    const inScene = new Set(this.store.extrasInScene().map((e) => e.id));
+    return this.store.extras().filter((e) => !inScene.has(e.id));
+  });
+
+  protected addExtra(event: Event): void {
+    const select = event.target as HTMLSelectElement;
+    const id = select.value;
+    select.value = '';
+    if (id === 'new') {
+      this.store.libraryCollapsed.set(false);
+      this.store.directorLibraryTab.set('extras');
+    } else if (id) {
+      this.store.addExtraToScene(id);
+    }
+  }
 
   protected initialsOf(name: string): string {
     return initials(name);

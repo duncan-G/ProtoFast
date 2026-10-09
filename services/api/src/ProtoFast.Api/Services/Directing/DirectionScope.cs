@@ -63,6 +63,7 @@ public sealed class DirectionScope(
         WardrobesByCharacter = story.Characters.ToDictionary(
             c => c.Id, c => (IReadOnlySet<Guid>)c.Wardrobes.Select(w => w.Id).ToHashSet()),
         NarratorIds = story.Narrators.Select(n => n.Id).ToHashSet(),
+        ExtraIds = story.Extras.Select(e => e.Id).ToHashSet(),
         DeliveryTags = VocabularyLabels.DeliveryTags(story.Vocabulary),
     };
 }

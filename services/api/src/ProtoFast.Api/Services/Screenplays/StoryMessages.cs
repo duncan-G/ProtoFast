@@ -9,6 +9,7 @@ using LocationRecord = ProtoFast.Data.ThePlot.Entities.Location;
 using LocationSettingRecord = ProtoFast.Data.ThePlot.Entities.LocationSetting;
 using NarratorRecord = ProtoFast.Data.ThePlot.Entities.Narrator;
 using PropRecord = ProtoFast.Data.ThePlot.Entities.Prop;
+using ExtraRecord = ProtoFast.Data.ThePlot.Entities.Extra;
 using SceneElementMentionRecord = ProtoFast.Data.ThePlot.Entities.SceneElementMention;
 using SceneElementRecord = ProtoFast.Data.ThePlot.Entities.SceneElement;
 using SceneElementTypeRecord = ProtoFast.Data.ThePlot.Entities.SceneElementType;
@@ -43,6 +44,7 @@ public static class StoryMessages
         message.Characters.AddRange(story.Characters.Select(ToMessage));
         message.Locations.AddRange(story.Locations.Select(ToMessage));
         message.Props.AddRange(story.Props.Select(ToMessage));
+        message.Extras.AddRange(story.Extras.Select(ToMessage));
         return message;
     }
 
@@ -302,6 +304,27 @@ public static class StoryMessages
         if (prop.Description is not null)
         {
             message.Description = prop.Description;
+        }
+
+        return message;
+    }
+
+    public static Extra ToMessage(ExtraRecord extra)
+    {
+        var message = new Extra
+        {
+            Id = extra.Id.ToString(),
+            StoryId = extra.StoryId.ToString(),
+            Name = extra.Name,
+        };
+        if (extra.Description is not null)
+        {
+            message.Description = extra.Description;
+        }
+
+        if (extra.Wardrobe is not null)
+        {
+            message.Wardrobe = extra.Wardrobe;
         }
 
         return message;

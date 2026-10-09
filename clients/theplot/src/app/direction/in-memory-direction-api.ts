@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Character } from '../stories/model/character';
+import { Extra } from '../stories/model/extra';
 import { Location } from '../stories/model/location';
 import { Prop } from '../stories/model/prop';
 import { Scene } from '../stories/model/scene';
@@ -7,6 +8,7 @@ import { EMPTY_VOICE } from '../stories/model/voice-profile';
 import { StoryApi } from '../stories/story-api';
 import type { DirectionApi } from './direction-api';
 import { DescribeTarget } from './model/describe-target';
+import { DirectResult } from './model/direct-result';
 import { DirectTarget } from './model/direct-target';
 import { LibraryImage } from './model/library-image';
 import { MediaImage } from './model/media-image';
@@ -60,7 +62,7 @@ export class InMemoryDirectionApi implements DirectionApi {
     return this.store(await this.stories.getScene(scene.id), direction, true);
   }
 
-  async direct(sceneId: string, target: DirectTarget): Promise<SceneDirection> {
+  async direct(sceneId: string, target: DirectTarget): Promise<DirectResult> {
     const scene = await this.stories.getScene(sceneId);
     const current = structuredClone(this.directions.get(sceneId) ?? emptyDirection(sceneId));
     if (target.kind === 'scene' || target.kind === 'cues' || target.kind === 'cue') {
@@ -104,6 +106,7 @@ export class InMemoryDirectionApi implements DirectionApi {
           holdMs: null,
           placements: [],
           props: [],
+          extras: [],
           edited: false,
           image: null,
         },
@@ -117,7 +120,21 @@ export class InMemoryDirectionApi implements DirectionApi {
     if (target.kind === 'scene' || target.kind === 'storyDay') {
       current.storyDay = current.storyDay ?? 1;
     }
-    return this.store(scene, current, false);
+    return {
+      direction: this.store(scene, current, false),
+      extras: (await this.sceneStory(sceneId))?.extras ?? [],
+    };
+  }
+
+  private async sceneStory(sceneId: string) {
+    const scene = await this.stories.getScene(sceneId);
+    for (const summary of await this.stories.listStories()) {
+      const story = await this.stories.getStory(summary.id);
+      if (story.containers.some((c) => c.id === scene.containerId)) {
+        return story;
+      }
+    }
+    return null;
   }
 
   /** Every spoken line gets a silent data URL, so the player has something to play. */
@@ -173,7 +190,7 @@ export class InMemoryDirectionApi implements DirectionApi {
     });
   }
 
-  async describe(target: DescribeTarget): Promise<Character | Location | Prop> {
+  async describe(target: DescribeTarget): Promise<Character | Location | Prop | Extra> {
     const story = await this.storyOf(target.id);
     switch (target.kind) {
       case 'character': {
@@ -195,6 +212,13 @@ export class InMemoryDirectionApi implements DirectionApi {
         return this.stories.updatePropSheet({
           ...prop,
           description: `${prop.name}, as the story shows it.`,
+        });
+      }
+      case 'extra': {
+        const extra = story.extras.find((e) => e.id === target.id)!;
+        return this.stories.updateExtra({
+          ...extra,
+          description: `${extra.name}, as the story shows them.`,
         });
       }
     }
@@ -304,6 +328,15 @@ export class InMemoryDirectionApi implements DirectionApi {
           edited: changed ? byAuthor : (was?.edited ?? false),
         };
       }),
+      extras: direction.extras.map((e) => {
+        const was = stored.extras.find((s) => s.extraId === e.extraId);
+        const changed = !was || was.onScreen !== e.onScreen;
+        return {
+          ...e,
+          id: was?.id ?? crypto.randomUUID(),
+          edited: changed ? byAuthor : (was?.edited ?? false),
+        };
+      }),
     };
     this.directions.set(scene.id, structuredClone(next));
     return structuredClone(next);
@@ -362,7 +395,8 @@ export class InMemoryDirectionApi implements DirectionApi {
       if (
         story.characters.some((c) => c.id === entryId) ||
         story.locations.some((l) => l.id === entryId) ||
-        story.props.some((p) => p.id === entryId)
+        story.props.some((p) => p.id === entryId) ||
+        story.extras.some((e) => e.id === entryId)
       ) {
         return story;
       }

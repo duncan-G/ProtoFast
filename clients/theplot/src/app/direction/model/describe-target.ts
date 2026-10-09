@@ -1,4 +1,4 @@
-import { ReferenceTarget } from '../../stories/model/reference-target';
+import { LibraryTarget } from '../../stories/model/library-target';
 
 /** A library entry whose sheet the model writes. */
-export type DescribeTarget = ReferenceTarget;
+export type DescribeTarget = LibraryTarget;

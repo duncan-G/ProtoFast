@@ -25,6 +25,7 @@ function frame(first: number, last: number): { frame: Frame; first: number; last
       holdMs: null,
       placements: [],
       props: [],
+      extras: [],
       edited: false,
       image: null,
     },

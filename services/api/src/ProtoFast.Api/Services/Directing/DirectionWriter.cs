@@ -8,13 +8,15 @@ using SceneAppearanceRecord = ProtoFast.Data.ThePlot.Entities.SceneAppearance;
 using SceneLookChangeRecord = ProtoFast.Data.ThePlot.Entities.SceneLookChange;
 using ScenePropStateRecord = ProtoFast.Data.ThePlot.Entities.ScenePropState;
 using SceneLocationStateRecord = ProtoFast.Data.ThePlot.Entities.SceneLocationState;
+using SceneExtraRecord = ProtoFast.Data.ThePlot.Entities.SceneExtra;
+using FrameExtraRecord = ProtoFast.Data.ThePlot.Entities.FrameExtra;
 
 namespace ProtoFast.Api.Services.Directing;
 
 /// <summary>
 /// Writes a draft over a scene's stored director layer. Rows are matched by their place in the
 /// scene (a cue by its line, a frame by its first row, a look by its character, a look change by its
-/// character and line, a state by its prop or location), so they keep their ids; rows the draft leaves out are deleted and new ones get ids from
+/// character and line, a state by its prop or location, an extra by its library entry), so they keep their ids; rows the draft leaves out are deleted and new ones get ids from
 /// the database. A row the author changed is marked edited, so a later directing pass keeps it; a
 /// row a directing pass changed loses the mark.
 /// </summary>
@@ -56,7 +58,8 @@ public static class DirectionWriter
                           || stored.LocationChange != next.LocationChange
                           || stored.HoldMs != next.HoldMs
                           || !SamePlacements(stored.Placements, next.Placements)
-                          || !SameProps(stored.Props, next.Props);
+                          || !SameProps(stored.Props, next.Props)
+                          || !SameExtras(stored.Extras, next.Extras);
             stored.Position = next.Position;
             stored.FirstElementId = next.FirstElementId;
             stored.LastElementId = next.LastElementId;
@@ -100,6 +103,20 @@ public static class DirectionWriter
                     else
                     {
                         existing.InView = prop.InView;
+                    }
+                }
+
+                stored.Extras.RemoveAll(e => next.Extras.All(n => n.ExtraId != e.ExtraId));
+                foreach (var extra in next.Extras)
+                {
+                    var existing = stored.Extras.FirstOrDefault(e => e.ExtraId == extra.ExtraId);
+                    if (existing is null)
+                    {
+                        stored.Extras.Add(extra);
+                    }
+                    else
+                    {
+                        existing.OnScreen = extra.OnScreen;
                     }
                 }
             }
@@ -185,6 +202,13 @@ public static class DirectionWriter
             stored.Change = next.Change;
             return changed;
         });
+
+        Sync(scene.Extras, draft.Extras, e => e.ExtraId, byAuthor, (stored, next) =>
+        {
+            var changed = stored.OnScreen != next.OnScreen;
+            stored.OnScreen = next.OnScreen;
+            return changed;
+        });
     }
 
     /// <param name="key">The row's place in the scene.</param>
@@ -235,6 +259,9 @@ public static class DirectionWriter
             case SceneLocationStateRecord location:
                 location.Id = id;
                 break;
+            case SceneExtraRecord extra:
+                extra.Id = id;
+                break;
         }
     }
 
@@ -260,6 +287,9 @@ public static class DirectionWriter
             case SceneLocationStateRecord location:
                 location.Edited = edited;
                 break;
+            case SceneExtraRecord extra:
+                extra.Edited = edited;
+                break;
         }
     }
 
@@ -274,6 +304,9 @@ public static class DirectionWriter
             && n.WardrobeId == s.WardrobeId
             && n.WardrobeChange == s.WardrobeChange
             && n.AppearanceChange == s.AppearanceChange));
+
+    private static bool SameExtras(List<FrameExtraRecord> stored, List<FrameExtraRecord> next) =>
+        stored.Count == next.Count && stored.All(s => next.Any(n => n.ExtraId == s.ExtraId && n.OnScreen == s.OnScreen));
 
     private static bool SameProps(List<FramePropRecord> stored, List<FramePropRecord> next) =>
         stored.Count == next.Count && stored.All(s => next.Any(n => n.PropId == s.PropId && n.InView == s.InView));

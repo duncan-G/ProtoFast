@@ -5,6 +5,7 @@ using SceneAppearanceRecord = ProtoFast.Data.ThePlot.Entities.SceneAppearance;
 using SceneLookChangeRecord = ProtoFast.Data.ThePlot.Entities.SceneLookChange;
 using SceneLocationStateRecord = ProtoFast.Data.ThePlot.Entities.SceneLocationState;
 using ScenePropStateRecord = ProtoFast.Data.ThePlot.Entities.ScenePropState;
+using SceneExtraRecord = ProtoFast.Data.ThePlot.Entities.SceneExtra;
 using SceneRecord = ProtoFast.Data.ThePlot.Entities.Scene;
 
 namespace ProtoFast.Api.Services.Directing;
@@ -90,6 +91,7 @@ public static class DirectionMessages
             }));
         message.PropStates.AddRange(scene.PropStates.OrderBy(p => p.Id).Select(ToMessage));
         message.LocationStates.AddRange(scene.LocationStates.OrderBy(l => l.Id).Select(ToMessage));
+        message.Extras.AddRange(scene.Extras.OrderBy(e => e.Id).Select(ToMessage));
         return message;
     }
 
@@ -162,6 +164,11 @@ public static class DirectionMessages
         {
             PropId = p.PropId.ToString(),
             InView = p.InView,
+        }));
+        message.Extras.AddRange(frame.Extras.OrderBy(e => e.ExtraId).Select(e => new FrameExtra
+        {
+            ExtraId = e.ExtraId.ToString(),
+            OnScreen = e.OnScreen,
         }));
         return message;
     }
@@ -262,6 +269,14 @@ public static class DirectionMessages
 
         return message;
     }
+
+    public static SceneExtra ToMessage(SceneExtraRecord extra) => new()
+    {
+        Id = extra.Id.ToString(),
+        ExtraId = extra.ExtraId.ToString(),
+        OnScreen = extra.OnScreen,
+        Edited = extra.Edited,
+    };
 
     public static SceneLocationState ToMessage(SceneLocationStateRecord state) => new()
     {

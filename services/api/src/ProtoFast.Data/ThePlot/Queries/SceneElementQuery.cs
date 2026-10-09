@@ -66,6 +66,12 @@ public sealed class SceneElementQuery : Query<SceneElement>, ISceneElementQuery
         return this;
     }
 
+    public ISceneElementQuery InScenesWithExtra(Guid extraId)
+    {
+        Where(e => e.Scene.Extras.Any(x => x.ExtraId == extraId));
+        return this;
+    }
+
     public ISceneElementQuery WithMentions()
     {
         Apply(q => q.Include(e => e.Mentions.OrderBy(m => m.Offset)));

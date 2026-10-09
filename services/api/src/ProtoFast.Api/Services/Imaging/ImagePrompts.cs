@@ -4,6 +4,7 @@ using CharacterRecord = ProtoFast.Data.ThePlot.Entities.Character;
 using LocationRecord = ProtoFast.Data.ThePlot.Entities.Location;
 using LocationSettingRecord = ProtoFast.Data.ThePlot.Entities.LocationSetting;
 using PropRecord = ProtoFast.Data.ThePlot.Entities.Prop;
+using ExtraRecord = ProtoFast.Data.ThePlot.Entities.Extra;
 
 namespace ProtoFast.Api.Services.Imaging;
 
@@ -90,7 +91,23 @@ public static class ImagePrompts
         return text.ToString();
     }
 
-    /// <summary>Style, place and light, each character, the props, then the shot and the action.</summary>
+    /// <summary>A group is drawn as the group, so the same people stand behind the cast in every scene.</summary>
+    public static string Extra(ExtraRecord extra, string style)
+    {
+        var text = new StringBuilder();
+        text.AppendLine(style);
+        text.AppendLine($"A reference picture of {extra.Name}, extras who appear in the background of this production: full body, standing in neutral poses side by side against a plain light-grey studio backdrop, in soft even light. Show exactly the people the description says, and nobody else.");
+        AppendLine(text, extra.Description);
+        if (!string.IsNullOrWhiteSpace(extra.Wardrobe))
+        {
+            text.AppendLine($"Wearing: {extra.Wardrobe.Trim()}");
+        }
+
+        text.Append(NoText);
+        return text.ToString();
+    }
+
+    /// <summary>Style, place and light, each character, the extras, the props, then the shot and the action.</summary>
     public static string Frame(FrameContents frame, string style)
     {
         var text = new StringBuilder();
@@ -152,6 +169,17 @@ public static class ImagePrompts
             }
         }
 
+        foreach (var extra in frame.Extras)
+        {
+            text.AppendLine();
+            text.AppendLine($"{extra.Name} (extras, in the background):");
+            AppendLine(text, extra.Description);
+            if (!string.IsNullOrWhiteSpace(extra.Wardrobe))
+            {
+                text.AppendLine($"Wearing: {extra.Wardrobe.Trim()}");
+            }
+        }
+
         if (frame.InView.Any(p => p.HeldBy is null))
         {
             text.AppendLine();
@@ -183,7 +211,13 @@ public static class ImagePrompts
             text.AppendLine($"Not in the picture: {string.Join(", ", frame.OffScreen.Select(c => c.Name))}.");
         }
 
-        text.AppendLine(frame.OnScreen.Count == 0 ? "No people in the picture." : $"Exactly {People(frame.OnScreen.Count)} in the picture.");
+        text.AppendLine((frame.OnScreen.Count, frame.Extras.Count) switch
+        {
+            (0, 0) => "No people in the picture.",
+            (0, _) => "No one in the picture but the extras described.",
+            (var count, 0) => $"Exactly {People(count)} in the picture.",
+            var (count, _) => $"Exactly {People(count)} in the picture besides the extras described.",
+        });
         text.Append(NoText);
         return text.ToString();
     }

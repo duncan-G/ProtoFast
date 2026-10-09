@@ -11,7 +11,7 @@ import { plural } from '../format';
 import { SceneEditorStore } from '../scene-editor-store';
 
 type Menu = 'suggest' | 'generate' | 'direct';
-type Group = 'cast' | 'places' | 'props';
+type Group = 'cast' | 'extras' | 'places' | 'props';
 type Run = Group | 'library';
 
 interface Sheet {
@@ -21,6 +21,7 @@ interface Sheet {
 
 const GROUPS: { group: Group; label: string; noun: string }[] = [
   { group: 'cast', label: 'Cast', noun: 'character' },
+  { group: 'extras', label: 'Extras', noun: 'extra' },
   { group: 'places', label: 'Places', noun: 'place' },
   { group: 'props', label: 'Props', noun: 'prop' },
 ];
@@ -152,6 +153,10 @@ export class LibraryToolbar {
       target: { kind: 'character', id: c.id },
       written: !!c.description,
     })),
+    extras: this.store.extras().map((e) => ({
+      target: { kind: 'extra', id: e.id },
+      written: !!e.description,
+    })),
     places: this.store.locations().map((l) => ({
       target: { kind: 'location', id: l.id },
       written: !!l.description,
@@ -171,6 +176,7 @@ export class LibraryToolbar {
     const sheets = this.sheets();
     return {
       cast: need(sheets.cast),
+      extras: need(sheets.extras),
       places: need(sheets.places),
       props: need(sheets.props),
     };

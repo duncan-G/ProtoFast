@@ -6,6 +6,7 @@ using CharacterWardrobeRecord = ProtoFast.Data.ThePlot.Entities.CharacterWardrob
 using LocationRecord = ProtoFast.Data.ThePlot.Entities.Location;
 using NarratorRecord = ProtoFast.Data.ThePlot.Entities.Narrator;
 using PropRecord = ProtoFast.Data.ThePlot.Entities.Prop;
+using ExtraRecord = ProtoFast.Data.ThePlot.Entities.Extra;
 using SceneElementMentionRecord = ProtoFast.Data.ThePlot.Entities.SceneElementMention;
 using SceneElementRecord = ProtoFast.Data.ThePlot.Entities.SceneElement;
 using StoryRecord = ProtoFast.Data.ThePlot.Entities.Story;
@@ -13,7 +14,7 @@ using StoryRecord = ProtoFast.Data.ThePlot.Entities.Story;
 namespace ProtoFast.Api.Services.Screenplays;
 
 /// <summary>
-/// A story's characters, locations, props and vocabulary. Names are unique per kind ignoring case,
+/// A story's characters, locations, props, extras and vocabulary. Names are unique per kind ignoring case,
 /// which the case-sensitive indexes cannot enforce, so each write checks them under the story lock.
 /// </summary>
 public sealed class StoryLibrary(
@@ -27,12 +28,15 @@ public sealed class StoryLibrary(
     IQueryFactory<LocationRecord, ILocationQuery> locationQueries,
     IPropRepository propRepository,
     IQueryFactory<PropRecord, IPropQuery> propQueries,
+    IExtraRepository extraRepository,
+    IQueryFactory<ExtraRecord, IExtraQuery> extraQueries,
     ISceneElementRepository sceneElementRepository,
     IQueryFactory<SceneElementRecord, ISceneElementQuery> sceneElementQueries)
 {
     private const string CharacterNotFound = "That character is no longer in the library.";
     private const string LocationNotFound = "That location is no longer in the library.";
     private const string PropNotFound = "That prop is no longer in the library.";
+    public const string ExtraNotFound = "Those extras are no longer in the library.";
 
     public async Task<Character> CreateCharacterAsync(CreateCharacterRequest request, CancellationToken cancellationToken)
     {
@@ -217,6 +221,61 @@ public sealed class StoryLibrary(
         await storyScope.LockAsync(storyId, cancellationToken);
 
         await propRepository.DeleteByQueryAsync(propQueries.Create().WithId(id), cancellationToken);
+        await unitOfWork.CommitAsync(cancellationToken);
+    }
+
+    public async Task<Extra> CreateExtraAsync(CreateExtraRequest request, CancellationToken cancellationToken)
+    {
+        var storyId = StoryIds.Existing(request.StoryId, StoryErrors.StoryNotFound);
+        using var unitOfWork = unitOfWorkFactory.CreateReadWrite(nameof(CreateExtraAsync));
+        await storyScope.LockAsync(storyId, cancellationToken);
+
+        var extras = await extraRepository.GetByQueryAsync(extraQueries.Create().InStory(storyId), cancellationToken);
+        var extra = new ExtraRecord
+        {
+            StoryId = storyId,
+            Name = LibraryNames.Check(extras.Select(e => (e.Id, e.Name)), request.Name, "extra"),
+            Description = SheetText.Description(request.HasDescription ? request.Description : null),
+            Wardrobe = SheetText.Description(request.HasWardrobe ? request.Wardrobe : null),
+        };
+
+        await extraRepository.AddAsync(extra, cancellationToken);
+        await unitOfWork.CommitAsync(cancellationToken);
+        return StoryMessages.ToMessage(extra);
+    }
+
+    /// <summary>Extras are never mentioned, so a rename touches nothing but the entry.</summary>
+    public async Task<Extra> UpdateExtraAsync(UpdateExtraRequest request, CancellationToken cancellationToken)
+    {
+        var id = StoryIds.Existing(request.ExtraId, ExtraNotFound);
+        var description = SheetText.Description(request.HasDescription ? request.Description : null);
+        var wardrobe = SheetText.Description(request.HasWardrobe ? request.Wardrobe : null);
+        using var unitOfWork = unitOfWorkFactory.CreateReadWrite(nameof(UpdateExtraAsync));
+        var storyId = await extraRepository.GetFirstByQueryAsync(
+                          extraQueries.Create().WithId(id), e => (Guid?)e.StoryId, cancellationToken)
+                      ?? throw StoryErrors.NotFound(ExtraNotFound);
+        await storyScope.LockAsync(storyId, cancellationToken);
+
+        var extras = await extraRepository.GetByQueryAsync(extraQueries.Create().InStory(storyId), cancellationToken);
+        var extra = extras.Single(e => e.Id == id);
+        extra.Name = LibraryNames.Check(extras.Select(e => (e.Id, e.Name)), request.Name, "extra", id);
+        extra.Description = description;
+        extra.Wardrobe = wardrobe;
+
+        await unitOfWork.CommitAsync(cancellationToken);
+        return StoryMessages.ToMessage(extra);
+    }
+
+    public async Task DeleteExtraAsync(DeleteExtraRequest request, CancellationToken cancellationToken)
+    {
+        var id = StoryIds.Existing(request.ExtraId, ExtraNotFound);
+        using var unitOfWork = unitOfWorkFactory.CreateReadWrite(nameof(DeleteExtraAsync));
+        var storyId = await extraRepository.GetFirstByQueryAsync(
+                          extraQueries.Create().WithId(id), e => (Guid?)e.StoryId, cancellationToken)
+                      ?? throw StoryErrors.NotFound(ExtraNotFound);
+        await storyScope.LockAsync(storyId, cancellationToken);
+
+        await extraRepository.DeleteByQueryAsync(extraQueries.Create().WithId(id), cancellationToken);
         await unitOfWork.CommitAsync(cancellationToken);
     }
 

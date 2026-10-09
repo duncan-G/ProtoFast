@@ -59,6 +59,7 @@ describe('ConnectStoryApi', () => {
             { id: 'docks', storyId, name: 'Docks', setting: LocationSetting.EXTERIOR, hue: 200 },
           ],
           props: [{ id: 'radio', storyId, name: 'Radio' }],
+          extras: [{ id: 'crowd', storyId, name: 'Crowd', wardrobe: 'winter coats' }],
         },
       }),
     });
@@ -118,6 +119,15 @@ describe('ConnectStoryApi', () => {
       ],
       props: [{ id: 'radio', storyId: 'story', name: 'Radio', description: null }],
       narrators: [],
+      extras: [
+        {
+          id: 'crowd',
+          storyId: 'story',
+          name: 'Crowd',
+          description: null,
+          wardrobe: 'winter coats',
+        },
+      ],
     });
   });
 

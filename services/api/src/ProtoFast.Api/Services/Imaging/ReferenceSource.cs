@@ -9,4 +9,6 @@ public enum ReferenceSource
 
     /// <summary>A character's picture in one of their looks.</summary>
     Look,
+
+    Extra,
 }

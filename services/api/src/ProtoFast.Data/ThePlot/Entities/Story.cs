@@ -18,6 +18,8 @@ public sealed class Story : IDateStamped
 
     public List<Prop> Props { get; set; } = [];
 
+    public List<Extra> Extras { get; set; } = [];
+
     public StoryVocabulary Vocabulary { get; set; } = new();
 
     /// <summary>Action and narration have no speaker; the first narrator reads them unless a cue picks another.</summary>

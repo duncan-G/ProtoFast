@@ -1,3 +1,4 @@
+import { FrameExtra } from './frame-extra';
 import { FrameProp } from './frame-prop';
 import { MediaImage } from './media-image';
 import { Placement } from './placement';
@@ -25,6 +26,8 @@ export interface Frame {
   placements: Placement[];
   /** Only the props the frame shows or hides against the scene. */
   props: FrameProp[];
+  /** Only the extras the frame shows or hides against the scene. */
+  extras: FrameExtra[];
   /** Written by hand; a directing pass leaves it alone. */
   edited: boolean;
   /** Null until pictured. Read only: saves leave it alone. */

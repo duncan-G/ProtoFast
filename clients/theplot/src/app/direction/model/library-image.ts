@@ -1,8 +1,8 @@
-import { ReferenceTarget } from '../../stories/model/reference-target';
+import { LibraryTarget } from '../../stories/model/library-target';
 import { MediaImage } from './media-image';
 
-/** A character's, location's or prop's picture, which frames are kept consistent with. */
+/** A character's, location's, prop's or extra's picture, which frames are kept consistent with. */
 export interface LibraryImage {
-  target: ReferenceTarget;
+  target: LibraryTarget;
   image: MediaImage;
 }

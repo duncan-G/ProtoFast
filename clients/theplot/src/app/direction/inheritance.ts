@@ -127,6 +127,16 @@ export function inViewOf(
   return { value: own ?? scene, overridden: own !== null };
 }
 
+export function extraOnScreenOf(
+  direction: SceneDirection,
+  frame: Frame | null,
+  extraId: string,
+): Inherited<boolean> {
+  const scene = direction.extras.find((e) => e.extraId === extraId)?.onScreen ?? true;
+  const own = frame?.extras.find((e) => e.extraId === extraId)?.onScreen ?? null;
+  return { value: own ?? scene, overridden: own !== null };
+}
+
 /** The sheet's first wardrobe is its default; `look` is the look in force at the frame. */
 export function wardrobeOf(
   direction: SceneDirection,

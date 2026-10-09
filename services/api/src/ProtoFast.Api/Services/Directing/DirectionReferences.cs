@@ -16,6 +16,8 @@ public sealed class DirectionReferences
 
     public required IReadOnlySet<Guid> NarratorIds { get; init; }
 
+    public required IReadOnlySet<Guid> ExtraIds { get; init; }
+
     /// <summary>The defaults, then the story's additions.</summary>
     public required IReadOnlyList<string> DeliveryTags { get; init; }
 }

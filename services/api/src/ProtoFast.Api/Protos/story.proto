@@ -56,6 +56,14 @@ service Stories {
 
     rpc DeleteProp (DeletePropRequest) returns (DeletePropReply);
 
+    rpc CreateExtra (CreateExtraRequest) returns (CreateExtraReply);
+
+    // Renames the extra and replaces its sheet.
+    rpc UpdateExtra (UpdateExtraRequest) returns (UpdateExtraReply);
+
+    // Takes it out of every scene and frame it was in.
+    rpc DeleteExtra (DeleteExtraRequest) returns (DeleteExtraReply);
+
     // Replaces the labels the story adds to the default vocabulary.
     rpc SaveVocabulary (SaveVocabularyRequest) returns (SaveVocabularyReply);
 
@@ -125,6 +133,7 @@ message Story {
     reserved 8;
     // Who reads action and narration, in order; the first is the default.
     repeated Narrator narrators = 9;
+    repeated Extra extras = 10;
 }
 
 message Narrator {
@@ -295,6 +304,17 @@ message Prop {
     optional string description = 4;
 }
 
+// Someone uncast who appears in pictures: one person or a group, described rather than identified,
+// with no voice. Directing a scene adds the extras it needs that the library doesn't have yet.
+message Extra {
+    string id = 1;
+    string story_id = 2;
+    string name = 3;
+    // Who they are and how many: "three teenage boys on bikes".
+    optional string description = 4;
+    optional string wardrobe = 5;
+}
+
 message ListStoriesRequest {}
 
 message ListStoriesReply {
@@ -449,6 +469,34 @@ message DeletePropRequest {
 }
 
 message DeletePropReply {}
+
+message CreateExtraRequest {
+    string story_id = 1;
+    string name = 2;
+    optional string description = 3;
+    optional string wardrobe = 4;
+}
+
+message CreateExtraReply {
+    Extra extra = 1;
+}
+
+message UpdateExtraRequest {
+    string extra_id = 1;
+    string name = 2;
+    optional string description = 3;
+    optional string wardrobe = 4;
+}
+
+message UpdateExtraReply {
+    Extra extra = 1;
+}
+
+message DeleteExtraRequest {
+    string extra_id = 1;
+}
+
+message DeleteExtraReply {}
 
 message SaveVocabularyRequest {
     string story_id = 1;

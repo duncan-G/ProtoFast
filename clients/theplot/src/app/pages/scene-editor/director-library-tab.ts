@@ -1,1 +1,1 @@
-export type DirectorLibraryTab = 'cast' | 'places' | 'props' | 'narrators';
+export type DirectorLibraryTab = 'cast' | 'extras' | 'places' | 'props' | 'narrators';

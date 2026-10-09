@@ -8,6 +8,9 @@ using SceneAppearanceRecord = ProtoFast.Data.ThePlot.Entities.SceneAppearance;
 using SceneLookChangeRecord = ProtoFast.Data.ThePlot.Entities.SceneLookChange;
 using ScenePropStateRecord = ProtoFast.Data.ThePlot.Entities.ScenePropState;
 using SceneLocationStateRecord = ProtoFast.Data.ThePlot.Entities.SceneLocationState;
+using SceneExtraRecord = ProtoFast.Data.ThePlot.Entities.SceneExtra;
+using FrameExtraRecord = ProtoFast.Data.ThePlot.Entities.FrameExtra;
+using ExtraRecord = ProtoFast.Data.ThePlot.Entities.Extra;
 
 namespace ProtoFast.Api.Services.Directing;
 
@@ -36,6 +39,11 @@ public sealed class DirectionDraft
     public List<ScenePropStateRecord> PropStates { get; set; } = [];
 
     public List<SceneLocationStateRecord> LocationStates { get; set; } = [];
+
+    public List<SceneExtraRecord> Extras { get; set; } = [];
+
+    /// <summary>Extras a directing pass found the library lacks; rows point at them by their new ids.</summary>
+    public List<ExtraRecord> NewExtras { get; set; } = [];
 
     /// <summary>A copy of the scene's stored layer, for a directing pass to change one part of.</summary>
     public static DirectionDraft From(SceneRecord scene) => new()
@@ -70,6 +78,7 @@ public sealed class DirectionDraft
                 AppearanceChange = pl.AppearanceChange,
             }).ToList(),
             Props = p.Props.Select(pp => new FramePropRecord { PropId = pp.PropId, InView = pp.InView }).ToList(),
+            Extras = p.Extras.Select(e => new FrameExtraRecord { ExtraId = e.ExtraId, OnScreen = e.OnScreen }).ToList(),
         }).ToList(),
         Cues = scene.Cues.Select(c => new CueRecord
         {
@@ -122,6 +131,13 @@ public sealed class DirectionDraft
             LocationId = l.LocationId,
             Change = l.Change,
             Edited = l.Edited,
+        }).ToList(),
+        Extras = scene.Extras.Select(e => new SceneExtraRecord
+        {
+            Id = e.Id,
+            ExtraId = e.ExtraId,
+            OnScreen = e.OnScreen,
+            Edited = e.Edited,
         }).ToList(),
     };
 }

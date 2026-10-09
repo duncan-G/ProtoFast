@@ -17,7 +17,7 @@ public static class LibraryNames
         var trimmed = name?.Trim() ?? "";
         if (trimmed.Length == 0)
         {
-            throw StoryErrors.Invalid($"A {noun} needs a name.");
+            throw StoryErrors.Invalid($"{Article(noun, capital: true)} {noun} needs a name.");
         }
 
         if (trimmed.Length > MaxLength)
@@ -29,12 +29,15 @@ public static class LibraryNames
         {
             if (entry.Id != exceptId && Same(entry.Name, trimmed))
             {
-                throw StoryErrors.AlreadyExists($"There’s already a {noun} called “{entry.Name}”.");
+                throw StoryErrors.AlreadyExists($"There’s already {Article(noun)} {noun} called “{entry.Name}”.");
             }
         }
 
         return trimmed;
     }
+
+    private static string Article(string noun, bool capital = false) =>
+        "aeiou".Contains(char.ToLowerInvariant(noun[0])) ? capital ? "An" : "an" : capital ? "A" : "a";
 
     public static int Hue(int hue) =>
         hue is >= 0 and <= 359 ? hue : throw StoryErrors.Invalid("Hues run from 0 to 359.");

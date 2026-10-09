@@ -10,6 +10,7 @@ using ProtoFast.DocumentImport.Screenplay.Models;
 using CharacterRecord = ProtoFast.Data.ThePlot.Entities.Character;
 using LocationRecord = ProtoFast.Data.ThePlot.Entities.Location;
 using PropRecord = ProtoFast.Data.ThePlot.Entities.Prop;
+using ExtraRecord = ProtoFast.Data.ThePlot.Entities.Extra;
 using SceneElementRecord = ProtoFast.Data.ThePlot.Entities.SceneElement;
 using SceneElementTypeRecord = ProtoFast.Data.ThePlot.Entities.SceneElementType;
 using StoryRecord = ProtoFast.Data.ThePlot.Entities.Story;
@@ -45,6 +46,8 @@ public class DirectionService(
     IQueryFactory<LocationRecord, ILocationQuery> locationQueries,
     IPropRepository propRepository,
     IQueryFactory<PropRecord, IPropQuery> propQueries,
+    IExtraRepository extraRepository,
+    IQueryFactory<ExtraRecord, IExtraQuery> extraQueries,
     ISceneElementRepository sceneElementRepository,
     IQueryFactory<SceneElementRecord, ISceneElementQuery> sceneElementQueries,
     ILogger<DirectionService> logger) : Direction.DirectionBase
@@ -114,11 +117,14 @@ public class DirectionService(
         var storyId = await directionScope.StoryIdAsync(sceneId, cancellationToken);
         await storyScope.LockAsync(storyId, cancellationToken);
         var current = await directionScope.LoadAsync(sceneId, withEarlierScenes: false, cancellationToken);
-        Prune(draft, current.References);
+        var added = await AddExtrasAsync(draft, current.Story, cancellationToken);
+        Prune(draft, current.References, added);
         AddWardrobes(draft, current.Story);
         DirectionWriter.Apply(current.Scene, draft, byAuthor: false);
         await CommitAsync(unitOfWork, cancellationToken);
-        return new DirectReply { Direction = ToMessage(current) };
+        var reply = new DirectReply { Direction = ToMessage(current) };
+        reply.Extras.AddRange(current.Story.Extras.OrderBy(e => e.Name).Select(StoryMessages.ToMessage));
+        return reply;
     }
 
     public override async Task<GenerateAudioReply> GenerateAudio(GenerateAudioRequest request, ServerCallContext context)
@@ -270,6 +276,10 @@ public class DirectionService(
                 ReferenceSource.Prop, StoryIds.Existing(request.PropId, PropNotFound), PropNotFound,
                 (id, ct) => propRepository.GetFirstByQueryAsync(propQueries.Create().WithId(id), p => (Guid?)p.StoryId, ct),
                 cancellationToken),
+            GenerateLibraryImageRequest.SubjectOneofCase.ExtraId => await SubjectAsync(
+                ReferenceSource.Extra, StoryIds.Existing(request.ExtraId, StoryLibrary.ExtraNotFound), StoryLibrary.ExtraNotFound,
+                (id, ct) => extraRepository.GetFirstByQueryAsync(extraQueries.Create().WithId(id), e => (Guid?)e.StoryId, ct),
+                cancellationToken),
             _ => throw StoryErrors.Invalid("Say which library entry to picture."),
         };
 
@@ -419,6 +429,33 @@ public class DirectionService(
                 return new DescribeReply { Prop = StoryMessages.ToMessage(prop) };
             }
 
+            case DescribeRequest.SubjectOneofCase.ExtraId:
+            {
+                var id = StoryIds.Existing(request.ExtraId, StoryLibrary.ExtraNotFound);
+                ExtraRecord subject;
+                StoryRecord story;
+                IReadOnlyList<SceneElementRecord> excerpts;
+                using (unitOfWorkFactory.CreateReadOnly(nameof(Describe)))
+                {
+                    subject = await extraRepository.GetFirstByQueryAsync(extraQueries.Create().WithId(id), cancellationToken)
+                              ?? throw StoryErrors.NotFound(StoryLibrary.ExtraNotFound);
+                    story = await StoryAsync(subject.StoryId, cancellationToken);
+                    excerpts = await sceneElementRepository.GetByQueryAsync(
+                        sceneElementQueries.Create().InStory(story.Id).InScenesWithExtra(id).InOrder(), cancellationToken);
+                }
+
+                await AskAsync(() => describer.DescribeAsync(subject, story, excerpts, cancellationToken));
+
+                using var unitOfWork = unitOfWorkFactory.CreateReadWrite(nameof(Describe));
+                await storyScope.LockAsync(story.Id, cancellationToken);
+                var extra = await extraRepository.GetFirstByQueryAsync(extraQueries.Create().WithId(id), cancellationToken)
+                            ?? throw StoryErrors.NotFound(StoryLibrary.ExtraNotFound);
+                extra.Description = subject.Description;
+                extra.Wardrobe = subject.Wardrobe;
+                await unitOfWork.CommitAsync(cancellationToken);
+                return new DescribeReply { Extra = StoryMessages.ToMessage(extra) };
+            }
+
             default:
                 throw StoryErrors.Invalid("Say what to describe.");
         }
@@ -493,9 +530,59 @@ public class DirectionService(
         }
     }
 
-    /// <summary>The scene may have changed while the model worked: rows pointing at what is gone are dropped.</summary>
-    private static void Prune(DirectionDraft draft, DirectionReferences references)
+    /// <summary>
+    /// Extras the pass found the library lacks join it, unless one of the same name was added
+    /// meanwhile, which the rows then point at instead.
+    /// </summary>
+    /// <returns>The ids of the extras added.</returns>
+    private async Task<IReadOnlySet<Guid>> AddExtrasAsync(DirectionDraft draft, StoryRecord story, CancellationToken cancellationToken)
     {
+        HashSet<Guid> added = [];
+        foreach (var extra in draft.NewExtras)
+        {
+            var id = extra.Id;
+            if (story.Extras.FirstOrDefault(e => LibraryNames.Same(e.Name, extra.Name)) is { } existing)
+            {
+                id = existing.Id;
+            }
+            else
+            {
+                extra.StoryId = story.Id;
+                await extraRepository.AddAsync(extra, cancellationToken);
+                if (!story.Extras.Contains(extra))
+                {
+                    story.Extras.Add(extra);
+                }
+
+                added.Add(id);
+            }
+
+            foreach (var row in draft.Extras.Where(e => e.ExtraId == extra.Id))
+            {
+                row.ExtraId = id;
+            }
+
+            foreach (var row in draft.Frames.SelectMany(f => f.Extras).Where(e => e.ExtraId == extra.Id))
+            {
+                row.ExtraId = id;
+            }
+        }
+
+        draft.Extras = draft.Extras.DistinctBy(e => e.ExtraId).ToList();
+        foreach (var frame in draft.Frames)
+        {
+            frame.Extras = frame.Extras.DistinctBy(e => e.ExtraId).ToList();
+        }
+
+        return added;
+    }
+
+    /// <summary>The scene may have changed while the model worked: rows pointing at what is gone are dropped.</summary>
+    /// <param name="addedExtras">Extras this write adds to the library.</param>
+    private static void Prune(DirectionDraft draft, DirectionReferences references, IReadOnlySet<Guid> addedExtras)
+    {
+        bool Extra(Guid id) => references.ExtraIds.Contains(id) || addedExtras.Contains(id);
+        draft.Extras.RemoveAll(e => !Extra(e.ExtraId));
         draft.Cues.RemoveAll(c => !references.Elements.ContainsKey(c.ElementId));
         foreach (var cue in draft.Cues.Where(c => c.NarratorId is { } id && !references.NarratorIds.Contains(id)))
         {
@@ -516,6 +603,7 @@ public class DirectionService(
             }
 
             frame.Props.RemoveAll(p => !references.Story.PropIds.Contains(p.PropId));
+            frame.Extras.RemoveAll(e => !Extra(e.ExtraId));
             if (frame.LocationId is { } locationId && !references.Story.LocationIds.Contains(locationId))
             {
                 frame.LocationId = null;

@@ -1,10 +1,12 @@
 import { Injectable } from '@angular/core';
 import { Character } from '../stories/model/character';
 import { Location } from '../stories/model/location';
+import { Extra } from '../stories/model/extra';
 import { Prop } from '../stories/model/prop';
 import { Scene } from '../stories/model/scene';
 import { ConnectDirectionApi } from './connect-direction-api';
 import { DescribeTarget } from './model/describe-target';
+import { DirectResult } from './model/direct-result';
 import { DirectTarget } from './model/direct-target';
 import { LibraryImage } from './model/library-image';
 import { SceneDirection } from './model/scene-direction';
@@ -26,15 +28,18 @@ export abstract class DirectionApi {
   /** The scene and its layer in one write, so a changed line lands with its cue. */
   abstract saveDirectedScene(scene: Scene, direction: SceneDirection): Promise<SceneDirection>;
 
-  /** Has the model direct the target and saves the result. Edited rows are kept unless `replaceEdited`. */
+  /**
+   * Has the model direct the target and saves the result. Edited rows are kept unless
+   * `replaceEdited`. Extras the scene needs that the library lacks are added to it.
+   */
   abstract direct(
     sceneId: string,
     target: DirectTarget,
     replaceEdited?: boolean,
-  ): Promise<SceneDirection>;
+  ): Promise<DirectResult>;
 
   /** Has the model write the entry's sheet and saves it. */
-  abstract describe(target: DescribeTarget): Promise<Character | Location | Prop>;
+  abstract describe(target: DescribeTarget): Promise<Character | Location | Prop | Extra>;
 
   /** Speaks one line, or every line without current audio; `regenerate` renders again regardless. */
   abstract generateAudio(

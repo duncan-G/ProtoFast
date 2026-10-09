@@ -2,6 +2,7 @@
 export type DirectTarget =
   | { kind: 'scene' }
   | { kind: 'storyDay' }
+  | { kind: 'extras' }
   | { kind: 'continuity' }
   | { kind: 'appearance'; characterId: string }
   | { kind: 'propState'; propId: string }
@@ -33,11 +34,12 @@ const GROUP: Partial<Record<DirectTarget['kind'], DirectTarget['kind']>> = {
   frame: 'frames',
 };
 
-/** Whether directing `outer` also writes what `inner` would. */
+/** Whether directing `outer` also writes what `inner` would. Frames find the scene's extras first. */
 export function covers(outer: DirectTarget, inner: DirectTarget): boolean {
   return (
     outer.kind === 'scene' ||
     targetKey(outer) === targetKey(inner) ||
-    GROUP[inner.kind] === outer.kind
+    GROUP[inner.kind] === outer.kind ||
+    (outer.kind === 'frames' && inner.kind === 'extras')
   );
 }

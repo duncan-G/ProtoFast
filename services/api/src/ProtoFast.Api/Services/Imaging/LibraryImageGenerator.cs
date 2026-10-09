@@ -10,7 +10,7 @@ namespace ProtoFast.Api.Services.Imaging;
 
 /// <summary>
 /// Pictures a library entry from its sheet alone: a character's reference sheet, a location's empty
-/// establishing shot, a prop on its own. These are what frames are kept consistent with.
+/// establishing shot, a prop on its own, extras together. These are what frames are kept consistent with.
 /// </summary>
 public sealed class LibraryImageGenerator(
     IUnitOfWorkFactory unitOfWorkFactory,
@@ -68,6 +68,9 @@ public sealed class LibraryImageGenerator(
                 case ReferenceSource.Prop when stored.Props.FirstOrDefault(p => p.Id == subjectId) is { } prop:
                     (prop.Image, prop.ImageAssetId) = (asset, asset.Id);
                     break;
+                case ReferenceSource.Extra when stored.Extras.FirstOrDefault(e => e.Id == subjectId) is { } extra:
+                    (extra.Image, extra.ImageAssetId) = (asset, asset.Id);
+                    break;
             }
         }
 
@@ -100,6 +103,13 @@ public sealed class LibraryImageGenerator(
                            ?? throw StoryErrors.NotFound(LibraryErrors.PropNotFound);
                 return (ImagePrompts.Prop(prop, options.Style), options.PropSize, prop.Image,
                     prop.Image is { } image && staleness.Prop(prop, image));
+            }
+            case ReferenceSource.Extra:
+            {
+                var extra = story.Extras.FirstOrDefault(e => e.Id == subjectId)
+                            ?? throw StoryErrors.NotFound(LibraryErrors.ExtraNotFound);
+                return (ImagePrompts.Extra(extra, options.Style), options.ExtraSize, extra.Image,
+                    extra.Image is { } image && staleness.Extra(extra, image));
             }
             default:
                 throw new ArgumentOutOfRangeException(nameof(source));

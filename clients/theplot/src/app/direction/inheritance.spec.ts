@@ -1,5 +1,6 @@
 import { Character } from '../stories/model/character';
 import {
+  extraOnScreenOf,
   framingOf,
   inViewOf,
   joinChanges,
@@ -12,6 +13,7 @@ import { Frame } from './model/frame';
 import { blankAppearance } from './model/scene-appearance';
 import { emptyDirection, SceneDirection } from './model/scene-direction';
 import { blankPropState } from './model/scene-prop-state';
+import { blankSceneExtra } from './model/scene-extra';
 
 function frame(patch: Partial<Frame> = {}): Frame {
   return {
@@ -29,6 +31,7 @@ function frame(patch: Partial<Frame> = {}): Frame {
     holdMs: null,
     placements: [],
     props: [],
+    extras: [],
     edited: true,
     image: null,
     ...patch,
@@ -97,6 +100,18 @@ describe('inheritance', () => {
     expect(
       inViewOf(direction, frame({ props: [{ propId: 'radio', inView: true }] }), 'radio'),
     ).toEqual({ value: true, overridden: true });
+  });
+
+  it('shows the scene’s extras unless the scene or the frame takes them off', () => {
+    const direction = scene({ extras: [blankSceneExtra('crowd')] });
+    expect(extraOnScreenOf(direction, frame(), 'crowd')).toEqual({
+      value: true,
+      overridden: false,
+    });
+    const off = frame({ extras: [{ extraId: 'crowd', onScreen: false }] });
+    expect(extraOnScreenOf(direction, off, 'crowd')).toEqual({ value: false, overridden: true });
+    const hidden = scene({ extras: [{ ...blankSceneExtra('crowd'), onScreen: false }] });
+    expect(extraOnScreenOf(hidden, frame(), 'crowd').value).toBe(false);
   });
 
   it('wears the first wardrobe on the sheet, then the scene’s, then the frame’s', () => {

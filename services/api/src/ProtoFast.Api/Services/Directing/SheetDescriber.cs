@@ -5,6 +5,7 @@ using CharacterRecord = ProtoFast.Data.ThePlot.Entities.Character;
 using LocationSettingRecord = ProtoFast.Data.ThePlot.Entities.LocationSetting;
 using LocationRecord = ProtoFast.Data.ThePlot.Entities.Location;
 using PropRecord = ProtoFast.Data.ThePlot.Entities.Prop;
+using ExtraRecord = ProtoFast.Data.ThePlot.Entities.Extra;
 using SceneElementRecord = ProtoFast.Data.ThePlot.Entities.SceneElement;
 using StoryRecord = ProtoFast.Data.ThePlot.Entities.Story;
 
@@ -177,6 +178,32 @@ public sealed class SheetDescriber(ILanguageModelFactory models, DirectorOptions
         using var json = await AskAsync(prompt, ct);
         var description = ModelJson.Str(json.RootElement, "description") ?? throw new ModelOutputException("No description in the answer.");
         prop.Description = SheetText.Description(Clip(description, SheetText.DescriptionMaxLength));
+    }
+
+    /// <param name="excerpts">The scenes they are in.</param>
+    public async Task DescribeAsync(
+        ExtraRecord extra, StoryRecord story, IReadOnlyList<SceneElementRecord> excerpts, CancellationToken ct)
+    {
+        var current = string.Join(" ", new[]
+        {
+            string.IsNullOrWhiteSpace(extra.Description) ? "" : extra.Description.Trim(),
+            string.IsNullOrWhiteSpace(extra.Wardrobe) ? "" : $"Wearing: {extra.Wardrobe.Trim()}",
+        }.Where(p => p.Length > 0));
+        var prompt = $$"""
+            Extras: {{extra.Name}}. Uncast people who appear in the background of pictures: one person
+            or a group. {{(current.Length == 0 ? "" : $"Their sheet so far: {current}")}}
+            The scenes they appear in, in story order (scene, line):
+            {{Excerpts(story, excerpts, null)}}
+            Write their sheet. "description": one or two sentences on who they are and how many, their
+            ages and general look, concrete enough to draw the same people in every scene; no names,
+            no plot. "wardrobe": what they wear, in a short phrase or sentence.
+            Reply: {"description":"…","wardrobe":"…"}
+            """;
+
+        using var json = await AskAsync(prompt, ct);
+        var description = ModelJson.Str(json.RootElement, "description") ?? throw new ModelOutputException("No description in the answer.");
+        extra.Description = SheetText.Description(Clip(description, SheetText.DescriptionMaxLength));
+        extra.Wardrobe = SheetText.Description(Clip(ModelJson.Str(json.RootElement, "wardrobe") ?? "", SheetText.DescriptionMaxLength));
     }
 
     /// <summary>The excerpts in story order, earliest first, capped at <see cref="DirectorOptions.MaxExcerpts"/>.</summary>

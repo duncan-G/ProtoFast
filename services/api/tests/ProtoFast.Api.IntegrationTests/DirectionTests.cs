@@ -313,7 +313,7 @@ public class DirectionTests(StoryDatabase database)
         direction.Frames.RemoveAt(1); // keep only the author's first frame, over e1–e2
         await _writer.SaveDirectionAsync(direction);
         // The model's first frame runs past the author's cut and the transition is left uncovered.
-        _writer.ScriptModel("""
+        _writer.ScriptModel("""{"extras":[]}""", """
             {"frames":[
               {"from":"e1","to":"e3","shot":"close","beat":"Mara leans in.","characters":[{"name":"Mara","screen":"Left","pose":"leaning","expression":"tense"}],"props":["Radio","Teapot"]},
               {"from":"e4","to":"e4","shot":"medium","beat":"Bolt replies.","characters":[{"name":"Bolt","screen":"right"},{"name":"Nobody","screen":"left"}]}
@@ -327,7 +327,7 @@ public class DirectionTests(StoryDatabase database)
             [(ids[0], ids[1]), (ids[2], ids[2]), (ids[3], ids[4])],
             directed.Frames.Select(p => (p.FirstElementId, p.LastElementId)));
         Assert.Equal([0, 1, 2], directed.Frames.Select(p => p.Position));
-        Assert.Contains("exactly the same from and to (e1–e2)", _writer.ModelPrompts().Single());
+        Assert.Contains("exactly the same from and to (e1–e2)", _writer.ModelPrompts()[1]);
         Assert.Equal(("Mara leans in.", "close"), (directed.Frames[0].Beat, directed.Frames[0].Shot));
         // The scene's shot stays the author's; what matches it is left to follow it.
         Assert.Equal("medium", directed.Shot);
@@ -356,7 +356,7 @@ public class DirectionTests(StoryDatabase database)
     {
         var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
         var saved = await _writer.SaveDirectionAsync(Direction(scene, mara, bolt, radio, suit));
-        _writer.ScriptModel("""
+        _writer.ScriptModel("""{"extras":[]}""", """
             {"frames":[
               {"from":"e1","to":"e2","shot":"wide","beat":"The docks at night."},
               {"from":"e3","to":"e5","shot":"over-the-shoulder","beat":"They face off."}
@@ -381,7 +381,7 @@ public class DirectionTests(StoryDatabase database)
         direction.Frames.Add(new Frame { FirstElementId = scene.Elements[2].Id, LastElementId = scene.Elements[3].Id });
         await _writer.SaveDirectionAsync(direction);
         // The model answers the author's cut only, leaving e1–e2 and e5 to be closed.
-        _writer.ScriptModel("""{"frames":[{"from":"e3","to":"e4","shot":"close","beat":"They whisper."}]}""");
+        _writer.ScriptModel("""{"extras":[]}""", """{"frames":[{"from":"e3","to":"e4","shot":"close","beat":"They whisper."}]}""");
 
         var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true });
 
@@ -544,6 +544,7 @@ public class DirectionTests(StoryDatabase database)
         // Names outside the library, or already in the scene, are ignored.
         _writer.ScriptModel(
             """{"characters":["Bolt","Ghost","Mara"],"props":["Radio"],"locations":["Docks"]}""",
+            """{"extras":[]}""",
             """{"storyDay":1}""",
             """{"looks":[{"name":"Mara"},{"name":"Bolt"}],"props":[{"name":"Radio","state":["crackling"]}],"locations":[{"name":"Docks","change":"fog on the water"}]}""",
             """{"frames":[{"from":"e1","to":"e2","shot":"wide","visible":"Mara and the robot at the water.","characters":[{"name":"Mara","screen":"left"},{"name":"Bolt","screen":"right"}],"props":["Radio"]}]}""",
@@ -558,10 +559,10 @@ public class DirectionTests(StoryDatabase database)
         var presence = _writer.ModelPrompts()[0];
         Assert.Contains("Other characters in the library:\n- Bolt", presence);
         Assert.Contains("- Office", presence);
-        Assert.Contains("- Bolt", _writer.ModelPrompts()[2]);
+        Assert.Contains("- Bolt", _writer.ModelPrompts()[3]);
         // The frames pass left Bolt unnamed, so what the frame shows was written again.
-        Assert.Contains("- Docks (exterior)", _writer.ModelPrompts()[3]);
-        Assert.Contains("f1 rows e1–e2, wide shot; on screen: Mara (left), Bolt (right); props in view: Radio", _writer.ModelPrompts()[4]);
+        Assert.Contains("- Docks (exterior)", _writer.ModelPrompts()[4]);
+        Assert.Contains("f1 rows e1–e2, wide shot; on screen: Mara (left), Bolt (right); props in view: Radio", _writer.ModelPrompts()[5]);
         Assert.StartsWith("Mara stands at the edge of the Docks facing Bolt", Assert.Single(directed.Frames).Beat);
     }
 
@@ -573,6 +574,7 @@ public class DirectionTests(StoryDatabase database)
         direction.Frames.Clear();
         await _writer.SaveDirectionAsync(direction);
         _writer.ScriptModel(
+            """{"extras":[]}""",
             """{"frames":[{"from":"e1","to":"e5","shot":"medium","visible":"","characters":[{"name":"Mara","screen":"left","pose":"leaning on the rail","expression":"wary"},{"name":"Bolt","screen":"right"}]}]}""",
             """{"frames":[{"frame":"f1","visible":"Mara leans on the rail of the pier, watching the water."}]}""");
 

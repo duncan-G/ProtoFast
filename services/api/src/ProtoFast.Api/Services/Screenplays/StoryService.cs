@@ -301,6 +301,18 @@ public class StoryService(
         return new DeletePropReply();
     }
 
+    public override async Task<CreateExtraReply> CreateExtra(CreateExtraRequest request, ServerCallContext context) =>
+        new() { Extra = await library.CreateExtraAsync(request, context.CancellationToken) };
+
+    public override async Task<UpdateExtraReply> UpdateExtra(UpdateExtraRequest request, ServerCallContext context) =>
+        new() { Extra = await library.UpdateExtraAsync(request, context.CancellationToken) };
+
+    public override async Task<DeleteExtraReply> DeleteExtra(DeleteExtraRequest request, ServerCallContext context)
+    {
+        await library.DeleteExtraAsync(request, context.CancellationToken);
+        return new DeleteExtraReply();
+    }
+
     public override async Task<SaveVocabularyReply> SaveVocabulary(
         SaveVocabularyRequest request,
         ServerCallContext context)

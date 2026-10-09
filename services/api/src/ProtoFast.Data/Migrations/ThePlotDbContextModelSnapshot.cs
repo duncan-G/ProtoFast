@@ -350,6 +350,62 @@ namespace ProtoFast.Data.Migrations
                     b.ToTable("document_uploads", "plot");
                 });
 
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Extra", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("DateCreated")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("date_created");
+
+                    b.Property<DateTime>("DateLastModified")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("date_last_modified");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<Guid?>("ImageAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("image_asset_id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("StoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("story_id");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("Wardrobe")
+                        .HasColumnType("text")
+                        .HasColumnName("wardrobe");
+
+                    b.HasKey("Id")
+                        .HasName("pk_extras");
+
+                    b.HasIndex("ImageAssetId")
+                        .HasDatabaseName("ix_extras_image_asset_id");
+
+                    b.HasIndex("StoryId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_extras_story_id_name");
+
+                    b.ToTable("extras", "plot");
+                });
+
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Frame", b =>
                 {
                     b.Property<Guid>("Id")
@@ -443,6 +499,29 @@ namespace ProtoFast.Data.Migrations
 
                             t.HasCheckConstraint("ck_frames_position_non_negative", "position >= 0");
                         });
+                });
+
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.FrameExtra", b =>
+                {
+                    b.Property<Guid>("FrameId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("frame_id");
+
+                    b.Property<Guid>("ExtraId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("extra_id");
+
+                    b.Property<bool>("OnScreen")
+                        .HasColumnType("boolean")
+                        .HasColumnName("on_screen");
+
+                    b.HasKey("FrameId", "ExtraId")
+                        .HasName("pk_frame_extras");
+
+                    b.HasIndex("ExtraId")
+                        .HasDatabaseName("ix_frame_extras_extra_id");
+
+                    b.ToTable("frame_extras", "plot");
                 });
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.FramePlacement", b =>
@@ -1073,6 +1152,42 @@ namespace ProtoFast.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.SceneExtra", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Edited")
+                        .HasColumnType("boolean")
+                        .HasColumnName("edited");
+
+                    b.Property<Guid>("ExtraId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("extra_id");
+
+                    b.Property<bool>("OnScreen")
+                        .HasColumnType("boolean")
+                        .HasColumnName("on_screen");
+
+                    b.Property<Guid>("SceneId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("scene_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_scene_extras");
+
+                    b.HasIndex("ExtraId")
+                        .HasDatabaseName("ix_scene_extras_extra_id");
+
+                    b.HasIndex("SceneId", "ExtraId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_scene_extras_scene_id_extra_id");
+
+                    b.ToTable("scene_extras", "plot");
+                });
+
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.SceneLocationState", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1434,6 +1549,26 @@ namespace ProtoFast.Data.Migrations
                         .HasConstraintName("fk_documents_document_uploads_id");
                 });
 
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Extra", b =>
+                {
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.MediaAsset", "Image")
+                        .WithMany()
+                        .HasForeignKey("ImageAssetId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_extras_media_assets_image_asset_id");
+
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Story", "Story")
+                        .WithMany("Extras")
+                        .HasForeignKey("StoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_extras_stories_story_id");
+
+                    b.Navigation("Image");
+
+                    b.Navigation("Story");
+                });
+
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Frame", b =>
                 {
                     b.HasOne("ProtoFast.Data.ThePlot.Entities.SceneElement", "FirstElement")
@@ -1478,6 +1613,27 @@ namespace ProtoFast.Data.Migrations
                     b.Navigation("Location");
 
                     b.Navigation("Scene");
+                });
+
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.FrameExtra", b =>
+                {
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Extra", "Extra")
+                        .WithMany()
+                        .HasForeignKey("ExtraId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_frame_extras_extras_extra_id");
+
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Frame", "Frame")
+                        .WithMany("Extras")
+                        .HasForeignKey("FrameId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_frame_extras_frames_frame_id");
+
+                    b.Navigation("Extra");
+
+                    b.Navigation("Frame");
                 });
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.FramePlacement", b =>
@@ -1860,6 +2016,27 @@ namespace ProtoFast.Data.Migrations
                     b.Navigation("SceneElement");
                 });
 
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.SceneExtra", b =>
+                {
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Extra", "Extra")
+                        .WithMany()
+                        .HasForeignKey("ExtraId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_scene_extras_extras_extra_id");
+
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Scene", "Scene")
+                        .WithMany("Extras")
+                        .HasForeignKey("SceneId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_scene_extras_scenes_scene_id");
+
+                    b.Navigation("Extra");
+
+                    b.Navigation("Scene");
+                });
+
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.SceneLocationState", b =>
                 {
                     b.HasOne("ProtoFast.Data.ThePlot.Entities.Location", "Location")
@@ -2028,6 +2205,8 @@ namespace ProtoFast.Data.Migrations
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Frame", b =>
                 {
+                    b.Navigation("Extras");
+
                     b.Navigation("Placements");
 
                     b.Navigation("Props");
@@ -2040,6 +2219,8 @@ namespace ProtoFast.Data.Migrations
                     b.Navigation("Cues");
 
                     b.Navigation("Elements");
+
+                    b.Navigation("Extras");
 
                     b.Navigation("Frames");
 
@@ -2060,6 +2241,8 @@ namespace ProtoFast.Data.Migrations
                     b.Navigation("Characters");
 
                     b.Navigation("Containers");
+
+                    b.Navigation("Extras");
 
                     b.Navigation("Locations");
 

@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { ConnectStoryApi } from './connect-story-api';
 import { Character } from './model/character';
 import { Container } from './model/container';
+import { Extra } from './model/extra';
 import { Location } from './model/location';
 import { Narrator } from './model/narrator';
 import { Prop } from './model/prop';
@@ -63,6 +64,14 @@ export abstract class StoryApi {
   abstract updateProp(prop: Prop): Promise<void>;
 
   abstract deleteProp(propId: string): Promise<void>;
+
+  abstract createExtra(storyId: string, extra: Omit<Extra, 'id' | 'storyId'>): Promise<Extra>;
+
+  /** Renames the extra and replaces its sheet. */
+  abstract updateExtra(extra: Extra): Promise<Extra>;
+
+  /** Takes it out of every scene and frame it was in. */
+  abstract deleteExtra(extraId: string): Promise<void>;
 
   abstract saveVocabulary(storyId: string, vocabulary: StoryVocabulary): Promise<void>;
 

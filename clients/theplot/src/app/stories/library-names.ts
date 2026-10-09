@@ -23,13 +23,18 @@ export function nameProblem<T extends { id: string; name: string }>(
 ): string | null {
   const trimmed = name.trim();
   if (!trimmed) {
-    return `A ${noun} needs a name.`;
+    return `${article(noun, true)} ${noun} needs a name.`;
   }
   if (trimmed.length > NAME_MAX) {
     return `Names are limited to ${NAME_MAX} characters.`;
   }
   const clash = findByName(items, trimmed, exceptId);
-  return clash ? `There’s already a ${noun} called “${clash.name}”.` : null;
+  return clash ? `There’s already ${article(noun)} ${noun} called “${clash.name}”.` : null;
+}
+
+function article(noun: string, capital = false): string {
+  const an = /^[aeiou]/i.test(noun);
+  return capital ? (an ? 'An' : 'A') : an ? 'an' : 'a';
 }
 
 export function labelProblem(labels: readonly string[], label: string): string | null {

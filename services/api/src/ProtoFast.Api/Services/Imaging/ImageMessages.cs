@@ -33,7 +33,9 @@ public sealed class ImageMessages(ImageStaleness staleness, IPresignedUrlFactory
             .Concat(story.Locations.Where(l => l.Image is not null)
                 .Select(l => Library(ReferenceSources.Location, l.Id, l.Image!, staleness.Location(l, l.Image!))))
             .Concat(story.Props.Where(p => p.Image is not null)
-                .Select(p => Library(ReferenceSources.Prop, p.Id, p.Image!, staleness.Prop(p, p.Image!))));
+                .Select(p => Library(ReferenceSources.Prop, p.Id, p.Image!, staleness.Prop(p, p.Image!))))
+            .Concat(story.Extras.Where(e => e.Image is not null)
+                .Select(e => Library(ReferenceSources.Extra, e.Id, e.Image!, staleness.Extra(e, e.Image!))));
 
     private LibraryImage Library(string kind, Guid id, MediaAssetRecord image, bool stale) => new()
     {

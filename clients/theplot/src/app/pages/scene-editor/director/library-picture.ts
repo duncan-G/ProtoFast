@@ -1,12 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
-import { ReferenceTarget } from '../../../stories/model/reference-target';
+import { LibraryTarget } from '../../../stories/model/library-target';
 import { SceneEditorStore } from '../scene-editor-store';
 import { PicturePreview } from './picture-preview';
 
-const HINTS: Record<ReferenceTarget['kind'], string> = {
+const HINTS: Record<LibraryTarget['kind'], string> = {
   character: 'A reference sheet drawn from the sheet; frames keep their face and build from it.',
   location: 'An empty establishing shot; frames here keep its layout from it.',
   prop: 'The prop on its own; frames keep its look from it.',
+  extra: 'Them together, drawn from the sheet; frames keep them the same from scene to scene.',
 };
 
 /** A library entry's picture, which every frame showing it is composed from. */
@@ -41,7 +42,7 @@ const HINTS: Record<ReferenceTarget['kind'], string> = {
 export class LibraryPicture {
   protected readonly store = inject(SceneEditorStore);
 
-  readonly target = input.required<ReferenceTarget>();
+  readonly target = input.required<LibraryTarget>();
   readonly name = input('');
 
   protected readonly image = computed(

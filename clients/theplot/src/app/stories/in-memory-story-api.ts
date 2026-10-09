@@ -7,6 +7,7 @@ import { Container } from './model/container';
 import { Location } from './model/location';
 import { Narrator } from './model/narrator';
 import { Prop } from './model/prop';
+import { Extra } from './model/extra';
 import { ReferenceTarget } from './model/reference-target';
 import { Scene } from './model/scene';
 import { SceneElement } from './model/scene-element';
@@ -62,6 +63,7 @@ export class InMemoryStoryApi implements StoryApi {
       locations: [],
       props: [],
       narrators: [],
+      extras: [],
     });
     this.dates.set(id, { createdAt: new Date(), lastModifiedAt: new Date() });
     const sceneId = crypto.randomUUID();
@@ -256,6 +258,38 @@ export class InMemoryStoryApi implements StoryApi {
 
   async deleteProp(propId: string): Promise<void> {
     this.deleteEntry((s) => s.props, { kind: 'prop', id: propId });
+  }
+
+  async createExtra(storyId: string, draft: Omit<Extra, 'id' | 'storyId'>): Promise<Extra> {
+    const story = this.story(storyId);
+    const extra = {
+      ...draft,
+      id: crypto.randomUUID(),
+      storyId,
+      name: checkName(story.extras, draft.name, 'extra'),
+    };
+    story.extras.push(extra);
+    this.touch(storyId);
+    return structuredClone(extra);
+  }
+
+  async updateExtra(extra: Extra): Promise<Extra> {
+    const story = this.story(extra.storyId);
+    const stored = story.extras.find((e) => e.id === extra.id);
+    if (!stored) {
+      throw new Error('Those extras are no longer in the library.');
+    }
+    stored.name = checkName(story.extras, extra.name, 'extra', extra.id);
+    stored.description = extra.description?.trim() || null;
+    stored.wardrobe = extra.wardrobe?.trim() || null;
+    this.touch(story.id);
+    return structuredClone(stored);
+  }
+
+  async deleteExtra(extraId: string): Promise<void> {
+    for (const story of this.stories.values()) {
+      story.extras = story.extras.filter((e) => e.id !== extraId);
+    }
   }
 
   async saveVocabulary(storyId: string, vocabulary: StoryVocabulary): Promise<void> {

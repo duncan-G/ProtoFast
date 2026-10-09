@@ -30,6 +30,9 @@ public interface ISceneElementQuery : IQuery<SceneElement>
 
     ISceneElementQuery MentioningLocation(Guid locationId);
 
+    /// <summary>Every element of the scenes the extra is in.</summary>
+    ISceneElementQuery InScenesWithExtra(Guid extraId);
+
     ISceneElementQuery WithMentions();
 
     ISceneElementQuery InOrder();

@@ -8,7 +8,7 @@ namespace ProtoFast.Api.Services.Imaging;
 /// <summary>
 /// Gathers the pictures that already exist and could show a frame what it must look like: each
 /// character's picture in the look they are in (the library's when the look is the sheet's), the
-/// library's pictures of the place and props, the nearest pictured frames around it in
+/// library's pictures of the place, extras and props, the nearest pictured frames around it in
 /// its scene, and the latest pictured frames of earlier scenes in the same place or with the same
 /// people. Nothing is generated to serve as a reference; a frame in the middle of an unpictured
 /// scene is composed from whatever exists.
@@ -61,6 +61,16 @@ public sealed class ReferenceCollector(ImageStaleness staleness)
             Add(ReferenceSource.Location, location.Id, plate, location.Name,
                 $"The library's establishing shot of {location.Name}, empty.",
                 staleness.Location(location, plate));
+        }
+
+        foreach (var extra in frame.Extras)
+        {
+            if (extra.Image is { } image)
+            {
+                Add(ReferenceSource.Extra, extra.Id, image, extra.Name,
+                    $"The library's reference picture of {extra.Name}, extras in the background. Draw them as these people, as many as the description says.",
+                    staleness.Extra(extra, image));
+            }
         }
 
         foreach (var prop in frame.InView)

@@ -10,6 +10,7 @@ import {
   LocationSetting as LocationSettingMessage,
   type Location as LocationMessage,
   type Prop as PropMessage,
+  type Extra as ExtraMessage,
   type SceneElement as SceneElementMessage,
   type SceneElementMention as SceneElementMentionMessage,
   SceneElementType as SceneElementTypeMessage,
@@ -34,6 +35,7 @@ import { Location } from './model/location';
 import { Narrator } from './model/narrator';
 import { LocationSetting } from './model/location-setting';
 import { Prop } from './model/prop';
+import { Extra } from './model/extra';
 import { Scene } from './model/scene';
 import { SceneElement } from './model/scene-element';
 import { SceneElementMention } from './model/scene-element-mention';
@@ -185,6 +187,30 @@ export class ConnectStoryApi implements StoryApi {
     await this.client.deleteProp({ propId });
   }
 
+  async createExtra(storyId: string, extra: Omit<Extra, 'id' | 'storyId'>): Promise<Extra> {
+    const reply = await this.client.createExtra({
+      storyId,
+      name: extra.name,
+      description: extra.description ?? undefined,
+      wardrobe: extra.wardrobe ?? undefined,
+    });
+    return toExtra(required(reply.extra));
+  }
+
+  async updateExtra(extra: Extra): Promise<Extra> {
+    const reply = await this.client.updateExtra({
+      extraId: extra.id,
+      name: extra.name,
+      description: extra.description ?? undefined,
+      wardrobe: extra.wardrobe ?? undefined,
+    });
+    return toExtra(required(reply.extra));
+  }
+
+  async deleteExtra(extraId: string): Promise<void> {
+    await this.client.deleteExtra({ extraId });
+  }
+
   async saveVocabulary(storyId: string, vocabulary: StoryVocabulary): Promise<void> {
     await this.client.saveVocabulary({
       storyId,
@@ -271,6 +297,7 @@ function toStory(message: StoryMessage): Story {
     locations: message.locations.map(toLocation),
     props: message.props.map(toProp),
     narrators: message.narrators.map(toNarrator),
+    extras: message.extras.map(toExtra),
   };
 }
 
@@ -427,6 +454,16 @@ export function toProp(message: PropMessage): Prop {
     storyId: message.storyId,
     name: message.name,
     description: message.description ?? null,
+  };
+}
+
+export function toExtra(message: ExtraMessage): Extra {
+  return {
+    id: message.id,
+    storyId: message.storyId,
+    name: message.name,
+    description: message.description ?? null,
+    wardrobe: message.wardrobe ?? null,
   };
 }
 

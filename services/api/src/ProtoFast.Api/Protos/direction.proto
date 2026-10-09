@@ -25,8 +25,8 @@ service Direction {
     // the author edited are kept unless the request says to replace them.
     rpc Direct (DirectRequest) returns (DirectReply);
 
-    // Has the language model write a character's, location's or prop's sheet from everything the
-    // story says about it, and saves it.
+    // Has the language model write a character's, location's, prop's or extra's sheet from everything
+    // the story says about it, and saves it.
     rpc Describe (DescribeRequest) returns (DescribeReply);
 
     // Speaks one line, or every dialogue, narration and action line of the scene that has no audio
@@ -50,7 +50,7 @@ service Direction {
     // generated just to serve as one.
     rpc GenerateFrameImage (GenerateFrameImageRequest) returns (GenerateFrameImageReply);
 
-    // Pictures a character, location or prop from its sheet: what frames are kept consistent with.
+    // Pictures a character, location, prop or extra from its sheet: what frames are kept consistent with.
     rpc GenerateLibraryImage (GenerateLibraryImageRequest) returns (GenerateLibraryImageReply);
 
     // Every library picture in the story, with whether its sheet has moved on.
@@ -80,6 +80,7 @@ message SceneDirection {
     repeated SceneLocationState location_states = 10;
     // In line order per character.
     repeated LookChange look_changes = 11;
+    repeated SceneExtra extras = 12;
 }
 
 // One picture of the scene, covering a contiguous run of its elements in scene order. Frames do
@@ -112,6 +113,8 @@ message Frame {
     bool edited = 12;
     // Unset until the frame has been pictured. Read only: saves ignore it.
     optional MediaImage image = 17;
+    // Only the extras the frame shows or hides against the scene.
+    repeated FrameExtra extras = 18;
 }
 
 message MediaImage {
@@ -128,7 +131,7 @@ message MediaImage {
 }
 
 message LibraryImage {
-    // character | location | prop
+    // character | location | prop | extra
     string subject_kind = 1;
     string subject_id = 2;
     MediaImage image = 3;
@@ -153,6 +156,11 @@ message Placement {
 message FrameProp {
     string prop_id = 1;
     bool in_view = 2;
+}
+
+message FrameExtra {
+    string extra_id = 1;
+    bool on_screen = 2;
 }
 
 // How a dialogue, narration or action line is delivered.
@@ -234,6 +242,15 @@ message ScenePropState {
     optional bool in_view = 7;
 }
 
+// An extra in the scene; frames picture them unless a frame says otherwise.
+message SceneExtra {
+    string id = 1;
+    string extra_id = 2;
+    // Unset is on screen.
+    optional bool on_screen = 3;
+    bool edited = 4;
+}
+
 // What is different about a location in the scene, on top of its sheet: "fog rolling in".
 message SceneLocationState {
     string id = 1;
@@ -267,7 +284,8 @@ message SaveDirectedSceneReply {
     SceneDirection direction = 1;
 }
 
-// What to direct. The whole scene runs the story day, looks, prop states, cues and frames in turn.
+// What to direct. The whole scene finds its extras, then runs the story day, looks, prop states, cues
+// and frames in turn.
 message DirectRequest {
     string scene_id = 1;
     oneof target {
@@ -288,6 +306,8 @@ message DirectRequest {
         bool continuity = 9;
         // Which day of the story the scene falls on.
         bool story_day = 10;
+        // The extras the scene needs, from the library or added to it.
+        bool extras = 12;
     }
     // Also rewrite rows the author edited.
     bool replace_edited = 11;
@@ -295,6 +315,8 @@ message DirectRequest {
 
 message DirectReply {
     SceneDirection direction = 1;
+    // The story's extras after the pass, which may have added some.
+    repeated story.Extra extras = 2;
 }
 
 message DescribeRequest {
@@ -302,6 +324,7 @@ message DescribeRequest {
         string character_id = 1;
         string location_id = 2;
         string prop_id = 3;
+        string extra_id = 4;
     }
 }
 
@@ -310,6 +333,7 @@ message DescribeReply {
         story.Character character = 1;
         story.Location location = 2;
         story.Prop prop = 3;
+        story.Extra extra = 4;
     }
 }
 
@@ -376,6 +400,7 @@ message GenerateLibraryImageRequest {
         string character_id = 1;
         string location_id = 2;
         string prop_id = 3;
+        string extra_id = 5;
     }
     bool regenerate = 4;
 }

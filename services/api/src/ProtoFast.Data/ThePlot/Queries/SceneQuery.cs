@@ -53,12 +53,14 @@ public sealed class SceneQuery : Query<Scene>, ISceneQuery
             .Include(s => s.Frames.OrderBy(p => p.Position).ThenBy(p => p.Id))
             .ThenInclude(p => p.Placements)
             .Include(s => s.Frames).ThenInclude(p => p.Props)
+            .Include(s => s.Frames).ThenInclude(p => p.Extras)
             .Include(s => s.Frames).ThenInclude(p => p.Image)
             .Include(s => s.Cues).ThenInclude(c => c.Audio)
             .Include(s => s.Appearances).ThenInclude(a => a.Image)
             .Include(s => s.LookChanges).ThenInclude(c => c.Image)
             .Include(s => s.PropStates)
             .Include(s => s.LocationStates)
+            .Include(s => s.Extras)
             .AsSplitQuery());
         return this;
     }

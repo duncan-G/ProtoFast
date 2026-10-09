@@ -2,9 +2,11 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { Avatar } from '../avatar';
 import { DirectorLibraryTab } from '../director-library-tab';
 import { initials } from '../format';
+import { NAME_MAX } from '../../../stories/library-names';
 import { SceneEditorStore } from '../scene-editor-store';
 import { LibraryCastCard } from './library-cast-card';
 import { LibraryEntryCard } from './library-entry-card';
+import { LibraryExtraCard } from './library-extra-card';
 import { LibraryNarratorCard } from './library-narrator-card';
 import { LibraryToolbar } from './library-toolbar';
 import { VoicePicker } from './voice-picker';
@@ -16,6 +18,11 @@ const TABS: { tab: DirectorLibraryTab; label: string; hint: string }[] = [
     tab: 'cast',
     label: 'Cast',
     hint: `How everyone looks and sounds across the story. ${DEFAULTS}`,
+  },
+  {
+    tab: 'extras',
+    label: 'Extras',
+    hint: `Uncast people pictures show: one person or a group. Directing a scene adds the ones it needs. ${DEFAULTS}`,
   },
   {
     tab: 'places',
@@ -42,6 +49,7 @@ const TABS: { tab: DirectorLibraryTab; label: string; hint: string }[] = [
     Avatar,
     LibraryCastCard,
     LibraryEntryCard,
+    LibraryExtraCard,
     LibraryNarratorCard,
     LibraryToolbar,
     VoicePicker,
@@ -82,6 +90,9 @@ const TABS: { tab: DirectorLibraryTab; label: string; hint: string }[] = [
           }
         </div>
         <span class="dr-rail-rule"></span>
+        <button type="button" class="dr-rail-count" (click)="openTo('extras', null)">
+          <span class="dr-rail-kicker">Extras</span><span>{{ store.extras().length }}</span>
+        </button>
         <button type="button" class="dr-rail-count" (click)="openTo('places', null)">
           <span class="dr-rail-kicker">Places</span><span>{{ store.locations().length }}</span>
         </button>
@@ -131,6 +142,14 @@ const TABS: { tab: DirectorLibraryTab; label: string; hint: string }[] = [
                     <path d="M13 4a2.75 2.75 0 0 1 0 5.2" />
                     <path d="M14.5 11.8c1.8.6 3 2.4 3 4.7" />
                   }
+                  @case ('extras') {
+                    <circle cx="5" cy="7" r="2" />
+                    <circle cx="10" cy="5.5" r="2" />
+                    <circle cx="15" cy="7" r="2" />
+                    <path d="M1.5 15.5c0-2 1.6-3.5 3.5-3.5 1 0 1.9.4 2.5 1" />
+                    <path d="M6.5 15.5c0-2.2 1.6-4 3.5-4s3.5 1.8 3.5 4" />
+                    <path d="M12.5 13c.6-.6 1.5-1 2.5-1 1.9 0 3.5 1.5 3.5 3.5" />
+                  }
                   @case ('places') {
                     <path d="M10 17.5s5.5-5 5.5-9.5a5.5 5.5 0 0 0-11 0c0 4.5 5.5 9.5 5.5 9.5Z" />
                     <circle cx="10" cy="8" r="2" />
@@ -162,6 +181,13 @@ const TABS: { tab: DirectorLibraryTab; label: string; hint: string }[] = [
               <app-library-cast-card [character]="character" />
             } @empty {
               <p class="dr-empty">No characters yet.</p>
+            }
+          }
+          @case ('extras') {
+            @for (extra of store.extras(); track extra.id) {
+              <app-library-extra-card [extra]="extra" />
+            } @empty {
+              <p class="dr-empty">No extras yet. Direct a scene to find the ones it needs.</p>
             }
           }
           @case ('places') {
@@ -205,6 +231,25 @@ const TABS: { tab: DirectorLibraryTab; label: string; hint: string }[] = [
         }
       </div>
 
+      @if (store.directorLibraryTab() === 'extras') {
+        <form class="dr-library-add" (submit)="$event.preventDefault(); addExtra()">
+          <input
+            class="dr-input"
+            [class.is-invalid]="!!extraProblem()"
+            aria-label="New extras, e.g. Pub regulars"
+            placeholder="New extras, e.g. Pub regulars"
+            [attr.maxlength]="nameMax"
+            [value]="extraDraft()"
+            (input)="extraDraft.set($any($event.target).value); extraProblem.set('')"
+          />
+          <button type="submit" class="dr-btn is-dark" [disabled]="!extraDraft().trim()">
+            Add
+          </button>
+        </form>
+        @if (extraProblem(); as problem) {
+          <span class="dr-error dr-library-problem">{{ problem }}</span>
+        }
+      }
       <app-library-toolbar />
     }
   `,
@@ -214,6 +259,9 @@ export class DirectorLibrary {
 
   protected readonly tabs = TABS;
   protected readonly pickingNarrator = signal(false);
+  protected readonly nameMax = NAME_MAX;
+  protected readonly extraDraft = signal('');
+  protected readonly extraProblem = signal('');
   protected readonly narratorVoices = computed(
     () => new Set(this.store.narrators().map((n) => n.voice.voiceId)),
   );
@@ -223,6 +271,7 @@ export class DirectorLibrary {
   );
   protected readonly counts = computed<Record<DirectorLibraryTab, number>>(() => ({
     cast: this.store.characters().length,
+    extras: this.store.extras().length,
     places: this.store.locations().length,
     props: this.store.props().length,
     narrators: this.store.narrators().length,
@@ -234,6 +283,16 @@ export class DirectorLibrary {
 
   protected selectTab(tab: DirectorLibraryTab): void {
     this.store.directorLibraryTab.set(tab);
+  }
+
+  protected async addExtra(): Promise<void> {
+    const added = await this.store.addExtra(this.extraDraft());
+    if (typeof added === 'string') {
+      this.extraProblem.set(added);
+      return;
+    }
+    this.extraDraft.set('');
+    this.store.directorLibraryEntry.set(added.id);
   }
 
   protected openTo(tab: DirectorLibraryTab, entryId: string | null): void {

@@ -369,6 +369,7 @@ export function sampleStory(): Story {
     ],
     characters,
     narrators: [],
+    extras: [],
     locations,
     props,
   });
