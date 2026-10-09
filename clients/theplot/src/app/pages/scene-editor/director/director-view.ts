@@ -1,21 +1,11 @@
-import {
-  afterNextRender,
-  ChangeDetectionStrategy,
-  Component,
-  inject,
-  input,
-  output,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { OverviewPanel } from '../overview-panel';
-import { SceneEditorStore } from '../scene-editor-store';
 import { SceneElementType } from '../../../stories/model/scene-element-type';
 import { DirectorInspector } from './director-inspector';
 import { DirectorLibrary } from './director-library';
 import { DirectorScript } from './director-script';
 import { DirectorToolbar } from './director-toolbar';
 import { DirectorTransport } from './director-transport';
-
-const LIBRARY_MIN_WIDTH = 1280;
 
 /**
  * Director mode: the story library on the left, the scene read as panels in the middle with the
@@ -48,16 +38,8 @@ const LIBRARY_MIN_WIDTH = 1280;
   `,
 })
 export class DirectorView {
-  private readonly store = inject(SceneEditorStore);
-
   readonly overview = input(false);
   readonly jump = output<string>();
   /** A new line to write in story mode. */
   readonly write = output<SceneElementType>();
-
-  constructor() {
-    afterNextRender(() =>
-      this.store.directorLibraryOpen.set(window.innerWidth >= LIBRARY_MIN_WIDTH),
-    );
-  }
 }

@@ -44,37 +44,39 @@ const TABS: { tab: DirectorLibraryTab; label: string; hint: string; placeholder:
   imports: [Avatar, LibraryCastCard, LibraryEntryCard, LibraryNarratorCard],
   host: {
     class: 'dr-library',
-    '[class.is-open]': 'store.directorLibraryOpen()',
+    '[class.is-open]': '!store.libraryCollapsed()',
     'aria-label': 'Story library',
   },
   template: `
-    @if (!store.directorLibraryOpen()) {
+    @if (store.libraryCollapsed()) {
       <div class="dr-rail">
         <button
           type="button"
           class="dr-rail-toggle"
           title="Open story library"
           aria-label="Open story library"
-          (click)="store.directorLibraryOpen.set(true)"
+          (click)="store.libraryCollapsed.set(false)"
         >
           »
         </button>
         <span class="dr-rail-kicker">Cast</span>
-        @for (character of store.characters(); track character.id) {
-          <button
-            type="button"
-            class="dr-rail-avatar"
-            [title]="character.name"
-            (click)="openTo('cast', character.id)"
-          >
-            <app-avatar
-              [shape]="store.kindOf(character).avatarShape"
-              [hue]="character.hue"
-              [initials]="initialsOf(character.name)"
-              [size]="30"
-            />
-          </button>
-        }
+        <div class="dr-rail-cast">
+          @for (character of store.characters(); track character.id) {
+            <button
+              type="button"
+              class="dr-rail-avatar"
+              [title]="character.name"
+              (click)="openTo('cast', character.id)"
+            >
+              <app-avatar
+                [shape]="store.kindOf(character).avatarShape"
+                [hue]="character.hue"
+                [initials]="initialsOf(character.name)"
+                [size]="30"
+              />
+            </button>
+          }
+        </div>
         <span class="dr-rail-rule"></span>
         <button type="button" class="dr-rail-count" (click)="openTo('places', null)">
           <span class="dr-rail-kicker">Places</span><span>{{ store.locations().length }}</span>
@@ -92,7 +94,7 @@ const TABS: { tab: DirectorLibraryTab; label: string; hint: string; placeholder:
             class="dr-rail-toggle"
             title="Collapse"
             aria-label="Collapse the story library"
-            (click)="store.directorLibraryOpen.set(false)"
+            (click)="store.libraryCollapsed.set(true)"
           >
             «
           </button>
@@ -239,7 +241,7 @@ export class DirectorLibrary {
   }
 
   protected openTo(tab: DirectorLibraryTab, entryId: string | null): void {
-    this.store.directorLibraryOpen.set(true);
+    this.store.libraryCollapsed.set(false);
     this.store.directorLibraryTab.set(tab);
     this.store.directorLibraryEntry.set(entryId);
   }

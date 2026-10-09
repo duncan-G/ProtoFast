@@ -93,6 +93,18 @@ export class LibraryPanel {
       : nameProblem(this.store.props(), draft, 'prop');
   });
 
+  constructor() {
+    afterNextRender(() => {
+      const id = this.store.libraryEntry();
+      if (id) {
+        this.store.libraryEntry.set(null);
+        this.host.nativeElement
+          .querySelector(`[data-entry-id="${id}"]`)
+          ?.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  }
+
   protected selectTab(tab: LibraryTab): void {
     this.store.libraryTab.set(tab);
     this.draft.set('');

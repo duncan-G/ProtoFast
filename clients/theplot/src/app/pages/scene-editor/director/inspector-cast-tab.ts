@@ -384,7 +384,7 @@ export class InspectorCastTab {
   }
 
   protected openInLibrary(characterId: string): void {
-    this.store.directorLibraryOpen.set(true);
+    this.store.libraryCollapsed.set(false);
     this.store.directorLibraryTab.set('cast');
     this.store.directorLibraryEntry.set(characterId);
   }

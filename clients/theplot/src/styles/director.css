@@ -1502,9 +1502,29 @@
     flex-direction: column;
     align-items: center;
     gap: 10px;
+    flex: 1;
+    min-height: 0;
+    padding: 14px 0;
+  }
+  /* Only the cast scrolls, without a bar: a classic scrollbar would eat the 56px rail. */
+  .dr-rail-cast {
+    display: flex;
+    flex: 0 1 auto;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
     min-height: 0;
     overflow-y: auto;
-    padding: 14px 0;
+    padding: 12px 0;
+    margin: -12px 0;
+    scrollbar-width: none;
+    mask-image: linear-gradient(transparent, #000 12px, #000 calc(100% - 12px), transparent);
+  }
+  .dr-rail-cast::-webkit-scrollbar {
+    display: none;
+  }
+  .dr-rail-avatar {
+    flex: none;
   }
   .dr-rail-toggle {
     flex: none;

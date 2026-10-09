@@ -88,7 +88,6 @@ export class SceneEditorStore implements OnDestroy {
   readonly mode = signal<EditorMode>('story');
   readonly inspectorScope = signal<InspectorScope>('panel');
   readonly inspectorTab = signal<InspectorTab>('cast');
-  readonly directorLibraryOpen = signal(true);
   readonly directorLibraryTab = signal<DirectorLibraryTab>('cast');
   /** The library card that is open, by entry id. */
   readonly directorLibraryEntry = signal<string | null>(null);
@@ -110,6 +109,10 @@ export class SceneEditorStore implements OnDestroy {
   readonly libraryTab = signal<LibraryTab>('characters');
   /** Only has an effect on phones, where the library is a drawer. */
   readonly libraryOpen = signal(false);
+  /** Both modes share it, from tablets up; phones ignore it. */
+  readonly libraryCollapsed = signal(false);
+  /** The entry the library scrolls to as it unfolds from the rail. */
+  readonly libraryEntry = signal<string | null>(null);
   /** For the library's "@ Insert", which tags the selection when there is one. */
   readonly caret = signal<number | null>(null);
   readonly selectionEnd = signal<number | null>(null);

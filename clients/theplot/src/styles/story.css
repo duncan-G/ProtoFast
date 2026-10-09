@@ -73,16 +73,20 @@
     background: var(--dr-wash);
     color: var(--se-danger);
   }
+  /* Writer design: only the cursor's block shows its type; the column stays so text never shifts. */
   .st-type {
     cursor: text;
     user-select: none;
+    opacity: 0;
     transition:
+      opacity 0.2s,
       color 0.2s,
       border-color 0.2s;
   }
   .st-row.is-active .st-type {
     border-left-color: var(--se-accent);
     color: var(--se-accent-ink);
+    opacity: 1;
   }
   .st-text {
     display: block;

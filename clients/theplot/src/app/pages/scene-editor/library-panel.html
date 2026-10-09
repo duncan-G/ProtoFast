@@ -1,5 +1,16 @@
 <div class="se-library-head">
-  <span class="se-kicker">Story library</span>
+  <div class="dr-library-title">
+    <span class="se-kicker">Story library</span>
+    <button
+      type="button"
+      class="dr-rail-toggle se-library-collapse"
+      title="Collapse"
+      aria-label="Collapse the story library"
+      (click)="store.libraryCollapsed.set(true)"
+    >
+      «
+    </button>
+  </div>
   <div class="se-tabs" role="tablist">
     @for (t of tabs; track t.tab) {
       <button

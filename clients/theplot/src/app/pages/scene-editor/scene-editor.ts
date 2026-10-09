@@ -19,12 +19,14 @@ import { DirectorView } from './director/director-view';
 import { EditorMode } from './editor-mode';
 import { EditorTheme } from './editor-theme';
 import { LibraryPanel } from './library-panel';
+import { LibraryRail } from './library-rail';
 import { OverviewPanel } from './overview-panel';
 import { SceneEditorStore } from './scene-editor-store';
 import { StoryView } from './story/story-view';
 
 const THEME_KEY = 'theplot.editor.theme';
 const OVERVIEW_MIN_WIDTH = 1200;
+const LIBRARY_MIN_WIDTH = 1280;
 /** Keep in step with the 767px breakpoint in scene-editor.css. */
 const DRAWER_MAX_WIDTH = 767;
 
@@ -36,6 +38,7 @@ const DRAWER_MAX_WIDTH = 767;
     ContainerMenu,
     DirectorView,
     LibraryPanel,
+    LibraryRail,
     OverviewPanel,
     RouterLink,
     StoryView,
@@ -70,6 +73,7 @@ export class SceneEditor {
     const destroyRef = inject(DestroyRef);
     afterNextRender(() => {
       this.width.set(window.innerWidth);
+      this.store.libraryCollapsed.set(window.innerWidth < LIBRARY_MIN_WIDTH);
       try {
         const saved = localStorage.getItem(THEME_KEY);
         if (saved === 'light' || saved === 'dark') {
@@ -135,6 +139,7 @@ export class SceneEditor {
     const open = !this.store.libraryOpen();
     this.store.libraryOpen.set(open);
     if (open) {
+      this.store.libraryCollapsed.set(false);
       this.overviewChoice.set(false);
     }
   }

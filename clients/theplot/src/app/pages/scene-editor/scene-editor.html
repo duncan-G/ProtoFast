@@ -107,7 +107,11 @@
     </div>
   } @else {
     <div class="se-body">
-      <app-library-panel [class.is-open]="store.libraryOpen()" />
+      @if (store.libraryCollapsed()) {
+        <app-library-rail />
+      } @else {
+        <app-library-panel [class.is-open]="store.libraryOpen()" />
+      }
       @if (store.libraryOpen() || showOverview()) {
         <div class="se-scrim" aria-hidden="true" (click)="closeDrawers()"></div>
       }

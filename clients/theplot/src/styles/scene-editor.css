@@ -624,6 +624,9 @@
       width: 236px;
     }
   }
+  .se-library.is-collapsed {
+    width: 56px;
+  }
   .se-library-head {
     display: flex;
     flex-direction: column;
@@ -1004,6 +1007,10 @@
     }
     .se-library-toggle {
       display: inline-flex;
+    }
+    .se-library-collapse,
+    .se-library.is-collapsed {
+      display: none;
     }
     .se-btn-label {
       display: none;
