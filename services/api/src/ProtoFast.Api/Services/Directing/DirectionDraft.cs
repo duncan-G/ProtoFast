@@ -5,6 +5,7 @@ using FramePlacementRecord = ProtoFast.Data.ThePlot.Entities.FramePlacement;
 using FramePropRecord = ProtoFast.Data.ThePlot.Entities.FrameProp;
 using CueRecord = ProtoFast.Data.ThePlot.Entities.Cue;
 using SceneAppearanceRecord = ProtoFast.Data.ThePlot.Entities.SceneAppearance;
+using SceneLookChangeRecord = ProtoFast.Data.ThePlot.Entities.SceneLookChange;
 using ScenePropStateRecord = ProtoFast.Data.ThePlot.Entities.ScenePropState;
 using SceneLocationStateRecord = ProtoFast.Data.ThePlot.Entities.SceneLocationState;
 
@@ -29,6 +30,8 @@ public sealed class DirectionDraft
     public List<CueRecord> Cues { get; set; } = [];
 
     public List<SceneAppearanceRecord> Appearances { get; set; } = [];
+
+    public List<SceneLookChangeRecord> LookChanges { get; set; } = [];
 
     public List<ScenePropStateRecord> PropStates { get; set; } = [];
 
@@ -86,9 +89,22 @@ public sealed class DirectionDraft
             WardrobeId = a.WardrobeId,
             WardrobeChange = a.WardrobeChange,
             AppearanceChange = a.AppearanceChange,
+            Holding = [.. a.Holding],
             ChangeReason = a.ChangeReason,
             ChangeElementId = a.ChangeElementId,
             Edited = a.Edited,
+        }).ToList(),
+        LookChanges = scene.LookChanges.Select(c => new SceneLookChangeRecord
+        {
+            Id = c.Id,
+            CharacterId = c.CharacterId,
+            ElementId = c.ElementId,
+            WardrobeId = c.WardrobeId,
+            WardrobeChange = c.WardrobeChange,
+            AppearanceChange = c.AppearanceChange,
+            Holding = [.. c.Holding],
+            Reason = c.Reason,
+            Edited = c.Edited,
         }).ToList(),
         PropStates = scene.PropStates.Select(p => new ScenePropStateRecord
         {

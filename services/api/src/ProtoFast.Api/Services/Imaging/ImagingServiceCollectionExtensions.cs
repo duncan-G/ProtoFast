@@ -20,6 +20,7 @@ public static class ImagingServiceCollectionExtensions
         services.AddScoped<ImageMessages>();
         services.AddScoped<FrameImageGenerator>();
         services.AddScoped<LibraryImageGenerator>();
+        services.AddScoped<LookImageGenerator>();
         return services;
     }
 }

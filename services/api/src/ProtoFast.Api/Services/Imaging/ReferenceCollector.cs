@@ -6,8 +6,9 @@ using StoryRecord = ProtoFast.Data.ThePlot.Entities.Story;
 namespace ProtoFast.Api.Services.Imaging;
 
 /// <summary>
-/// Gathers the pictures that already exist and could show a frame what it must look like: the
-/// library's pictures of whoever and whatever is in it, the nearest pictured frames around it in
+/// Gathers the pictures that already exist and could show a frame what it must look like: each
+/// character's picture in the look they are in (the library's when the look is the sheet's), the
+/// library's pictures of the place and props, the nearest pictured frames around it in
 /// its scene, and the latest pictured frames of earlier scenes in the same place or with the same
 /// people. Nothing is generated to serve as a reference; a frame in the middle of an unpictured
 /// scene is composed from whatever exists.
@@ -35,11 +36,22 @@ public sealed class ReferenceCollector(ImageStaleness staleness)
 
         foreach (var shown in frame.OnScreen)
         {
-            if (shown.Character.Image is { } image)
+            var name = shown.Character.Name;
+            var sheet = shown.Look.Look.IsSheet(shown.Character);
+            if (!sheet && shown.Look.Image is { } look)
+            {
+                var carrying = shown.Holding.Count == 0 ? "" : $", carrying {string.Join(" and ", shown.Holding.Select(p => p.Name))}";
+                Add(ReferenceSource.Look, shown.Character.Id, look, $"{name} ({LookName(shown)})",
+                    $"The reference sheet of {name} in the look they have in this frame{carrying}. Draw {name}"
+                    + $"{(shown.Holding.Count == 0 ? "" : " and what they carry")} as this sheet shows, in the pose the description asks for.",
+                    staleness.Look(shown.Character, shown.Look.Look, story, look));
+            }
+            else if (shown.Character.Image is { } image)
             {
                 var wearing = shown.Character.Wardrobes.OrderBy(w => w.Position).FirstOrDefault()?.Label;
-                Add(ReferenceSource.Character, shown.Character.Id, image, shown.Character.Name,
-                    $"The library's reference sheet of {shown.Character.Name}{(wearing is null ? "" : $", wearing {wearing}")}.",
+                Add(ReferenceSource.Character, shown.Character.Id, image, name,
+                    $"The library's reference sheet of {name}{(wearing is null ? "" : $", wearing {wearing}")}"
+                    + $"{(sheet ? "" : $"; in this frame {name} looks different, as the description says")}.",
                     staleness.Character(shown.Character, image));
             }
         }
@@ -105,6 +117,19 @@ public sealed class ReferenceCollector(ImageStaleness staleness)
         }
 
         return candidates;
+    }
+
+    /// <summary>"carrying Refrigerated cooler", "hood up", "Night shift"</summary>
+    private static string LookName(FrameCharacter shown)
+    {
+        if (shown.Holding.Count > 0)
+        {
+            return $"carrying {string.Join(" and ", shown.Holding.Select(p => p.Name))}";
+        }
+
+        var look = shown.Look.Look;
+        var wardrobe = shown.Character.Wardrobes.FirstOrDefault(w => w.Id == look.WardrobeId)?.Label;
+        return new[] { look.AppearanceChange, look.WardrobeChange, wardrobe ?? "" }.FirstOrDefault(p => p.Trim().Length > 0)?.Trim() ?? "look";
     }
 
     private static string SceneTitle(SceneRecord scene) => scene.Title.Trim().Length > 0 ? scene.Title.Trim() : $"scene {scene.Position + 1}";

@@ -10,4 +10,7 @@ public enum MediaAssetKind
 
     /// <summary>A character, location or prop as the library pictures it; frames take it as a reference.</summary>
     LibraryImage,
+
+    /// <summary>A character in a look other than the library's: carrying something, hurt, dressed differently.</summary>
+    LookImage,
 }

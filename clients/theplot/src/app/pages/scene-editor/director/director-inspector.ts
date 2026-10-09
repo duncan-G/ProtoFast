@@ -10,6 +10,7 @@ import { InspectorCastTab } from './inspector-cast-tab';
 import { InspectorLinesTab } from './inspector-lines-tab';
 import { InspectorPlaceTab } from './inspector-place-tab';
 import { InspectorShotTab } from './inspector-shot-tab';
+import { PicturePreview } from './picture-preview';
 
 const TABS: { tab: InspectorTab; label: string }[] = [
   { tab: 'shot', label: 'Shot' },
@@ -22,7 +23,13 @@ const TABS: { tab: InspectorTab; label: string }[] = [
 @Component({
   selector: 'app-director-inspector',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [InspectorCastTab, InspectorLinesTab, InspectorPlaceTab, InspectorShotTab],
+  imports: [
+    InspectorCastTab,
+    InspectorLinesTab,
+    InspectorPlaceTab,
+    InspectorShotTab,
+    PicturePreview,
+  ],
   host: { class: 'dr-inspector', 'aria-label': 'Inspector' },
   template: `
     <div class="dr-inspector-top">
@@ -172,9 +179,7 @@ const TABS: { tab: InspectorTab; label: string }[] = [
       } @else if (store.selectedFrame()) {
         <div class="dr-media is-frame">
           @if (store.selectedFrame()?.frame?.image; as image) {
-            <a class="dr-picture is-image" [href]="image.url" target="_blank" rel="noopener">
-              <img [src]="image.url" [alt]="'Frame ' + store.selectedFrameNumber()" />
-            </a>
+            <app-picture-preview [url]="image.url" [alt]="'Frame ' + store.selectedFrameNumber()" />
           } @else {
             <div class="dr-picture">
               {{ frameImageState() === 'generating' ? 'Drawing…' : 'No image' }}

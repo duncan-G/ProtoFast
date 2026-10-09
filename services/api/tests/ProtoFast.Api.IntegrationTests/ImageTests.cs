@@ -112,7 +112,7 @@ public class ImageTests(StoryDatabase database)
         Assert.Contains("Place: Harbour, an exterior.", request.Prompt);
         Assert.Contains("Time of day: night.", request.Prompt);
         Assert.Contains("Camera: medium shot.", request.Prompt);
-        Assert.Contains("Action: Mara calls out.", request.Prompt);
+        Assert.Contains("In the picture: Mara calls out.", request.Prompt);
         Assert.Contains("Radio", request.Prompt);
 
         // The next frame is offered the one before it as well.
@@ -171,5 +171,56 @@ public class ImageTests(StoryDatabase database)
         Assert.Equal([earlier], reply.Direction.Frames[0].Image.References);
         Assert.Contains("of an earlier scene", Images.Requests[^1].References[0].Caption);
         Assert.NotNull(direction.Frames[2].Image);
+    }
+
+    [Fact]
+    public async Task A_character_carrying_a_prop_is_drawn_from_their_look_picture_until_they_put_it_down()
+    {
+        var (story, scene, mara, _, radio) = await FramedSceneAsync();
+        var direction = await _writer.GetDirectionAsync(scene.Id);
+        direction.Appearances.Add(new SceneAppearance { CharacterId = mara.Id, Holding = { radio.Id } });
+        direction.LookChanges.Add(new LookChange { CharacterId = mara.Id, ElementId = scene.Elements[3].Id, Reason = "puts the radio down" });
+        direction = await _writer.SaveDirectionAsync(direction);
+        var before = Images.Requests.Count;
+
+        var first = await PictureAsync(scene, direction, 0);
+
+        // The library sheet first, then the look composed from it, then the frame.
+        Assert.Equal(3, Images.Requests.Count - before);
+        var look = Images.Requests[^2];
+        Assert.Contains("as they look at this point of the story", look.Prompt);
+        Assert.Contains("Carrying, the same way in both views: Radio.", look.Prompt);
+        Assert.StartsWith("Image 1: The library's reference sheet of Mara in their usual look", Assert.Single(look.References).Caption);
+        var frame = Images.Requests[^1];
+        Assert.Contains("Carrying: Radio.", frame.Prompt);
+        Assert.StartsWith("Image 1: The reference sheet of Mara in the look they have in this frame, carrying Radio.", frame.References[0].Caption);
+        Assert.Equal(["Mara (carrying Radio)"], first.Direction.Frames[0].Image.References);
+        var pictured = first.Direction.Appearances.Single().Image;
+        Assert.False(pictured.Stale);
+
+        // The next frame in the same look draws only itself.
+        var second = await PictureAsync(scene, first.Direction, 1);
+        Assert.Equal(4, Images.Requests.Count - before);
+        Assert.Equal("Mara (carrying Radio)", second.Direction.Frames[1].Image.References[0]);
+
+        // Once she puts it down she is drawn from the library's sheet again, and the radio stands alone.
+        var third = await PictureAsync(scene, second.Direction, 2);
+        Assert.Equal(5, Images.Requests.Count - before);
+        Assert.Equal("Mara", third.Direction.Frames[2].Image.References[0]);
+        Assert.DoesNotContain("Carrying", Images.Requests[^1].Prompt);
+        Assert.Null(Assert.Single(third.Direction.LookChanges).Image);
+
+        // A later scene that opens in the same look reuses the picture.
+        var full = await _writer.GetStoryAsync(story.Id);
+        const string text = "@Mara walks the pier with the @Radio.";
+        var later = await _writer.CreateSceneAsync(full.Containers[0].Id, 1, "Pier",
+            Heading(), Action(text, Mention(text, "@Mara", mara), Mention(text, "@Radio", radio)));
+        var laterDirection = new SceneDirection { SceneId = later.Id };
+        laterDirection.Appearances.Add(new SceneAppearance { CharacterId = mara.Id, Holding = { radio.Id } });
+        laterDirection.Frames.Add(new Frame { FirstElementId = later.Elements[0].Id, LastElementId = later.Elements[1].Id, Beat = "Mara on the pier." });
+        laterDirection = await _writer.SaveDirectionAsync(laterDirection);
+        var pier = await PictureAsync(later, laterDirection, 0);
+        Assert.Equal(6, Images.Requests.Count - before);
+        Assert.Equal(pictured.AssetId, pier.Direction.Appearances.Single().Image.AssetId);
     }
 }

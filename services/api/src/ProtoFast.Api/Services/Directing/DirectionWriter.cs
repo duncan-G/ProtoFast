@@ -5,6 +5,7 @@ using FramePlacementRecord = ProtoFast.Data.ThePlot.Entities.FramePlacement;
 using FramePropRecord = ProtoFast.Data.ThePlot.Entities.FrameProp;
 using CueRecord = ProtoFast.Data.ThePlot.Entities.Cue;
 using SceneAppearanceRecord = ProtoFast.Data.ThePlot.Entities.SceneAppearance;
+using SceneLookChangeRecord = ProtoFast.Data.ThePlot.Entities.SceneLookChange;
 using ScenePropStateRecord = ProtoFast.Data.ThePlot.Entities.ScenePropState;
 using SceneLocationStateRecord = ProtoFast.Data.ThePlot.Entities.SceneLocationState;
 
@@ -12,8 +13,8 @@ namespace ProtoFast.Api.Services.Directing;
 
 /// <summary>
 /// Writes a draft over a scene's stored director layer. Rows are matched by their place in the
-/// scene (a cue by its line, a frame by its first row, a look by its character, a state by its
-/// prop or location), so they keep their ids; rows the draft leaves out are deleted and new ones get ids from
+/// scene (a cue by its line, a frame by its first row, a look by its character, a look change by its
+/// character and line, a state by its prop or location), so they keep their ids; rows the draft leaves out are deleted and new ones get ids from
 /// the database. A row the author changed is marked edited, so a later directing pass keeps it; a
 /// row a directing pass changed loses the mark.
 /// </summary>
@@ -114,6 +115,7 @@ public static class DirectionWriter
                           || next.Wardrobe is not null
                           || stored.WardrobeChange != next.WardrobeChange
                           || stored.AppearanceChange != next.AppearanceChange
+                          || !stored.Holding.SequenceEqual(next.Holding)
                           || stored.ChangeReason != next.ChangeReason
                           || stored.ChangeElementId != next.ChangeElementId;
             stored.CharacterId = next.CharacterId;
@@ -131,8 +133,34 @@ public static class DirectionWriter
             stored.OnScreen = next.OnScreen;
             stored.WardrobeChange = next.WardrobeChange;
             stored.AppearanceChange = next.AppearanceChange;
+            stored.Holding = next.Holding;
             stored.ChangeReason = next.ChangeReason;
             stored.ChangeElementId = next.ChangeElementId;
+            return changed;
+        });
+
+        Sync(scene.LookChanges, draft.LookChanges, c => (c.CharacterId, c.ElementId), byAuthor, (stored, next) =>
+        {
+            var changed = stored.WardrobeId != next.WardrobeId
+                          || next.Wardrobe is not null
+                          || stored.WardrobeChange != next.WardrobeChange
+                          || stored.AppearanceChange != next.AppearanceChange
+                          || !stored.Holding.SequenceEqual(next.Holding)
+                          || stored.Reason != next.Reason;
+            if (next.Wardrobe is not null)
+            {
+                stored.Wardrobe = next.Wardrobe;
+            }
+            else
+            {
+                stored.WardrobeId = next.WardrobeId;
+                stored.Wardrobe = null;
+            }
+
+            stored.WardrobeChange = next.WardrobeChange;
+            stored.AppearanceChange = next.AppearanceChange;
+            stored.Holding = next.Holding;
+            stored.Reason = next.Reason;
             return changed;
         });
 
@@ -161,14 +189,15 @@ public static class DirectionWriter
 
     /// <param name="key">The row's place in the scene.</param>
     /// <param name="overwrite">Copies the draft row onto the stored one and says whether anything changed.</param>
-    private static void Sync<T>(List<T> stored, List<T> next, Func<T, Guid> key, bool byAuthor, Func<T, T, bool> overwrite)
+    private static void Sync<T, TKey>(List<T> stored, List<T> next, Func<T, TKey> key, bool byAuthor, Func<T, T, bool> overwrite)
         where T : class
+        where TKey : notnull
     {
         var keep = next.Select(key).ToHashSet();
         stored.RemoveAll(row => !keep.Contains(key(row)));
         foreach (var row in next)
         {
-            var existing = stored.FirstOrDefault(s => key(s) == key(row));
+            var existing = stored.FirstOrDefault(s => EqualityComparer<TKey>.Default.Equals(key(s), key(row)));
             if (existing is null)
             {
                 // A fresh row with no id: the database assigns one. An id the draft carried over
@@ -197,6 +226,9 @@ public static class DirectionWriter
             case SceneAppearanceRecord appearance:
                 appearance.Id = id;
                 break;
+            case SceneLookChangeRecord change:
+                change.Id = id;
+                break;
             case ScenePropStateRecord state:
                 state.Id = id;
                 break;
@@ -218,6 +250,9 @@ public static class DirectionWriter
                 break;
             case SceneAppearanceRecord appearance:
                 appearance.Edited = edited;
+                break;
+            case SceneLookChangeRecord change:
+                change.Edited = edited;
                 break;
             case ScenePropStateRecord state:
                 state.Edited = edited;

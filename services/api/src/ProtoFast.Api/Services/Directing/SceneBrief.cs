@@ -3,6 +3,8 @@ using ProtoFast.Api.Services.Screenplays;
 using SceneElementRecord = ProtoFast.Data.ThePlot.Entities.SceneElement;
 
 using CharacterRecord = ProtoFast.Data.ThePlot.Entities.Character;
+using SceneAppearanceRecord = ProtoFast.Data.ThePlot.Entities.SceneAppearance;
+using SceneLookChangeRecord = ProtoFast.Data.ThePlot.Entities.SceneLookChange;
 using LocationRecord = ProtoFast.Data.ThePlot.Entities.Location;
 using PropRecord = ProtoFast.Data.ThePlot.Entities.Prop;
 using SceneElementTypeRecord = ProtoFast.Data.ThePlot.Entities.SceneElementType;
@@ -35,9 +37,12 @@ public sealed class SceneBrief
             .SelectMany(e => e.Mentions.Select(m => m.CharacterId).Append(e.Type == SceneElementTypeRecord.Dialogue ? e.SpeakerId : null))
             .OfType<Guid>()
             .Concat(context.Scene.Appearances.Select(a => a.CharacterId))
+            .Concat(context.Scene.LookChanges.Select(c => c.CharacterId))
             .ToHashSet();
         var propIds = Elements.SelectMany(e => e.Mentions.Select(m => m.PropId)).OfType<Guid>()
             .Concat(context.Scene.PropStates.Select(p => p.PropId))
+            .Concat(context.Scene.Appearances.SelectMany(a => a.Holding))
+            .Concat(context.Scene.LookChanges.SelectMany(c => c.Holding))
             .ToHashSet();
         var locationIds = Elements.Select(e => e.LocationId).OfType<Guid>()
             .Concat(context.Scene.LocationStates.Select(l => l.LocationId))
@@ -83,6 +88,9 @@ public sealed class SceneBrief
 
     public PropRecord? PropNamed(string? name) =>
         name is null ? null : Context.Story.Props.FirstOrDefault(p => LibraryNames.Same(p.Name, name));
+
+    /// <summary>The 0-based index of an element, or <see cref="int.MaxValue"/> when it is no longer in the scene.</summary>
+    public int Position(Guid elementId) => _labels.ContainsKey(elementId) ? Elements.FindIndex(e => e.Id == elementId) : int.MaxValue;
 
     public LocationRecord? LocationNamed(string? name) =>
         name is null ? null : Context.Story.Locations.FirstOrDefault(l => LibraryNames.Same(l.Name, name));
@@ -171,6 +179,56 @@ public sealed class SceneBrief
         return text.Length == 0 ? "- (nobody is named in this scene)\n" : text.ToString();
     }
 
+    /// <summary>
+    /// Each character's look as the scene opens and every line that changes it:
+    /// <c>- MARA: as the scene opens, wearing "coat", carrying Lantern; from e7 (drops it): carrying nothing.</c>
+    /// </summary>
+    public string LookSheet(IReadOnlyList<SceneAppearanceRecord> appearances, IReadOnlyList<SceneLookChangeRecord> changes)
+    {
+        var text = new StringBuilder();
+        foreach (var character in Cast)
+        {
+            var opening = appearances.FirstOrDefault(a => a.CharacterId == character.Id);
+            var steps = Looks.Changes(changes, Position, character.Id).Where(c => _labels.ContainsKey(c.ElementId)).ToList();
+            if (opening is null && steps.Count == 0)
+            {
+                continue;
+            }
+
+            text.Append("- ").Append(character.Name).Append(": as the scene opens, ")
+                .Append(Describe(character, opening is null ? Look.Plain : Look.Of(opening), opening?.Wardrobe));
+            foreach (var step in steps)
+            {
+                text.Append("; from ").Append(Label(step.ElementId));
+                if (!string.IsNullOrWhiteSpace(step.Reason))
+                {
+                    text.Append(" (").Append(step.Reason.Trim().TrimEnd('.')).Append(')');
+                }
+
+                text.Append(": ").Append(Describe(character, Look.Of(step), step.Wardrobe));
+            }
+
+            text.AppendLine(".");
+        }
+
+        return text.Length == 0 ? "- (no looks yet)\n" : text.ToString();
+    }
+
+    private string Describe(CharacterRecord character, Look look, Data.ThePlot.Entities.CharacterWardrobe? added)
+    {
+        var wardrobe = added ?? character.Wardrobes.FirstOrDefault(w => w.Id == look.WardrobeId)
+            ?? character.Wardrobes.OrderBy(w => w.Position).FirstOrDefault();
+        var held = look.Holding.Select(id => Context.Story.Props.FirstOrDefault(p => p.Id == id)?.Name).OfType<string>().ToList();
+        var parts = new[]
+        {
+            wardrobe is null ? "" : $"wearing \"{wardrobe.Label}\"",
+            look.WardrobeChange,
+            look.AppearanceChange,
+            held.Count == 0 ? "carrying nothing" : $"carrying {string.Join(" and ", held)}",
+        };
+        return string.Join(", ", parts.Where(p => p.Length > 0));
+    }
+
     public string PropSheet()
     {
         var text = new StringBuilder();
@@ -180,6 +238,23 @@ public sealed class SceneBrief
             if (!string.IsNullOrWhiteSpace(prop.Description))
             {
                 text.Append(": ").Append(prop.Description);
+            }
+
+            text.AppendLine();
+        }
+
+        return text.Length == 0 ? "- (none)\n" : text.ToString();
+    }
+
+    public string LocationSheet()
+    {
+        var text = new StringBuilder();
+        foreach (var location in Locations)
+        {
+            text.Append("- ").Append(location.Name).Append(location.Setting == LocationSettingRecord.Interior ? " (interior)" : " (exterior)");
+            if (!string.IsNullOrWhiteSpace(location.Description))
+            {
+                text.Append(": ").Append(location.Description);
             }
 
             text.AppendLine();

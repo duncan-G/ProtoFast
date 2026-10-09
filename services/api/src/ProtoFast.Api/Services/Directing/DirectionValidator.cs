@@ -6,6 +6,7 @@ using FrameRecord = ProtoFast.Data.ThePlot.Entities.Frame;
 using FramePropRecord = ProtoFast.Data.ThePlot.Entities.FrameProp;
 using SceneAppearanceRecord = ProtoFast.Data.ThePlot.Entities.SceneAppearance;
 using SceneLocationStateRecord = ProtoFast.Data.ThePlot.Entities.SceneLocationState;
+using SceneLookChangeRecord = ProtoFast.Data.ThePlot.Entities.SceneLookChange;
 using SceneElementTypeRecord = ProtoFast.Data.ThePlot.Entities.SceneElementType;
 using ScenePropStateRecord = ProtoFast.Data.ThePlot.Entities.ScenePropState;
 
@@ -38,6 +39,7 @@ public static class DirectionValidator
             Cues = Cues(message.Cues, references),
             Frames = Frames(message.Frames, references),
             Appearances = Appearances(message.Appearances, references),
+            LookChanges = LookChanges(message.LookChanges, references),
             PropStates = PropStates(message.PropStates, references),
             LocationStates = LocationStates(message.LocationStates, references),
         };
@@ -236,6 +238,7 @@ public static class DirectionValidator
                 WardrobeId = appearance.HasWardrobeId ? Wardrobe(appearance.WardrobeId, characterId, references, where) : null,
                 WardrobeChange = Text(appearance.WardrobeChange, BeatMaxLength, where, "wardrobe change"),
                 AppearanceChange = Text(appearance.AppearanceChange, BeatMaxLength, where, "appearance change"),
+                Holding = Holding(appearance.Holding, references, where),
                 ChangeReason = Reason(appearance.HasChangeReason ? appearance.ChangeReason : null, where),
                 ChangeElementId = appearance.HasChangeElementId ? Element(appearance.ChangeElementId, references, where) : null,
             });
@@ -243,6 +246,38 @@ public static class DirectionValidator
 
         return records;
     }
+
+    private static List<SceneLookChangeRecord> LookChanges(RepeatedField<LookChange> changes, DirectionReferences references)
+    {
+        var records = new List<SceneLookChangeRecord>(changes.Count);
+        for (var index = 0; index < changes.Count; index++)
+        {
+            var change = changes[index];
+            var where = $"Look change {index + 1}";
+            var characterId = Reference(change.CharacterId, references.Story.CharacterIds, where, "character");
+            var elementId = Element(change.ElementId, references, where);
+            if (records.Any(c => c.CharacterId == characterId && c.ElementId == elementId))
+            {
+                throw StoryErrors.Invalid($"{where}: that character’s look already changes on that line.");
+            }
+
+            records.Add(new SceneLookChangeRecord
+            {
+                CharacterId = characterId,
+                ElementId = elementId,
+                WardrobeId = change.HasWardrobeId ? Wardrobe(change.WardrobeId, characterId, references, where) : null,
+                WardrobeChange = Text(change.WardrobeChange, BeatMaxLength, where, "wardrobe change"),
+                AppearanceChange = Text(change.AppearanceChange, BeatMaxLength, where, "appearance change"),
+                Holding = Holding(change.Holding, references, where),
+                Reason = Reason(change.HasReason ? change.Reason : null, where),
+            });
+        }
+
+        return records;
+    }
+
+    private static List<Guid> Holding(RepeatedField<string> holding, DirectionReferences references, string where) =>
+        holding.Select(id => Reference(id, references.Story.PropIds, where, "prop")).Distinct().ToList();
 
     private static List<ScenePropStateRecord> PropStates(RepeatedField<ScenePropState> states, DirectionReferences references)
     {

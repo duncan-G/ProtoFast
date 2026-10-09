@@ -56,6 +56,12 @@ service Direction {
     // Every library picture in the story, with whether its sheet has moved on.
     rpc ListLibraryImages (ListLibraryImagesRequest) returns (ListLibraryImagesReply);
 
+    // Pictures a character in one of the scene's looks that differs from the library's (carrying
+    // something, hurt, in another outfit), unless its picture is current or regenerate is set.
+    // Frames in that look take it as the character's reference instead of the library's picture.
+    // Picturing a frame does this first for everyone on screen.
+    rpc GenerateLookImage (GenerateLookImageRequest) returns (GenerateLookImageReply);
+
 }
 
 message SceneDirection {
@@ -72,6 +78,8 @@ message SceneDirection {
     optional string angle = 8;
     optional string movement = 9;
     repeated SceneLocationState location_states = 10;
+    // In line order per character.
+    repeated LookChange look_changes = 11;
 }
 
 // One picture of the scene, covering a contiguous run of its elements in scene order. Frames do
@@ -174,8 +182,8 @@ message CueAudio {
     string voice = 5;
 }
 
-// A character in the scene: whether frames show them, and a wardrobe from their sheet plus what the
-// scene changes about it and about them.
+// A character in the scene: whether frames show them, and their look as the scene opens: a wardrobe
+// from their sheet, what the scene changes about it and about them, and what they carry.
 message SceneAppearance {
     reserved 4;
     string id = 1;
@@ -191,6 +199,27 @@ message SceneAppearance {
     optional string change_reason = 5;
     optional string change_element_id = 6;
     bool edited = 7;
+    // Prop ids they carry: in hand, under an arm, slung over a shoulder.
+    repeated string holding = 11;
+    // Unset while the look is the library's, or until pictured. Read only: saves ignore it.
+    optional MediaImage image = 12;
+}
+
+// A character's whole look from one line of the scene on: the frame covering the line and every
+// frame after it show it, and the next scene opens with the last one.
+message LookChange {
+    string id = 1;
+    string character_id = 2;
+    string element_id = 3;
+    optional string wardrobe_id = 4;
+    string wardrobe_change = 5;
+    string appearance_change = 6;
+    repeated string holding = 7;
+    // "hands the cooler to the doctor"
+    optional string reason = 8;
+    bool edited = 9;
+    // Unset while the look is the library's, or until pictured. Read only: saves ignore it.
+    optional MediaImage image = 10;
 }
 
 message ScenePropState {
@@ -251,7 +280,7 @@ message DirectRequest {
         bool frames = 5;
         // Every line's cue.
         bool cues = 6;
-        // This character's look in the scene.
+        // This character's look in the scene and how it changes during it.
         string appearance_character_id = 7;
         // This prop's state in the scene.
         string prop_state_prop_id = 8;
@@ -361,4 +390,16 @@ message ListLibraryImagesRequest {
 
 message ListLibraryImagesReply {
     repeated LibraryImage images = 1;
+}
+
+message GenerateLookImageRequest {
+    string scene_id = 1;
+    string character_id = 2;
+    // The look change's line; unset is the look the scene opens with.
+    optional string element_id = 3;
+    bool regenerate = 4;
+}
+
+message GenerateLookImageReply {
+    SceneDirection direction = 1;
 }

@@ -1,6 +1,7 @@
 using ProtoFast.Api.Services.Directing;
 using ProtoFast.Storage.Abstractions;
 using FrameRecord = ProtoFast.Data.ThePlot.Entities.Frame;
+using CharacterRecord = ProtoFast.Data.ThePlot.Entities.Character;
 using MediaAssetRecord = ProtoFast.Data.ThePlot.Entities.MediaAsset;
 using StoryRecord = ProtoFast.Data.ThePlot.Entities.Story;
 
@@ -18,6 +19,13 @@ public sealed class ImageMessages(ImageStaleness staleness, IPresignedUrlFactory
             ? ToMessage(image, staleness.Frame(shown, image, directed.Story))
             : null;
     }
+
+    /// <summary>A look's picture; none while the look is the library's.</summary>
+    public Func<Guid, Look, MediaAssetRecord?, MediaImage?> ForLooks(StoryRecord story) =>
+        (characterId, look, image) =>
+            image is not null && story.Characters.FirstOrDefault(c => c.Id == characterId) is CharacterRecord character && !look.IsSheet(character)
+                ? ToMessage(image, staleness.Look(character, look, story, image))
+                : null;
 
     public IEnumerable<LibraryImage> ForLibrary(StoryRecord story) =>
         story.Characters.Where(c => c.Image is not null)

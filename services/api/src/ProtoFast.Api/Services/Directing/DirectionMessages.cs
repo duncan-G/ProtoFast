@@ -1,6 +1,8 @@
 using CueRecord = ProtoFast.Data.ThePlot.Entities.Cue;
 using FrameRecord = ProtoFast.Data.ThePlot.Entities.Frame;
+using MediaAssetRecord = ProtoFast.Data.ThePlot.Entities.MediaAsset;
 using SceneAppearanceRecord = ProtoFast.Data.ThePlot.Entities.SceneAppearance;
+using SceneLookChangeRecord = ProtoFast.Data.ThePlot.Entities.SceneLookChange;
 using SceneLocationStateRecord = ProtoFast.Data.ThePlot.Entities.SceneLocationState;
 using ScenePropStateRecord = ProtoFast.Data.ThePlot.Entities.ScenePropState;
 using SceneRecord = ProtoFast.Data.ThePlot.Entities.Scene;
@@ -11,8 +13,12 @@ public static class DirectionMessages
 {
     /// <param name="audio">Each cue's audio as the client plays it; null leaves the cues silent.</param>
     /// <param name="image">Each frame's picture as the client shows it; null leaves the frames unpictured.</param>
+    /// <param name="look">A look's picture as the client shows it, from the character, the look and the row's asset; null leaves the looks unpictured.</param>
     public static SceneDirection ToMessage(
-        SceneRecord scene, Func<CueRecord, CueAudio?>? audio = null, Func<FrameRecord, MediaImage?>? image = null)
+        SceneRecord scene,
+        Func<CueRecord, CueAudio?>? audio = null,
+        Func<FrameRecord, MediaImage?>? image = null,
+        Func<Guid, Look, MediaAssetRecord?, MediaImage?>? look = null)
     {
         var message = new SceneDirection { SceneId = scene.Id.ToString() };
         if (scene.StoryDay is { } day)
@@ -59,7 +65,29 @@ public static class DirectionMessages
 
                 return cueMessage;
             }));
-        message.Appearances.AddRange(scene.Appearances.OrderBy(a => a.Id).Select(ToMessage));
+        message.Appearances.AddRange(scene.Appearances.OrderBy(a => a.Id).Select(appearance =>
+        {
+            var appearanceMessage = ToMessage(appearance);
+            if (look?.Invoke(appearance.CharacterId, Look.Of(appearance), appearance.Image) is { } pictured)
+            {
+                appearanceMessage.Image = pictured;
+            }
+
+            return appearanceMessage;
+        }));
+        message.LookChanges.AddRange(scene.LookChanges
+            .OrderBy(c => c.CharacterId)
+            .ThenBy(c => order.TryGetValue(c.ElementId, out var position) ? position : int.MaxValue)
+            .Select(change =>
+            {
+                var changeMessage = ToMessage(change);
+                if (look?.Invoke(change.CharacterId, Look.Of(change), change.Image) is { } pictured)
+                {
+                    changeMessage.Image = pictured;
+                }
+
+                return changeMessage;
+            }));
         message.PropStates.AddRange(scene.PropStates.OrderBy(p => p.Id).Select(ToMessage));
         message.LocationStates.AddRange(scene.LocationStates.OrderBy(l => l.Id).Select(ToMessage));
         return message;
@@ -168,6 +196,7 @@ public static class DirectionMessages
             AppearanceChange = appearance.AppearanceChange,
             Edited = appearance.Edited,
         };
+        message.Holding.AddRange(appearance.Holding.Select(id => id.ToString()));
         if (appearance.WardrobeId is { } wardrobeId)
         {
             message.WardrobeId = wardrobeId.ToString();
@@ -181,6 +210,31 @@ public static class DirectionMessages
         if (appearance.ChangeElementId is { } elementId)
         {
             message.ChangeElementId = elementId.ToString();
+        }
+
+        return message;
+    }
+
+    public static LookChange ToMessage(SceneLookChangeRecord change)
+    {
+        var message = new LookChange
+        {
+            Id = change.Id.ToString(),
+            CharacterId = change.CharacterId.ToString(),
+            ElementId = change.ElementId.ToString(),
+            WardrobeChange = change.WardrobeChange,
+            AppearanceChange = change.AppearanceChange,
+            Edited = change.Edited,
+        };
+        message.Holding.AddRange(change.Holding.Select(id => id.ToString()));
+        if (change.WardrobeId is { } wardrobeId)
+        {
+            message.WardrobeId = wardrobeId.ToString();
+        }
+
+        if (change.Reason is not null)
+        {
+            message.Reason = change.Reason;
         }
 
         return message;

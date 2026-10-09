@@ -6,6 +6,7 @@ import {
   type DirectRequest,
   type Frame as FrameMessage,
   type LibraryImage as LibraryImageMessage,
+  type LookChange as LookChangeMessage,
   type MediaImage as MediaImageMessage,
   type SceneAppearance as SceneAppearanceMessage,
   type SceneDirection as SceneDirectionMessage,
@@ -25,6 +26,7 @@ import { DescribeTarget } from './model/describe-target';
 import { DirectTarget } from './model/direct-target';
 import { Frame } from './model/frame';
 import { LibraryImage } from './model/library-image';
+import { LookChange } from './model/look-change';
 import { MediaImage } from './model/media-image';
 import { SceneAppearance } from './model/scene-appearance';
 import { SceneDirection } from './model/scene-direction';
@@ -102,6 +104,21 @@ export class ConnectDirectionApi implements DirectionApi {
     const reply = await this.client.generateFrameImage({
       sceneId,
       frameId,
+      regenerate,
+    });
+    return toDirection(required(reply.direction));
+  }
+
+  async generateLookImage(
+    sceneId: string,
+    characterId: string,
+    elementId: string | null,
+    regenerate = false,
+  ): Promise<SceneDirection> {
+    const reply = await this.client.generateLookImage({
+      sceneId,
+      characterId,
+      elementId: elementId ?? undefined,
       regenerate,
     });
     return toDirection(required(reply.direction));
@@ -208,6 +225,7 @@ export function toDirection(message: SceneDirectionMessage): SceneDirection {
     frames: message.frames.map(toFrame),
     cues: message.cues.map(toCue),
     appearances: message.appearances.map(toAppearance),
+    lookChanges: message.lookChanges.map(toLookChange),
     propStates: message.propStates.map(toPropState),
     locationStates: message.locationStates.map(toLocationState),
   };
@@ -272,9 +290,26 @@ function toAppearance(message: SceneAppearanceMessage): SceneAppearance {
     wardrobeId: message.wardrobeId ?? null,
     wardrobeChange: message.wardrobeChange,
     appearanceChange: message.appearanceChange,
+    holding: [...message.holding],
     changeReason: message.changeReason ?? null,
     changeElementId: message.changeElementId ?? null,
     edited: message.edited,
+    image: message.image ? toMediaImage(message.image) : null,
+  };
+}
+
+function toLookChange(message: LookChangeMessage): LookChange {
+  return {
+    id: message.id,
+    characterId: message.characterId,
+    elementId: message.elementId,
+    wardrobeId: message.wardrobeId ?? null,
+    wardrobeChange: message.wardrobeChange,
+    appearanceChange: message.appearanceChange,
+    holding: [...message.holding],
+    reason: message.reason ?? null,
+    edited: message.edited,
+    image: message.image ? toMediaImage(message.image) : null,
   };
 }
 
@@ -338,9 +373,21 @@ export function fromDirection(direction: SceneDirection) {
       wardrobeId: a.wardrobeId ?? undefined,
       wardrobeChange: a.wardrobeChange,
       appearanceChange: a.appearanceChange,
+      holding: [...a.holding],
       changeReason: a.changeReason ?? undefined,
       changeElementId: a.changeElementId ?? undefined,
       edited: a.edited,
+    })),
+    lookChanges: direction.lookChanges.map((c) => ({
+      id: c.id,
+      characterId: c.characterId,
+      elementId: c.elementId,
+      wardrobeId: c.wardrobeId ?? undefined,
+      wardrobeChange: c.wardrobeChange,
+      appearanceChange: c.appearanceChange,
+      holding: [...c.holding],
+      reason: c.reason ?? undefined,
+      edited: c.edited,
     })),
     propStates: direction.propStates.map((p) => ({
       id: p.id,

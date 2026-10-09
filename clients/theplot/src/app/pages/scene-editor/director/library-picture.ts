@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { ReferenceTarget } from '../../../stories/model/reference-target';
 import { SceneEditorStore } from '../scene-editor-store';
+import { PicturePreview } from './picture-preview';
 
 const HINTS: Record<ReferenceTarget['kind'], string> = {
   character: 'A reference sheet drawn from the sheet; frames keep their face and build from it.',
@@ -12,12 +13,11 @@ const HINTS: Record<ReferenceTarget['kind'], string> = {
 @Component({
   selector: 'app-library-picture',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [PicturePreview],
   host: { class: 'dr-library-picture' },
   template: `
     @if (image(); as image) {
-      <a class="dr-picture is-image" [href]="image.url" target="_blank" rel="noopener">
-        <img [src]="image.url" [alt]="'Picture of ' + name()" />
-      </a>
+      <app-picture-preview [url]="image.url" [alt]="'Picture of ' + name()" />
     } @else {
       <div class="dr-picture">
         {{ state() === 'generating' ? 'Drawing…' : 'No image' }}

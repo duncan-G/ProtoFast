@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using ProtoFast.Api.Services.Screenplays;
 using ProtoFast.DocumentImport.Screenplay.Models;
 using CharacterWardrobeRecord = ProtoFast.Data.ThePlot.Entities.CharacterWardrobe;
@@ -8,6 +9,9 @@ using SceneRecord = ProtoFast.Data.ThePlot.Entities.Scene;
 using DirectionVocabulary = ProtoFast.Data.ThePlot.Entities.DirectionVocabulary;
 using FrameRecord = ProtoFast.Data.ThePlot.Entities.Frame;
 using SceneAppearanceRecord = ProtoFast.Data.ThePlot.Entities.SceneAppearance;
+using SceneLookChangeRecord = ProtoFast.Data.ThePlot.Entities.SceneLookChange;
+using CharacterRecord = ProtoFast.Data.ThePlot.Entities.Character;
+using PropRecord = ProtoFast.Data.ThePlot.Entities.Prop;
 using SceneElementRecord = ProtoFast.Data.ThePlot.Entities.SceneElement;
 using ScenePropStateRecord = ProtoFast.Data.ThePlot.Entities.ScenePropState;
 using SceneLocationStateRecord = ProtoFast.Data.ThePlot.Entities.SceneLocationState;
@@ -32,6 +36,26 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         what everyone looks like. You never rewrite the writer's words and you never invent lines.
         Use only the labels (e1, e2, …) and names given to you, spelled exactly as given. Answer with
         one JSON object in exactly the shape requested and nothing else: no prose, no code fences.
+        """;
+
+    /// <summary>The picture is drawn from a frame's "visible", so it has to stage the whole frame.</summary>
+    private const string VisibleRule = """
+        "visible" is what the picture shows, in two to four present-tense sentences, written so an
+        illustrator could draw it without the script. Name everyone on screen and say what each is
+        doing. Where two or more are on screen, say how they are placed and turned toward each other
+        (facing across the table, back to back, one behind the other, an arm's length apart). Place
+        each of them in the location (at the window, on the bottom stair, behind the bar). Then
+        anything else happening in the picture: props in use, people or animals in the background,
+        weather, light, smoke, movement. Only what a camera sees: no thoughts, sounds or dialogue.
+        Call props by their names as listed.
+        """;
+
+    /// <summary>A held prop is part of the look, so frames have to keep it in the holder's hands.</summary>
+    private const string HoldingRule = """
+        Looks says what each character carries and from which line that changes. In every frame from
+        that line until the next change they carry it, in their hands or on them, the same object
+        each time: say so in "visible" and in their pose, and never show them without it or with
+        something else in its place. On the line where they hand it over, the frame shows the handover.
         """;
 
     public async Task<DirectionDraft> DirectAsync(DirectedScene context, DirectRequest request, CancellationToken ct)
@@ -187,21 +211,26 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
     // ─── continuity: looks and prop states ─────────────────────────────────
 
     /// <summary>
-    /// A look carries forward: on the same story day a character wears what they wore in their last
-    /// scene unless a line shows a change, and state (a bandage, a stain) persists until the text
-    /// removes it. The model is told the previous look, the sheet's wardrobes and the day, and may
-    /// name a new wardrobe only when the text describes clothing the sheet has not got.
+    /// A look carries forward: on the same story day a character wears what they wore at the end of
+    /// their last scene unless a line shows a change, and state (a bandage, a stain) and what they
+    /// carry persist until the text removes them. The model gives the look the scene opens with and
+    /// the lines that change it; code builds each change into a whole look, so every frame and the
+    /// next scene read one look, and a prop someone takes leaves whoever held it.
     /// </summary>
     private async Task ContinuityAsync(
         SceneBrief brief, DirectionDraft draft, Guid? onlyCharacter, Guid? onlyProp, bool replaceEdited, CancellationToken ct)
     {
         var cast = brief.Cast.Where(c => onlyCharacter is null || c.Id == onlyCharacter).ToList();
-        var props = brief.Props.Where(p => onlyProp is null || p.Id == onlyProp).ToList();
         if (onlyProp is not null)
         {
             cast = [];
         }
 
+        var previousLooks = cast.ToDictionary(c => c.Id, c => PreviousLook(brief.Context, c.Id));
+        var storyProps = brief.Context.Story.Props.Select(p => p.Id).ToHashSet();
+        brief.Include([], previousLooks.Values.OfType<(SceneRecord, Look)>().SelectMany(p => p.Item2.Holding).Where(storyProps.Contains), []);
+
+        var props = brief.Props.Where(p => onlyProp is null || p.Id == onlyProp).ToList();
         if (onlyCharacter is not null)
         {
             props = [];
@@ -212,7 +241,6 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             return;
         }
 
-        var previousLooks = cast.ToDictionary(c => c.Id, c => PreviousLook(brief.Context, c.Id));
         var previousStates = props.ToDictionary(p => p.Id, p => PreviousState(brief.Context, p.Id));
         var day = draft.StoryDay?.ToString() ?? "unknown";
 
@@ -240,12 +268,13 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
                 var when = scene.StoryDay is null || draft.StoryDay is null
                     ? "a day not set; treat it as the same day"
                     : scene.StoryDay == draft.StoryDay ? "the same day" : "an earlier day";
-                looks.Append("  previous look: scene \"").Append(scene.Title).Append("\" (day ")
+                looks.Append("  previous look, as scene \"").Append(scene.Title).Append("\" ended (day ")
                     .Append(scene.StoryDay?.ToString() ?? "unknown").Append(", ").Append(when)
                     .Append("): wardrobe \"")
                     .Append(character.Wardrobes.FirstOrDefault(w => w.Id == look.WardrobeId)?.Label ?? "none")
                     .Append("\", wardrobe change ").Append(Json(look.WardrobeChange))
-                    .Append(", appearance change ").AppendLine(Json(look.AppearanceChange));
+                    .Append(", appearance change ").Append(Json(look.AppearanceChange))
+                    .Append(", holding ").AppendLine(Json(PropNames(brief, look.Holding)));
             }
         }
 
@@ -281,23 +310,36 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             Decide how everyone and everything looks in this scene. This scene is on story day {{day}}.
 
             Continuity comes first. The default for every character is their previous look, carried
-            forward unchanged: the same wardrobe and the same state. Change it only when a line of this
-            scene shows it (they changed clothes, got wet, were hurt, washed up), and then name that line.
+            forward unchanged: the same wardrobe, the same state and the same things in their hands.
+            Change it only when a line shows it (they changed clothes, got wet, were hurt, washed up,
+            picked something up or let it go), and then name that line.
             On the same story day the wardrobe stays unless a line says otherwise. On a later day the
             wardrobe may differ, but lasting state (a bandage, a scar, a torn sleeve) still carries over
             unless the text says it is gone. A first appearance takes the wardrobe on the sheet that fits
             the scene best.
 
-            For each character: "present" is false when they are only talked about or remembered and
+            Each character's look is given twice: as the scene opens, then "changes" for the lines
+            during the scene after which it is different, for the rest of the scene and beyond.
+            As the scene opens: "present" is false when they are only talked about or remembered and
             never physically in the scene; "wardrobe" is one of the labels on their sheet, spelled
             exactly, or null when the sheet has none that fits; "wardrobeChange" is a short phrase for
-            what is different about that outfit here ("hood up, soaked through"), empty when nothing;
+            what is different about that outfit ("hood up, soaked through"), empty when nothing;
             "appearanceChange" is a short phrase for what shows on them beyond their sheet (a bandage,
-            wet hair), empty when nothing; "changeReason" says why the look differs from the previous
-            one, or null when it does not differ; "changeLine" is the label (e3, …) of the line that
-            causes the change, or null.
+            wet hair), empty when nothing; "holding" names the props, from the props in the scene, they
+            carry: in a hand, under an arm, slung over a shoulder, on their back. "changeReason" says why
+            the opening look differs from the previous one, or null when it does not differ;
+            "changeLine" is the label (e3, …) of the line that shows it, or null.
             Only when the text of this scene describes clothing the sheet has not got, add "newWardrobe"
             with a short "label" and a "description" taken from the text; otherwise leave it null.
+            Each change gives its "line" label and only what changes from that line on: "takes" names
+            props they pick up or are handed, "releases" props they put down, hand over, drop, throw or
+            have taken from them; "wardrobe", "wardrobeChange" and "appearanceChange" give the new
+            value, or null when it stays; "reason" says what happens in a few words. A handover is a
+            change for both people on the same line: one releases, the other takes. What happens during
+            the scene goes in "changes", never in the opening look. A gesture or a passing moment
+            (raising a hand, flinching) is not a change; leave "changes" empty when nothing changes.
+            A prop someone carries is the same object in every scene until they let it go: never a
+            different one, never gone without a line that says so.
             For each prop: "state" ("broken", "lit"; empty means as described on its sheet) carries
             forward from its previous state across any number of days until a line changes it, with the
             same "changeReason" and "changeLine".
@@ -309,27 +351,32 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             {{brief.Script()}}
             Characters:
             {{(looks.Length == 0 ? "(none)\n" : looks.ToString())}}
-            Props:
+            Props in the scene:
+            {{brief.PropSheet()}}
+            Prop states to decide:
             {{(states.Length == 0 ? "(none)\n" : states.ToString())}}
             Locations:
             {{(locations.Length == 0 ? "(none)\n" : locations.ToString())}}
-            Reply: {"looks":[{"name":"Name","present":true,"wardrobe":"label or null","newWardrobe":null,"wardrobeChange":"","appearanceChange":"","changeReason":null,"changeLine":null}],"props":[{"name":"Name","state":[],"changeReason":null,"changeLine":null}],"locations":[{"name":"Name","change":""}]}
+            Reply: {"looks":[{"name":"Name","present":true,"wardrobe":"label or null","newWardrobe":null,"wardrobeChange":"","appearanceChange":"","holding":["Prop"],"changeReason":null,"changeLine":null,"changes":[{"line":"e5","takes":[],"releases":["Prop"],"wardrobe":null,"wardrobeChange":null,"appearanceChange":null,"reason":"hands it over"}]}],"props":[{"name":"Name","state":[],"changeReason":null,"changeLine":null}],"locations":[{"name":"Name","change":""}]}
             """;
 
         using var json = await AskAsync(prompt, ct);
         var answeredLooks = ModelJson.Array(json.RootElement, "looks")
             .Select(l => (Character: brief.CharacterNamed(ModelJson.Str(l, "name") ?? ModelJson.Str(l, "character")), Json: l))
             .Where(l => l.Character is not null)
-            .ToDictionary(l => l.Character!.Id, l => l.Json);
+            .GroupBy(l => l.Character!.Id)
+            .ToDictionary(g => g.Key, g => g.First().Json);
         var answeredStates = ModelJson.Array(json.RootElement, "props")
             .Select(p => (Prop: brief.PropNamed(ModelJson.Str(p, "name") ?? ModelJson.Str(p, "prop")), Json: p))
             .Where(p => p.Prop is not null)
-            .ToDictionary(p => p.Prop!.Id, p => p.Json);
+            .GroupBy(p => p.Prop!.Id)
+            .ToDictionary(g => g.Key, g => g.First().Json);
         if (answeredLooks.Count == 0 && answeredStates.Count == 0 && cast.Count + props.Count > 0)
         {
             throw new ModelOutputException("No looks or prop states in the answer.");
         }
 
+        var directed = new List<Guid>();
         foreach (var character in cast)
         {
             var existing = draft.Appearances.FirstOrDefault(a => a.CharacterId == character.Id);
@@ -348,8 +395,10 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
                 WardrobeId = previous?.WardrobeId is { } carried && character.Wardrobes.Any(w => w.Id == carried) ? carried : null,
                 WardrobeChange = previous?.WardrobeChange ?? "",
                 AppearanceChange = previous?.AppearanceChange ?? "",
+                Holding = [.. previous?.Holding.Where(storyProps.Contains) ?? []],
             };
-            if (answeredLooks.TryGetValue(character.Id, out var answer))
+            answeredLooks.TryGetValue(character.Id, out var answer);
+            if (answer.ValueKind == JsonValueKind.Object)
             {
                 look.ChangeReason = Reason(ModelJson.Str(answer, "changeReason"));
                 look.ChangeElementId = look.ChangeReason is null ? null : brief.Element(ModelJson.Str(answer, "changeLine"))?.Id;
@@ -387,10 +436,32 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
                 {
                     look.AppearanceChange = Trim(appearanceChange, DirectionValidator.BeatMaxLength);
                 }
+
+                // Something carried in is only put down on evidence; something picked up is kept.
+                if (answer.TryGetProperty("holding", out var holding) && holding.ValueKind == JsonValueKind.Array)
+                {
+                    var held = Held(brief, ModelJson.Strings(answer, "holding"));
+                    look.Holding = changed ? held : [.. look.Holding.Union(held)];
+                }
             }
 
             draft.Appearances.RemoveAll(a => a.CharacterId == character.Id);
             draft.Appearances.Add(look);
+
+            var kept = draft.LookChanges.Where(c => c.CharacterId == character.Id && c.Edited && !replaceEdited).ToList();
+            draft.LookChanges.RemoveAll(c => c.CharacterId == character.Id);
+            draft.LookChanges.AddRange(kept);
+            if (answer.ValueKind == JsonValueKind.Object)
+            {
+                draft.LookChanges.AddRange(Changes(brief, character, look, answer, kept));
+            }
+
+            directed.Add(character.Id);
+        }
+
+        if (onlyCharacter is null)
+        {
+            OneHolderAtATime(brief, draft, directed);
         }
 
         foreach (var prop in props)
@@ -406,6 +477,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             {
                 Id = existing?.Id ?? Guid.Empty,
                 PropId = prop.Id,
+                InView = existing?.InView ?? true,
                 State = [.. previous?.State ?? []],
             };
             if (answeredStates.TryGetValue(prop.Id, out var answer))
@@ -451,12 +523,149 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         }
     }
 
-    /// <summary>The character's look in the nearest earlier scene that has one, with that scene.</summary>
-    private static (SceneRecord Scene, SceneAppearanceRecord Look)? PreviousLook(DirectedScene context, Guid characterId)
+    /// <summary>
+    /// The answer's changes for one character as whole looks, in line order: each starts from the
+    /// look before it and applies only what the answer says changes. Lines the author's own changes
+    /// sit on are left to them; a change that changes nothing is dropped.
+    /// </summary>
+    private static List<SceneLookChangeRecord> Changes(
+        SceneBrief brief, CharacterRecord character, SceneAppearanceRecord opening, JsonElement answer, List<SceneLookChangeRecord> kept)
+    {
+        List<SceneLookChangeRecord> changes = [];
+        var running = Look.Of(opening);
+        var addedWardrobe = opening.Wardrobe;
+        var steps = ModelJson.Array(answer, "changes")
+            .Select(c => (Index: brief.Index(ModelJson.Str(c, "line") ?? ModelJson.Str(c, "changeLine")), Json: c))
+            .Where(c => c.Index is not null)
+            .OrderBy(c => c.Index);
+        foreach (var (index, step) in steps)
+        {
+            var element = brief.Elements[index!.Value];
+            if (kept.Any(c => c.ElementId == element.Id))
+            {
+                continue;
+            }
+
+            var wardrobeId = running.WardrobeId;
+            if (ModelJson.Str(step, "wardrobe") is { } label
+                && character.Wardrobes.FirstOrDefault(w => LibraryNames.Same(w.Label, label)) is { } wardrobe)
+            {
+                wardrobeId = wardrobe.Id;
+                addedWardrobe = null;
+            }
+
+            var releases = Held(brief, ModelJson.Strings(step, "releases"));
+            var holding = running.Holding.Where(id => !releases.Contains(id))
+                .Concat(Held(brief, ModelJson.Strings(step, "takes")))
+                .Distinct()
+                .ToList();
+            var next = new Look(
+                wardrobeId,
+                ModelJson.Str(step, "wardrobeChange") is { } wardrobeChange ? Trim(wardrobeChange, DirectionValidator.BeatMaxLength) : running.WardrobeChange,
+                ModelJson.Str(step, "appearanceChange") is { } appearanceChange ? Trim(appearanceChange, DirectionValidator.BeatMaxLength) : running.AppearanceChange,
+                holding);
+            if (next.SameAs(running))
+            {
+                continue;
+            }
+
+            changes.RemoveAll(c => c.ElementId == element.Id);
+            changes.Add(new SceneLookChangeRecord
+            {
+                CharacterId = character.Id,
+                ElementId = element.Id,
+                WardrobeId = next.WardrobeId,
+                Wardrobe = addedWardrobe,
+                WardrobeChange = next.WardrobeChange,
+                AppearanceChange = next.AppearanceChange,
+                Holding = [.. next.Holding],
+                Reason = Reason(ModelJson.Str(step, "reason")),
+            });
+            running = next;
+        }
+
+        return changes;
+    }
+
+    /// <summary>
+    /// A prop taken on a line leaves whoever held it there: their look loses it from that line on,
+    /// until a later change of theirs takes it back.
+    /// </summary>
+    private static void OneHolderAtATime(SceneBrief brief, DirectionDraft draft, IReadOnlyCollection<Guid> directed)
+    {
+        var takes = draft.LookChanges
+            .Where(c => directed.Contains(c.CharacterId))
+            .Select(c => (Change: c, Before: Looks.At(draft.Appearances, draft.LookChanges, brief.Position, c.CharacterId, brief.Position(c.ElementId) - 1).Look))
+            .SelectMany(t => t.Change.Holding.Where(id => !t.Before.Holding.Contains(id)).Select(prop => (t.Change, Prop: prop)))
+            .OrderBy(t => brief.Position(t.Change.ElementId))
+            .ToList();
+        foreach (var (take, prop) in takes)
+        {
+            var at = brief.Position(take.ElementId);
+            foreach (var other in brief.Cast.Where(c => c.Id != take.CharacterId && directed.Contains(c.Id)))
+            {
+                var current = Looks.At(draft.Appearances, draft.LookChanges, brief.Position, other.Id, at);
+                if (!current.Look.Holding.Contains(prop))
+                {
+                    continue;
+                }
+
+                // Later changes carried it on from before the take, unless one picks it up again.
+                var later = Looks.Changes(draft.LookChanges, brief.Position, other.Id).Where(c => brief.Position(c.ElementId) > at).ToList();
+                var heldBefore = later.Select(c => c.Holding.Contains(prop)).ToList();
+                var name = brief.Context.Story.Props.FirstOrDefault(p => p.Id == prop)?.Name ?? "it";
+                if (current.Change is { } same && same.ElementId == take.ElementId)
+                {
+                    same.Holding.Remove(prop);
+                }
+                else
+                {
+                    draft.LookChanges.Add(new SceneLookChangeRecord
+                    {
+                        CharacterId = other.Id,
+                        ElementId = take.ElementId,
+                        WardrobeId = current.Look.WardrobeId,
+                        Wardrobe = current.Change is null ? current.Opening?.Wardrobe : current.Change.Wardrobe,
+                        WardrobeChange = current.Look.WardrobeChange,
+                        AppearanceChange = current.Look.AppearanceChange,
+                        Holding = current.Look.Holding.Where(id => id != prop).ToList(),
+                        Reason = Trim($"lets go of the {name}", DirectionValidator.BeatMaxLength),
+                    });
+                }
+
+                var carried = true;
+                for (var i = 0; i < later.Count; i++)
+                {
+                    if (!heldBefore[i])
+                    {
+                        carried = false;
+                    }
+                    else if (carried)
+                    {
+                        later[i].Holding.Remove(prop);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>The props named, if the scene has them, in the order given.</summary>
+    private static List<Guid> Held(SceneBrief brief, IEnumerable<string> names) =>
+        names.Select(brief.PropNamed).OfType<PropRecord>().Where(brief.Props.Contains).Select(p => p.Id).Distinct().ToList();
+
+    private static List<string> PropNames(SceneBrief brief, IEnumerable<Guid> ids) =>
+        ids.Select(id => brief.Context.Story.Props.FirstOrDefault(p => p.Id == id)?.Name).OfType<string>().ToList();
+
+    /// <summary>The character's look at the end of the nearest earlier scene that has one, with that scene.</summary>
+    private static (SceneRecord Scene, Look Look)? PreviousLook(DirectedScene context, Guid characterId)
     {
         foreach (var scene in context.Earlier.Reverse())
         {
-            if (scene.Appearances.FirstOrDefault(a => a.CharacterId == characterId) is { } look)
+            if (Looks.Closing(scene, characterId) is { } look)
             {
                 return (scene, look);
             }
@@ -622,19 +831,24 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             {{kept}}
             For each frame give "shot" ({{string.Join("|", DirectionVocabulary.Shots)}}), camera "angle"
             ({{string.Join("|", DirectionVocabulary.Angles)}}) and "movement" ({{string.Join("|", DirectionVocabulary.Movements)}}),
-            "beat" (one sentence of what is visible), "characters" on screen with "screen" ({{string.Join("|", DirectionVocabulary.ScreenSides)}}),
+            "visible", "characters" on screen with "screen" ({{string.Join("|", DirectionVocabulary.ScreenSides)}}),
             a short "pose" and "expression" and any "change" to their look this frame alone shows (empty
             when none), and "props" in view by name. Keep each character on the same screen side across
             consecutive frames. Most frames share an angle and stay static; change them for a reason.
-
+            {{VisibleRule}}
+            {{HoldingRule}}
             Natural beats, for guidance: {{beats}}
             Cast:
             {{brief.CastSheet()}}
+            Looks:
+            {{brief.LookSheet(draft.Appearances, draft.LookChanges)}}
             Props:
             {{brief.PropSheet()}}
+            Places:
+            {{brief.LocationSheet()}}
             Scene {{brief.Heading()}}:
             {{brief.Script()}}
-            Reply: {"frames":[{"from":"e1","to":"e2","shot":"wide","angle":"eye level","movement":"static","beat":"…","characters":[{"name":"Name","screen":"left","pose":"…","expression":"…","change":""}],"props":["Name"]}]}
+            Reply: {"frames":[{"from":"e1","to":"e2","shot":"wide","angle":"eye level","movement":"static","visible":"…","characters":[{"name":"Name","screen":"left","pose":"…","expression":"…","change":""}],"props":["Name"]}]}
             """;
 
         using var json = await AskAsync(prompt, ct);
@@ -737,6 +951,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         }
 
         var directed = frames.Select(p => p.Frame).Where(p => !p.Edited).ToList();
+        await VisibleAsync(brief, draft, directed, ct);
         if (draft.Shot is null || replaceEdited)
         {
             draft.Shot = Commonest(directed.Select(p => p.Shot));
@@ -805,6 +1020,14 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             frame.Movement = null;
         }
 
+        // A held prop goes where its holder goes: in view while one is on screen, out of it otherwise.
+        var last = brief.Elements.FindIndex(e => e.Id == frame.LastElementId);
+        var held = new HashSet<Guid>();
+        foreach (var character in brief.Cast)
+        {
+            held.UnionWith(Looks.At(draft.Appearances, draft.LookChanges, brief.Position, character.Id, last).Look.Holding);
+        }
+
         foreach (var character in brief.Cast)
         {
             var sceneOn = draft.Appearances.FirstOrDefault(a => a.CharacterId == character.Id)?.OnScreen ?? true;
@@ -829,6 +1052,13 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
 
         foreach (var prop in brief.Props)
         {
+            // The model's list is often silent about what someone carries; the look decides.
+            if (held.Contains(prop.Id))
+            {
+                frame.Props.RemoveAll(p => p.PropId == prop.Id);
+                continue;
+            }
+
             var sceneIn = draft.PropStates.FirstOrDefault(s => s.PropId == prop.Id)?.InView ?? true;
             var shown = frame.Props.FirstOrDefault(p => p.PropId == prop.Id);
             if ((shown is not null) == sceneIn)
@@ -850,30 +1080,36 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             One frame of the scene pictures rows {{brief.Label(brief.Elements[range.First].Id)}} to {{brief.Label(brief.Elements[range.Last].Id)}}.
             Decide its "shot" ({{string.Join("|", DirectionVocabulary.Shots)}}), camera "angle"
             ({{string.Join("|", DirectionVocabulary.Angles)}}) and "movement" ({{string.Join("|", DirectionVocabulary.Movements)}}),
-            "beat" (one sentence of what is visible), "characters" on screen with "screen"
+            "visible", "characters" on screen with "screen"
             ({{string.Join("|", DirectionVocabulary.ScreenSides)}}), a short "pose" and "expression" and any "change"
             to their look this frame alone shows, and "props" in view by name. Keep characters on the
             sides they hold in the other frames, listed below.
-
+            {{VisibleRule}}
+            {{HoldingRule}}
             Other frames: {{string.Join("; ", draft.Frames.Where(p => p.Id != frameId).Select(p => Summary(brief, p)))}}
 
             Cast:
             {{brief.CastSheet()}}
+            Looks:
+            {{brief.LookSheet(draft.Appearances, draft.LookChanges)}}
             Props:
             {{brief.PropSheet()}}
+            Places:
+            {{brief.LocationSheet()}}
             Scene {{brief.Heading()}}:
             {{brief.Script()}}
-            Reply: {"shot":"medium","angle":"eye level","movement":"static","beat":"…","characters":[{"name":"Name","screen":"left","pose":"…","expression":"…","change":""}],"props":["Name"]}
+            Reply: {"shot":"medium","angle":"eye level","movement":"static","visible":"…","characters":[{"name":"Name","screen":"left","pose":"…","expression":"…","change":""}],"props":["Name"]}
             """;
 
         using var json = await AskAsync(prompt, ct);
         var answer = json.RootElement.TryGetProperty("frame", out var inner) ? inner : json.RootElement;
-        if (ModelJson.Str(answer, "shot") is null && ModelJson.Str(answer, "beat") is null)
+        if (ModelJson.Str(answer, "shot") is null && Visible(answer) is null)
         {
             throw new ModelOutputException("No frame in the answer.");
         }
 
         var directed = FrameFrom(brief, answer, range.First, range.Last);
+        await VisibleAsync(brief, draft, [directed], ct);
         AgainstScene(brief, draft, directed);
         directed.Id = frame.Id;
         directed.Position = frame.Position;
@@ -893,7 +1129,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             Shot = DirectionVocabulary.Shots.FirstOrDefault(s => LibraryNames.Same(s, ModelJson.Str(answer, "shot") ?? "")) ?? "medium",
             Angle = DirectionVocabulary.Angles.FirstOrDefault(s => LibraryNames.Same(s, ModelJson.Str(answer, "angle") ?? "")) ?? "eye level",
             Movement = DirectionVocabulary.Movements.FirstOrDefault(s => LibraryNames.Same(s, ModelJson.Str(answer, "movement") ?? "")) ?? "static",
-            Beat = Trim(ModelJson.Str(answer, "beat") ?? "", DirectionValidator.BeatMaxLength),
+            Beat = Trim(Visible(answer) ?? "", DirectionValidator.BeatMaxLength),
         };
         foreach (var placement in ModelJson.Array(answer, "characters"))
         {
@@ -924,6 +1160,111 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         }
 
         return frame;
+    }
+
+    private static string? Visible(JsonElement answer) => ModelJson.Str(answer, "visible") ?? ModelJson.Str(answer, "beat");
+
+    /// <summary>
+    /// Frames whose "visible" is empty or leaves out someone on screen are written again in one call;
+    /// anyone still left out is added from their placement, so every on-screen character is named.
+    /// Runs before <see cref="AgainstScene"/>, while placements still say who is on screen.
+    /// </summary>
+    private async Task VisibleAsync(SceneBrief brief, DirectionDraft draft, IReadOnlyList<FrameRecord> frames, CancellationToken ct)
+    {
+        var thin = frames.Where(f => f.Beat.Length == 0 || Unnamed(brief, f).Count > 0).ToList();
+        if (thin.Count == 0)
+        {
+            return;
+        }
+
+        var listing = new StringBuilder();
+        for (var i = 0; i < thin.Count; i++)
+        {
+            listing.Append('f').Append(i + 1).Append(' ').AppendLine(Staging(brief, thin[i]));
+        }
+
+        var prompt = $$"""
+            Write "visible" again for each frame below: what it has now leaves out someone on screen
+            or says too little. Keep to the frame's rows, shot, who is on screen and the props in view.
+            {{VisibleRule}}
+            {{HoldingRule}}
+            Frames:
+            {{listing}}
+            Cast:
+            {{brief.CastSheet()}}
+            Looks:
+            {{brief.LookSheet(draft.Appearances, draft.LookChanges)}}
+            Props:
+            {{brief.PropSheet()}}
+            Places:
+            {{brief.LocationSheet()}}
+            Scene {{brief.Heading()}}:
+            {{brief.Script()}}
+            Reply: {"frames":[{"frame":"f1","visible":"…"}]}
+            """;
+
+        try
+        {
+            using var json = await AskAsync(prompt, ct);
+            foreach (var answer in ModelJson.Array(json.RootElement, "frames"))
+            {
+                var label = ModelJson.Str(answer, "frame")?.Trim().TrimStart('f', 'F');
+                var text = Trim(Visible(answer) ?? "", DirectionValidator.BeatMaxLength);
+                if (!int.TryParse(label, out var number) || number < 1 || number > thin.Count || text.Length == 0)
+                {
+                    continue;
+                }
+
+                var frame = thin[number - 1];
+                if (Unnamed(brief, frame, text).Count <= Unnamed(brief, frame).Count)
+                {
+                    frame.Beat = text;
+                }
+            }
+        }
+        catch (ModelOutputException e)
+        {
+            logger.LogWarning("Rewriting what frames show failed ({Reason}); naming the cast from placements", e.Message);
+        }
+
+        foreach (var frame in thin)
+        {
+            var added = string.Join(" ", Unnamed(brief, frame).Select(p => Placed(brief, p)));
+            frame.Beat = Trim($"{frame.Beat} {added}", DirectionValidator.BeatMaxLength);
+        }
+    }
+
+    private static List<FramePlacementRecord> Unnamed(SceneBrief brief, FrameRecord frame, string? text = null) =>
+        frame.Placements
+            .Where(p => p.OnScreen == true && !Names(text ?? frame.Beat, CharacterName(brief, p.CharacterId)))
+            .ToList();
+
+    /// <summary>The full name, or any word of it, as a whole word: "Mara" names "Captain Mara Holt".</summary>
+    private static bool Names(string text, string name) =>
+        name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Prepend(name)
+            .Any(part => part.Length > 2 && Regex.IsMatch(text, $@"\b{Regex.Escape(part)}\b", RegexOptions.IgnoreCase));
+
+    private static string CharacterName(SceneBrief brief, Guid id) =>
+        brief.Context.Story.Characters.FirstOrDefault(c => c.Id == id)?.Name ?? "";
+
+    /// <summary>"Mara is screen left, leaning, tense."</summary>
+    private static string Placed(SceneBrief brief, FramePlacementRecord placement)
+    {
+        var parts = new[] { placement.Screen.Length > 0 ? $"is screen {placement.Screen}" : "is in the picture", placement.Pose, placement.Expression }
+            .Where(p => p.Length > 0);
+        return $"{CharacterName(brief, placement.CharacterId)} {string.Join(", ", parts)}.";
+    }
+
+    /// <summary>A frame as the rewrite reads it: rows, shot, who is where, props, what it says now.</summary>
+    private static string Staging(SceneBrief brief, FrameRecord frame)
+    {
+        var range = Range(brief, frame);
+        var rows = range is null ? "?" : $"{brief.Label(brief.Elements[range.Value.First].Id)}–{brief.Label(brief.Elements[range.Value.Last].Id)}";
+        var cast = frame.Placements.Where(p => p.OnScreen == true).Select(p =>
+            $"{CharacterName(brief, p.CharacterId)} ({string.Join(", ", new[] { p.Screen, p.Pose, p.Expression }.Where(s => s.Length > 0))})").ToList();
+        var props = frame.Props.Where(p => p.InView).Select(p => brief.Context.Story.Props.FirstOrDefault(r => r.Id == p.PropId)?.Name).OfType<string>().ToList();
+        return $"rows {rows}, {frame.Shot ?? "scene"} shot; on screen: {(cast.Count == 0 ? "nobody" : string.Join(", ", cast))}; "
+               + $"props in view: {(props.Count == 0 ? "none" : string.Join(", ", props))}; has now: \"{frame.Beat}\"";
     }
 
     private static (int First, int Last)? Range(SceneBrief brief, FrameRecord frame)

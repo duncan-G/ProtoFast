@@ -7,12 +7,14 @@ public static class ReferenceSources
     public const string Location = "location";
     public const string Prop = "prop";
     public const string Frame = "frame";
+    public const string Look = "look";
 
     public static string Of(ReferenceSource source) => source switch
     {
         ReferenceSource.Character => Character,
         ReferenceSource.Location => Location,
         ReferenceSource.Prop => Prop,
+        ReferenceSource.Look => Look,
         _ => Frame,
     };
 }

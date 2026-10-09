@@ -1,8 +1,9 @@
 namespace ProtoFast.Data.ThePlot.Entities;
 
 /// <summary>
-/// A character in one scene: whether frames show them, and a wardrobe from their sheet plus what the
-/// scene changes about it and about them.
+/// A character in one scene: whether frames show them, and their look as the scene opens: a wardrobe
+/// from their sheet, what is different about it and about them, and what they carry. What changes
+/// during the scene is a <see cref="SceneLookChange"/>.
 /// Owned by its <see cref="Scene"/>: it has no <c>UserId</c> and is only read and written through it.
 /// </summary>
 public sealed class SceneAppearance
@@ -31,6 +32,9 @@ public sealed class SceneAppearance
     /// <summary>On top of the sheet's description: "left hand bandaged".</summary>
     public string AppearanceChange { get; set; } = "";
 
+    /// <summary>The props they carry: in hand, under an arm, slung over a shoulder.</summary>
+    public List<Guid> Holding { get; set; } = [];
+
     /// <summary>Why this differs from the character's previous look.</summary>
     public string? ChangeReason { get; set; }
 
@@ -40,4 +44,9 @@ public sealed class SceneAppearance
 
     /// <summary>Written by the author; a later directing pass leaves it alone.</summary>
     public bool Edited { get; set; }
+
+    /// <summary>The look pictured, when it differs from the library's; frames take it as their reference.</summary>
+    public Guid? ImageAssetId { get; set; }
+
+    public MediaAsset? Image { get; set; }
 }

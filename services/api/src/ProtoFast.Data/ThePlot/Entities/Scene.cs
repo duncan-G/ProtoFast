@@ -36,6 +36,8 @@ public sealed class Scene : IDateStamped
 
     public List<SceneAppearance> Appearances { get; set; } = [];
 
+    public List<SceneLookChange> LookChanges { get; set; } = [];
+
     public List<ScenePropState> PropStates { get; set; } = [];
 
     public List<SceneLocationState> LocationStates { get; set; } = [];

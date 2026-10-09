@@ -1,4 +1,6 @@
-/** A character in the scene: whether frames show them, and their look on top of the sheet. */
+import { MediaImage } from './media-image';
+
+/** A character in the scene: whether frames show them, and their look as the scene opens. */
 export interface SceneAppearance {
   id: string;
   characterId: string;
@@ -10,10 +12,14 @@ export interface SceneAppearance {
   wardrobeChange: string;
   /** "left hand bandaged" */
   appearanceChange: string;
+  /** Prop ids they carry: in hand, under an arm, slung over a shoulder. */
+  holding: string[];
   /** Why this differs from the character's previous look. */
   changeReason: string | null;
   changeElementId: string | null;
   edited: boolean;
+  /** Null while the look is the library's, or until pictured. Read only: saves leave it alone. */
+  image: MediaImage | null;
 }
 
 export function blankAppearance(characterId: string): SceneAppearance {
@@ -24,8 +30,10 @@ export function blankAppearance(characterId: string): SceneAppearance {
     wardrobeId: null,
     wardrobeChange: '',
     appearanceChange: '',
+    holding: [],
     changeReason: null,
     changeElementId: null,
     edited: true,
+    image: null,
   };
 }

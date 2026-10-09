@@ -60,6 +60,23 @@ const SUGGESTIONS: { label: string; hint: string; target: DirectTarget }[] = [
     </span>
     <span class="flex-1"></span>
 
+    <div class="dr-layout" role="group" aria-label="Read the scene as">
+      <button
+        type="button"
+        [attr.aria-pressed]="store.directorLayout() === 'script'"
+        (click)="store.directorLayout.set('script')"
+      >
+        Script
+      </button>
+      <button
+        type="button"
+        [attr.aria-pressed]="store.directorLayout() === 'frames'"
+        (click)="store.directorLayout.set('frames')"
+      >
+        Frames
+      </button>
+    </div>
+
     <div class="dr-anchor">
       <button
         type="button"

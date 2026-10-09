@@ -54,8 +54,8 @@ const GROUPS: { key: Framing; title: string; labels: readonly string[] }[] = [
         <span class="dr-kicker">What’s visible</span>
         <textarea
           class="dr-input"
-          rows="2"
-          placeholder="e.g. MARA presses, BOLT deflects"
+          rows="5"
+          placeholder="Who is in the frame and what each is doing, how they stand to each other and the place, and what else is happening. e.g. Mara leans across the bar toward Bolt, who stands stiffly by the door; rain streaks the window behind them."
           maxlength="2000"
           [value]="frame.beat"
           (change)="store.updateFrame(frame.firstElementId, { beat: $any($event.target).value })"

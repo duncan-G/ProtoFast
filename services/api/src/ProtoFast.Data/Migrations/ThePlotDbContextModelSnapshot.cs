@@ -874,6 +874,15 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("edited");
 
+                    b.PrimitiveCollection<List<Guid>>("Holding")
+                        .IsRequired()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("holding");
+
+                    b.Property<Guid?>("ImageAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("image_asset_id");
+
                     b.Property<bool>("OnScreen")
                         .HasColumnType("boolean")
                         .HasColumnName("on_screen");
@@ -899,6 +908,9 @@ namespace ProtoFast.Data.Migrations
 
                     b.HasIndex("CharacterId")
                         .HasDatabaseName("ix_scene_appearances_character_id");
+
+                    b.HasIndex("ImageAssetId")
+                        .HasDatabaseName("ix_scene_appearances_image_asset_id");
 
                     b.HasIndex("WardrobeId")
                         .HasDatabaseName("ix_scene_appearances_wardrobe_id");
@@ -1096,6 +1108,78 @@ namespace ProtoFast.Data.Migrations
                         .HasDatabaseName("ix_scene_location_states_scene_id_location_id");
 
                     b.ToTable("scene_location_states", "plot");
+                });
+
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.SceneLookChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AppearanceChange")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("appearance_change");
+
+                    b.Property<Guid>("CharacterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("character_id");
+
+                    b.Property<bool>("Edited")
+                        .HasColumnType("boolean")
+                        .HasColumnName("edited");
+
+                    b.Property<Guid>("ElementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("element_id");
+
+                    b.PrimitiveCollection<List<Guid>>("Holding")
+                        .IsRequired()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("holding");
+
+                    b.Property<Guid?>("ImageAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("image_asset_id");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("text")
+                        .HasColumnName("reason");
+
+                    b.Property<Guid>("SceneId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("scene_id");
+
+                    b.Property<string>("WardrobeChange")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("wardrobe_change");
+
+                    b.Property<Guid?>("WardrobeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("wardrobe_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_scene_look_changes");
+
+                    b.HasIndex("CharacterId")
+                        .HasDatabaseName("ix_scene_look_changes_character_id");
+
+                    b.HasIndex("ElementId")
+                        .HasDatabaseName("ix_scene_look_changes_element_id");
+
+                    b.HasIndex("ImageAssetId")
+                        .HasDatabaseName("ix_scene_look_changes_image_asset_id");
+
+                    b.HasIndex("WardrobeId")
+                        .HasDatabaseName("ix_scene_look_changes_wardrobe_id");
+
+                    b.HasIndex("SceneId", "CharacterId", "ElementId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_scene_look_changes_scene_id_character_id_element_id");
+
+                    b.ToTable("scene_look_changes", "plot");
                 });
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.ScenePropState", b =>
@@ -1682,6 +1766,12 @@ namespace ProtoFast.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_scene_appearances_characters_character_id");
 
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.MediaAsset", "Image")
+                        .WithMany()
+                        .HasForeignKey("ImageAssetId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_scene_appearances_media_assets_image_asset_id");
+
                     b.HasOne("ProtoFast.Data.ThePlot.Entities.Scene", "Scene")
                         .WithMany("Appearances")
                         .HasForeignKey("SceneId")
@@ -1698,6 +1788,8 @@ namespace ProtoFast.Data.Migrations
                     b.Navigation("ChangeElement");
 
                     b.Navigation("Character");
+
+                    b.Navigation("Image");
 
                     b.Navigation("Scene");
 
@@ -1787,6 +1879,52 @@ namespace ProtoFast.Data.Migrations
                     b.Navigation("Location");
 
                     b.Navigation("Scene");
+                });
+
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.SceneLookChange", b =>
+                {
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Character", "Character")
+                        .WithMany()
+                        .HasForeignKey("CharacterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_scene_look_changes_characters_character_id");
+
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.SceneElement", "Element")
+                        .WithMany()
+                        .HasForeignKey("ElementId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_scene_look_changes_scene_elements_element_id");
+
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.MediaAsset", "Image")
+                        .WithMany()
+                        .HasForeignKey("ImageAssetId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_scene_look_changes_media_assets_image_asset_id");
+
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Scene", "Scene")
+                        .WithMany("LookChanges")
+                        .HasForeignKey("SceneId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_scene_look_changes_scenes_scene_id");
+
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.CharacterWardrobe", "Wardrobe")
+                        .WithMany()
+                        .HasForeignKey("WardrobeId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_scene_look_changes_character_wardrobes_wardrobe_id");
+
+                    b.Navigation("Character");
+
+                    b.Navigation("Element");
+
+                    b.Navigation("Image");
+
+                    b.Navigation("Scene");
+
+                    b.Navigation("Wardrobe");
                 });
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.ScenePropState", b =>
@@ -1906,6 +2044,8 @@ namespace ProtoFast.Data.Migrations
                     b.Navigation("Frames");
 
                     b.Navigation("LocationStates");
+
+                    b.Navigation("LookChanges");
 
                     b.Navigation("PropStates");
                 });

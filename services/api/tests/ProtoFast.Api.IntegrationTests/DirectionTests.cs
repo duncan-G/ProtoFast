@@ -413,8 +413,77 @@ public class DirectionTests(StoryDatabase database)
         Assert.False(boltLook.HasWardrobeId);
         Assert.False(boltLook.OnScreen);
         Assert.Empty(directed.PropStates);
-        Assert.Contains("previous look: scene \"Untitled scene\" (day 2, a day not set; treat it as the same day): wardrobe \"work suit\", wardrobe change \"sleeves rolled\", appearance change \"wet hair\"", _writer.ModelPrompts()[0]);
+        Assert.Contains("previous look, as scene \"Untitled scene\" ended (day 2, a day not set; treat it as the same day): wardrobe \"work suit\", wardrobe change \"sleeves rolled\", appearance change \"wet hair\", holding []", _writer.ModelPrompts()[0]);
         Assert.Contains("This scene is on story day unknown", _writer.ModelPrompts()[0]);
+    }
+
+    [Fact]
+    public async Task Directing_continuity_carries_what_someone_holds_into_the_next_scene_until_a_line_hands_it_over()
+    {
+        var story = await _writer.CreateStoryAsync();
+        var mara = await _writer.CreateCharacterAsync(story.Id, "Mara");
+        var bolt = await _writer.CreateCharacterAsync(story.Id, "Bolt", "Robot");
+        var cooler = await _writer.CreatePropAsync(story.Id, "Cooler");
+        const string arrival = "@Mara walks in, a @Cooler slung over her shoulder.";
+        var first = await _writer.WriteFirstSceneAsync(story, Heading(),
+            Action(arrival, Mention(arrival, "@Mara", mara), Mention(arrival, "@Cooler", cooler)), Dialogue(mara.Id, "Got a delivery."));
+        _writer.ScriptModel("""
+            {"looks":[{"name":"Mara","holding":["Cooler"],"changes":[]}],"props":[{"name":"Cooler","state":[]}]}
+            """);
+        var opened = await _writer.DirectAsync(new DirectRequest { SceneId = first.Id, Continuity = true });
+        Assert.Equal([cooler.Id], Assert.Single(opened.Appearances).Holding);
+
+        // The next scene never names the cooler; the answer forgets Mara holds it and has Bolt take it.
+        const string snatch = "@Bolt snatches it and leaves.";
+        var second = await _writer.CreateSceneAsync(story.Containers[0].Id, 1, "Hallway", Heading(),
+            Action("@Mara waits.", Mention("@Mara waits.", "@Mara", mara)), Dialogue(bolt.Id, "Give."), Action(snatch, Mention(snatch, "@Bolt", bolt)));
+        _writer.ScriptModel("""
+            {"looks":[{"name":"Mara","holding":[],"changes":[]},{"name":"Bolt","holding":[],"changes":[{"line":"e4","takes":["Cooler"],"releases":[],"reason":"snatches the cooler"}]}],"props":[]}
+            """);
+
+        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = second.Id, Continuity = true });
+
+        Assert.Contains("holding [\"Cooler\"]", _writer.ModelPrompts()[^1]);
+        Assert.Contains("- Cooler", _writer.ModelPrompts()[^1]);
+        Assert.Equal([cooler.Id], directed.Appearances.Single(a => a.CharacterId == mara.Id).Holding);
+        Assert.Contains(directed.PropStates, p => p.PropId == cooler.Id);
+        var taken = Assert.Single(directed.LookChanges, c => c.CharacterId == bolt.Id);
+        Assert.Equal((second.Elements[3].Id, "snatches the cooler"), (taken.ElementId, taken.Reason));
+        Assert.Equal([cooler.Id], taken.Holding);
+        // Taking it leaves Mara's hands empty on the same line.
+        var released = Assert.Single(directed.LookChanges, c => c.CharacterId == mara.Id);
+        Assert.Equal(second.Elements[3].Id, released.ElementId);
+        Assert.Empty(released.Holding);
+        Assert.Equal("lets go of the Cooler", released.Reason);
+    }
+
+    [Fact]
+    public async Task A_look_change_round_trips_and_goes_with_its_line()
+    {
+        var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        var direction = Direction(scene, mara, bolt, radio, suit);
+        direction.Appearances[0].Holding.Add(radio.Id);
+        direction.LookChanges.Add(new LookChange
+        {
+            CharacterId = mara.Id,
+            ElementId = scene.Elements[3].Id,
+            WardrobeId = suit.Id,
+            AppearanceChange = "wet hair",
+            Reason = "puts the radio down",
+        });
+
+        var saved = await _writer.SaveDirectionAsync(direction);
+
+        Assert.Equal([radio.Id], saved.Appearances.Single().Holding);
+        var change = Assert.Single(saved.LookChanges);
+        Assert.Equal((scene.Elements[3].Id, suit.Id, "wet hair", "puts the radio down", true),
+            (change.ElementId, change.WardrobeId, change.AppearanceChange, change.Reason, change.Edited));
+        Assert.Empty(change.Holding);
+
+        var sceneNow = await _writer.GetSceneAsync(scene.Id);
+        sceneNow.Elements.RemoveAt(3);
+        await _writer.SaveSceneAsync(sceneNow);
+        Assert.Empty((await _writer.GetDirectionAsync(scene.Id)).LookChanges);
     }
 
     [Fact]
@@ -477,7 +546,8 @@ public class DirectionTests(StoryDatabase database)
             """{"characters":["Bolt","Ghost","Mara"],"props":["Radio"],"locations":["Docks"]}""",
             """{"storyDay":1}""",
             """{"looks":[{"name":"Mara"},{"name":"Bolt"}],"props":[{"name":"Radio","state":["crackling"]}],"locations":[{"name":"Docks","change":"fog on the water"}]}""",
-            """{"frames":[{"from":"e1","to":"e2","shot":"wide","beat":"Mara and the robot at the water.","characters":[{"name":"Mara","screen":"left"},{"name":"Bolt","screen":"right"}],"props":["Radio"]}]}""");
+            """{"frames":[{"from":"e1","to":"e2","shot":"wide","visible":"Mara and the robot at the water.","characters":[{"name":"Mara","screen":"left"},{"name":"Bolt","screen":"right"}],"props":["Radio"]}]}""",
+            """{"frames":[{"frame":"f1","visible":"Mara stands at the edge of the Docks facing Bolt, who hums beside a stack of crates, its radio crackling."}]}""");
 
         var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Scene = true });
 
@@ -489,6 +559,28 @@ public class DirectionTests(StoryDatabase database)
         Assert.Contains("Other characters in the library:\n- Bolt", presence);
         Assert.Contains("- Office", presence);
         Assert.Contains("- Bolt", _writer.ModelPrompts()[2]);
+        // The frames pass left Bolt unnamed, so what the frame shows was written again.
+        Assert.Contains("- Docks (exterior)", _writer.ModelPrompts()[3]);
+        Assert.Contains("f1 rows e1–e2, wide shot; on screen: Mara (left), Bolt (right); props in view: Radio", _writer.ModelPrompts()[4]);
+        Assert.StartsWith("Mara stands at the edge of the Docks facing Bolt", Assert.Single(directed.Frames).Beat);
+    }
+
+    [Fact]
+    public async Task Directing_frames_names_everyone_on_screen_even_when_the_rewrite_leaves_someone_out()
+    {
+        var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        var direction = Direction(scene, mara, bolt, radio, suit);
+        direction.Frames.Clear();
+        await _writer.SaveDirectionAsync(direction);
+        _writer.ScriptModel(
+            """{"frames":[{"from":"e1","to":"e5","shot":"medium","visible":"","characters":[{"name":"Mara","screen":"left","pose":"leaning on the rail","expression":"wary"},{"name":"Bolt","screen":"right"}]}]}""",
+            """{"frames":[{"frame":"f1","visible":"Mara leans on the rail of the pier, watching the water."}]}""");
+
+        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true });
+
+        Assert.Equal(
+            "Mara leans on the rail of the pier, watching the water. Bolt is screen right.",
+            Assert.Single(directed.Frames).Beat);
     }
 
     [Fact]

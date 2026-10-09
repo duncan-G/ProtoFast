@@ -2,15 +2,17 @@ using ProtoFast.Api.Services.Directing;
 using CharacterRecord = ProtoFast.Data.ThePlot.Entities.Character;
 using FrameRecord = ProtoFast.Data.ThePlot.Entities.Frame;
 using LocationRecord = ProtoFast.Data.ThePlot.Entities.Location;
+using PropRecord = ProtoFast.Data.ThePlot.Entities.Prop;
 using SceneRecord = ProtoFast.Data.ThePlot.Entities.Scene;
 
 namespace ProtoFast.Api.Services.Imaging;
 
 /// <summary>
 /// What one frame shows once it has inherited from its scene: the scene's framing, cast, props and
-/// looks unless the frame overrides them, the changes added up (sheet, then scene, then frame), and
-/// the place from the frame, else the heading in force, else the scene's only placed location.
-/// Mirrors the client's <c>direction/inheritance.ts</c>.
+/// looks unless the frame overrides them, the changes added up (sheet, then the look in force at the
+/// frame's last row, then frame), and the place from the frame, else the heading in force, else the
+/// scene's only placed location. A prop someone carries is in view exactly when they are, unless the
+/// frame says otherwise. Mirrors the client's <c>direction/inheritance.ts</c>.
 /// </summary>
 public sealed record FrameContents(
     SceneRecord Scene,
@@ -44,39 +46,48 @@ public sealed record FrameContents(
                          ?? (scene.LocationStates.Count == 1 ? scene.LocationStates[0].LocationId : null);
         var location = locationId is { } id ? story.Locations.FirstOrDefault(l => l.Id == id) : null;
         var sceneChange = location is null ? "" : scene.LocationStates.FirstOrDefault(s => s.LocationId == location.Id)?.Change ?? "";
+        var at = brief.Elements.FirstOrDefault(e => e.Id == frame.LastElementId)?.Position ?? int.MaxValue;
 
         List<FrameCharacter> onScreen = [];
         List<CharacterRecord> offScreen = [];
+        HashSet<Guid> held = [];
         foreach (var character in brief.Cast)
         {
-            var look = scene.Appearances.FirstOrDefault(a => a.CharacterId == character.Id);
+            var opening = scene.Appearances.FirstOrDefault(a => a.CharacterId == character.Id);
+            var look = Looks.At(scene, character.Id, at);
+            held.UnionWith(look.Look.Holding);
             var placement = frame.Placements.FirstOrDefault(p => p.CharacterId == character.Id);
-            if (!(placement?.OnScreen ?? look?.OnScreen ?? true))
+            if (!(placement?.OnScreen ?? opening?.OnScreen ?? true))
             {
                 offScreen.Add(character);
                 continue;
             }
 
-            var wardrobeId = placement?.WardrobeId ?? look?.WardrobeId;
-            var wardrobe = character.Wardrobes.FirstOrDefault(w => w.Id == wardrobeId)
-                           ?? character.Wardrobes.OrderBy(w => w.Position).FirstOrDefault();
+            var wardrobeId = placement?.WardrobeId ?? look.Look.WardrobeId;
+            var wardrobe = look.Change?.Wardrobe is { } changed && placement?.WardrobeId is null
+                ? changed
+                : character.Wardrobes.FirstOrDefault(w => w.Id == wardrobeId) ?? character.Wardrobes.OrderBy(w => w.Position).FirstOrDefault();
             onScreen.Add(new FrameCharacter(
                 character,
                 wardrobe,
-                Join(look?.WardrobeChange, placement?.WardrobeChange),
-                Join(look?.AppearanceChange, placement?.AppearanceChange),
+                Join(look.Look.WardrobeChange, placement?.WardrobeChange),
+                Join(look.Look.AppearanceChange, placement?.AppearanceChange),
                 placement?.Screen ?? "",
                 placement?.Pose ?? "",
-                placement?.Expression ?? ""));
+                placement?.Expression ?? "",
+                look,
+                look.Look.Holding.Select(id => story.Props.FirstOrDefault(p => p.Id == id)).OfType<PropRecord>().ToList()));
         }
 
         List<FramePropView> inView = [];
         foreach (var prop in brief.Props)
         {
             var state = scene.PropStates.FirstOrDefault(s => s.PropId == prop.Id);
-            if (frame.Props.FirstOrDefault(p => p.PropId == prop.Id)?.InView ?? state?.InView ?? true)
+            var holder = onScreen.FirstOrDefault(c => c.Holding.Contains(prop));
+            var inherited = held.Contains(prop.Id) ? holder is not null : state?.InView ?? true;
+            if (frame.Props.FirstOrDefault(p => p.PropId == prop.Id)?.InView ?? inherited)
             {
-                inView.Add(new FramePropView(prop, state?.State ?? []));
+                inView.Add(new FramePropView(prop, state?.State ?? [], holder?.Character));
             }
         }
 

@@ -257,14 +257,32 @@ export class InMemoryDirectionApi implements DirectionApi {
         const was = stored.appearances.find((s) => s.characterId === a.characterId);
         const changed =
           !was ||
-          JSON.stringify({ ...was, id: '', edited: false }) !==
-            JSON.stringify({ ...a, id: '', edited: false });
+          JSON.stringify({ ...was, id: '', edited: false, image: null }) !==
+            JSON.stringify({ ...a, id: '', edited: false, image: null });
         return {
           ...a,
           id: was?.id ?? crypto.randomUUID(),
           edited: changed ? byAuthor : (was?.edited ?? false),
+          image: was?.image ?? null,
         };
       }),
+      lookChanges: direction.lookChanges
+        .filter((c) => ids.has(c.elementId))
+        .map((c) => {
+          const was = stored.lookChanges.find(
+            (s) => s.characterId === c.characterId && s.elementId === c.elementId,
+          );
+          const changed =
+            !was ||
+            JSON.stringify({ ...was, id: '', edited: false, image: null }) !==
+              JSON.stringify({ ...c, id: '', edited: false, image: null });
+          return {
+            ...c,
+            id: was?.id ?? crypto.randomUUID(),
+            edited: changed ? byAuthor : (was?.edited ?? false),
+            image: was?.image ?? null,
+          };
+        }),
       propStates: direction.propStates.map((p) => {
         const was = stored.propStates.find((s) => s.propId === p.propId);
         const changed =
@@ -298,6 +316,26 @@ export class InMemoryDirectionApi implements DirectionApi {
       throw new Error('That frame is no longer in the scene.');
     }
     frame.image = placeholderImage(frame.beat || `Frame ${frame.position + 1}`);
+    this.directions.set(sceneId, structuredClone(current));
+    return current;
+  }
+
+  async generateLookImage(
+    sceneId: string,
+    characterId: string,
+    elementId: string | null,
+  ): Promise<SceneDirection> {
+    const current = structuredClone(this.directions.get(sceneId) ?? emptyDirection(sceneId));
+    const row =
+      elementId === null
+        ? current.appearances.find((a) => a.characterId === characterId)
+        : current.lookChanges.find(
+            (c) => c.characterId === characterId && c.elementId === elementId,
+          );
+    if (!row) {
+      throw new Error('That look is no longer in the scene.');
+    }
+    row.image = placeholderImage(row.appearanceChange || 'Look');
     this.directions.set(sceneId, structuredClone(current));
     return current;
   }

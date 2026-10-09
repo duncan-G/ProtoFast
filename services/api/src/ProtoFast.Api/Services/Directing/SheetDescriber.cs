@@ -41,7 +41,9 @@ public sealed class SheetDescriber(ILanguageModelFactory models, DirectorOptions
             Everything the story says about or through them, in story order (scene, line):
             {{Excerpts(story, excerpts, character.Id)}}
             Write their sheet. "kind": what they are, exactly one of {{string.Join(", ", kinds)}}.
-            "description": one or two sentences introducing them to a reader.
+            "description": one or two sentences on what they look like at a glance: their overall
+            appearance, bearing and the impression they give. Describe only what a camera would see;
+            leave out the plot, their relationships and what they do in the story.
             "identity": "age", "gender" (empty when the story does not say), "build", "face", "hair", "skin" as short phrases, and "marks": scars,
             glasses, tattoos or other things a picture has to keep (empty when none). "voice":
             "description" (age, texture, pace, accent) and "baseline" (how they deliver a line when
@@ -126,8 +128,10 @@ public sealed class SheetDescriber(ILanguageModelFactory models, DirectorOptions
             Location: {{(location.Setting == LocationSettingRecord.Interior ? "INT." : "EXT.")}} {{location.Name}}.
             Everything the story says about it, in story order (scene, line):
             {{Excerpts(story, excerpts, null)}}
-            Write its sheet. "description": one or two sentences for a reader. "layout": how the space is
-            arranged, for a picture. "keyFeatures": the things a picture of it should always show.
+            Write its sheet. "description": one or two sentences on what the place looks like: what kind
+            of place it is, its size, architecture, materials, condition and atmosphere. Describe only
+            what a camera would see; leave out the plot, the characters and what happens there.
+            "layout": how the space is arranged, for a picture. "keyFeatures": the things a picture of it should always show.
             "lighting": one entry per time of day used here ({{string.Join(", ", timesOfDay)}}) with "timeOfDay"
             spelled exactly so and a "description" of the light. "acoustics": "space" (the room sound,
             e.g. "small tiled kitchen") and "ambience" (what is heard under the scene).
@@ -164,7 +168,9 @@ public sealed class SheetDescriber(ILanguageModelFactory models, DirectorOptions
             Everything the story says about it, in story order (scene, line):
             {{Excerpts(story, excerpts, null)}}
             Write its sheet: "description", one or two sentences saying what it is and what it looks
-            like, concrete enough to draw the same object every time.
+            like: its size, shape, materials, colour and condition, concrete enough to draw the same
+            object every time. Describe only what a camera would see; leave out the plot, who owns or
+            uses it and what happens to it.
             Reply: {"description":"…"}
             """;
 

@@ -1,5 +1,6 @@
 import { Cue } from './cue';
 import { Frame } from './frame';
+import { LookChange } from './look-change';
 import { SceneAppearance } from './scene-appearance';
 import { SceneLocationState } from './scene-location-state';
 import { ScenePropState } from './scene-prop-state';
@@ -17,6 +18,8 @@ export interface SceneDirection {
   frames: Frame[];
   cues: Cue[];
   appearances: SceneAppearance[];
+  /** In line order per character. */
+  lookChanges: LookChange[];
   propStates: ScenePropState[];
   locationStates: SceneLocationState[];
 }
@@ -31,6 +34,7 @@ export function emptyDirection(sceneId: string): SceneDirection {
     frames: [],
     cues: [],
     appearances: [],
+    lookChanges: [],
     propStates: [],
     locationStates: [],
   };
@@ -44,6 +48,7 @@ export function isDirected(direction: SceneDirection): boolean {
     direction.frames.length > 0 ||
     direction.cues.length > 0 ||
     direction.appearances.length > 0 ||
+    direction.lookChanges.length > 0 ||
     direction.propStates.length > 0 ||
     direction.locationStates.length > 0
   );

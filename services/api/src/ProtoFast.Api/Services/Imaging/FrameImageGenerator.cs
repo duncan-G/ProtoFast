@@ -9,13 +9,16 @@ namespace ProtoFast.Api.Services.Imaging;
 
 /// <summary>
 /// Pictures one frame. Its prompt is compiled from what it shows; the pictures that already exist
-/// around it (library, neighbouring frames, earlier scenes) are offered to Muse with a caption each,
-/// and Muse decides what to take from them. The provider is called outside the story lock.
+/// around it (each character's look, library, neighbouring frames, earlier scenes) are offered to
+/// Muse with a caption each, and Muse decides what to take from them. The looks of everyone on screen
+/// are pictured first, so a character carrying something is drawn from one picture in every frame.
+/// The provider is called outside the story lock.
 /// </summary>
 public sealed class FrameImageGenerator(
     IUnitOfWorkFactory unitOfWorkFactory,
     StoryScope storyScope,
     DirectionScope directionScope,
+    LookImageGenerator lookImages,
     IImageGenerator generator,
     ReferenceCollector collector,
     ImageStaleness staleness,
@@ -27,6 +30,8 @@ public sealed class FrameImageGenerator(
     /// <returns>The scene with its direction, as stored after the write.</returns>
     public async Task<DirectedScene> GenerateAsync(Guid sceneId, Guid frameId, bool regenerate, CancellationToken ct)
     {
+        await lookImages.PictureFrameAsync(sceneId, frameId, ct);
+
         Guid storyId;
         string requestHash;
         ImageRequest? request = null;

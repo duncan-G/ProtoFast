@@ -7,7 +7,7 @@ import {
   OnDestroy,
   signal,
 } from '@angular/core';
-import { onScreenOf, wardrobeOf } from '../../../direction/inheritance';
+import { lookAt, onScreenOf, wardrobeOf } from '../../../direction/inheritance';
 import { emptyDirection } from '../../../direction/model/scene-direction';
 import { SpeechVoice } from '../../../direction/model/speech-voice';
 import { VoiceQuery } from '../../../direction/model/voice-query';
@@ -110,7 +110,7 @@ const SHOWN = 3;
             class="dr-input"
             rows="4"
             maxlength="4000"
-            placeholder="Who they are and what they look like"
+            placeholder="What they look like"
             [value]="c.description ?? ''"
             (change)="save({ description: $any($event.target).value.trim() || null })"
           ></textarea>
@@ -337,7 +337,8 @@ export class LibraryCastCard implements OnDestroy {
     const byWardrobe = new Map<string, number[]>();
     this.store.frameSpans().forEach((span, i) => {
       if (onScreenOf(direction, span.frame, character.id).value) {
-        const id = wardrobeOf(direction, span.frame, character).wardrobeId;
+        const look = lookAt(direction, character.id, this.store.elementOrder(), span.last);
+        const id = wardrobeOf(direction, span.frame, character, look).wardrobeId;
         if (id) {
           byWardrobe.set(id, [...(byWardrobe.get(id) ?? []), i + 1]);
         }

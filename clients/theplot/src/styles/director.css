@@ -776,6 +776,225 @@
     color: var(--se-faint);
   }
 
+  /* — the layout switch in the toolbar — */
+  .dr-layout {
+    display: flex;
+    flex: none;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 8px;
+    background: var(--dr-seg);
+  }
+  .dr-layout button {
+    padding: 4px 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    font: 12.5px var(--font-body);
+    color: var(--se-muted);
+    cursor: pointer;
+  }
+  .dr-layout button[aria-pressed='true'] {
+    background: var(--se-panel);
+    font-weight: 500;
+    color: var(--se-ink);
+    box-shadow: 0 1px 2px rgba(31, 27, 22, 0.12);
+  }
+
+  /* — the frames: pictures with their lines on them. Always light on dark, as a picture is. — */
+  .dr-reel {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    max-width: 820px;
+    margin: 0 auto;
+  }
+  .dr-shot {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    aspect-ratio: 3 / 2;
+    /* Not hidden: a scroll container would keep the ratio and cut long lines off. */
+    overflow: clip;
+    border-radius: 10px;
+    background: #000;
+    color: #f4efe6;
+    outline: 2px solid transparent;
+    outline-offset: 3px;
+    cursor: pointer;
+  }
+  .dr-shot.is-loose {
+    aspect-ratio: auto;
+    min-height: 120px;
+    border: 1.5px dashed var(--se-line-strong);
+  }
+  .dr-shot.is-on {
+    outline-color: var(--se-accent);
+  }
+  .dr-shot:focus-visible {
+    outline-color: var(--se-accent-ink);
+  }
+  .dr-shot-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .dr-shot-top {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 12px 0;
+  }
+  .dr-shot-chip {
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.6);
+    font: 500 11px var(--font-body);
+    color: #f4efe6;
+  }
+  .dr-shot-chip.is-warn {
+    color: #f0c27a;
+  }
+  .dr-shot-play {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+    font-size: 11px;
+    color: #fff;
+    cursor: pointer;
+  }
+  .dr-shot-play:hover {
+    background: var(--se-accent);
+    color: var(--se-on-accent);
+  }
+  .dr-shot-text {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 48px 28px 22px;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.55) 40px, rgba(0, 0, 0, 0.78));
+    font:
+      15px/1.5 'Courier Prime',
+      'Courier New',
+      monospace;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+    text-wrap: pretty;
+  }
+  .dr-shot-text p {
+    margin: 0;
+  }
+  .dr-shot-slug {
+    font: 600 11.5px var(--font-mono);
+    letter-spacing: 0.06em;
+    color: rgba(244, 239, 230, 0.7);
+  }
+  .dr-shot-transition {
+    text-align: right;
+    text-transform: uppercase;
+  }
+  .dr-shot-action.is-description {
+    font-style: italic;
+    color: rgba(244, 239, 230, 0.8);
+  }
+  .dr-shot-text .dr-shot-dialogue {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    max-width: 440px;
+    margin: 0 auto;
+    text-align: center;
+  }
+  .dr-shot-speaker {
+    font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+  .dr-shot-paren {
+    font-size: 13px;
+    color: rgba(244, 239, 230, 0.7);
+  }
+
+  /* — captions, while a frame or the scene plays — */
+  .dr-caption {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    max-width: 80%;
+    margin: 0 auto 24px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.68);
+    font: 500 18px/1.4 var(--font-body);
+    color: #fff;
+    text-align: center;
+    text-wrap: balance;
+  }
+  .dr-caption.is-narrated .dr-caption-text {
+    font-style: italic;
+  }
+  .dr-caption-speaker {
+    font: 600 11px var(--font-mono);
+    letter-spacing: 0.08em;
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  /* — the stage: the scene playing, one frame at a time — */
+  .dr-frames.is-staging {
+    display: flex;
+    padding: 0;
+    overflow: hidden;
+    background: #000;
+  }
+  .dr-stage {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+  .dr-stage-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    opacity: 0;
+    transition: opacity 0.6s ease;
+  }
+  .dr-stage-image.is-current {
+    opacity: 1;
+  }
+  .dr-stage-count {
+    position: absolute;
+    top: 14px;
+    left: 16px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.6);
+    font: 500 11px var(--font-mono);
+    color: rgba(255, 255, 255, 0.8);
+  }
+  .dr-stage .dr-caption {
+    margin-bottom: 36px;
+    font-size: 20px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .dr-stage-image {
+      transition: none;
+    }
+  }
+
   /* — the player — */
   .dr-transport {
     display: flex;
@@ -1010,12 +1229,60 @@
     overflow: hidden;
     background: var(--se-line);
   }
-  .dr-picture img,
+  .dr-picture-open img,
   .dr-thumb img {
     display: block;
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+  .dr-picture-open {
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: zoom-in;
+  }
+  .dr-lightbox[open] {
+    display: grid;
+    place-items: center;
+    max-width: none;
+    max-height: none;
+    width: 100vw;
+    height: 100dvh;
+    margin: 0;
+    padding: 32px;
+    border: 0;
+    background: transparent;
+    cursor: zoom-out;
+  }
+  .dr-lightbox::backdrop {
+    background: rgb(0 0 0 / 0.8);
+  }
+  .dr-lightbox img {
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 6px;
+    box-shadow: var(--se-shadow);
+    object-fit: contain;
+  }
+  .dr-lightbox-close {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    width: 32px;
+    height: 32px;
+    border: 0;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 0.14);
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .dr-lightbox-close:hover {
+    background: rgb(255 255 255 / 0.26);
   }
   .dr-media-row {
     display: flex;

@@ -53,7 +53,7 @@ import { StateChips } from './state-chips';
             <textarea
               class="se-field se-textarea-small"
               rows="2"
-              placeholder="Who they are, for a reader"
+              placeholder="What they look like"
               aria-label="Description"
               maxlength="4000"
               [value]="c.description ?? ''"
@@ -158,7 +158,7 @@ import { StateChips } from './state-chips';
             <textarea
               class="se-field se-textarea-small"
               rows="2"
-              placeholder="What it is, for a reader"
+              placeholder="What it looks like"
               aria-label="Description"
               maxlength="4000"
               [value]="l.description ?? ''"

@@ -3,9 +3,11 @@ import { Router } from '@angular/router';
 import { DirectionApi } from '../../direction/direction-api';
 import { directionChanges, isSpoken } from '../../direction/direction-changes';
 import {
+  ElementOrder,
   Framing,
   inViewOf,
   joinChanges,
+  lookAt,
   onScreenOf,
   withPlacement,
 } from '../../direction/inheritance';
@@ -15,6 +17,7 @@ import { covers, DirectTarget } from '../../direction/model/direct-target';
 import { DIRECTION_VOCABULARY } from '../../direction/model/direction-vocabulary';
 import { Frame } from '../../direction/model/frame';
 import { LibraryImage } from '../../direction/model/library-image';
+import { LookChange } from '../../direction/model/look-change';
 import { blankAppearance, SceneAppearance } from '../../direction/model/scene-appearance';
 import { emptyDirection, isDirected, SceneDirection } from '../../direction/model/scene-direction';
 import { blankPropState, ScenePropState } from '../../direction/model/scene-prop-state';
@@ -64,6 +67,7 @@ import { SceneStats } from './scene-stats';
 import { EditorMode } from './editor-mode';
 import { AudioState } from './audio-state';
 import { ImageState } from './image-state';
+import { DirectorLayout } from './director-layout';
 import { DirectorLibraryTab } from './director-library-tab';
 import { InspectorScope } from './inspector-scope';
 import { InspectorTab } from './inspector-tab';
@@ -92,6 +96,7 @@ export class SceneEditorStore implements OnDestroy {
   readonly error = signal('');
 
   readonly mode = signal<EditorMode>('story');
+  readonly directorLayout = signal<DirectorLayout>('script');
   readonly inspectorScope = signal<InspectorScope>('frame');
   readonly inspectorTab = signal<InspectorTab>('cast');
   readonly directorLibraryTab = signal<DirectorLibraryTab>('cast');
@@ -269,9 +274,15 @@ export class SceneEditorStore implements OnDestroy {
   readonly propStateByProp = computed(
     () => new Map((this.direction()?.propStates ?? []).map((p) => [p.propId, p])),
   );
+  readonly elementOrder = computed<ElementOrder>(
+    () => new Map(this.elements().map((e, i) => [e.id, i])),
+  );
   /** Characters who speak, are mentioned or have a look in the scene, in library order. */
   readonly cast = computed(() => {
-    const ids = new Set<string>(this.direction()?.appearances.map((a) => a.characterId));
+    const ids = new Set<string>([
+      ...(this.direction()?.appearances.map((a) => a.characterId) ?? []),
+      ...(this.direction()?.lookChanges.map((c) => c.characterId) ?? []),
+    ]);
     for (const element of this.elements()) {
       if (element.type === 'Dialogue' && element.speakerId) {
         ids.add(element.speakerId);
@@ -285,7 +296,12 @@ export class SceneEditorStore implements OnDestroy {
     return this.characters().filter((c) => ids.has(c.id));
   });
   readonly propsInScene = computed(() => {
-    const ids = new Set<string | null>(this.direction()?.propStates.map((p) => p.propId));
+    const direction = this.direction();
+    const ids = new Set<string | null>([
+      ...(direction?.propStates.map((p) => p.propId) ?? []),
+      ...(direction?.appearances.flatMap((a) => a.holding) ?? []),
+      ...(direction?.lookChanges.flatMap((c) => c.holding) ?? []),
+    ]);
     for (const element of this.elements()) {
       element.mentions.forEach((m) => ids.add(m.propId));
     }
@@ -504,7 +520,13 @@ export class SceneEditorStore implements OnDestroy {
     clearTimeout(this.saveTimer);
     this.saveTimer = null;
     const scene = this.scene();
-    const direction = this.direction();
+    const known = new Set(scene?.elements.map((e) => e.id));
+    // A change on a deleted line goes with it, as the API's cascade would.
+    const current = this.direction();
+    const direction = current && {
+      ...current,
+      lookChanges: current.lookChanges.filter((c) => known.has(c.elementId)),
+    };
     const { sceneDirty, directionDirty } = this;
     this.sceneDirty = false;
     this.directionDirty = false;
@@ -1414,6 +1436,78 @@ export class SceneEditorStore implements OnDestroy {
 
   // ─── director mode: continuity ─────────────────────────────────────────
 
+  /**
+   * In the scene scope, what they carry as the scene opens. In a frame, what they carry from that
+   * frame on: the change that sets the frame's look when it starts inside the frame, else a new
+   * change on the frame's first row. A change that matches the look before it is dropped.
+   */
+  setHolding(characterId: string, holding: string[], frameKey: string | null): void {
+    if (frameKey === null) {
+      this.setAppearance(characterId, { holding });
+      return;
+    }
+    const direction = this.direction();
+    const order = this.elementOrder();
+    const span = this.frameSpans().find((s) => s.frame.firstElementId === frameKey);
+    if (!direction || !span) {
+      return;
+    }
+    const inForce = lookAt(direction, characterId, order, span.last).change;
+    const elementId =
+      inForce && (order.get(inForce.elementId) ?? -1) >= span.first ? inForce.elementId : frameKey;
+    const before = lookAt(direction, characterId, order, (order.get(elementId) ?? 0) - 1);
+    const current =
+      direction.lookChanges.find(
+        (c) => c.characterId === characterId && c.elementId === elementId,
+      ) ??
+      ({
+        id: '',
+        characterId,
+        elementId,
+        wardrobeId: before.wardrobeId,
+        wardrobeChange: before.wardrobeChange,
+        appearanceChange: before.appearanceChange,
+        holding: before.holding,
+        reason: null,
+        edited: true,
+        image: null,
+      } satisfies LookChange);
+    const next = { ...current, holding, edited: true };
+    const same =
+      next.wardrobeId === before.wardrobeId &&
+      next.wardrobeChange === before.wardrobeChange &&
+      next.appearanceChange === before.appearanceChange &&
+      next.holding.length === before.holding.length &&
+      next.holding.every((id) => before.holding.includes(id));
+    this.updateDirection((d) => ({
+      ...d,
+      lookChanges: [
+        ...d.lookChanges.filter(
+          (c) => !(c.characterId === characterId && c.elementId === elementId),
+        ),
+        ...(same ? [] : [next]),
+      ],
+    }));
+  }
+
+  removeLookChange(characterId: string, elementId: string): void {
+    this.updateDirection((d) => ({
+      ...d,
+      lookChanges: d.lookChanges.filter(
+        (c) => !(c.characterId === characterId && c.elementId === elementId),
+      ),
+    }));
+  }
+
+  /** Selects the frame that pictures a row. */
+  showRow(elementId: string): void {
+    const at = this.elementOrder().get(elementId);
+    const span = this.frameSpans().find((s) => at !== undefined && s.first <= at && at <= s.last);
+    if (span) {
+      this.selectFrame(span.frame.firstElementId);
+    }
+  }
+
   setAppearance(characterId: string, patch: Partial<SceneAppearance>): void {
     this.updateDirection((d) => {
       const current =
@@ -1497,6 +1591,12 @@ export class SceneEditorStore implements OnDestroy {
         theirs.appearances,
         (a) => a.characterId,
         (a) => a.edited,
+      ),
+      lookChanges: merge(
+        mine.lookChanges,
+        theirs.lookChanges,
+        (c) => `${c.characterId}:${c.elementId}`,
+        (c) => c.edited,
       ),
       propStates: merge(
         mine.propStates,
@@ -1634,6 +1734,31 @@ export class SceneEditorStore implements OnDestroy {
     }
   }
 
+  /** Pictures a character in a look of the scene: the opening look when `elementId` is null. */
+  async generateLookImage(
+    characterId: string,
+    elementId: string | null,
+    regenerate = false,
+  ): Promise<void> {
+    const scene = this.scene();
+    const key = `look:${characterId}:${elementId ?? ''}`;
+    if (!scene || this.picturing().has(key)) {
+      return;
+    }
+    this.picturing.update((ids) => new Set([...ids, key]));
+    try {
+      await this.flushSave();
+      this.adoptImages(
+        await this.directionApi.generateLookImage(scene.id, characterId, elementId, regenerate),
+        scene.id,
+      );
+    } catch (err) {
+      this.error.set(describeError(err, 'The look could not be pictured.'));
+    } finally {
+      this.picturing.update((ids) => new Set([...ids].filter((i) => i !== key)));
+    }
+  }
+
   /** Pictures library entries one at a time; frames composed from a redone picture go stale. */
   async generateLibraryImages(
     targets: readonly ReferenceTarget[],
@@ -1667,6 +1792,10 @@ export class SceneEditorStore implements OnDestroy {
       return;
     }
     const theirs = new Map(direction.frames.map((f) => [f.firstElementId, f.image]));
+    const looks = new Map(direction.appearances.map((a) => [a.characterId, a.image]));
+    const changes = new Map(
+      direction.lookChanges.map((c) => [`${c.characterId}:${c.elementId}`, c.image]),
+    );
     this.direction.update(
       (mine) =>
         mine && {
@@ -1674,6 +1803,14 @@ export class SceneEditorStore implements OnDestroy {
           frames: mine.frames.map((f) => ({
             ...f,
             image: theirs.get(f.firstElementId) ?? null,
+          })),
+          appearances: mine.appearances.map((a) => ({
+            ...a,
+            image: looks.get(a.characterId) ?? null,
+          })),
+          lookChanges: mine.lookChanges.map((c) => ({
+            ...c,
+            image: changes.get(`${c.characterId}:${c.elementId}`) ?? null,
           })),
         },
     );

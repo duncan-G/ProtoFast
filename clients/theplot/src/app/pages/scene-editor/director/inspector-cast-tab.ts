@@ -1,16 +1,22 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import {
+  changesOf,
+  heldIn,
   inViewOf,
   joinChanges,
+  lookAt,
+  LookAt,
   LookSource,
   onScreenOf,
   wardrobeOf,
 } from '../../../direction/inheritance';
 import { emptyDirection } from '../../../direction/model/scene-direction';
+import { Character } from '../../../stories/model/character';
 import { Avatar } from '../avatar';
 import { initials } from '../format';
 import { SceneEditorStore } from '../scene-editor-store';
 import { ChangeLayers } from './change-layers';
+import { PicturePreview } from './picture-preview';
 
 type LookField = 'wardrobeId' | 'wardrobeChange' | 'appearanceChange';
 
@@ -19,14 +25,25 @@ function frameList(numbers: readonly number[]): string {
   return (numbers.length === 1 ? 'Frame ' : 'Frames ') + numbers.join(', ');
 }
 
+/** Nothing on top of the sheet: the library's picture shows it. */
+function isSheet(look: LookAt, character: Character): boolean {
+  return (
+    (look.wardrobeId === null || look.wardrobeId === character.wardrobes[0]?.id) &&
+    !look.wardrobeChange.trim() &&
+    !look.appearanceChange.trim() &&
+    look.holding.length === 0
+  );
+}
+
 /**
  * Who is on screen and what they look like, for the selected frame or the whole scene. Looks come
- * from the library, change in the scene, and can change again in a frame.
+ * from the library, open the scene, change on a line (picking something up, handing it over) and
+ * hold until the next change; a frame can add to the look for itself alone.
  */
 @Component({
   selector: 'app-inspector-cast-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Avatar, ChangeLayers],
+  imports: [Avatar, ChangeLayers, PicturePreview],
   host: { class: 'dr-tab-body' },
   template: `
     <div class="dr-field">
@@ -98,6 +115,112 @@ function frameList(numbers: readonly number[]): string {
           </div>
           @if (row.on && row.open) {
             <div class="dr-cast-body">
+              <div class="dr-field">
+                <div class="dr-field-head">
+                  <span class="dr-kicker">Carrying</span>
+                  <span class="flex-1"></span>
+                  <span class="dr-layer-tag" [class]="row.changeHere ? 'is-here' : 'is-scene'">{{
+                    row.lookFrom
+                  }}</span>
+                  @if (row.changeHere; as change) {
+                    <button
+                      type="button"
+                      class="dr-link is-quiet"
+                      (click)="store.removeLookChange(row.character.id, change.elementId)"
+                    >
+                      reset
+                    </button>
+                  }
+                </div>
+                <div class="dr-pills">
+                  @for (prop of row.carryable; track prop.id) {
+                    <button
+                      type="button"
+                      class="dr-prop"
+                      [class.is-on]="prop.on"
+                      (click)="toggleHolding(row.character.id, row.holding, prop.id)"
+                    >
+                      @if (prop.on) {
+                        {{ prop.name }} <span aria-hidden="true">×</span>
+                      } @else {
+                        + {{ prop.name }}
+                      }
+                    </button>
+                  } @empty {
+                    <span class="dr-hint">No props in this scene to carry.</span>
+                  }
+                </div>
+                <span class="dr-hint">{{ row.carryHint }}</span>
+              </div>
+              @if (!frame() && row.changes.length > 0) {
+                <div class="dr-field">
+                  <span class="dr-kicker">During the scene</span>
+                  @for (change of row.changes; track change.elementId) {
+                    <div class="dr-note">
+                      <span class="flex-1">{{ change.text }}</span>
+                      <button
+                        type="button"
+                        class="dr-link is-quiet"
+                        (click)="store.showRow(change.elementId)"
+                      >
+                        show
+                      </button>
+                      <button
+                        type="button"
+                        class="dr-link is-quiet"
+                        (click)="store.removeLookChange(row.character.id, change.elementId)"
+                      >
+                        remove
+                      </button>
+                    </div>
+                  }
+                </div>
+              }
+              @if (!row.sheet) {
+                <div class="dr-library-picture">
+                  @if (row.image; as image) {
+                    <app-picture-preview
+                      [url]="image.url"
+                      [alt]="'Picture of ' + row.character.name + ' in this look'"
+                    />
+                  } @else {
+                    <div class="dr-picture">
+                      {{ row.drawing ? 'Drawing…' : 'No image' }}
+                    </div>
+                  }
+                  <div class="dr-library-picture-side">
+                    <span class="dr-kicker">Look picture</span>
+                    <span class="dr-hint" [class.is-warn]="row.image?.stale">{{
+                      row.image?.stale
+                        ? 'Out of date: the look changed since.'
+                        : 'Frames in this look draw ' + row.character.name + ' from it.'
+                    }}</span>
+                    <button
+                      type="button"
+                      class="dr-link self-start"
+                      [class.is-working]="row.drawing"
+                      [disabled]="row.drawing"
+                      (click)="
+                        store.generateLookImage(
+                          row.character.id,
+                          row.changeId,
+                          !!row.image && !row.image.stale
+                        )
+                      "
+                    >
+                      {{
+                        row.drawing
+                          ? 'Drawing…'
+                          : row.image
+                            ? row.image.stale
+                              ? 'Update'
+                              : 'Regenerate'
+                            : 'Generate'
+                      }}
+                    </button>
+                  </div>
+                </div>
+              }
               <div class="dr-field">
                 <div class="dr-field-head">
                   <span class="dr-kicker">Wardrobe</span>
@@ -285,10 +408,20 @@ export class InspectorCastTab {
   protected readonly rows = computed(() => {
     const direction = this.store.direction() ?? emptyDirection('');
     const frame = this.frame();
+    const span = frame ? this.store.selectedFrame() : null;
+    const order = this.store.elementOrder();
     const opened = this.openIds();
+    const props = this.store.propsInScene();
+    const spans = this.store.frameSpans();
+    const frameOf = (elementId: string) => {
+      const at = order.get(elementId) ?? -1;
+      return spans.findIndex((s) => s.first <= at && at <= s.last) + 1;
+    };
+    const propName = (id: string) => props.find((p) => p.id === id)?.name ?? 'something';
     return this.store.cast().map((character) => {
       const on = onScreenOf(direction, frame, character.id).value;
-      const { wardrobeId, source } = wardrobeOf(direction, frame, character);
+      const look = lookAt(direction, character.id, order, span?.last ?? null);
+      const { wardrobeId, source } = wardrobeOf(direction, frame, character, look);
       const wardrobe = character.wardrobes.find((w) => w.id === wardrobeId) ?? null;
       const scene = this.store.appearanceByCharacter().get(character.id);
       const placement = frame?.placements.find((p) => p.characterId === character.id);
@@ -302,11 +435,55 @@ export class InspectorCastTab {
             appearanceChange: scene?.appearanceChange ?? '',
           };
       const sceneLayer = {
-        wardrobeChange: scene?.wardrobeChange ?? '',
-        appearanceChange: scene?.appearanceChange ?? '',
+        wardrobeChange: look.wardrobeChange,
+        appearanceChange: look.appearanceChange,
       };
       const variation = joinChanges(sceneLayer.wardrobeChange, frame ? own.wardrobeChange : '');
+      const changeAt = look.change ? order.get(look.change.elementId) : undefined;
+      const changeHere =
+        span && look.change && changeAt !== undefined && changeAt >= span.first
+          ? look.change
+          : null;
+      const carrying = look.holding.map(propName);
       return {
+        holding: look.holding,
+        carryable: props.map((p) => ({
+          id: p.id,
+          name: p.name,
+          on: look.holding.includes(p.id),
+        })),
+        lookFrom: !frame
+          ? 'Opens'
+          : changeHere
+            ? 'From here'
+            : look.change
+              ? `From frame ${frameOf(look.change.elementId)}`
+              : 'Scene',
+        changeHere,
+        changeId: look.change?.elementId ?? null,
+        carryHint: !frame
+          ? 'As the scene opens. It stays with them, into the next scenes too, until a line has them let it go.'
+          : changeHere
+            ? `Changes here${changeHere.reason ? ': ' + changeHere.reason : ''}. Holds until the next change.`
+            : 'Picking something up or handing it over here holds from this frame on.',
+        changes: changesOf(direction, character.id, order).map((c) => ({
+          elementId: c.elementId,
+          text: `Frame ${frameOf(c.elementId)}: ${c.reason ?? 'look changes'} · ${
+            c.holding.length > 0 ? 'carrying ' + c.holding.map(propName).join(', ') : 'empty-handed'
+          }`,
+        })),
+        sheet: isSheet(look, character),
+        image: look.image,
+        drawing: this.store.picturing().has(`look:${character.id}:${look.change?.elementId ?? ''}`),
+        summary: on
+          ? [
+              wardrobe?.label,
+              variation,
+              carrying.length > 0 ? 'carrying ' + carrying.join(', ') : '',
+            ]
+              .filter(Boolean)
+              .join(' · ')
+          : 'Off screen',
         character,
         on,
         open: opened.has(character.id),
@@ -315,7 +492,6 @@ export class InspectorCastTab {
         outfit: wardrobe ? [wardrobe.label, wardrobe.description].filter(Boolean).join(': ') : '',
         scene: sceneLayer,
         own,
-        summary: on ? [wardrobe?.label, variation].filter(Boolean).join(' · ') : 'Off screen',
         edits: [source === this.here(), own.wardrobeChange, own.appearanceChange].filter(Boolean)
           .length,
         wardrobeFrames: this.store.framesWithLook(character.id, 'wardrobeId'),
@@ -327,10 +503,12 @@ export class InspectorCastTab {
 
   protected readonly props = computed(() => {
     const direction = this.store.direction() ?? emptyDirection('');
+    const span = this.frame() ? this.store.selectedFrame() : null;
+    const held = span ? heldIn(direction, span, this.store.elementOrder()) : undefined;
     return this.store.propsInScene().map((prop) => ({
       id: prop.id,
       name: prop.name,
-      on: inViewOf(direction, this.frame(), prop.id).value,
+      on: inViewOf(direction, this.frame(), prop.id, held).value,
       state: this.store.propStateByProp().get(prop.id)?.state.join(', ') ?? '',
     }));
   });
@@ -371,6 +549,13 @@ export class InspectorCastTab {
       }
       return next;
     });
+  }
+
+  protected toggleHolding(characterId: string, holding: readonly string[], propId: string): void {
+    const next = holding.includes(propId)
+      ? holding.filter((id) => id !== propId)
+      : [...holding, propId];
+    this.store.setHolding(characterId, next, this.frameKey());
   }
 
   protected set(characterId: string, field: LookField, value: string | null): void {

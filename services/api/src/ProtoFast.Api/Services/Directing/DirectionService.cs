@@ -33,6 +33,7 @@ public class DirectionService(
     CueAudioGenerator audioGenerator,
     CueAudioMessages audioMessages,
     FrameImageGenerator frameImages,
+    LookImageGenerator lookImages,
     LibraryImageGenerator libraryImages,
     ImageMessages imageMessages,
     ISpeechSynthesizer speech,
@@ -214,7 +215,10 @@ public class DirectionService(
 
     private SceneDirection ToMessage(DirectedScene directed) =>
         DirectionMessages.ToMessage(
-            directed.Scene, audioMessages.For(directed.Scene, directed.Story), imageMessages.ForFrames(directed));
+            directed.Scene,
+            audioMessages.For(directed.Scene, directed.Story),
+            imageMessages.ForFrames(directed),
+            imageMessages.ForLooks(directed.Story));
 
     public override async Task<GenerateFrameImageReply> GenerateFrameImage(GenerateFrameImageRequest request, ServerCallContext context)
     {
@@ -228,6 +232,23 @@ public class DirectionService(
         catch (ImageException e)
         {
             logger.LogWarning(e, "A frame could not be pictured");
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, e.Message));
+        }
+    }
+
+    public override async Task<GenerateLookImageReply> GenerateLookImage(GenerateLookImageRequest request, ServerCallContext context)
+    {
+        var sceneId = StoryIds.Existing(request.SceneId, StoryErrors.SceneNotFound);
+        var characterId = StoryIds.Existing(request.CharacterId, CharacterNotFound);
+        var elementId = request.HasElementId ? StoryIds.Existing(request.ElementId, DirectionErrors.LineNotFound) : (Guid?)null;
+        try
+        {
+            var directed = await lookImages.GenerateAsync(sceneId, characterId, elementId, request.Regenerate, context.CancellationToken);
+            return new GenerateLookImageReply { Direction = ToMessage(directed) };
+        }
+        catch (ImageException e)
+        {
+            logger.LogWarning(e, "A look could not be pictured");
             throw new RpcException(new Status(StatusCode.FailedPrecondition, e.Message));
         }
     }
@@ -461,6 +482,15 @@ public class DirectionService(
             look.Wardrobe!.Position = character.Wardrobes.Count == 0 ? 0 : character.Wardrobes.Max(w => w.Position) + 1;
             character.Wardrobes.Add(look.Wardrobe);
         }
+
+        // A change only carries a wardrobe the opening look added, which is on the sheet by now.
+        foreach (var change in draft.LookChanges.Where(c => c.Wardrobe is not null))
+        {
+            var character = story.Characters.FirstOrDefault(c => c.Id == change.CharacterId);
+            var added = character?.Wardrobes.FirstOrDefault(w => ReferenceEquals(w, change.Wardrobe) || LibraryNames.Same(w.Label, change.Wardrobe!.Label));
+            change.Wardrobe = added is { Id: var id } && id == Guid.Empty ? added : null;
+            change.WardrobeId = added is null || added.Id == Guid.Empty ? null : added.Id;
+        }
     }
 
     /// <summary>The scene may have changed while the model worked: rows pointing at what is gone are dropped.</summary>
@@ -506,6 +536,24 @@ public class DirectionService(
             {
                 look.ChangeElementId = null;
             }
+        }
+
+        foreach (var look in draft.Appearances)
+        {
+            look.Holding.RemoveAll(id => !references.Story.PropIds.Contains(id));
+        }
+
+        draft.LookChanges.RemoveAll(c => !references.Story.CharacterIds.Contains(c.CharacterId) || !references.Elements.ContainsKey(c.ElementId));
+        foreach (var change in draft.LookChanges)
+        {
+            if (change.Wardrobe is null
+                && change.WardrobeId is { } wardrobeId
+                && !(references.WardrobesByCharacter.TryGetValue(change.CharacterId, out var wardrobes) && wardrobes.Contains(wardrobeId)))
+            {
+                change.WardrobeId = null;
+            }
+
+            change.Holding.RemoveAll(id => !references.Story.PropIds.Contains(id));
         }
 
         draft.PropStates.RemoveAll(p => !references.Story.PropIds.Contains(p.PropId));

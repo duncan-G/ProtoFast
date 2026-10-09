@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { inViewOf } from '../../../direction/inheritance';
+import { heldIn, inViewOf } from '../../../direction/inheritance';
 import { emptyDirection } from '../../../direction/model/scene-direction';
 import { ReferenceTarget } from '../../../stories/model/reference-target';
 import { plural, settingPrefix } from '../format';
@@ -32,21 +32,35 @@ import { LibraryPicture } from './library-picture';
       </div>
       @if (open()) {
         <div class="dr-card-body">
+          @if (target().kind === 'location') {
+            <button
+              type="button"
+              class="dr-btn is-small self-start"
+              title="Have the model write the whole sheet from the story: description, look and sound"
+              [class.is-working]="store.describing() === target().id"
+              [disabled]="store.describing() !== null"
+              (click)="store.describe(target())"
+            >
+              {{ store.describing() === target().id ? 'Suggesting…' : 'Suggest place' }}
+            </button>
+          }
           <app-library-picture [target]="target()" [name]="e.name" />
           <div class="dr-field">
             <div class="dr-field-head">
               <span class="dr-kicker">Description</span>
-              <span class="flex-1"></span>
-              <button
-                type="button"
-                class="dr-link"
-                title="Have the model write the sheet from the story"
-                [class.is-working]="store.describing() === target().id"
-                [disabled]="store.describing() !== null"
-                (click)="store.describe(target())"
-              >
-                {{ store.describing() === target().id ? 'Writing…' : 'Suggest' }}
-              </button>
+              @if (target().kind === 'prop') {
+                <span class="flex-1"></span>
+                <button
+                  type="button"
+                  class="dr-link"
+                  title="Have the model write the sheet from the story"
+                  [class.is-working]="store.describing() === target().id"
+                  [disabled]="store.describing() !== null"
+                  (click)="store.describe(target())"
+                >
+                  {{ store.describing() === target().id ? 'Writing…' : 'Suggest' }}
+                </button>
+              }
             </div>
             <textarea
               class="dr-input"
@@ -54,7 +68,7 @@ import { LibraryPicture } from './library-picture';
               maxlength="4000"
               [placeholder]="
                 target().kind === 'location'
-                  ? 'What it is, for a reader'
+                  ? 'What it looks like'
                   : 'What it is and what it looks like'
               "
               [value]="e.description"
@@ -131,7 +145,10 @@ export class LibraryEntryCard {
     }
     const direction = this.store.direction() ?? emptyDirection('');
     const spans = this.store.frameSpans();
-    const shown = spans.filter((s) => inViewOf(direction, s.frame, id).value).length;
+    const order = this.store.elementOrder();
+    const shown = spans.filter(
+      (s) => inViewOf(direction, s.frame, id, heldIn(direction, s, order)).value,
+    ).length;
     return `In Scene ${scene} · in view in ${shown} of ${plural(spans.length, 'frame')}`;
   });
 

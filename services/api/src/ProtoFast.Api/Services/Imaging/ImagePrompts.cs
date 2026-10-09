@@ -1,4 +1,5 @@
 using System.Text;
+using ProtoFast.Api.Services.Directing;
 using CharacterRecord = ProtoFast.Data.ThePlot.Entities.Character;
 using LocationRecord = ProtoFast.Data.ThePlot.Entities.Location;
 using LocationSettingRecord = ProtoFast.Data.ThePlot.Entities.LocationSetting;
@@ -24,6 +25,38 @@ public static class ImagePrompts
         if (character.Wardrobes.OrderBy(w => w.Position).FirstOrDefault() is { } wardrobe)
         {
             text.AppendLine($"Wearing {Wardrobe(wardrobe.Label, wardrobe.Description)}.");
+        }
+
+        AppendLine(text, character.Description);
+        text.Append(NoText);
+        return text.ToString();
+    }
+
+    /// <summary>
+    /// The character's reference sheet in a look other than the library's, so every frame in that
+    /// look draws them, their clothes and what they carry from one picture.
+    /// </summary>
+    public static string Look(CharacterRecord character, Look look, IReadOnlyList<PropRecord> holding, string style)
+    {
+        var text = new StringBuilder();
+        text.AppendLine(style);
+        text.AppendLine($"A character reference sheet of {character.Name}, a {character.Kind.ToLowerInvariant()}, as they look at this point of the story: the same figure twice, full body, front view and three-quarter view side by side, standing in a neutral pose against a plain light-grey studio backdrop, in soft even light. Nobody else in the image.");
+        AppendIdentity(text, character);
+        var wardrobe = character.Wardrobes.FirstOrDefault(w => w.Id == look.WardrobeId) ?? character.Wardrobes.OrderBy(w => w.Position).FirstOrDefault();
+        var wearing = wardrobe is null ? "" : Wardrobe(wardrobe.Label, wardrobe.Description);
+        if (wearing.Length > 0 || look.WardrobeChange.Trim().Length > 0)
+        {
+            text.AppendLine($"Wearing {string.Join("; ", new[] { wearing, look.WardrobeChange.Trim() }.Where(p => p.Length > 0))}.");
+        }
+
+        if (look.AppearanceChange.Trim() is { Length: > 0 } appearance)
+        {
+            text.AppendLine($"Right now: {appearance}");
+        }
+
+        if (holding.Count > 0)
+        {
+            text.AppendLine($"Carrying, the same way in both views: {Carried(holding)}");
         }
 
         AppendLine(text, character.Description);
@@ -102,6 +135,11 @@ public static class ImagePrompts
                 text.AppendLine($"In this moment: {shown.AppearanceChange}");
             }
 
+            if (shown.Holding.Count > 0)
+            {
+                text.AppendLine($"Carrying: {Carried(shown.Holding, frame.InView)}");
+            }
+
             var staging = new[]
             {
                 shown.Screen is { Length: > 0 } side and not "off" ? $"frame {side}" : "",
@@ -114,10 +152,10 @@ public static class ImagePrompts
             }
         }
 
-        if (frame.InView.Count > 0)
+        if (frame.InView.Any(p => p.HeldBy is null))
         {
             text.AppendLine();
-            foreach (var prop in frame.InView)
+            foreach (var prop in frame.InView.Where(p => p.HeldBy is null))
             {
                 var state = prop.State.Count > 0 ? $" ({string.Join(", ", prop.State)})" : "";
                 text.AppendLine($"{prop.Prop.Name}{state}{(string.IsNullOrWhiteSpace(prop.Prop.Description) ? "" : $": {prop.Prop.Description.Trim()}")}");
@@ -137,7 +175,7 @@ public static class ImagePrompts
 
         if (frame.Frame.Beat.Trim() is { Length: > 0 } beat)
         {
-            text.AppendLine($"Action: {beat}");
+            text.AppendLine($"In the picture: {beat}");
         }
 
         if (frame.OffScreen.Count > 0)
@@ -167,6 +205,15 @@ public static class ImagePrompts
     public static string Caption(int number, ReferenceCandidate candidate) =>
         $"Image {number}: {candidate.Caption}" +
         (candidate.Stale ? " It is out of date: what it pictures has changed since, so where it differs, follow the description." : "");
+
+    /// <summary>"Refrigerated cooler (sealed): a white hard-shell box." for each, with the scene's state where known.</summary>
+    private static string Carried(IReadOnlyList<PropRecord> holding, IReadOnlyList<FramePropView>? inView = null) =>
+        string.Join(" ", holding.Select(prop =>
+        {
+            var state = inView?.FirstOrDefault(p => p.Prop.Id == prop.Id)?.State ?? [];
+            var stateText = state.Count > 0 ? $" ({string.Join(", ", state)})" : "";
+            return $"{prop.Name}{stateText}{(string.IsNullOrWhiteSpace(prop.Description) ? "" : $": {prop.Description.Trim().TrimEnd('.')}")}.";
+        }));
 
     private static void AppendIdentity(StringBuilder text, CharacterRecord character)
     {

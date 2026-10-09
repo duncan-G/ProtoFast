@@ -6,4 +6,7 @@ public enum ReferenceSource
     Location,
     Prop,
     Frame,
+
+    /// <summary>A character's picture in one of their looks.</summary>
+    Look,
 }

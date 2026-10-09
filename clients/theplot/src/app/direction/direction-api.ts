@@ -59,6 +59,17 @@ export abstract class DirectionApi {
     regenerate?: boolean,
   ): Promise<SceneDirection>;
 
+  /**
+   * Pictures a character in one of the scene's looks that differs from the library's: the opening
+   * look, or the change on `elementId`. Frames in that look draw the character from it.
+   */
+  abstract generateLookImage(
+    sceneId: string,
+    characterId: string,
+    elementId: string | null,
+    regenerate?: boolean,
+  ): Promise<SceneDirection>;
+
   /** Pictures a library entry from its sheet; null when the API has nothing to show for it. */
   abstract generateLibraryImage(
     target: DescribeTarget,

@@ -54,6 +54,8 @@ public sealed class ThePlotDbContext(
 
     public DbSet<SceneAppearance> SceneAppearances => Set<SceneAppearance>();
 
+    public DbSet<SceneLookChange> SceneLookChanges => Set<SceneLookChange>();
+
     public DbSet<ScenePropState> ScenePropStates => Set<ScenePropState>();
 
     public DbSet<Frame> Frames => Set<Frame>();
@@ -399,9 +401,54 @@ public sealed class ThePlotDbContext(
                 .HasForeignKey(a => a.ChangeElementId)
                 .OnDelete(DeleteBehavior.SetNull);
 
+            entity.HasOne(a => a.Image)
+                .WithMany()
+                .HasForeignKey(a => a.ImageAssetId)
+                .OnDelete(DeleteBehavior.SetNull);
+
             entity.HasIndex(a => new { a.SceneId, a.CharacterId }).IsUnique();
             entity.HasIndex(a => a.WardrobeId);
             entity.HasIndex(a => a.ChangeElementId);
+            entity.HasIndex(a => a.ImageAssetId);
+        });
+
+        modelBuilder.Entity<SceneLookChange>(entity =>
+        {
+            entity.HasKey(c => c.Id);
+            entity.Property(c => c.WardrobeChange).IsRequired();
+            entity.Property(c => c.AppearanceChange).IsRequired();
+
+            entity.HasOne(c => c.Scene)
+                .WithMany(s => s.LookChanges)
+                .HasForeignKey(c => c.SceneId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(c => c.Character)
+                .WithMany()
+                .HasForeignKey(c => c.CharacterId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Deleting the line takes the change with it.
+            entity.HasOne(c => c.Element)
+                .WithMany()
+                .HasForeignKey(c => c.ElementId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(c => c.Wardrobe)
+                .WithMany()
+                .HasForeignKey(c => c.WardrobeId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(c => c.Image)
+                .WithMany()
+                .HasForeignKey(c => c.ImageAssetId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(c => new { c.SceneId, c.CharacterId, c.ElementId }).IsUnique();
+            entity.HasIndex(c => c.CharacterId);
+            entity.HasIndex(c => c.ElementId);
+            entity.HasIndex(c => c.WardrobeId);
+            entity.HasIndex(c => c.ImageAssetId);
         });
 
         modelBuilder.Entity<ScenePropState>(entity =>
