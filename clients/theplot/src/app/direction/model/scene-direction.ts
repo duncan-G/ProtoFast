@@ -1,5 +1,5 @@
 import { Cue } from './cue';
-import { Panel } from './panel';
+import { Frame } from './frame';
 import { SceneAppearance } from './scene-appearance';
 import { SceneLocationState } from './scene-location-state';
 import { ScenePropState } from './scene-prop-state';
@@ -9,12 +9,12 @@ export interface SceneDirection {
   sceneId: string;
   /** Which day of the story the scene happens on; looks reset between days. */
   storyDay: number | null;
-  /** Every panel's unless it sets its own. */
+  /** Every frame's unless it sets its own. */
   shot: string | null;
   angle: string | null;
   movement: string | null;
   /** In position order. */
-  panels: Panel[];
+  frames: Frame[];
   cues: Cue[];
   appearances: SceneAppearance[];
   propStates: ScenePropState[];
@@ -28,7 +28,7 @@ export function emptyDirection(sceneId: string): SceneDirection {
     shot: null,
     angle: null,
     movement: null,
-    panels: [],
+    frames: [],
     cues: [],
     appearances: [],
     propStates: [],
@@ -41,7 +41,7 @@ export function isDirected(direction: SceneDirection): boolean {
   return (
     direction.storyDay !== null ||
     direction.shot !== null ||
-    direction.panels.length > 0 ||
+    direction.frames.length > 0 ||
     direction.cues.length > 0 ||
     direction.appearances.length > 0 ||
     direction.propStates.length > 0 ||

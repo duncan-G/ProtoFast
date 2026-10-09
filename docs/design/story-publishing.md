@@ -1,17 +1,17 @@
 # Story publishing
 
-Publishing turns a ThePlot story into an image and audio experience: a sequence of panels per scene,
+Publishing turns a ThePlot story into an image and audio experience: a sequence of frames per scene,
 played over the scene's performed dialogue. It has two stages.
 
 - **Director.** Reads the story and writes everything a renderer needs that a screenplay leaves out:
   what every character, location and prop looks like and sounds like, what each character looks like
   in each scene, how each line is delivered (`JOHN: I'm sorry` becomes `JOHN: [sad] I'm sorry`),
-  how many panels each scene gets, and for each panel who is where, doing what.
-- **Generation.** Renders the director's output. A panel image per panel (today a blank black image)
-  and one audio track per scene, then a cut that times each panel against the audio.
+  how many frames each scene gets, and for each frame who is where, doing what.
+- **Generation.** Renders the director's output. A frame image per frame (today a blank black image)
+  and one audio track per scene, then a cut that times each frame against the audio.
 
 Everything either stage produces is an **item**: one character's description, one character's look
-in one scene, one scene's panels and cues, one scene's audio, one panel's image. An item can be
+in one scene, one scene's frames and cues, one scene's audio, one frame's image. An item can be
 published on its own, and it is added to the story when it is. Publishing a whole story is
 publishing every item. Items record what they were built from, so the system always knows what a
 change makes out of date, and publishing one item never quietly contradicts another (section 2).
@@ -22,7 +22,7 @@ host-written executors. Both run on the agent workflow engine
 records as an import.
 
 The hardest problem is **consistency**: the same voice sounding like the same person across a
-conversation and across scenes, and the same character wearing the same clothes from one panel to
+conversation and across scenes, and the same character wearing the same clothes from one frame to
 the next. Section 5 covers it. The item graph is what makes it enforceable when things are
 published one at a time.
 
@@ -37,10 +37,10 @@ published one at a time.
  scene/{s}/appearance/{c}  scene/{s}/prop/{p} ◀──┘    (each chained to its previous scene)
    │                       │
    ▼                       ▼
- scene/{s}/direction  (panels + cues)
+ scene/{s}/direction  (frames + cues)
    │                         │
    ▼                         ▼
- scene/{s}/panel/{n}/image   scene/{s}/audio      ◀── voices, narrator, pronunciations
+ scene/{s}/frame/{n}/image   scene/{s}/audio      ◀── voices, narrator, pronunciations
    ▲   (references)          │
    └────────────┬────────────┘
                 ▼
@@ -97,12 +97,12 @@ the player read it. The item row records provenance and freshness, never the val
 | prop-sheet | `prop/{p}/sheet` | `props.description` | Director or Author | `source/prop/{p}`, `style` |
 | appearance | `scene/{s}/appearance/{c}` | `scene_appearances` | Director or Author | `source/scene/{s}`, `character/{c}/sheet`, `story-days`, c's previous appearance |
 | prop-state | `scene/{s}/prop/{p}` | `scene_prop_states` | Director or Author | `source/scene/{s}`, `prop/{p}/sheet`, p's previous state |
-| direction | `scene/{s}/direction` | `panels`, `panel_placements`, `panel_props`, `cues` | Director or Author | `source/scene/{s}`, every appearance and prop state in s, the location sheet, sheets of props in s, `style` |
+| direction | `scene/{s}/direction` | `frames`, `frame_placements`, `frame_props`, `cues` | Director or Author | `source/scene/{s}`, every appearance and prop state in s, the location sheet, sheets of props in s, `style` |
 | reference | `reference/character/{c}/{w}`, `reference/location/{l}/{tod}`, `reference/prop/{p}` | `media_assets` | Generator | the subject's sheet, `style` |
 | ambience | `ambience/{l}/{tod}` | `media_assets` | Generator | `location/{l}/sheet` |
 | audio | `scene/{s}/audio` | `published_scenes.audio_asset_id`, cue timings | Generator | `scene/{s}/direction`, the speakers' voices, `narrator/voice` when s has narration, `pronunciations`, the previous scene's audio when s is `CONTINUOUS` |
-| panel-image | `scene/{s}/panel/{n}/image` | `panels.image_asset_id` | Generator | `scene/{s}/direction`, references for the entities in panel n, `style` |
-| cut | `scene/{s}/cut` | panel timings, `published_scenes.duration_ms` | Generator (code) | audio, every panel image in s, the location's ambience |
+| frame-image | `scene/{s}/frame/{n}/image` | `frames.image_asset_id` | Generator | `scene/{s}/direction`, references for the entities in frame n, `style` |
+| cut | `scene/{s}/cut` | frame timings, `published_scenes.duration_ms` | Generator (code) | audio, every frame image in s, the location's ambience |
 
 Notes on the table:
 
@@ -121,7 +121,7 @@ Notes on the table:
   said about the character changes, including a new mention in a scene the sheet never read.
   `StoryService` maintains source hashes on every save, because it already knows each element's
   mentions.
-- **Panel images are keyed by position.** Re-directing a scene keeps the keys. If a panel's compiled
+- **Frame images are keyed by position.** Re-directing a scene keeps the keys. If a frame's compiled
   request is unchanged, the media cache returns the same image.
 
 ### 2.2 Inputs and freshness
@@ -161,7 +161,7 @@ way.
    - **Library actions default to `Item`.** "Describe" on a character is an example. A sheet's
      downstream spans the whole story, so regenerating it is the author's explicit choice.
    - **Scene actions default to `ItemAndDownstream`.** "Direct" or "Look in this scene" are
-     examples. A scene action means "make this scene right", including its audio and panels.
+     examples. A scene action means "make this scene right", including its audio and frames.
 
    Missing inputs are always planned. **Stale inputs are refreshed first**, unless they are pinned.
    An item built on a stale input would only be valid until that input catches up, so the money is
@@ -208,7 +208,7 @@ Every item has an origin: Director, Generator or Author.
   whether the author or the director wrote it.
   - A sheet, look, prop state or voice is one row per item, so editing it makes the item `Author`
     and pins it.
-  - A direction is large, so an edit marks only the touched cue or panel as `edited` (9.1).
+  - A direction is large, so an edit marks only the touched cue or frame as `edited` (9.1).
 - **A pinned item is never overwritten by a run.** It can still go stale, and the author sees that.
   Unpinning hands the item back to the director. This replaces the earlier "only fill null fields"
   rule.
@@ -299,10 +299,10 @@ public sealed record Change(string Reason, Guid? ElementId);
 
 public sealed record SceneDirection(
     Guid SceneId,
-    IReadOnlyList<Panel> Panels,
+    IReadOnlyList<Frame> Frames,
     IReadOnlyList<Cue> Cues);
 
-public sealed record Panel(
+public sealed record Frame(
     Guid FirstElementId, Guid LastElementId,   // contiguous, in order, covering the scene exactly once
     Guid LocationId,
     string TimeOfDay,
@@ -310,7 +310,7 @@ public sealed record Panel(
     IReadOnlyList<Guid> Props,
     string Beat,                               // what is happening: an action, or "MARA presses, TOM deflects"
     string Shot,                               // wide | medium | close | over-the-shoulder | insert
-    int? HoldMs);                              // only for panels with no cue to time them
+    int? HoldMs);                              // only for frames with no cue to time them
 
 public sealed record Placement(
     Guid CharacterId, string Screen,           // left | centre | right | off
@@ -332,8 +332,8 @@ Most screenplays describe a character once, at their introduction, and never aga
 separates what the text states (with evidence) from what the director invents. An invented trait
 is still canonical once it is written: the point is that it is decided once, not that it is sourced.
 
-A panel's `Beat` is usually an action line, but not always. A run of six dialogue lines with no
-action between them is still one or more panels, and its beat describes the exchange. A panel
+A frame's `Beat` is usually an action line, but not always. A run of six dialogue lines with no
+action between them is still one or more frames, and its beat describes the exchange. A frame
 boundary falls where the picture would change, not where the text changes.
 
 ## 4. Director: the agent workflow
@@ -370,7 +370,7 @@ carry the same lesson the import brief learned: **code cuts, the model labels**.
 
 1. Code numbers the elements, groups them into candidate beats (an action line, or a run of
    dialogue between actions), and collects the characters speaking or mentioned in each beat.
-2. The model, or a delegate, labels beats with panel boundaries, shot, placement, pose and
+2. The model, or a delegate, labels beats with frame boundaries, shot, placement, pose and
    expression. It also writes delivery tags as `(elementId, tags, pauseHints)`, never as rewritten
    text.
 3. Code assembles each `Cue.Performance` from the original dialogue text plus the tags, and calls
@@ -443,7 +443,7 @@ Each consistency rule is enforced in one or more of three places:
 **A0. What is voiced.** Dialogue elements use the speaker's voice, and Narration elements use the
 narrator voice.
 
-Action and Description lines are not narrated. They become panels and timed room tone (5.3).
+Action and Description lines are not narrated. They become frames and timed room tone (5.3).
 Reading stage directions aloud turns the experience into an audiobook of a screenplay. That would
 also double the audio cost, and it would compete with the pictures, which already carry the action.
 
@@ -472,7 +472,7 @@ that respond across speakers. Every scene's cues go through it, in order:
   conversation that crosses a scene break therefore does not reset. This is why that scene's audio
   item has the previous scene's audio as an input.
 - Use the `with-timestamps` variant. Its `voice_segments` and character alignment give each cue's
-  start and end. That is what times the panels (section 5.3) and what the audio verifiers check.
+  start and end. That is what times the frames (section 5.3) and what the audio verifiers check.
 
 **A3. Pauses come from two places.**
 
@@ -524,9 +524,9 @@ pixels.
 
 **I1. Identity is separate from state.** A character's `Identity` (face, age, build, hair, skin,
 marks) lives on the sheet and never changes within a story. What does change lives in the scene's
-appearance (wardrobe, injuries, dirt) and, within a scene, in the panel's `Placement.State`. Mixing
-identity and state is the main source of drift: if a panel prompt says "John, tired, in a grey
-coat", the next panel's model re-guesses John's face.
+appearance (wardrobe, injuries, dirt) and, within a scene, in the frame's `Placement.State`. Mixing
+identity and state is the main source of drift: if a frame prompt says "John, tired, in a grey
+coat", the next frame's model re-guesses John's face.
 
 **I2. A look changes only at a recorded change.** This is the script supervisor's continuity
 breakdown, expressed as the appearance chain:
@@ -545,46 +545,46 @@ inputs. When the author edits
 a look, the next look in the chain and the scene's direction go stale, so the edit cannot be
 silently contradicted.
 
-**I3. Prompts are compiled, never written.** A panel's image prompt is built by code from its
+**I3. Prompts are compiled, never written.** A frame's image prompt is built by code from its
 inputs. Fragments are emitted verbatim, always in the same order and the same words:
 
 1. the style guide;
 2. the location sheet, with the lighting for the time of day;
-3. each character's identity, the scene's look, and the panel state;
+3. each character's identity, the scene's look, and the frame state;
 4. the props;
 5. the beat, shot and placement.
 
-The same character is described in identical tokens in every panel of the story. The model writing
+The same character is described in identical tokens in every frame of the story. The model writing
 the direction never writes prompt prose about an entity.
 
-**I4. References before panels.** `reference` items are inputs to every panel image that shows
+**I4. References before frames.** `reference` items are inputs to every frame image that shows
 their subject:
 
 - a reference sheet per (character, wardrobe), as a turnaround;
 - an establishing plate per (location, time of day);
 - a reference per prop.
 
-When real generation lands, every panel is conditioned on its references through a multi-reference
-or image-to-image model. A reference regenerates only when its sheet changes, and then every panel
+When real generation lands, every frame is conditioned on its references through a multi-reference
+or image-to-image model. A reference regenerates only when its sheet changes, and then every frame
 showing it goes stale. That is the right consequence of changing what a character looks like. The
-placeholder generator already records the reference set in each panel request, so the graph exists
+placeholder generator already records the reference set in each frame request, so the graph exists
 before the pixels do.
 
 **I5. Staging continuity.** `Placement.Screen` records who is on the left and who is on the right.
-Within a scene, a character keeps their side across consecutive panels: the 180-degree rule. The
-exception is a panel the director marks as crossing the line, with a reason.
+Within a scene, a character keeps their side across consecutive frames: the 180-degree rule. The
+exception is a frame the director marks as crossing the line, with a reason.
 
 **I6. Style is an item every image depends on.** The style guide, aspect ratio and image model are
-the `style` item. Changing it makes every reference and panel image stale. The author sees that
+the `style` item. Changing it makes every reference and frame image stale. The author sees that
 cost in the plan before anything regenerates.
 
 ### 5.3 Picture and sound together
 
 The `cut` item is assembled by code:
 
-- Each panel's span runs from its first cue's start to the start of the next panel's first cue.
+- Each frame's span runs from its first cue's start to the start of the next frame's first cue.
 - The times come from the dialogue alignment and include the `GapBeforeMs` adjustments.
-- A panel with no cue, such as a pure action beat, uses `HoldMs`, and its duration is filled with the
+- A frame with no cue, such as a pure action beat, uses `HoldMs`, and its duration is filled with the
   location's ambience.
 
 Transitions map to the cut:
@@ -622,22 +622,22 @@ Verifiers run per item. Some read the item's siblings through the same store tha
 
 | Id | Kind | Checks |
 |---|---|---|
-| `direction-json` | det | Schema; panels cover every element exactly once, contiguous and in order; every Dialogue and Narration element has exactly one cue |
+| `direction-json` | det | Schema; frames cover every element exactly once, contiguous and in order; every Dialogue and Narration element has exactly one cue |
 | `performance-fidelity` | det | Each cue's `Performance`, with tags removed and pause punctuation normalised, equals the element's text word for word. The director adds delivery and never edits words; this is the publishing twin of `story-fidelity` |
 | `tag-vocabulary` | det | Tags are well formed, come from the story vocabulary, and stay within the per-line cap |
-| `panel-grounding` | det | The panel location matches the scene heading. Panel characters are speaking, mentioned, or carried over from an earlier panel of the scene, and each has an appearance in the scene. Props exist |
-| `staging` | det | Screen side stays stable across consecutive panels unless a crossing is declared |
-| `direction-judge` | model | Rubric: panel count fits the beats; tags fit the context and the speaker's arc; beats describe what is visible |
+| `frame-grounding` | det | The frame location matches the scene heading. Frame characters are speaking, mentioned, or carried over from an earlier frame of the scene, and each has an appearance in the scene. Props exist |
+| `staging` | det | Screen side stays stable across consecutive frames unless a crossing is declared |
+| `direction-judge` | model | Rubric: frame count fits the beats; tags fit the context and the speaker's arc; beats describe what is visible |
 
 **Generator kinds**
 
 | Id | Kind | Checks |
 |---|---|---|
-| `panel-image` | det | Right dimensions; the request contains every reference for its entities and the compiled prompt fragments |
+| `frame-image` | det | Right dimensions; the request contains every reference for its entities and the compiled prompt fragments |
 | `audio-coverage` | det | Every cue has a voice segment; per-cue duration is within bounds for its character count; no unplanned silence over a threshold; loudness on target |
 | `audio-transcript` | model | Speech-to-text round trip (ElevenLabs Scribe): word error rate per cue against the tag-stripped text stays under a threshold. This catches skipped, repeated or hallucinated words, the usual TTS failure |
-| `cut-timing` | det | Panel spans are contiguous, non-overlapping and cover the audio; transitions are applied |
-| `panel-consistency` | model | Later, with real images: a vision model compares each panel to its references for identity, wardrobe and location |
+| `cut-timing` | det | Frame spans are contiguous, non-overlapping and cover the audio; transitions are applied |
+| `frame-consistency` | model | Later, with real images: a vision model compares each frame to its references for identity, wardrobe and location |
 
 Every director kind therefore has deterministic verifiers and can climb the ladder. The generator
 kinds also have deterministic verifiers, which the `Codified` tier requires.
@@ -645,7 +645,7 @@ kinds also have deterministic verifiers, which the `Codified` tier requires.
 ## 7. Generation
 
 Generator kinds run as seed workflows, `Scheduled` from the start, with host-written C# executors:
-`reference`, `ambience`, `audio`, `panel-image` and `cut`. They are planned, batched, verified and
+`reference`, `ambience`, `audio`, `frame-image` and `cut`. They are planned, batched, verified and
 written like director items. The difference is that no agent is involved unless a stage escalates.
 
 Engine changes:
@@ -659,7 +659,7 @@ Engine changes:
 - **Media clients.**
   - `ISpeechSynthesizer`, implemented by `ElevenLabsDialogueSynthesizer` (Text to Dialogue
     with timestamps, request stitching, pronunciation dictionaries).
-  - `IPanelRenderer`, implemented by `PlaceholderPanelRenderer` (writes a black PNG at the style
+  - `IFrameRenderer`, implemented by `PlaceholderFrameRenderer` (writes a black PNG at the style
     guide's aspect ratio and stores the compiled request beside it).
   - The key lives in Secrets Manager as `Api_Providers__elevenlabs__ApiKey`, like the language
     model keys.
@@ -671,7 +671,7 @@ Two caches stack:
 - **Freshness.** A fresh item is never planned.
 - **Media.** A stale item whose request hash already exists in `media_assets` reuses the asset
   without calling a provider. Audio is keyed by `hash(cues, voice ids, settings, model, seed,
-  pronunciations)` and panels by `hash(compiled request)`. A panel that went stale because its
+  pronunciations)` and frames by `hash(compiled request)`. A frame that went stale because its
   scene was re-directed, but whose request came out identical, costs nothing.
 - **Audio chunks.** A scene's audio is a list of dialogue chunks (A2) mixed into one file. Each chunk
   is its own `SceneAudioChunk` asset, keyed by its turns, voices, settings and the ids of the
@@ -686,9 +686,9 @@ Two caches stack:
 | Data | Store | Why there |
 |---|---|---|
 | Run artifacts: one per item, plus generator manifests | Engine artifacts in the `documents` bucket (`runs/{runId}/{stageId}/{hash}`), object-locked | This is what the verifiers judged and what the ledger points at. It is the audit trail, the replay source and the holding place for proposals, and import already works this way. |
-| Item values: descriptions, voices, wardrobes, looks, panels, cues, timings | ThePlot Postgres (`protofast` database), written by item writers | This is the product's source of truth. The author edits it and the player reads it. The api never reads engine artifacts, except to show a proposal. |
+| Item values: descriptions, voices, wardrobes, looks, frames, cues, timings | ThePlot Postgres (`protofast` database), written by item writers | This is the product's source of truth. The author edits it and the player reads it. The api never reads engine artifacts, except to show a proposal. |
 | Item provenance and freshness | ThePlot Postgres, `publication_items` and `publication_item_inputs` | Freshness is a query over the same database the values live in. |
-| Media bytes: scene audio, alignment, panel images, references, ambience | A new `media` bucket with content-addressed keys | These are large binaries streamed to the browser, and they must be deletable with the story. |
+| Media bytes: scene audio, alignment, frame images, references, ambience | A new `media` bucket with content-addressed keys | These are large binaries streamed to the browser, and they must be deletable with the story. |
 
 ### 8.2 Media bucket
 
@@ -715,7 +715,7 @@ is the same pattern as the keyed `IMessageQueue`.
 ```
 stories/{storyId}/audio/{sha256}.mp3
 stories/{storyId}/audio/{sha256}.alignment.json      character timings and voice_segments from ElevenLabs
-stories/{storyId}/panels/{sha256}.png
+stories/{storyId}/frames/{sha256}.png
 stories/{storyId}/references/{sha256}.png
 stories/{storyId}/ambience/{sha256}.mp3
 ```
@@ -725,7 +725,7 @@ stories/{storyId}/ambience/{sha256}.mp3
   played while it regenerates keeps working.
 - **Keys are prefixed by story.** Deleting a story deletes one prefix. A later CloudFront signed
   cookie scoped to `stories/{storyId}/*` can then cover a whole story, instead of one presigned URL
-  per panel. For now the API returns presigned GET URLs from the existing `IPresignedUrlFactory`.
+  per frame. For now the API returns presigned GET URLs from the existing `IPresignedUrlFactory`.
   Range requests work against them, so audio seeks.
 - **Garbage collection.** A sweeper deletes objects that no `media_assets` row references, after a
   7-day grace period so that playback already in flight doesn't break. Deleting a story enqueues a
@@ -790,7 +790,7 @@ publications follow the same rule. Ownership follows the owned-entity rule:
 
 - `publications`, `published_scenes`, `publication_items`, `publish_plans` and `media_assets` are
   fetched on their own, so they carry `user_id`.
-- Panels, placements, cues and item inputs are only reached through a parent, so they don't.
+- Frames, placements, cues and item inputs are only reached through a parent, so they don't.
 
 ```
 publications
@@ -869,7 +869,7 @@ published_scenes
   audio_asset_id    uuid  fk media_assets null, on delete set null      audio
   duration_ms       int   null                                          cut
 
-panels   (owned)                                                         direction
+frames   (owned)                                                         direction
   id                uuid  pk
   published_scene_id uuid fk published_scenes on delete cascade
   position          int   >= 0
@@ -883,18 +883,18 @@ panels   (owned)                                                         directi
   hold_ms           int   null
   start_ms          int   null                                           cut
   end_ms            int   null   check end_ms > start_ms                 cut
-  image_asset_id    uuid  fk media_assets null, on delete set null       panel-image
+  image_asset_id    uuid  fk media_assets null, on delete set null       frame-image
   edited            bool                                                 kept as fixed input by later runs
 
-panel_placements   (owned)        pk (panel_id, character_id)            direction
-  panel_id          uuid  fk panels      on delete cascade
+frame_placements   (owned)        pk (frame_id, character_id)            direction
+  frame_id          uuid  fk frames      on delete cascade
   character_id      uuid  fk characters  on delete cascade
   screen            text  left | centre | right | off
   pose              text
   expression        text
   state             jsonb string[]   within-scene changes only
 
-panel_props   (owned)             pk (panel_id, prop_id), both on delete cascade
+frame_props   (owned)             pk (frame_id, prop_id), both on delete cascade
 
 cues   (owned)                                                           direction
   id                uuid  pk
@@ -912,7 +912,7 @@ media_assets
   id                uuid  pk
   user_id           text
   story_id          uuid  fk stories  on delete cascade
-  kind              text  SceneAudio | SceneAudioChunk | PanelImage | Reference | Ambience
+  kind              text  SceneAudio | SceneAudioChunk | FrameImage | Reference | Ambience
   storage_key       text
   content_type      text
   content_hash      text
@@ -961,7 +961,7 @@ Each kind has an `IItemWriter`. Writers live in `ProtoFast.Data`, run in the wor
 
 Each kind replaces only the rows it owns:
 
-- `direction` replaces the scene's panels, placements, panel props and cues. It never replaces a
+- `direction` replaces the scene's frames, placements, frame props and cues. It never replaces a
   row marked `edited` whose source elements are unchanged.
 - `appearance` replaces one `scene_appearances` row.
 - `character-sheet` replaces the character's three columns and its wardrobes.
@@ -974,7 +974,7 @@ then.
 
 The API side mirrors this for author edits. `UpdateCharacter`, `UpdateAppearance` and the other
 single-row edit RPCs write the rows, then upsert the item as `Author` and pinned, with a fresh value
-hash and the inputs resolved at that moment. `UpdateCue` and `UpdatePanel` mark the row `edited`
+hash and the inputs resolved at that moment. `UpdateCue` and `UpdateFrame` mark the row `edited`
 and re-hash the direction item. `SaveDirectedScene` runs the `SaveScene` code and the cue updates
 in one unit of work, and moves the edited cues' baselines forward.
 
@@ -988,8 +988,8 @@ references `ProtoFast.Data` for `StoryWriter`.
 | `LibraryDescriptions` | 0 | Character, location and prop `description`; `StoryWriter` saves the importer's descriptions |
 | `PublicationItems` | 0 | `publications`, `publication_items`, `publication_item_inputs`, `item_values`, `item_history`, `publish_plans`, `scenes.content_hash` |
 | `StoryContinuity` | 1 | `appearance`, `voice`, `acoustics`, `character_wardrobes`, `scene_appearances`, `scene_prop_states`, `scenes.story_day` |
-| `SceneDirection` | 2 | `published_scenes`, `panels`, `panel_placements`, `panel_props`, `cues` |
-| `MediaAssets` | 3 | `media_assets`, plus the asset foreign keys on `panels` and `published_scenes` |
+| `SceneDirection` | 2 | `published_scenes`, `frames`, `frame_placements`, `frame_props`, `cues` |
+| `MediaAssets` | 3 | `media_assets`, plus the asset foreign keys on `frames` and `published_scenes` |
 
 Proto changes:
 
@@ -1014,18 +1014,18 @@ Proto changes:
   - `UpdateAppearance`
   - `UpdatePropState`
   - `UpdateCue`
-  - `UpdatePanel`
+  - `UpdateFrame`
   - `SaveDirectedScene` (the scene and its cues, in one save)
   - `GetSceneChanges` (hunks, each with its reconcile proposal if one exists)
   - `ResolveHunk(hunk, action, edit?)`
   - `ResolveAll(scene, action)`
   - `UndoChange(item, history id)`
-  - `GetPublishedScene` (panels, placements, cues and presigned media URLs)
+  - `GetPublishedScene` (frames, placements, cues and presigned media URLs)
 
 **Clients.**
 
 - `theplot`:
-  - Director mode in the scene editor (9.1): the Story | Director toggle, inline tags, panel
+  - Director mode in the scene editor (9.1): the Story | Director toggle, inline tags, frame
     brackets, the Direction tab, the change bar and the hunk navigator. Story mode gets the
     "Directed · n changes" badge.
   - Publish actions where the item lives: "Describe" on a character in the library panel, "Look
@@ -1033,7 +1033,7 @@ Proto changes:
   - A status chip on each item (missing, fresh, stale, proposed).
   - A plan confirmation that shows the waves and the cost.
   - A review view for proposals.
-  - A player (panels over audio).
+  - A player (frames over audio).
 - `admin-theplot`: lists the publish runs beside the import runs. It shows the same ledger, and runs
   are filterable by kind and item key.
 
@@ -1047,9 +1047,9 @@ adds the director layer on top:
 
 - **Dialogue rows** show the cue's performance: tags as chips at their positions in the line, plus
   gap and interruption markers between lines.
-- **The left gutter** shows numbered panel brackets spanning the elements each panel covers.
-- **A Direction tab** in the side panel, beside the library and overview tabs, shows the selected
-  panel: shot, beat, placements with screen side, and props. It also shows the scene's looks
+- **The left gutter** shows numbered frame brackets spanning the elements each frame covers.
+- **A Direction tab** in the side frame, beside the library and overview tabs, shows the selected
+  frame: shot, beat, placements with screen side, and props. It also shows the scene's looks
   (wardrobe, state, change), prop states and story day.
 - **The library panel** in director mode shows sheets and voices, with a sample to play.
 - **Every item** shows its status chip and the publish actions from 2.3.
@@ -1061,8 +1061,8 @@ Edits in director mode:
   cue's baseline moves forward with the text and no discrepancy appears. This is the only story edit
   that resolves itself. Every other story edit made in director mode still shows as a change (9.2),
   but it appears inline straight away, where it can be resolved.
-- **Tags, gaps, panels, looks and prop states** are edited in place. A direction is large, so
-  edits are tracked per row: an edited cue or panel is marked `edited`. Later runs, whether a
+- **Tags, gaps, frames, looks and prop states** are edited in place. A direction is large, so
+  edits are tracked per row: an edited cue or frame is marked `edited`. Later runs, whether a
   regeneration or a reconcile, keep edited rows as fixed input unless the story text underneath
   them changes. Looks, prop states and sheets are one row per item, so editing one pins its item
   (2.4).
@@ -1093,11 +1093,11 @@ Each change becomes one or more **hunks**, grouped by the director part they aff
 | A dialogue line's words changed | `line-changed` | Its cue |
 | A dialogue line's speaker changed | `speaker-changed` | Its cue (tags may not fit the new speaker's arc), placements |
 | A dialogue line added | `cue-missing` | The direction |
-| An element added inside a panel's range | `panel-grew` | That panel |
-| An element removed | `cue-orphaned`, `panel-broken` | Its cue; the panel, when it was the first or last element |
-| An action line's text changed | `beat-changed` | The panels covering it; the looks and prop states of subjects it mentions |
-| The heading's location or time changed | `setting-changed` | Every panel, look and prop state in the scene |
-| A character speaks or is mentioned for the first time in the scene | `look-missing`, `placement-missing` | A new look; the panels where the character appears |
+| An element added inside a frame's range | `frame-grew` | That frame |
+| An element removed | `cue-orphaned`, `frame-broken` | Its cue; the frame, when it was the first or last element |
+| An action line's text changed | `beat-changed` | The frames covering it; the looks and prop states of subjects it mentions |
+| The heading's location or time changed | `setting-changed` | Every frame, look and prop state in the scene |
+| A character speaks or is mentioned for the first time in the scene | `look-missing`, `placement-missing` | A new look; the frames where the character appears |
 | An upstream item changed (a wardrobe renamed, the previous look changed) | `upstream-changed` | Every item that used it, with a field diff |
 
 Hunks are derived when they are read, never stored. A hunk's id is
@@ -1143,11 +1143,11 @@ hunks. It runs on the same tier ladder as everything else, cheapest first:
    - When every anchor survives, each tag is placed at its anchor in the new line. A line-start tag
      stays at the start, because it sets the delivery for the whole line. So `[sad] I'm sorry` edited to
      `Max I'm really sorry` becomes `[sad] Max I'm really sorry` with no model call.
-   - Panel ranges whose end elements survive keep their range. An inserted element joins the panel
+   - Frame ranges whose end elements survive keep their range. An inserted element joins the frame
      it was inserted into.
    - A new character's look carries forward their previous look.
 2. **Small model (`DelegateSmall`).** It runs when an anchor is lost (the tagged words were deleted),
-   when a structural hunk needs a judgement (a new line needs tags, or a panel grew past a beat), or
+   when a structural hunk needs a judgement (a new line needs tags, or a frame grew past a beat), or
    when the anchor tier fails its verifiers.
    - The model sees the old line and performance, the new line, its neighbours and the speaker's
      arc.
@@ -1165,7 +1165,7 @@ Verifiers:
 |---|---|---|
 | `performance-fidelity` | det | Cue words equal the new text |
 | `anchors-intact` | det | Every tag of the old performance is placed, or its removal is explained by a deleted anchor |
-| `reconcile-minimal` | det | Cues, panels, looks and states outside the hunks are identical to before |
+| `reconcile-minimal` | det | Cues, frames, looks and states outside the hunks are identical to before |
 | `reconcile-judge` | model | Does the carried-forward delivery still fit the new meaning? Returns a confidence score. "I'm sorry" edited to "I'm not sorry at all" keeps every anchor, but `[sad]` probably no longer fits, so the score is low |
 
 ### 9.5 Auto-approve
@@ -1217,7 +1217,7 @@ The policy works like this:
      transfer as the first reconcile tier.
 3. **Generator items.**
    - Add the `media` bucket (terraform and LocalStack) and the `MediaAssets` migration.
-   - Build placeholder references and panels, ambience, the ElevenLabs dialogue synthesizer, the mix,
+   - Build placeholder references and frames, ambience, the ElevenLabs dialogue synthesizer, the mix,
      and the cut.
    - Add the audio verifiers.
    - Build the player.
@@ -1231,7 +1231,7 @@ The policy works like this:
    - Watch `prop-sheet`, `appearance` and `prop-state` move to small models, and the two chained
      kinds move toward `Codified`.
 6. **Real images.**
-   - Add a real `IPanelRenderer` and reference rendering, and `panel-consistency`.
+   - Add a real `IFrameRenderer` and reference rendering, and `frame-consistency`.
 
 ## 11. Decisions
 
@@ -1241,14 +1241,14 @@ These were open questions in earlier drafts. Each is now settled, and the sectio
 |---|---|---|---|
 | Where do delivery tags live? | In `cues.performance`, never in `SceneElement.Text` | Tags in the text would break mention offsets and `story-fidelity`, and would show in the screenplay. `performance-fidelity` keeps the cue's words identical to the line | 5.1 A0, 8.4 |
 | Refresh stale inputs, or build on what exists? | Refresh them first, unless they are pinned. Missing inputs are always built | An item built on a stale input is only valid until that input catches up, so it would be paid for twice. Early cutoff and the per-wave re-check make the refresh cheap when nothing really changed | 2.3 |
-| Default scope | Library actions use `Item`. Scene actions use `ItemAndDownstream` | A sheet's downstream spans the story, so regenerating it should be deliberate. A scene action means "make this scene right", audio and panels included | 2.3 |
-| Narrate action lines? | No. Dialogue uses the speaker's voice and Narration uses a narrator voice (`narrator/voice`). Action and Description lines become panels and room tone | Pictures carry the action. Narrating stage directions makes an audiobook of a screenplay and doubles the audio cost | 2.1, 5.1 A0 |
+| Default scope | Library actions use `Item`. Scene actions use `ItemAndDownstream` | A sheet's downstream spans the story, so regenerating it should be deliberate. A scene action means "make this scene right", audio and frames included | 2.3 |
+| Narrate action lines? | No. Dialogue uses the speaker's voice and Narration uses a narrator voice (`narrator/voice`). Action and Description lines become frames and room tone | Pictures carry the action. Narrating stage directions makes an audiobook of a screenplay and doubles the audio cost | 2.1, 5.1 A0 |
 | Voice approval and pinning | Voices are reviewed by default: the author picks from the proposed voice and two runners-up, with samples. A voice pins itself on first audio use. Recasting means unpinning, and the plan shows the cost | A voice is the one choice a machine cannot verify, and the most expensive to reverse | 2.4, 4.4 |
 | Review mode default | Review is chosen per kind with `review_kinds`, defaulting to `{voice, narrator-voice}`. Everything else is `Auto` | Other items are cheap to edit afterwards, and an edit is still a correction signal. Reviewing every scene up front is a chore with little gain | 2.4, 8.4 |
 | Per-scene prop state | Yes: a `prop-state` item (`scene/{s}/prop/{p}`) shaped like an appearance, chained per prop, and not reset by the story day | A broken vase or a lit candle is exactly the continuity a reader notices. Most states carry forward, so the chain is cheap and an early `Codified` candidate | 2.1, 5.2 I2, 6, 8.3 |
 | Batch size | Set per kind: sheets and voices up to 8; story-wide kinds 1; appearances, prop states and generator kinds one scene's worth; direction 1 scene | Small sheets share context cheaply. A scene direction needs the whole context for one scene | 2.3 |
 | Director edits to a line's words | Change the story and the cue together, and resolve themselves | The author sees the tags while typing, so the edit already contains their decision | 9.1 |
-| Tracking author edits inside a direction | Per row (`edited` on cues and panels). Items with one row per item pin instead | Pinning a whole scene's direction over one tag would block every later fix to that scene | 2.4, 9.1 |
+| Tracking author edits inside a direction | Per row (`edited` on cues and frames). Items with one row per item pin instead | Pinning a whole scene's direction over one tag would block every later fix to that scene | 2.4, 9.1 |
 | How discrepancies are stored | Not at all. Hunks are derived from kept item values, and resolving one moves the baseline forward per element | Nothing can drift out of sync, and partial review survives leaving the page | 9.2, 9.3 |
 | Reconcile default | `Auto`: apply when verifiers pass and `reconcile-judge` scores at least 0.8; otherwise propose. Every apply can be undone | Most edits are small and anchor transfer handles them without a model. The judge catches edits whose meaning flipped | 9.5 |
 | Does auto-reconcile regenerate media? | No. It stops at director items; audio and images wait for an explicit publish | Regeneration costs money and changes what a reader hears | 9.5 |

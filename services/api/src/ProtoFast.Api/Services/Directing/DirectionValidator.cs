@@ -2,8 +2,8 @@ using Google.Protobuf.Collections;
 using ProtoFast.Api.Services.Screenplays;
 using ProtoFast.Data.ThePlot.Entities;
 using CueRecord = ProtoFast.Data.ThePlot.Entities.Cue;
-using PanelRecord = ProtoFast.Data.ThePlot.Entities.Panel;
-using PanelPropRecord = ProtoFast.Data.ThePlot.Entities.PanelProp;
+using FrameRecord = ProtoFast.Data.ThePlot.Entities.Frame;
+using FramePropRecord = ProtoFast.Data.ThePlot.Entities.FrameProp;
 using SceneAppearanceRecord = ProtoFast.Data.ThePlot.Entities.SceneAppearance;
 using SceneLocationStateRecord = ProtoFast.Data.ThePlot.Entities.SceneLocationState;
 using SceneElementTypeRecord = ProtoFast.Data.ThePlot.Entities.SceneElementType;
@@ -13,7 +13,7 @@ namespace ProtoFast.Api.Services.Directing;
 
 /// <summary>
 /// Checks a director layer against its scene and story and returns it as detached rows. Rows are
-/// known by their place in the scene (a cue by its line, a panel by its first row, a look by its
+/// known by their place in the scene (a cue by its line, a frame by its first row, a look by its
 /// character, a state by its prop); ids are the server's and only come back for display.
 /// </summary>
 public static class DirectionValidator
@@ -36,7 +36,7 @@ public static class DirectionValidator
             Angle = OptionalLabel(message.HasAngle ? message.Angle : null, DirectionVocabulary.Angles, "The scene", "camera angle"),
             Movement = OptionalLabel(message.HasMovement ? message.Movement : null, DirectionVocabulary.Movements, "The scene", "camera movement"),
             Cues = Cues(message.Cues, references),
-            Panels = Panels(message.Panels, references),
+            Frames = Frames(message.Frames, references),
             Appearances = Appearances(message.Appearances, references),
             PropStates = PropStates(message.PropStates, references),
             LocationStates = LocationStates(message.LocationStates, references),
@@ -117,40 +117,40 @@ public static class DirectionValidator
     public static bool Spoken(SceneElementTypeRecord type) =>
         type is SceneElementTypeRecord.Dialogue or SceneElementTypeRecord.Narration or SceneElementTypeRecord.Action;
 
-    private static List<PanelRecord> Panels(RepeatedField<Panel> panels, DirectionReferences references)
+    private static List<FrameRecord> Frames(RepeatedField<Frame> frames, DirectionReferences references)
     {
-        var records = new List<(PanelRecord Record, int First, int Last)>(panels.Count);
-        for (var index = 0; index < panels.Count; index++)
+        var records = new List<(FrameRecord Record, int First, int Last)>(frames.Count);
+        for (var index = 0; index < frames.Count; index++)
         {
-            var panel = panels[index];
-            var where = $"Panel {index + 1}";
-            var first = references.Elements[Element(panel.FirstElementId, references, where)];
-            var last = references.Elements[Element(panel.LastElementId, references, where)];
+            var frame = frames[index];
+            var where = $"Frame {index + 1}";
+            var first = references.Elements[Element(frame.FirstElementId, references, where)];
+            var last = references.Elements[Element(frame.LastElementId, references, where)];
             if (first.Position > last.Position)
             {
                 throw StoryErrors.Invalid($"{where}: its last row comes before its first.");
             }
 
-            if (panel.HasHoldMs && panel.HoldMs <= 0)
+            if (frame.HasHoldMs && frame.HoldMs <= 0)
             {
                 throw StoryErrors.Invalid($"{where}: a hold has to be longer than nothing.");
             }
 
-            var record = new PanelRecord
+            var record = new FrameRecord
             {
                 FirstElementId = first.Id,
                 LastElementId = last.Id,
-                LocationId = panel.HasLocationId ? Reference(panel.LocationId, references.Story.LocationIds, where, "location") : null,
+                LocationId = frame.HasLocationId ? Reference(frame.LocationId, references.Story.LocationIds, where, "location") : null,
                 TimeOfDay = VocabularyLabels.Pick(
-                    panel.HasTimeOfDay ? panel.TimeOfDay : null, references.Story.TimesOfDay, current: null, "time of day"),
-                Beat = Text(panel.Beat, BeatMaxLength, where, "beat"),
-                Shot = OptionalLabel(panel.HasShot ? panel.Shot : null, DirectionVocabulary.Shots, where, "shot"),
-                Angle = OptionalLabel(panel.HasAngle ? panel.Angle : null, DirectionVocabulary.Angles, where, "camera angle"),
-                Movement = OptionalLabel(panel.HasMovement ? panel.Movement : null, DirectionVocabulary.Movements, where, "camera movement"),
-                LocationChange = Text(panel.LocationChange, BeatMaxLength, where, "location change"),
-                HoldMs = panel.HasHoldMs ? panel.HoldMs : null,
-                Placements = Placements(panel.Placements, references, where),
-                Props = PanelProps(panel.Props, references, where),
+                    frame.HasTimeOfDay ? frame.TimeOfDay : null, references.Story.TimesOfDay, current: null, "time of day"),
+                Beat = Text(frame.Beat, BeatMaxLength, where, "beat"),
+                Shot = OptionalLabel(frame.HasShot ? frame.Shot : null, DirectionVocabulary.Shots, where, "shot"),
+                Angle = OptionalLabel(frame.HasAngle ? frame.Angle : null, DirectionVocabulary.Angles, where, "camera angle"),
+                Movement = OptionalLabel(frame.HasMovement ? frame.Movement : null, DirectionVocabulary.Movements, where, "camera movement"),
+                LocationChange = Text(frame.LocationChange, BeatMaxLength, where, "location change"),
+                HoldMs = frame.HasHoldMs ? frame.HoldMs : null,
+                Placements = Placements(frame.Placements, references, where),
+                Props = FrameProps(frame.Props, references, where),
             };
             records.Add((record, first.Position, last.Position));
         }
@@ -160,7 +160,7 @@ public static class DirectionValidator
         {
             if (records[i].First <= records[i - 1].Last)
             {
-                throw StoryErrors.Invalid("Two panels cover the same row.");
+                throw StoryErrors.Invalid("Two frames cover the same row.");
             }
         }
 
@@ -172,9 +172,9 @@ public static class DirectionValidator
         return records.Select(r => r.Record).ToList();
     }
 
-    private static List<PanelPlacement> Placements(RepeatedField<Placement> placements, DirectionReferences references, string where)
+    private static List<FramePlacement> Placements(RepeatedField<Placement> placements, DirectionReferences references, string where)
     {
-        var records = new List<PanelPlacement>(placements.Count);
+        var records = new List<FramePlacement>(placements.Count);
         foreach (var placement in placements)
         {
             var characterId = Reference(placement.CharacterId, references.Story.CharacterIds, where, "character");
@@ -183,7 +183,7 @@ public static class DirectionValidator
                 throw StoryErrors.Invalid($"{where}: a character is placed twice.");
             }
 
-            records.Add(new PanelPlacement
+            records.Add(new FramePlacement
             {
                 CharacterId = characterId,
                 Screen = placement.Screen.Trim().Length == 0
@@ -201,15 +201,15 @@ public static class DirectionValidator
         return records;
     }
 
-    private static List<PanelPropRecord> PanelProps(RepeatedField<PanelProp> props, DirectionReferences references, string where)
+    private static List<FramePropRecord> FrameProps(RepeatedField<FrameProp> props, DirectionReferences references, string where)
     {
-        var records = new List<PanelPropRecord>(props.Count);
+        var records = new List<FramePropRecord>(props.Count);
         foreach (var prop in props)
         {
             var id = Reference(prop.PropId, references.Story.PropIds, where, "prop");
             if (records.All(p => p.PropId != id))
             {
-                records.Add(new PanelPropRecord { PropId = id, InView = prop.InView });
+                records.Add(new FramePropRecord { PropId = id, InView = prop.InView });
             }
         }
 

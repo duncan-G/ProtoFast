@@ -2,12 +2,12 @@ import { SceneElement } from '../stories/model/scene-element';
 import { SceneElementType } from '../stories/model/scene-element-type';
 import { Cue } from './model/cue';
 import { SceneDirection } from './model/scene-direction';
-import { panelSpans, uncovered } from './panels';
+import { frameSpans, uncovered } from './frames';
 import { sameWords } from './performance';
 
 /**
  * What the story text has outgrown in the director layer, found by reading both: a line whose
- * words no longer match its cue, a line without a cue, a row no panel pictures.
+ * words no longer match its cue, a line without a cue, a row no frame pictures.
  */
 export type DirectionChange =
   | { kind: 'line-changed'; elementId: string; cue: Cue }
@@ -25,7 +25,7 @@ export function directionChanges(
 ): DirectionChange[] {
   const changes: DirectionChange[] = [];
   const cues = new Map(direction.cues.map((c) => [c.elementId, c]));
-  const directed = direction.cues.length > 0 || direction.panels.length > 0;
+  const directed = direction.cues.length > 0 || direction.frames.length > 0;
   for (const element of elements) {
     if (!isSpoken(element.type)) {
       continue;
@@ -39,8 +39,8 @@ export function directionChanges(
       changes.push({ kind: 'line-changed', elementId: element.id, cue });
     }
   }
-  if (direction.panels.length > 0) {
-    for (const index of uncovered(panelSpans(direction.panels, elements), elements.length)) {
+  if (direction.frames.length > 0) {
+    for (const index of uncovered(frameSpans(direction.frames, elements), elements.length)) {
       changes.push({ kind: 'uncovered', elementId: elements[index].id });
     }
   }

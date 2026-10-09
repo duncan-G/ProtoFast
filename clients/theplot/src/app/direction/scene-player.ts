@@ -6,7 +6,7 @@ import { Cue } from './model/cue';
 export class ScenePlayer {
   /** The element whose line is playing, or null. */
   readonly playing = signal<string | null>(null);
-  /** What started the run that is playing: "scene", a panel's key, or a line's element id. */
+  /** What started the run that is playing: "scene", a frame's key, or a line's element id. */
   readonly context = signal<string | null>(null);
   /** How far into the playing line, in milliseconds. */
   readonly position = signal(0);

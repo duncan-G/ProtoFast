@@ -324,11 +324,11 @@ public class DirectionService(
             cue.NarratorId = null;
         }
 
-        draft.Panels.RemoveAll(p => !references.Elements.ContainsKey(p.FirstElementId) || !references.Elements.ContainsKey(p.LastElementId));
-        foreach (var panel in draft.Panels)
+        draft.Frames.RemoveAll(p => !references.Elements.ContainsKey(p.FirstElementId) || !references.Elements.ContainsKey(p.LastElementId));
+        foreach (var frame in draft.Frames)
         {
-            panel.Placements.RemoveAll(p => !references.Story.CharacterIds.Contains(p.CharacterId));
-            foreach (var placement in panel.Placements)
+            frame.Placements.RemoveAll(p => !references.Story.CharacterIds.Contains(p.CharacterId));
+            foreach (var placement in frame.Placements)
             {
                 if (placement.WardrobeId is { } wardrobeId
                     && !(references.WardrobesByCharacter.TryGetValue(placement.CharacterId, out var wardrobes) && wardrobes.Contains(wardrobeId)))
@@ -337,10 +337,10 @@ public class DirectionService(
                 }
             }
 
-            panel.Props.RemoveAll(p => !references.Story.PropIds.Contains(p.PropId));
-            if (panel.LocationId is { } locationId && !references.Story.LocationIds.Contains(locationId))
+            frame.Props.RemoveAll(p => !references.Story.PropIds.Contains(p.PropId));
+            if (frame.LocationId is { } locationId && !references.Story.LocationIds.Contains(locationId))
             {
-                panel.LocationId = null;
+                frame.LocationId = null;
             }
         }
 
@@ -372,9 +372,9 @@ public class DirectionService(
         draft.LocationStates.RemoveAll(l => !references.Story.LocationIds.Contains(l.LocationId));
 
         var position = 0;
-        foreach (var panel in draft.Panels.OrderBy(p => references.Elements[p.FirstElementId].Position))
+        foreach (var frame in draft.Frames.OrderBy(p => references.Elements[p.FirstElementId].Position))
         {
-            panel.Position = position++;
+            frame.Position = position++;
         }
     }
 

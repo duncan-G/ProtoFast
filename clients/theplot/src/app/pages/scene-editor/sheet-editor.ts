@@ -34,16 +34,12 @@ import { StateChips } from './state-chips';
         <button
           type="button"
           class="se-btn se-btn-text"
+          [class.is-working]="store.describing() === target().id"
           [disabled]="store.describing() !== null"
           title="Have the model write this sheet from the story"
           (click)="store.describe(target())"
         >
-          @if (store.describing() === target().id) {
-            <span class="spinner" aria-hidden="true"></span>
-            Describing…
-          } @else {
-            Describe
-          }
+          {{ store.describing() === target().id ? 'Describing…' : 'Describe' }}
         </button>
       </div>
     }

@@ -343,6 +343,175 @@ namespace ProtoFast.Data.Migrations
                     b.ToTable("document_uploads", "plot");
                 });
 
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Frame", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Angle")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("angle");
+
+                    b.Property<string>("Beat")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("beat");
+
+                    b.Property<bool>("Edited")
+                        .HasColumnType("boolean")
+                        .HasColumnName("edited");
+
+                    b.Property<Guid>("FirstElementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("first_element_id");
+
+                    b.Property<int?>("HoldMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("hold_ms");
+
+                    b.Property<Guid>("LastElementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("last_element_id");
+
+                    b.Property<string>("LocationChange")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("location_change");
+
+                    b.Property<Guid?>("LocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("location_id");
+
+                    b.Property<string>("Movement")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("movement");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<Guid>("SceneId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("scene_id");
+
+                    b.Property<string>("Shot")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("shot");
+
+                    b.Property<string>("TimeOfDay")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("time_of_day");
+
+                    b.HasKey("Id")
+                        .HasName("pk_frames");
+
+                    b.HasIndex("FirstElementId")
+                        .HasDatabaseName("ix_frames_first_element_id");
+
+                    b.HasIndex("LastElementId")
+                        .HasDatabaseName("ix_frames_last_element_id");
+
+                    b.HasIndex("LocationId")
+                        .HasDatabaseName("ix_frames_location_id");
+
+                    b.HasIndex("SceneId", "Position")
+                        .HasDatabaseName("ix_frames_scene_id_position");
+
+                    b.ToTable("frames", "plot", t =>
+                        {
+                            t.HasCheckConstraint("ck_frames_hold_ms", "hold_ms IS NULL OR hold_ms > 0");
+
+                            t.HasCheckConstraint("ck_frames_position_non_negative", "position >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.FramePlacement", b =>
+                {
+                    b.Property<Guid>("FrameId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("frame_id");
+
+                    b.Property<Guid>("CharacterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("character_id");
+
+                    b.Property<string>("AppearanceChange")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("appearance_change");
+
+                    b.Property<string>("Expression")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("expression");
+
+                    b.Property<bool?>("OnScreen")
+                        .HasColumnType("boolean")
+                        .HasColumnName("on_screen");
+
+                    b.Property<string>("Pose")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("pose");
+
+                    b.Property<string>("Screen")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("screen");
+
+                    b.Property<string>("WardrobeChange")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("wardrobe_change");
+
+                    b.Property<Guid?>("WardrobeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("wardrobe_id");
+
+                    b.HasKey("FrameId", "CharacterId")
+                        .HasName("pk_frame_placements");
+
+                    b.HasIndex("CharacterId")
+                        .HasDatabaseName("ix_frame_placements_character_id");
+
+                    b.HasIndex("WardrobeId")
+                        .HasDatabaseName("ix_frame_placements_wardrobe_id");
+
+                    b.ToTable("frame_placements", "plot");
+                });
+
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.FrameProp", b =>
+                {
+                    b.Property<Guid>("FrameId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("frame_id");
+
+                    b.Property<Guid>("PropId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("prop_id");
+
+                    b.Property<bool>("InView")
+                        .HasColumnType("boolean")
+                        .HasColumnName("in_view");
+
+                    b.HasKey("FrameId", "PropId")
+                        .HasName("pk_frame_props");
+
+                    b.HasIndex("PropId")
+                        .HasDatabaseName("ix_frame_props_prop_id");
+
+                    b.ToTable("frame_props", "plot");
+                });
+
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Location", b =>
                 {
                     b.Property<Guid>("Id")
@@ -526,175 +695,6 @@ namespace ProtoFast.Data.Migrations
                         {
                             t.HasCheckConstraint("ck_narrators_position_non_negative", "position >= 0");
                         });
-                });
-
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Panel", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Angle")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("angle");
-
-                    b.Property<string>("Beat")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("beat");
-
-                    b.Property<bool>("Edited")
-                        .HasColumnType("boolean")
-                        .HasColumnName("edited");
-
-                    b.Property<Guid>("FirstElementId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("first_element_id");
-
-                    b.Property<int?>("HoldMs")
-                        .HasColumnType("integer")
-                        .HasColumnName("hold_ms");
-
-                    b.Property<Guid>("LastElementId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("last_element_id");
-
-                    b.Property<string>("LocationChange")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("location_change");
-
-                    b.Property<Guid?>("LocationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("location_id");
-
-                    b.Property<string>("Movement")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("movement");
-
-                    b.Property<int>("Position")
-                        .HasColumnType("integer")
-                        .HasColumnName("position");
-
-                    b.Property<Guid>("SceneId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("scene_id");
-
-                    b.Property<string>("Shot")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("shot");
-
-                    b.Property<string>("TimeOfDay")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("time_of_day");
-
-                    b.HasKey("Id")
-                        .HasName("pk_panels");
-
-                    b.HasIndex("FirstElementId")
-                        .HasDatabaseName("ix_panels_first_element_id");
-
-                    b.HasIndex("LastElementId")
-                        .HasDatabaseName("ix_panels_last_element_id");
-
-                    b.HasIndex("LocationId")
-                        .HasDatabaseName("ix_panels_location_id");
-
-                    b.HasIndex("SceneId", "Position")
-                        .HasDatabaseName("ix_panels_scene_id_position");
-
-                    b.ToTable("panels", "plot", t =>
-                        {
-                            t.HasCheckConstraint("ck_panels_hold_ms", "hold_ms IS NULL OR hold_ms > 0");
-
-                            t.HasCheckConstraint("ck_panels_position_non_negative", "position >= 0");
-                        });
-                });
-
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.PanelPlacement", b =>
-                {
-                    b.Property<Guid>("PanelId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("panel_id");
-
-                    b.Property<Guid>("CharacterId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("character_id");
-
-                    b.Property<string>("AppearanceChange")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("appearance_change");
-
-                    b.Property<string>("Expression")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("expression");
-
-                    b.Property<bool?>("OnScreen")
-                        .HasColumnType("boolean")
-                        .HasColumnName("on_screen");
-
-                    b.Property<string>("Pose")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("pose");
-
-                    b.Property<string>("Screen")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("screen");
-
-                    b.Property<string>("WardrobeChange")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("wardrobe_change");
-
-                    b.Property<Guid?>("WardrobeId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("wardrobe_id");
-
-                    b.HasKey("PanelId", "CharacterId")
-                        .HasName("pk_panel_placements");
-
-                    b.HasIndex("CharacterId")
-                        .HasDatabaseName("ix_panel_placements_character_id");
-
-                    b.HasIndex("WardrobeId")
-                        .HasDatabaseName("ix_panel_placements_wardrobe_id");
-
-                    b.ToTable("panel_placements", "plot");
-                });
-
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.PanelProp", b =>
-                {
-                    b.Property<Guid>("PanelId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("panel_id");
-
-                    b.Property<Guid>("PropId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("prop_id");
-
-                    b.Property<bool>("InView")
-                        .HasColumnType("boolean")
-                        .HasColumnName("in_view");
-
-                    b.HasKey("PanelId", "PropId")
-                        .HasName("pk_panel_props");
-
-                    b.HasIndex("PropId")
-                        .HasDatabaseName("ix_panel_props_prop_id");
-
-                    b.ToTable("panel_props", "plot");
                 });
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Prop", b =>
@@ -1300,6 +1300,94 @@ namespace ProtoFast.Data.Migrations
                         .HasConstraintName("fk_documents_document_uploads_id");
                 });
 
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Frame", b =>
+                {
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.SceneElement", "FirstElement")
+                        .WithMany()
+                        .HasForeignKey("FirstElementId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_frames_scene_elements_first_element_id");
+
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.SceneElement", "LastElement")
+                        .WithMany()
+                        .HasForeignKey("LastElementId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_frames_scene_elements_last_element_id");
+
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Location", "Location")
+                        .WithMany()
+                        .HasForeignKey("LocationId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_frames_locations_location_id");
+
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Scene", "Scene")
+                        .WithMany("Frames")
+                        .HasForeignKey("SceneId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_frames_scenes_scene_id");
+
+                    b.Navigation("FirstElement");
+
+                    b.Navigation("LastElement");
+
+                    b.Navigation("Location");
+
+                    b.Navigation("Scene");
+                });
+
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.FramePlacement", b =>
+                {
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Character", "Character")
+                        .WithMany()
+                        .HasForeignKey("CharacterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_frame_placements_characters_character_id");
+
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Frame", "Frame")
+                        .WithMany("Placements")
+                        .HasForeignKey("FrameId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_frame_placements_frames_frame_id");
+
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.CharacterWardrobe", "Wardrobe")
+                        .WithMany()
+                        .HasForeignKey("WardrobeId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_frame_placements_character_wardrobes_wardrobe_id");
+
+                    b.Navigation("Character");
+
+                    b.Navigation("Frame");
+
+                    b.Navigation("Wardrobe");
+                });
+
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.FrameProp", b =>
+                {
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Frame", "Frame")
+                        .WithMany("Props")
+                        .HasForeignKey("FrameId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_frame_props_frames_frame_id");
+
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Prop", "Prop")
+                        .WithMany()
+                        .HasForeignKey("PropId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_frame_props_props_prop_id");
+
+                    b.Navigation("Frame");
+
+                    b.Navigation("Prop");
+                });
+
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Location", b =>
                 {
                     b.HasOne("ProtoFast.Data.ThePlot.Entities.Story", "Story")
@@ -1438,94 +1526,6 @@ namespace ProtoFast.Data.Migrations
 
                     b.Navigation("Voice")
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Panel", b =>
-                {
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.SceneElement", "FirstElement")
-                        .WithMany()
-                        .HasForeignKey("FirstElementId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_panels_scene_elements_first_element_id");
-
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.SceneElement", "LastElement")
-                        .WithMany()
-                        .HasForeignKey("LastElementId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_panels_scene_elements_last_element_id");
-
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Location", "Location")
-                        .WithMany()
-                        .HasForeignKey("LocationId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_panels_locations_location_id");
-
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Scene", "Scene")
-                        .WithMany("Panels")
-                        .HasForeignKey("SceneId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_panels_scenes_scene_id");
-
-                    b.Navigation("FirstElement");
-
-                    b.Navigation("LastElement");
-
-                    b.Navigation("Location");
-
-                    b.Navigation("Scene");
-                });
-
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.PanelPlacement", b =>
-                {
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Character", "Character")
-                        .WithMany()
-                        .HasForeignKey("CharacterId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_panel_placements_characters_character_id");
-
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Panel", "Panel")
-                        .WithMany("Placements")
-                        .HasForeignKey("PanelId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_panel_placements_panels_panel_id");
-
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.CharacterWardrobe", "Wardrobe")
-                        .WithMany()
-                        .HasForeignKey("WardrobeId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_panel_placements_character_wardrobes_wardrobe_id");
-
-                    b.Navigation("Character");
-
-                    b.Navigation("Panel");
-
-                    b.Navigation("Wardrobe");
-                });
-
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.PanelProp", b =>
-                {
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Panel", "Panel")
-                        .WithMany("Props")
-                        .HasForeignKey("PanelId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_panel_props_panels_panel_id");
-
-                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Prop", "Prop")
-                        .WithMany()
-                        .HasForeignKey("PropId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_panel_props_props_prop_id");
-
-                    b.Navigation("Panel");
-
-                    b.Navigation("Prop");
                 });
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Prop", b =>
@@ -1773,7 +1773,7 @@ namespace ProtoFast.Data.Migrations
                     b.Navigation("Scenes");
                 });
 
-            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Panel", b =>
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Frame", b =>
                 {
                     b.Navigation("Placements");
 
@@ -1788,9 +1788,9 @@ namespace ProtoFast.Data.Migrations
 
                     b.Navigation("Elements");
 
-                    b.Navigation("LocationStates");
+                    b.Navigation("Frames");
 
-                    b.Navigation("Panels");
+                    b.Navigation("LocationStates");
 
                     b.Navigation("PropStates");
                 });

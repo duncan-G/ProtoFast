@@ -10,7 +10,7 @@ const GROUPS: { key: Framing; title: string; labels: readonly string[] }[] = [
   { key: 'movement', title: 'Movement', labels: DIRECTION_VOCABULARY.movements },
 ];
 
-/** The camera for the selected panel, or the scene's default for every panel. */
+/** The camera for the selected frame, or the scene's default for every frame. */
 @Component({
   selector: 'app-inspector-shot-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -21,7 +21,7 @@ const GROUPS: { key: Framing; title: string; labels: readonly string[] }[] = [
         <div class="dr-field-head">
           <span class="dr-kicker">{{ group.title }}</span>
           <span class="flex-1"></span>
-          @if (panel()) {
+          @if (frame()) {
             @if (group.overridden) {
               <span class="dr-override"
                 >override ·
@@ -41,7 +41,7 @@ const GROUPS: { key: Framing; title: string; labels: readonly string[] }[] = [
               class="dr-pill"
               role="radio"
               [attr.aria-checked]="label === group.value"
-              (click)="store.setFraming(group.key, label, panelKey())"
+              (click)="store.setFraming(group.key, label, frameKey())"
             >
               {{ text(label) }}
             </button>
@@ -49,7 +49,7 @@ const GROUPS: { key: Framing; title: string; labels: readonly string[] }[] = [
         </div>
       </div>
     }
-    @if (panel(); as panel) {
+    @if (frame(); as frame) {
       <div class="dr-field">
         <span class="dr-kicker">What’s visible</span>
         <textarea
@@ -57,8 +57,8 @@ const GROUPS: { key: Framing; title: string; labels: readonly string[] }[] = [
           rows="2"
           placeholder="e.g. MARA presses, BOLT deflects"
           maxlength="2000"
-          [value]="panel.beat"
-          (change)="store.updatePanel(panel.firstElementId, { beat: $any($event.target).value })"
+          [value]="frame.beat"
+          (change)="store.updateFrame(frame.firstElementId, { beat: $any($event.target).value })"
         ></textarea>
         <div class="dr-hold">
           <span>Hold</span>
@@ -69,14 +69,14 @@ const GROUPS: { key: Framing; title: string; labels: readonly string[] }[] = [
             step="250"
             placeholder="auto"
             aria-label="Hold, in milliseconds"
-            [value]="panel.holdMs ?? ''"
+            [value]="frame.holdMs ?? ''"
             (change)="
-              store.updatePanel(panel.firstElementId, {
+              store.updateFrame(frame.firstElementId, {
                 holdMs: +$any($event.target).value || null,
               })
             "
           />
-          <span class="dr-hint">ms, for panels without lines</span>
+          <span class="dr-hint">ms, for frames without lines</span>
         </div>
       </div>
     }
@@ -85,14 +85,14 @@ const GROUPS: { key: Framing; title: string; labels: readonly string[] }[] = [
 export class InspectorShotTab {
   protected readonly store = inject(SceneEditorStore);
 
-  protected readonly panel = computed(() =>
-    this.store.inspectorScope() === 'panel' ? (this.store.selectedPanel()?.panel ?? null) : null,
+  protected readonly frame = computed(() =>
+    this.store.inspectorScope() === 'frame' ? (this.store.selectedFrame()?.frame ?? null) : null,
   );
-  protected readonly panelKey = computed(() => this.panel()?.firstElementId ?? null);
+  protected readonly frameKey = computed(() => this.frame()?.firstElementId ?? null);
 
   protected readonly groups = computed(() => {
     const direction = this.store.direction() ?? emptyDirection('');
-    return GROUPS.map((group) => ({ ...group, ...framingOf(direction, this.panel(), group.key) }));
+    return GROUPS.map((group) => ({ ...group, ...framingOf(direction, this.frame(), group.key) }));
   });
 
   protected text(label: string): string {
@@ -100,9 +100,9 @@ export class InspectorShotTab {
   }
 
   protected reset(key: Framing): void {
-    const panelKey = this.panelKey();
-    if (panelKey) {
-      this.store.updatePanel(panelKey, { [key]: null });
+    const frameKey = this.frameKey();
+    if (frameKey) {
+      this.store.updateFrame(frameKey, { [key]: null });
     }
   }
 }

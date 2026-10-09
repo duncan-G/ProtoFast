@@ -143,10 +143,15 @@ function lineTokens(performance: string): Token[] {
           <button
             type="button"
             class="dr-link"
-            [disabled]="store.isDirecting({ kind: 'cue', elementId: line.element.id })"
+            [class.is-working]="store.isDirecting({ kind: 'cue', elementId: line.element.id })"
+            [disabled]="!store.canDirect({ kind: 'cue', elementId: line.element.id })"
             (click)="store.direct({ kind: 'cue', elementId: line.element.id })"
           >
-            Suggest
+            {{
+              store.isDirecting({ kind: 'cue', elementId: line.element.id })
+                ? 'Suggesting…'
+                : 'Suggest'
+            }}
           </button>
         </div>
 
@@ -179,7 +184,7 @@ function lineTokens(performance: string): Token[] {
       </div>
     } @empty {
       <p class="dr-empty">
-        No lines in this {{ panel() ? 'panel' : 'scene' }}. Use <b>Hold</b> on the Shot tab to time
+        No lines in this {{ frame() ? 'frame' : 'scene' }}. Use <b>Hold</b> on the Shot tab to time
         it.
       </p>
     }
@@ -192,8 +197,8 @@ export class InspectorLinesTab {
   protected readonly picking = signal<{ elementId: string; at: number } | null>(null);
   protected readonly problem = signal('');
 
-  protected readonly panel = computed(() =>
-    this.store.inspectorScope() === 'panel' ? this.store.selectedPanel() : null,
+  protected readonly frame = computed(() =>
+    this.store.inspectorScope() === 'frame' ? this.store.selectedFrame() : null,
   );
   protected readonly defaultNarrator = computed(
     () => this.store.narrators()[0]?.name ?? 'Narrator',
@@ -206,7 +211,7 @@ export class InspectorLinesTab {
   );
 
   protected readonly lines = computed(() => {
-    const span = this.panel();
+    const span = this.frame();
     const elements = this.store.elements();
     const cues = this.store.cueByElement();
     const inRange = (element: SceneElement) => {

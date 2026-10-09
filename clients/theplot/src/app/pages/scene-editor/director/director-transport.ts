@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { spanAt } from '../../../direction/panels';
+import { spanAt } from '../../../direction/frames';
 import { SceneElement } from '../../../stories/model/scene-element';
 import { plural } from '../format';
 import { SceneEditorStore } from '../scene-editor-store';
@@ -43,7 +43,7 @@ function clock(ms: number): string {
           [attr.data-state]="segment.state"
           [class.is-played]="segment.played"
           [class.is-current]="segment.current"
-          [class.is-panel-start]="segment.panelStart"
+          [class.is-frame-start]="segment.frameStart"
           [style.flex-grow]="segment.ms"
           [title]="segment.title"
           [attr.aria-label]="segment.title"
@@ -86,23 +86,23 @@ export class DirectorTransport {
   });
 
   protected readonly segments = computed(() => {
-    const spans = this.store.panelSpans();
+    const spans = this.store.frameSpans();
     const index = new Map(this.store.elements().map((e, i) => [e.id, i]));
     const states = this.store.audioStates();
     const current = this.currentIndex();
     const scene = this.playingScene();
-    let previousPanel: unknown = null;
+    let previousFrame: unknown = null;
     return this.lines().map((line, i) => {
-      const panel = spanAt(spans, index.get(line.element.id) ?? -1);
-      const panelStart = i > 0 && panel !== previousPanel;
-      previousPanel = panel;
+      const frame = spanAt(spans, index.get(line.element.id) ?? -1);
+      const frameStart = i > 0 && frame !== previousFrame;
+      previousFrame = frame;
       const state = states.get(line.element.id) ?? 'none';
       return {
         id: line.element.id,
         index: i,
         ms: line.ms,
         state,
-        panelStart,
+        frameStart,
         current: i === current,
         played: scene && current >= 0 && i < current,
         title: `Line ${i + 1} · ${
@@ -118,8 +118,8 @@ export class DirectorTransport {
       return 'Play scene';
     }
     const at = this.store.elements().findIndex((e) => e.id === playing);
-    const span = spanAt(this.store.panelSpans(), at);
-    return span ? `Playing · Panel ${this.store.panelSpans().indexOf(span) + 1}` : 'Playing';
+    const span = spanAt(this.store.frameSpans(), at);
+    return span ? `Playing · Frame ${this.store.frameSpans().indexOf(span) + 1}` : 'Playing';
   });
 
   protected readonly time = computed(() => {

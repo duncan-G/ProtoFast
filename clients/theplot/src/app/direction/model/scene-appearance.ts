@@ -1,8 +1,8 @@
-/** A character in the scene: whether panels show them, and their look on top of the sheet. */
+/** A character in the scene: whether frames show them, and their look on top of the sheet. */
 export interface SceneAppearance {
   id: string;
   characterId: string;
-  /** On screen in every panel unless a panel says otherwise. */
+  /** On screen in every frame unless a frame says otherwise. */
   onScreen: boolean;
   /** Null wears the sheet's default, its first wardrobe. */
   wardrobeId: string | null;

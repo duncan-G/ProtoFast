@@ -13,7 +13,7 @@ import { SceneEditorStore } from '../scene-editor-store';
 type Menu = 'suggest' | 'generate' | 'direct';
 
 const SUGGESTIONS: { label: string; hint: string; target: DirectTarget }[] = [
-  { label: 'Panels', hint: 'Split, shots, who is on screen', target: { kind: 'panels' } },
+  { label: 'Frames', hint: 'Split, shots, who is on screen', target: { kind: 'frames' } },
   { label: 'Lines', hint: 'Delivery tags, gaps, cut-offs', target: { kind: 'cues' } },
   { label: 'Looks', hint: 'Wardrobe, appearance, places', target: { kind: 'continuity' } },
   { label: 'Story day', hint: 'Which day this happens on', target: { kind: 'storyDay' } },
@@ -46,6 +46,7 @@ const SUGGESTIONS: { label: string; hint: string; target: DirectTarget }[] = [
         type="button"
         class="dr-btn"
         title="Have the model suggest part of the direction"
+        [class.is-working]="suggesting()"
         [attr.aria-expanded]="open() === 'suggest'"
         (click)="toggle('suggest')"
       >
@@ -59,16 +60,13 @@ const SUGGESTIONS: { label: string; hint: string; target: DirectTarget }[] = [
               type="button"
               class="dr-menu-item"
               role="menuitem"
-              [disabled]="store.isDirecting(item.target)"
+              [class.is-working]="store.isDirecting(item.target)"
+              [disabled]="!store.canDirect(item.target)"
               (click)="suggest(item.target)"
             >
               <span class="flex-1">{{ item.label }}</span>
               <span class="dr-menu-meta">
-                @if (store.isDirecting(item.target)) {
-                  <span class="spinner" aria-hidden="true"></span>
-                } @else {
-                  {{ item.hint }}
-                }
+                {{ store.isDirecting(item.target) ? 'Writing…' : item.hint }}
               </span>
             </button>
           }
@@ -109,7 +107,7 @@ const SUGGESTIONS: { label: string; hint: string; target: DirectTarget }[] = [
             <span class="dr-menu-meta">{{ beats(spokenIds().length) }}</span>
           </button>
           <span class="dr-menu-rule"></span>
-          <span class="dr-menu-kicker">Images · all panels</span>
+          <span class="dr-menu-kicker">Images · all frames</span>
           @for (label of imageItems; track label) {
             <button
               type="button"
@@ -119,7 +117,7 @@ const SUGGESTIONS: { label: string; hint: string; target: DirectTarget }[] = [
               title="Picture generation isn’t available yet"
             >
               <span class="flex-1">{{ label }}</span>
-              <span class="dr-menu-meta">{{ panels() }}</span>
+              <span class="dr-menu-meta">{{ frames() }}</span>
             </button>
           }
         </div>
@@ -130,16 +128,12 @@ const SUGGESTIONS: { label: string; hint: string; target: DirectTarget }[] = [
       <button
         type="button"
         class="dr-split-main"
-        title="The model writes the story day, looks, lines and panels; your own edits stay"
-        [disabled]="directingScene()"
+        title="The model writes the story day, looks, lines and frames; your own edits stay"
+        [class.is-working]="directingScene()"
+        [disabled]="!canDirectScene()"
         (click)="store.direct({ kind: 'scene' })"
       >
-        @if (directingScene()) {
-          <span class="spinner" aria-hidden="true"></span>
-          Directing…
-        } @else {
-          Direct scene
-        }
+        {{ directingScene() ? 'Directing…' : 'Direct scene' }}
       </button>
       <button
         type="button"
@@ -157,7 +151,7 @@ const SUGGESTIONS: { label: string; hint: string; target: DirectTarget }[] = [
             type="button"
             class="dr-menu-item"
             role="menuitem"
-            [disabled]="directingScene()"
+            [disabled]="!canDirectScene()"
             (click)="redo()"
           >
             <span class="flex-1">Redo from scratch</span>
@@ -177,6 +171,10 @@ export class DirectorToolbar {
   protected readonly imageItems = ['Missing & out of date', 'Regenerate everything'];
 
   protected readonly directingScene = computed(() => this.store.isDirecting({ kind: 'scene' }));
+  protected readonly canDirectScene = computed(() => this.store.canDirect({ kind: 'scene' }));
+  protected readonly suggesting = computed(() =>
+    SUGGESTIONS.some((item) => this.store.isDirecting(item.target)),
+  );
   protected readonly spokenIds = computed(() => this.store.spokenElements().map((e) => e.id));
 
   protected readonly slug = computed(() => {
@@ -190,10 +188,10 @@ export class DirectorToolbar {
 
   protected readonly counts = computed(() => {
     const beats = this.store.elements().filter((e) => e.type !== 'Heading').length;
-    return `${this.panels()} · ${plural(beats, 'beat')}`;
+    return `${this.frames()} · ${plural(beats, 'beat')}`;
   });
 
-  protected readonly panels = computed(() => plural(this.store.panelSpans().length, 'panel'));
+  protected readonly frames = computed(() => plural(this.store.frameSpans().length, 'frame'));
 
   protected beats(count: number): string {
     return plural(count, 'beat');

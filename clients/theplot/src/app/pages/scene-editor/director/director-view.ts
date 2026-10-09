@@ -8,8 +8,8 @@ import { DirectorToolbar } from './director-toolbar';
 import { DirectorTransport } from './director-transport';
 
 /**
- * Director mode: the story library on the left, the scene read as panels in the middle with the
- * player under it, and the inspector for the selected panel or the whole scene on the right.
+ * Director mode: the story library on the left, the scene read as frames in the middle with the
+ * player under it, and the inspector for the selected frame or the whole scene on the right.
  */
 @Component({
   selector: 'app-director-view',

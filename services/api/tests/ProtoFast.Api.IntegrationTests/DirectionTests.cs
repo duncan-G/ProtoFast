@@ -37,7 +37,7 @@ public class DirectionTests(StoryDatabase database)
     private static SceneDirection Direction(Scene scene, Character mara, Character bolt, Prop radio, Wardrobe suit)
     {
         var direction = new SceneDirection { SceneId = scene.Id, StoryDay = 2, Shot = "medium", Angle = "eye level" };
-        direction.Panels.Add(new Panel
+        direction.Frames.Add(new Frame
         {
             FirstElementId = scene.Elements[0].Id,
             LastElementId = scene.Elements[1].Id,
@@ -50,9 +50,9 @@ public class DirectionTests(StoryDatabase database)
                 new Placement { CharacterId = mara.Id, Screen = "left", Pose = "crouched", Expression = "alert", AppearanceChange = "soot on her cheek" },
                 new Placement { CharacterId = bolt.Id, OnScreen = false },
             },
-            Props = { new PanelProp { PropId = radio.Id, InView = true } },
+            Props = { new FrameProp { PropId = radio.Id, InView = true } },
         });
-        direction.Panels.Add(new Panel
+        direction.Frames.Add(new Frame
         {
             FirstElementId = scene.Elements[2].Id,
             LastElementId = scene.Elements[4].Id,
@@ -84,36 +84,36 @@ public class DirectionTests(StoryDatabase database)
     {
         var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
         var direction = Direction(scene, mara, bolt, radio, suit);
-        // Sent out of order: the saved panels follow the scene.
+        // Sent out of order: the saved frames follow the scene.
         var reversed = new SceneDirection(direction);
-        reversed.Panels.Clear();
-        reversed.Panels.AddRange(direction.Panels.Reverse());
+        reversed.Frames.Clear();
+        reversed.Frames.AddRange(direction.Frames.Reverse());
 
         var saved = await _writer.SaveDirectionAsync(reversed);
 
         Assert.Equal(saved, await _writer.GetDirectionAsync(scene.Id));
         Assert.Equal(2, saved.StoryDay);
-        Assert.Equal([scene.Elements[0].Id, scene.Elements[2].Id], saved.Panels.Select(p => p.FirstElementId));
-        Assert.Equal([0, 1], saved.Panels.Select(p => p.Position));
-        Assert.All(saved.Panels.Concat<object>(saved.Cues).Concat(saved.Appearances).Concat(saved.PropStates), row =>
+        Assert.Equal([scene.Elements[0].Id, scene.Elements[2].Id], saved.Frames.Select(p => p.FirstElementId));
+        Assert.Equal([0, 1], saved.Frames.Select(p => p.Position));
+        Assert.All(saved.Frames.Concat<object>(saved.Cues).Concat(saved.Appearances).Concat(saved.PropStates), row =>
             Assert.NotEqual(Guid.Empty, Guid.Parse((string)row.GetType().GetProperty("Id")!.GetValue(row)!)));
         Assert.Equal(("medium", "eye level", false), (saved.Shot, saved.Angle, saved.HasMovement));
-        Assert.Equal("wide", saved.Panels[0].Shot);
-        Assert.Equal("push in", saved.Panels[0].Movement);
-        Assert.False(saved.Panels[1].HasAngle);
-        Assert.Equal("Only the radio's glow lights the frame.", saved.Panels[0].LocationChange);
-        var maraInFirst = saved.Panels[0].Placements.Single(p => p.CharacterId == mara.Id);
+        Assert.Equal("wide", saved.Frames[0].Shot);
+        Assert.Equal("push in", saved.Frames[0].Movement);
+        Assert.False(saved.Frames[1].HasAngle);
+        Assert.Equal("Only the radio's glow lights the frame.", saved.Frames[0].LocationChange);
+        var maraInFirst = saved.Frames[0].Placements.Single(p => p.CharacterId == mara.Id);
         Assert.Equal(("soot on her cheek", false), (maraInFirst.AppearanceChange, maraInFirst.HasOnScreen));
-        Assert.False(saved.Panels[0].Placements.Single(p => p.CharacterId == bolt.Id).OnScreen);
-        Assert.Equal(["left", "right"], saved.Panels[1].Placements.OrderBy(p => p.Screen).Select(p => p.Screen));
-        Assert.Equal([(radio.Id, true)], saved.Panels[0].Props.Select(p => (p.PropId, p.InView)));
+        Assert.False(saved.Frames[0].Placements.Single(p => p.CharacterId == bolt.Id).OnScreen);
+        Assert.Equal(["left", "right"], saved.Frames[1].Placements.OrderBy(p => p.Screen).Select(p => p.Screen));
+        Assert.Equal([(radio.Id, true)], saved.Frames[0].Props.Select(p => (p.PropId, p.InView)));
         Assert.Equal("[whispers] Don't move.", saved.Cues[0].Performance);
         Assert.True(saved.Cues[1].Interrupted);
         Assert.Equal(suit.Id, saved.Appearances[0].WardrobeId);
         Assert.Equal(("sleeves rolled", "wet hair", true), (saved.Appearances[0].WardrobeChange, saved.Appearances[0].AppearanceChange, saved.Appearances[0].OnScreen));
         Assert.Equal(["crackling"], saved.PropStates[0].State);
         Assert.False(saved.PropStates[0].InView);
-        Assert.All(saved.Panels, p => Assert.True(p.Edited));
+        Assert.All(saved.Frames, p => Assert.True(p.Edited));
         Assert.All(saved.Cues, c => Assert.True(c.Edited));
         Assert.True(saved.Appearances[0].Edited);
         Assert.True(saved.PropStates[0].Edited);
@@ -127,15 +127,15 @@ public class DirectionTests(StoryDatabase database)
 
         var next = new SceneDirection(saved);
         next.Cues.RemoveAt(1);
-        next.Panels.RemoveAt(0);
+        next.Frames.RemoveAt(0);
         next.PropStates.Clear();
         next.Cues[0].GapBeforeMs = 900;
         var again = await _writer.SaveDirectionAsync(next);
 
         Assert.Equal([saved.Cues[0].Id], again.Cues.Select(c => c.Id));
         Assert.Equal(900, again.Cues[0].GapBeforeMs);
-        Assert.Equal([saved.Panels[1].Id], again.Panels.Select(p => p.Id));
-        Assert.Equal(0, again.Panels[0].Position);
+        Assert.Equal([saved.Frames[1].Id], again.Frames.Select(p => p.Id));
+        Assert.Equal(0, again.Frames[0].Position);
         Assert.Empty(again.PropStates);
         Assert.Single(again.Appearances);
     }
@@ -147,8 +147,8 @@ public class DirectionTests(StoryDatabase database)
     [InlineData("narrator on a dialogue line")]
     [InlineData("unknown camera angle")]
     [InlineData("two cues on one line")]
-    [InlineData("overlapping panels")]
-    [InlineData("panel ending before it starts")]
+    [InlineData("overlapping frames")]
+    [InlineData("frame ending before it starts")]
     [InlineData("unknown shot")]
     [InlineData("unknown screen side")]
     [InlineData("another character's wardrobe")]
@@ -174,23 +174,23 @@ public class DirectionTests(StoryDatabase database)
                 direction.Cues[0].NarratorId = Guid.NewGuid().ToString();
                 break;
             case "unknown camera angle":
-                direction.Panels[0].Angle = "dutch";
+                direction.Frames[0].Angle = "dutch";
                 break;
             case "two cues on one line":
                 direction.Cues[1].ElementId = direction.Cues[0].ElementId;
                 break;
-            case "overlapping panels":
-                direction.Panels[1].FirstElementId = scene.Elements[1].Id;
+            case "overlapping frames":
+                direction.Frames[1].FirstElementId = scene.Elements[1].Id;
                 break;
-            case "panel ending before it starts":
-                direction.Panels[0].LastElementId = scene.Elements[0].Id;
-                direction.Panels[0].FirstElementId = scene.Elements[1].Id;
+            case "frame ending before it starts":
+                direction.Frames[0].LastElementId = scene.Elements[0].Id;
+                direction.Frames[0].FirstElementId = scene.Elements[1].Id;
                 break;
             case "unknown shot":
-                direction.Panels[0].Shot = "dutch angle";
+                direction.Frames[0].Shot = "dutch angle";
                 break;
             case "unknown screen side":
-                direction.Panels[0].Placements[0].Screen = "middle";
+                direction.Frames[0].Placements[0].Screen = "middle";
                 break;
             case "another character's wardrobe":
                 direction.Appearances[0].CharacterId = bolt.Id;
@@ -209,18 +209,18 @@ public class DirectionTests(StoryDatabase database)
     }
 
     [Fact]
-    public async Task Deleting_a_line_takes_its_cue_and_the_panel_it_bounds_with_it()
+    public async Task Deleting_a_line_takes_its_cue_and_the_frame_it_bounds_with_it()
     {
         var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
         var saved = await _writer.SaveDirectionAsync(Direction(scene, mara, bolt, radio, suit));
 
-        scene.Elements.RemoveAt(4); // the transition, which ends the second panel
+        scene.Elements.RemoveAt(4); // the transition, which ends the second frame
         scene.Elements.RemoveAt(3); // Bolt's line
         await _writer.SaveSceneAsync(scene);
 
         var after = await _writer.GetDirectionAsync(scene.Id);
         Assert.Equal([saved.Cues[0].Id], after.Cues.Select(c => c.Id));
-        Assert.Equal([saved.Panels[0].Id], after.Panels.Select(p => p.Id));
+        Assert.Equal([saved.Frames[0].Id], after.Frames.Select(p => p.Id));
         Assert.Single(after.Appearances);
     }
 
@@ -282,61 +282,88 @@ public class DirectionTests(StoryDatabase database)
     }
 
     [Fact]
-    public async Task Directing_panels_covers_every_row_once_around_the_authors_fixed_panel()
+    public async Task Directing_frames_directs_the_authors_cut_and_covers_every_row_once()
     {
         var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
         var direction = Direction(scene, mara, bolt, radio, suit);
-        direction.Panels.RemoveAt(1); // keep only the author's first panel, over e1–e2
+        direction.Frames.RemoveAt(1); // keep only the author's first frame, over e1–e2
         await _writer.SaveDirectionAsync(direction);
-        // The model's panels overlap the fixed one and leave the transition uncovered.
+        // The model's first frame runs past the author's cut and the transition is left uncovered.
         _writer.ScriptModel("""
-            {"panels":[
+            {"frames":[
               {"from":"e1","to":"e3","shot":"close","beat":"Mara leans in.","characters":[{"name":"Mara","screen":"Left","pose":"leaning","expression":"tense"}],"props":["Radio","Teapot"]},
               {"from":"e4","to":"e4","shot":"medium","beat":"Bolt replies.","characters":[{"name":"Bolt","screen":"right"},{"name":"Nobody","screen":"left"}]}
             ]}
             """);
 
-        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Panels = true });
+        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true });
 
         var ids = scene.Elements.Select(e => e.Id).ToList();
         Assert.Equal(
             [(ids[0], ids[1]), (ids[2], ids[2]), (ids[3], ids[4])],
-            directed.Panels.Select(p => (p.FirstElementId, p.LastElementId)));
-        Assert.Equal([0, 1, 2], directed.Panels.Select(p => p.Position));
-        Assert.True(directed.Panels[0].Edited);
-        Assert.Equal("Mara at the radio.", directed.Panels[0].Beat);
+            directed.Frames.Select(p => (p.FirstElementId, p.LastElementId)));
+        Assert.Equal([0, 1, 2], directed.Frames.Select(p => p.Position));
+        Assert.Contains("exactly the same from and to (e1–e2)", _writer.ModelPrompts().Single());
+        Assert.Equal(("Mara leans in.", "close"), (directed.Frames[0].Beat, directed.Frames[0].Shot));
         // The scene's shot stays the author's; what matches it is left to follow it.
         Assert.Equal("medium", directed.Shot);
-        Assert.Equal("close", directed.Panels[1].Shot);
-        Assert.False(directed.Panels[2].HasShot);
-        var maraInSecond = directed.Panels[1].Placements.Single(p => p.CharacterId == mara.Id);
+        Assert.Equal("close", directed.Frames[1].Shot);
+        Assert.False(directed.Frames[2].HasShot);
+        var maraInSecond = directed.Frames[1].Placements.Single(p => p.CharacterId == mara.Id);
         Assert.Equal(("left", false), (maraInSecond.Screen, maraInSecond.HasOnScreen));
-        Assert.False(directed.Panels[1].Placements.Single(p => p.CharacterId == bolt.Id).OnScreen);
-        Assert.Empty(directed.Panels[1].Props.Where(p => !p.InView));
-        Assert.Equal([radio.Id], directed.Panels[1].Props.Select(p => p.PropId));
-        Assert.False(directed.Panels[2].Placements.Single(p => p.CharacterId == mara.Id).OnScreen);
-        Assert.Equal("right", directed.Panels[2].Placements.Single(p => p.CharacterId == bolt.Id).Screen);
-        Assert.Empty(directed.Panels[2].Props);
-        Assert.All(directed.Panels.Skip(1), p => Assert.False(p.Edited));
+        Assert.False(directed.Frames[1].Placements.Single(p => p.CharacterId == bolt.Id).OnScreen);
+        Assert.Empty(directed.Frames[1].Props.Where(p => !p.InView));
+        Assert.Equal([radio.Id], directed.Frames[1].Props.Select(p => p.PropId));
+        Assert.False(directed.Frames[2].Placements.Single(p => p.CharacterId == mara.Id).OnScreen);
+        Assert.Equal("right", directed.Frames[2].Placements.Single(p => p.CharacterId == bolt.Id).Screen);
+        Assert.Empty(directed.Frames[2].Props);
+        Assert.All(directed.Frames, p => Assert.False(p.Edited));
 
-        // Deleting the first panel moves the others up; moving is not editing them.
+        // Deleting the first frame moves the others up; moving is not editing them.
         var next = new SceneDirection(directed);
-        next.Panels.RemoveAt(0);
+        next.Frames.RemoveAt(0);
         var shifted = await _writer.SaveDirectionAsync(next);
-        Assert.Equal([0, 1], shifted.Panels.Select(p => p.Position));
-        Assert.All(shifted.Panels, p => Assert.False(p.Edited));
+        Assert.Equal([0, 1], shifted.Frames.Select(p => p.Position));
+        Assert.All(shifted.Frames, p => Assert.False(p.Edited));
     }
 
     [Fact]
-    public async Task Directing_panels_when_the_authors_panels_cover_the_scene_leaves_them_and_skips_the_model()
+    public async Task Directing_frames_when_the_authors_frames_cover_the_scene_still_directs_them()
     {
         var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
         var saved = await _writer.SaveDirectionAsync(Direction(scene, mara, bolt, radio, suit));
+        _writer.ScriptModel("""
+            {"frames":[
+              {"from":"e1","to":"e2","shot":"wide","beat":"The docks at night."},
+              {"from":"e3","to":"e5","shot":"over-the-shoulder","beat":"They face off."}
+            ]}
+            """);
 
-        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Panels = true });
+        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true });
 
-        Assert.Equal(saved.Panels, directed.Panels);
-        Assert.Empty(_writer.ModelPrompts());
+        Assert.Equal(
+            saved.Frames.Select(p => (p.Id, p.FirstElementId, p.LastElementId)),
+            directed.Frames.Select(p => (p.Id, p.FirstElementId, p.LastElementId)));
+        Assert.Equal(["The docks at night.", "They face off."], directed.Frames.Select(p => p.Beat));
+        Assert.All(directed.Frames, p => Assert.False(p.Edited));
+    }
+
+    [Fact]
+    public async Task Directing_frames_closes_a_leading_gap_without_overlapping_frames()
+    {
+        var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        var direction = Direction(scene, mara, bolt, radio, suit);
+        direction.Frames.Clear();
+        direction.Frames.Add(new Frame { FirstElementId = scene.Elements[2].Id, LastElementId = scene.Elements[3].Id });
+        await _writer.SaveDirectionAsync(direction);
+        // The model answers the author's cut only, leaving e1–e2 and e5 to be closed.
+        _writer.ScriptModel("""{"frames":[{"from":"e3","to":"e4","shot":"close","beat":"They whisper."}]}""");
+
+        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true });
+
+        var frame = Assert.Single(directed.Frames);
+        Assert.Equal((scene.Elements[0].Id, scene.Elements[4].Id), (frame.FirstElementId, frame.LastElementId));
+        Assert.Equal("They whisper.", frame.Beat);
     }
 
     [Fact]

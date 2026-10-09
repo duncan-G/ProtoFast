@@ -4,7 +4,7 @@ namespace ProtoFast.Data.ThePlot.Entities;
 /// One picture of the scene, covering a contiguous run of its elements. Owned by its
 /// <see cref="Scene"/>: it has no <c>UserId</c> and is only read and written through it.
 /// </summary>
-public sealed class Panel
+public sealed class Frame
 {
     public Guid Id { get; set; }
 
@@ -40,18 +40,18 @@ public sealed class Panel
     /// <summary>A <see cref="DirectionVocabulary.Movements"/> label; null takes the scene's.</summary>
     public string? Movement { get; set; }
 
-    /// <summary>What this panel adds to the location's look in the scene: "crane silhouetted".</summary>
+    /// <summary>What this frame adds to the location's look in the scene: "crane silhouetted".</summary>
     public string LocationChange { get; set; } = "";
 
-    /// <summary>Only for panels with no dialogue to time them.</summary>
+    /// <summary>Only for frames with no dialogue to time them.</summary>
     public int? HoldMs { get; set; }
 
     /// <summary>Written by the author; a later directing pass leaves it alone.</summary>
     public bool Edited { get; set; }
 
-    /// <summary>Only the characters this panel says something about; the rest follow the scene.</summary>
-    public List<PanelPlacement> Placements { get; set; } = [];
+    /// <summary>Only the characters this frame says something about; the rest follow the scene.</summary>
+    public List<FramePlacement> Placements { get; set; } = [];
 
-    /// <summary>Only the props this panel shows or hides against the scene.</summary>
-    public List<PanelProp> Props { get; set; } = [];
+    /// <summary>Only the props this frame shows or hides against the scene.</summary>
+    public List<FrameProp> Props { get; set; } = [];
 }

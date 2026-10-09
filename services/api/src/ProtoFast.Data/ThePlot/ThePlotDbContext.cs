@@ -56,7 +56,7 @@ public sealed class ThePlotDbContext(
 
     public DbSet<ScenePropState> ScenePropStates => Set<ScenePropState>();
 
-    public DbSet<Panel> Panels => Set<Panel>();
+    public DbSet<Frame> Frames => Set<Frame>();
 
     public DbSet<Cue> Cues => Set<Cue>();
 
@@ -347,9 +347,9 @@ public sealed class ThePlotDbContext(
     }
 
     /// <summary>
-    /// The director layer over a scene. Every row hangs off the scene or a panel by a required
+    /// The director layer over a scene. Every row hangs off the scene or a frame by a required
     /// foreign key, so the scene's owner scopes it; deleting an element takes its cue and the
-    /// panels it bounds with it.
+    /// frames it bounds with it.
     /// </summary>
     private static void ConfigureDirection(ModelBuilder modelBuilder)
     {
@@ -425,7 +425,7 @@ public sealed class ThePlotDbContext(
             entity.HasIndex(l => l.LocationId);
         });
 
-        modelBuilder.Entity<Panel>(entity =>
+        modelBuilder.Entity<Frame>(entity =>
         {
             entity.HasKey(p => p.Id);
             entity.Property(p => p.TimeOfDay).HasMaxLength(LabelLength);
@@ -435,7 +435,7 @@ public sealed class ThePlotDbContext(
             entity.Property(p => p.LocationChange).IsRequired();
 
             entity.HasOne(p => p.Scene)
-                .WithMany(s => s.Panels)
+                .WithMany(s => s.Frames)
                 .HasForeignKey(p => p.SceneId)
                 .OnDelete(DeleteBehavior.Cascade);
 
@@ -460,22 +460,22 @@ public sealed class ThePlotDbContext(
             entity.HasIndex(p => p.LocationId);
             entity.ToTable(t =>
             {
-                t.HasCheckConstraint("ck_panels_position_non_negative", "position >= 0");
-                t.HasCheckConstraint("ck_panels_hold_ms", "hold_ms IS NULL OR hold_ms > 0");
+                t.HasCheckConstraint("ck_frames_position_non_negative", "position >= 0");
+                t.HasCheckConstraint("ck_frames_hold_ms", "hold_ms IS NULL OR hold_ms > 0");
             });
         });
 
-        modelBuilder.Entity<PanelPlacement>(entity =>
+        modelBuilder.Entity<FramePlacement>(entity =>
         {
-            entity.ToTable("panel_placements");
-            entity.HasKey(p => new { p.PanelId, p.CharacterId });
+            entity.ToTable("frame_placements");
+            entity.HasKey(p => new { p.FrameId, p.CharacterId });
             entity.Property(p => p.Screen).IsRequired().HasMaxLength(LabelLength);
             entity.Property(p => p.Pose).IsRequired().HasMaxLength(NameLength);
             entity.Property(p => p.Expression).IsRequired().HasMaxLength(NameLength);
 
-            entity.HasOne(p => p.Panel)
-                .WithMany(panel => panel.Placements)
-                .HasForeignKey(p => p.PanelId)
+            entity.HasOne(p => p.Frame)
+                .WithMany(frame => frame.Placements)
+                .HasForeignKey(p => p.FrameId)
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(p => p.Character)
@@ -483,7 +483,7 @@ public sealed class ThePlotDbContext(
                 .HasForeignKey(p => p.CharacterId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // A wardrobe the sheet drops sends the panel back to the scene's.
+            // A wardrobe the sheet drops sends the frame back to the scene's.
             entity.HasOne(p => p.Wardrobe)
                 .WithMany()
                 .HasForeignKey(p => p.WardrobeId)
@@ -493,14 +493,14 @@ public sealed class ThePlotDbContext(
             entity.HasIndex(p => p.WardrobeId);
         });
 
-        modelBuilder.Entity<PanelProp>(entity =>
+        modelBuilder.Entity<FrameProp>(entity =>
         {
-            entity.ToTable("panel_props");
-            entity.HasKey(p => new { p.PanelId, p.PropId });
+            entity.ToTable("frame_props");
+            entity.HasKey(p => new { p.FrameId, p.PropId });
 
-            entity.HasOne(p => p.Panel)
-                .WithMany(panel => panel.Props)
-                .HasForeignKey(p => p.PanelId)
+            entity.HasOne(p => p.Frame)
+                .WithMany(frame => frame.Props)
+                .HasForeignKey(p => p.FrameId)
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(p => p.Prop)

@@ -88,6 +88,7 @@ const SHOWN = 3;
               type="button"
               class="dr-link"
               title="Have the model write the sheet from the story"
+              [class.is-working]="store.describing() === c.id"
               [disabled]="store.describing() !== null"
               (click)="store.describe({ kind: 'character', id: c.id })"
             >
@@ -141,9 +142,9 @@ const SHOWN = 3;
                   @if (w.isDefault) {
                     <span class="dr-default">Default</span>
                   }
-                  @if (w.panels.length > 0) {
+                  @if (w.frames.length > 0) {
                     <span class="dr-use" [title]="w.usage"
-                      >SC{{ sceneNumber() }} · {{ w.panels.length }}P</span
+                      >SC{{ sceneNumber() }} · {{ w.frames.length }}F</span
                     >
                   }
                   <span class="dr-chev" aria-hidden="true">{{
@@ -181,7 +182,7 @@ const SHOWN = 3;
                         </button>
                       }
                       <span class="flex-1"></span>
-                      @if (!w.isDefault && w.panels.length === 0) {
+                      @if (!w.isDefault && w.frames.length === 0) {
                         <button
                           type="button"
                           class="dr-danger"
@@ -254,14 +255,14 @@ export class LibraryCastCard {
   );
   protected readonly sceneNumber = computed(() => (this.store.place()?.index ?? 0) + 1);
 
-  /** Panel numbers in this scene that show the character, by the wardrobe they wear there. */
-  private readonly panelsByWardrobe = computed(() => {
+  /** Frame numbers in this scene that show the character, by the wardrobe they wear there. */
+  private readonly framesByWardrobe = computed(() => {
     const direction = this.store.direction() ?? emptyDirection('');
     const character = this.character();
     const byWardrobe = new Map<string, number[]>();
-    this.store.panelSpans().forEach((span, i) => {
-      if (onScreenOf(direction, span.panel, character.id).value) {
-        const id = wardrobeOf(direction, span.panel, character).wardrobeId;
+    this.store.frameSpans().forEach((span, i) => {
+      if (onScreenOf(direction, span.frame, character.id).value) {
+        const id = wardrobeOf(direction, span.frame, character).wardrobeId;
         if (id) {
           byWardrobe.set(id, [...(byWardrobe.get(id) ?? []), i + 1]);
         }
@@ -272,24 +273,24 @@ export class LibraryCastCard {
 
   /** The default first, then those this scene uses, then the rest. */
   protected readonly sortedWardrobes = computed(() => {
-    const used = this.panelsByWardrobe();
+    const used = this.framesByWardrobe();
     const scene = this.sceneNumber();
     return this.character()
       .wardrobes.map((wardrobe, index) => {
-        const panels = used.get(wardrobe.id) ?? [];
+        const frames = used.get(wardrobe.id) ?? [];
         return {
           wardrobe,
           isDefault: index === 0,
-          panels,
-          usage: panels.length
-            ? `Scene ${scene}, panel${panels.length > 1 ? 's' : ''} ${panels.join(', ')}`
+          frames,
+          usage: frames.length
+            ? `Scene ${scene}, frame${frames.length > 1 ? 's' : ''} ${frames.join(', ')}`
             : 'Not used in this scene',
         };
       })
       .sort(
         (a, b) =>
           Number(b.isDefault) - Number(a.isDefault) ||
-          Number(b.panels.length > 0) - Number(a.panels.length > 0),
+          Number(b.frames.length > 0) - Number(a.frames.length > 0),
       );
   });
 
@@ -308,9 +309,9 @@ export class LibraryCastCard {
       return `Not in Scene ${this.sceneNumber()}`;
     }
     const direction = this.store.direction() ?? emptyDirection('');
-    const spans = this.store.panelSpans();
-    const shown = spans.filter((s) => onScreenOf(direction, s.panel, id).value).length;
-    return `In Scene ${this.sceneNumber()} · on screen in ${shown} of ${plural(spans.length, 'panel')}`;
+    const spans = this.store.frameSpans();
+    const shown = spans.filter((s) => onScreenOf(direction, s.frame, id).value).length;
+    return `In Scene ${this.sceneNumber()} · on screen in ${shown} of ${plural(spans.length, 'frame')}`;
   });
 
   protected readonly overrides = computed(() => {
@@ -321,16 +322,16 @@ export class LibraryCastCard {
       look?.wardrobeChange ? 'wardrobe changes' : '',
       look?.appearanceChange ? 'appearance' : '',
     ].filter(Boolean);
-    const panels = this.store
-      .panelSpans()
+    const frames = this.store
+      .frameSpans()
       .filter((s) =>
-        s.panel.placements.some(
+        s.frame.placements.some(
           (p) => p.characterId === id && (p.wardrobeId || p.wardrobeChange || p.appearanceChange),
         ),
       ).length;
     return [
       fields.length ? `Scene ${this.sceneNumber()} overrides ${fields.join(', ')}` : '',
-      panels ? plural(panels, 'panel override') : '',
+      frames ? plural(frames, 'frame override') : '',
     ]
       .filter(Boolean)
       .join(' · ');

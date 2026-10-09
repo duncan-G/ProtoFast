@@ -2,7 +2,7 @@ import { SceneElement } from '../stories/model/scene-element';
 import { SceneElementType } from '../stories/model/scene-element-type';
 import { directionChanges } from './direction-changes';
 import { emptyDirection } from './model/scene-direction';
-import { blankPanel } from './panels';
+import { blankFrame } from './frames';
 
 function rows(...spec: [string, SceneElementType, string?][]): SceneElement[] {
   return spec.map(([id, type, text], position) => ({
@@ -48,7 +48,7 @@ describe('directionChanges', () => {
     const direction = {
       ...emptyDirection('s'),
       cues: [cue('b', "[whispers] Don't you move.")],
-      panels: [blankPanel(SCENE, 0, 1)],
+      frames: [blankFrame(SCENE, 0, 1)],
     };
     expect(directionChanges(direction, SCENE).map((c) => [c.kind, c.elementId])).toEqual([
       ['cue-missing', 'a'],

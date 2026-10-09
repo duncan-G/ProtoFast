@@ -1,8 +1,8 @@
 
 using SceneRecord = ProtoFast.Data.ThePlot.Entities.Scene;
-using PanelRecord = ProtoFast.Data.ThePlot.Entities.Panel;
-using PanelPlacementRecord = ProtoFast.Data.ThePlot.Entities.PanelPlacement;
-using PanelPropRecord = ProtoFast.Data.ThePlot.Entities.PanelProp;
+using FrameRecord = ProtoFast.Data.ThePlot.Entities.Frame;
+using FramePlacementRecord = ProtoFast.Data.ThePlot.Entities.FramePlacement;
+using FramePropRecord = ProtoFast.Data.ThePlot.Entities.FrameProp;
 using CueRecord = ProtoFast.Data.ThePlot.Entities.Cue;
 using SceneAppearanceRecord = ProtoFast.Data.ThePlot.Entities.SceneAppearance;
 using ScenePropStateRecord = ProtoFast.Data.ThePlot.Entities.ScenePropState;
@@ -12,7 +12,7 @@ namespace ProtoFast.Api.Services.Directing;
 
 /// <summary>
 /// A scene's director layer as detached rows, validated and ready to be written over the stored
-/// ones. Panels are in scene order.
+/// ones. Frames are in scene order.
 /// </summary>
 public sealed class DirectionDraft
 {
@@ -24,7 +24,7 @@ public sealed class DirectionDraft
 
     public string? Movement { get; set; }
 
-    public List<PanelRecord> Panels { get; set; } = [];
+    public List<FrameRecord> Frames { get; set; } = [];
 
     public List<CueRecord> Cues { get; set; } = [];
 
@@ -41,7 +41,7 @@ public sealed class DirectionDraft
         Shot = scene.Shot,
         Angle = scene.Angle,
         Movement = scene.Movement,
-        Panels = scene.Panels.OrderBy(p => p.Position).ThenBy(p => p.Id).Select(p => new PanelRecord
+        Frames = scene.Frames.OrderBy(p => p.Position).ThenBy(p => p.Id).Select(p => new FrameRecord
         {
             Id = p.Id,
             FirstElementId = p.FirstElementId,
@@ -55,7 +55,7 @@ public sealed class DirectionDraft
             LocationChange = p.LocationChange,
             HoldMs = p.HoldMs,
             Edited = p.Edited,
-            Placements = p.Placements.Select(pl => new PanelPlacementRecord
+            Placements = p.Placements.Select(pl => new FramePlacementRecord
             {
                 CharacterId = pl.CharacterId,
                 Screen = pl.Screen,
@@ -66,7 +66,7 @@ public sealed class DirectionDraft
                 WardrobeChange = pl.WardrobeChange,
                 AppearanceChange = pl.AppearanceChange,
             }).ToList(),
-            Props = p.Props.Select(pp => new PanelPropRecord { PropId = pp.PropId, InView = pp.InView }).ToList(),
+            Props = p.Props.Select(pp => new FramePropRecord { PropId = pp.PropId, InView = pp.InView }).ToList(),
         }).ToList(),
         Cues = scene.Cues.Select(c => new CueRecord
         {

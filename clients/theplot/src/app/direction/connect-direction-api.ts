@@ -4,7 +4,7 @@ import {
   type Cue as CueMessage,
   Direction,
   type DirectRequest,
-  type Panel as PanelMessage,
+  type Frame as FrameMessage,
   type SceneAppearance as SceneAppearanceMessage,
   type SceneDirection as SceneDirectionMessage,
   type SceneLocationState as SceneLocationStateMessage,
@@ -20,7 +20,7 @@ import type { DirectionApi } from './direction-api';
 import { Cue } from './model/cue';
 import { DescribeTarget } from './model/describe-target';
 import { DirectTarget } from './model/direct-target';
-import { Panel } from './model/panel';
+import { Frame } from './model/frame';
 import { SceneAppearance } from './model/scene-appearance';
 import { SceneDirection } from './model/scene-direction';
 import { SceneLocationState } from './model/scene-location-state';
@@ -124,10 +124,10 @@ function fromTarget(target: DirectTarget): DirectRequest['target'] {
       return { case: 'cues', value: true };
     case 'cue':
       return { case: 'cueElementId', value: target.elementId };
-    case 'panels':
-      return { case: 'panels', value: true };
-    case 'panel':
-      return { case: 'panelId', value: target.panelId };
+    case 'frames':
+      return { case: 'frames', value: true };
+    case 'frame':
+      return { case: 'frameId', value: target.frameId };
   }
 }
 
@@ -138,7 +138,7 @@ export function toDirection(message: SceneDirectionMessage): SceneDirection {
     shot: message.shot ?? null,
     angle: message.angle ?? null,
     movement: message.movement ?? null,
-    panels: message.panels.map(toPanel),
+    frames: message.frames.map(toFrame),
     cues: message.cues.map(toCue),
     appearances: message.appearances.map(toAppearance),
     propStates: message.propStates.map(toPropState),
@@ -146,7 +146,7 @@ export function toDirection(message: SceneDirectionMessage): SceneDirection {
   };
 }
 
-function toPanel(message: PanelMessage): Panel {
+function toFrame(message: FrameMessage): Frame {
   return {
     id: message.id,
     position: message.position,
@@ -238,7 +238,7 @@ export function fromDirection(direction: SceneDirection) {
     shot: direction.shot ?? undefined,
     angle: direction.angle ?? undefined,
     movement: direction.movement ?? undefined,
-    panels: direction.panels.map((p, position) => ({
+    frames: direction.frames.map((p, position) => ({
       id: p.id,
       position,
       firstElementId: p.firstElementId,

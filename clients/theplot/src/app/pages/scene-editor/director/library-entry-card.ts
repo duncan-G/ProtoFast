@@ -39,6 +39,7 @@ import { SheetEditor } from '../sheet-editor';
                 type="button"
                 class="dr-link"
                 title="Have the model write the sheet from the story"
+                [class.is-working]="store.describing() === target().id"
                 [disabled]="store.describing() !== null"
                 (click)="store.describe(target())"
               >
@@ -119,9 +120,9 @@ export class LibraryEntryCard {
       return `Not in Scene ${scene}`;
     }
     const direction = this.store.direction() ?? emptyDirection('');
-    const spans = this.store.panelSpans();
-    const shown = spans.filter((s) => inViewOf(direction, s.panel, id).value).length;
-    return `In Scene ${scene} · in view in ${shown} of ${plural(spans.length, 'panel')}`;
+    const spans = this.store.frameSpans();
+    const shown = spans.filter((s) => inViewOf(direction, s.frame, id).value).length;
+    return `In Scene ${scene} · in view in ${shown} of ${plural(spans.length, 'frame')}`;
   });
 
   protected toggle(): void {

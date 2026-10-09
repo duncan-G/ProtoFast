@@ -1,8 +1,8 @@
-import { PanelProp } from './panel-prop';
+import { FrameProp } from './frame-prop';
 import { Placement } from './placement';
 
-/** One picture of the scene, covering a contiguous run of its elements. Panels do not overlap. */
-export interface Panel {
+/** One picture of the scene, covering a contiguous run of its elements. Frames do not overlap. */
+export interface Frame {
   /** Empty until the API has saved it. */
   id: string;
   position: number;
@@ -16,14 +16,14 @@ export interface Panel {
   shot: string | null;
   angle: string | null;
   movement: string | null;
-  /** What this panel adds to the location's look in the scene. */
+  /** What this frame adds to the location's look in the scene. */
   locationChange: string;
-  /** Only for panels with no dialogue to time them. */
+  /** Only for frames with no dialogue to time them. */
   holdMs: number | null;
-  /** Only the characters the panel says something about; the rest follow the scene. */
+  /** Only the characters the frame says something about; the rest follow the scene. */
   placements: Placement[];
-  /** Only the props the panel shows or hides against the scene. */
-  props: PanelProp[];
+  /** Only the props the frame shows or hides against the scene. */
+  props: FrameProp[];
   /** Written by hand; a directing pass leaves it alone. */
   edited: boolean;
 }

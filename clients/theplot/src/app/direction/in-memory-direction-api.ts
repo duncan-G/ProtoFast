@@ -11,11 +11,11 @@ import { emptyDirection, SceneDirection } from './model/scene-direction';
 import { SpeechVoice } from './model/speech-voice';
 import { isSpoken } from './direction-changes';
 import { Cue } from './model/cue';
-import { renumber } from './panels';
+import { renumber } from './frames';
 
 /**
  * Keeps the API's rules in memory: rows are matched by their place in the scene, changed rows are
- * marked edited, and ids are assigned on save. Directing writes plain cues and one panel over
+ * marked edited, and ids are assigned on save. Directing writes plain cues and one frame over
  * the scene, standing in for the model.
  */
 @Injectable({ providedIn: 'root' })
@@ -64,9 +64,9 @@ export class InMemoryDirectionApi implements DirectionApi {
         });
       }
     }
-    if ((target.kind === 'scene' || target.kind === 'panels') && scene.elements.length > 0) {
+    if ((target.kind === 'scene' || target.kind === 'frames') && scene.elements.length > 0) {
       const heading = scene.elements.find((e) => e.type === 'Heading');
-      current.panels = [
+      current.frames = [
         {
           id: '',
           position: 0,
@@ -86,7 +86,7 @@ export class InMemoryDirectionApi implements DirectionApi {
         },
       ];
     }
-    if (target.kind === 'scene' || target.kind === 'panels') {
+    if (target.kind === 'scene' || target.kind === 'frames') {
       current.shot = current.shot ?? 'wide';
       current.angle = current.angle ?? 'eye level';
       current.movement = current.movement ?? 'static';
@@ -175,11 +175,11 @@ export class InMemoryDirectionApi implements DirectionApi {
             edited: changed ? byAuthor : (was?.edited ?? false),
           };
         }),
-      panels: renumber(
-        direction.panels
+      frames: renumber(
+        direction.frames
           .filter((p) => ids.has(p.firstElementId) && ids.has(p.lastElementId))
           .map((p) => {
-            const was = stored.panels.find((s) => s.firstElementId === p.firstElementId);
+            const was = stored.frames.find((s) => s.firstElementId === p.firstElementId);
             const changed =
               !was ||
               JSON.stringify({ ...was, id: '', edited: false, position: 0 }) !==

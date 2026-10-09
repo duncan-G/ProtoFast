@@ -1,4 +1,4 @@
-/** A character in one panel; empty fields follow the scene. */
+/** A character in one frame; empty fields follow the scene. */
 export interface Placement {
   characterId: string;
   /** left | centre | right | off, or empty */

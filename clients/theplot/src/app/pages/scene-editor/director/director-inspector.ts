@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { overrideCount } from '../../../direction/inheritance';
+import { FrameSpan } from '../../../direction/frames';
 import { plural } from '../format';
 import { InspectorScope } from '../inspector-scope';
 import { InspectorTab } from '../inspector-tab';
@@ -18,7 +19,7 @@ const TABS: { tab: InspectorTab; label: string }[] = [
 
 const NO_PICTURES = 'Picture generation isn’t available yet';
 
-/** Edits the selected panel, or the defaults every panel of the scene follows. */
+/** Edits the selected frame, or the defaults every frame of the scene follows. */
 @Component({
   selector: 'app-director-inspector',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -41,36 +42,36 @@ const NO_PICTURES = 'Picture generation isn’t available yet';
 
       @if (scene()) {
         <div class="dr-inspector-title is-scene">
-          <span class="dr-serif">All panels</span>
+          <span class="dr-serif">All frames</span>
           <span class="dr-hint"
-            >Scene defaults. Every panel follows these unless it overrides a field.</span
+            >Scene defaults. Every frame follows these unless it overrides a field.</span
           >
         </div>
-      } @else if (store.selectedPanel(); as span) {
+      } @else if (store.selectedFrame(); as span) {
         <div class="dr-inspector-title">
-          <span class="dr-badge is-big">{{ store.selectedPanelNumber() }}</span>
-          <span class="dr-serif">Panel {{ store.selectedPanelNumber() }}</span>
+          <span class="dr-badge is-big">{{ store.selectedFrameNumber() }}</span>
+          <span class="dr-serif">Frame {{ store.selectedFrameNumber() }}</span>
           <span class="dr-inspector-of"
-            >of {{ store.panelSpans().length }} · {{ panelLines().length }} line{{
-              panelLines().length === 1 ? '' : 's'
+            >of {{ store.frameSpans().length }} · {{ frameLines().length }} line{{
+              frameLines().length === 1 ? '' : 's'
             }}</span
           >
           <span class="flex-1"></span>
           <button
             type="button"
             class="dr-step"
-            aria-label="Previous panel"
-            [disabled]="store.selectedPanelNumber() <= 1"
-            (click)="store.stepPanel(-1)"
+            aria-label="Previous frame"
+            [disabled]="store.selectedFrameNumber() <= 1"
+            (click)="store.stepFrame(-1)"
           >
             ‹
           </button>
           <button
             type="button"
             class="dr-step"
-            aria-label="Next panel"
-            [disabled]="store.selectedPanelNumber() >= store.panelSpans().length"
-            (click)="store.stepPanel(1)"
+            aria-label="Next frame"
+            [disabled]="store.selectedFrameNumber() >= store.frameSpans().length"
+            (click)="store.stepFrame(1)"
           >
             ›
           </button>
@@ -88,7 +89,7 @@ const NO_PICTURES = 'Picture generation isn’t available yet';
             <span class="dr-kicker">Generation</span>
             @if (!summaryOpen()) {
               <span class="dr-media-summary"
-                >Images 0/{{ store.panelSpans().length }} · Audio {{ readyLines(allLines()) }}/{{
+                >Images 0/{{ store.frameSpans().length }} · Audio {{ readyLines(allLines()) }}/{{
                   allLines().length
                 }}</span
               >
@@ -98,26 +99,26 @@ const NO_PICTURES = 'Picture generation isn’t available yet';
           </button>
           @if (summaryOpen()) {
             <div class="dr-thumbs">
-              @for (span of store.panelSpans(); track span.panel.firstElementId; let i = $index) {
+              @for (span of store.frameSpans(); track span.frame.firstElementId; let i = $index) {
                 <button
                   type="button"
                   class="dr-thumb"
-                  [title]="'Panel ' + (i + 1) + ' · no picture yet'"
-                  (click)="store.selectPanel(span.panel.firstElementId)"
+                  [title]="'Frame ' + (i + 1) + ' · no picture yet'"
+                  (click)="store.selectFrame(span.frame.firstElementId)"
                 ></button>
               }
             </div>
-            @if (store.panelSpans().length > 0) {
+            @if (store.frameSpans().length > 0) {
               <div class="dr-legend">
                 <span
-                  ><span class="dr-legend-key"></span>{{ store.panelSpans().length }} missing</span
+                  ><span class="dr-legend-key"></span>{{ store.frameSpans().length }} missing</span
                 >
               </div>
             }
             <div class="dr-media-row">
               <span class="dr-media-label">Images</span>
               <span class="flex-1"
-                >0 of {{ plural(store.panelSpans().length, 'panel') }} ready</span
+                >0 of {{ plural(store.frameSpans().length, 'frame') }} ready</span
               >
               <button type="button" class="dr-link" disabled [title]="noPictures">Generate</button>
             </div>
@@ -137,8 +138,8 @@ const NO_PICTURES = 'Picture generation isn’t available yet';
             </div>
           }
         </div>
-      } @else if (store.selectedPanel()) {
-        <div class="dr-media is-panel">
+      } @else if (store.selectedFrame()) {
+        <div class="dr-media is-frame">
           <div class="dr-picture" [title]="noPictures">No image</div>
           <span class="dr-media-label">Image</span>
           <span class="dr-media-value">Missing</span>
@@ -146,28 +147,28 @@ const NO_PICTURES = 'Picture generation isn’t available yet';
           <span class="dr-media-label">Audio</span>
           <span
             class="dr-media-value"
-            [class.is-warn]="readyLines(panelLines()) < panelLines().length"
+            [class.is-warn]="readyLines(frameLines()) < frameLines().length"
             [title]="
-              readyLines(panelLines()) + ' of ' + plural(panelLines().length, 'line') + ' ready'
+              readyLines(frameLines()) + ' of ' + plural(frameLines().length, 'line') + ' ready'
             "
-            >{{ readyLines(panelLines()) }} of {{ panelLines().length }} ready</span
+            >{{ readyLines(frameLines()) }} of {{ frameLines().length }} ready</span
           >
           <button
             type="button"
             class="dr-link"
-            [class.is-done]="panelLines().length > 0 && missingAudio(panelLines()) === 0"
-            [disabled]="panelLines().length === 0"
-            (click)="generate(panelLines())"
+            [class.is-done]="frameLines().length > 0 && missingAudio(frameLines()) === 0"
+            [disabled]="frameLines().length === 0"
+            (click)="generate(frameLines())"
           >
-            {{ audioAction(panelLines(), 'Regenerate') }}
+            {{ audioAction(frameLines(), 'Regenerate') }}
           </button>
           <button
             type="button"
             class="dr-pill-btn"
-            [disabled]="!playingPanel() && readyLines(panelLines()) === 0"
-            (click)="playPanel()"
+            [disabled]="!playingFrame() && readyLines(frameLines()) === 0"
+            (click)="playFrame()"
           >
-            {{ playingPanel() ? '❚❚ Stop' : '▶ Play panel' }}
+            {{ playingFrame() ? '❚❚ Stop' : '▶ Play frame' }}
           </button>
         </div>
       }
@@ -187,17 +188,18 @@ const NO_PICTURES = 'Picture generation isn’t available yet';
     </div>
 
     <div class="dr-inspector-body">
-      @if (!scene() && !store.selectedPanel()) {
+      @if (!scene() && !store.selectedFrame()) {
         <div class="dr-empty">
-          <p>No panels yet. Let the model split the scene, or picture it all in one panel.</p>
+          <p>No frames yet. Let the model split the scene, or picture it all in one frame.</p>
           <div class="dr-row-actions">
             <button
               type="button"
               class="dr-btn"
-              [disabled]="store.isDirecting({ kind: 'panels' })"
-              (click)="store.direct({ kind: 'panels' })"
+              [class.is-working]="store.isDirecting({ kind: 'frames' })"
+              [disabled]="!store.canDirect({ kind: 'frames' })"
+              (click)="store.direct({ kind: 'frames' })"
             >
-              Suggest panels
+              {{ store.isDirecting({ kind: 'frames' }) ? 'Suggesting…' : 'Suggest frames' }}
             </button>
             <button
               type="button"
@@ -205,7 +207,7 @@ const NO_PICTURES = 'Picture generation isn’t available yet';
               [disabled]="store.elements().length === 0"
               (click)="store.coverRow(0)"
             >
-              One panel
+              One frame
             </button>
           </div>
         </div>
@@ -232,39 +234,39 @@ const NO_PICTURES = 'Picture generation isn’t available yet';
         <button
           type="button"
           class="dr-btn"
-          title="The model splits the scene into panels; panels you edited keep their rows"
-          [disabled]="store.isDirecting({ kind: 'panels' })"
-          (click)="store.direct({ kind: 'panels' })"
+          title="The model splits the scene into frames; frames you edited keep their rows"
+          [disabled]="store.isDirecting({ kind: 'frames' })"
+          (click)="store.direct({ kind: 'frames' })"
         >
-          @if (store.isDirecting({ kind: 'panels' })) {
+          @if (store.isDirecting({ kind: 'frames' })) {
             <span class="spinner" aria-hidden="true"></span>
           }
-          Direct all panels
+          Direct all frames
         </button>
         <span class="flex-1"></span>
-        <span class="dr-hint">{{ plural(overrides(), 'panel override') }}</span>
-      } @else if (store.selectedPanel(); as span) {
+        <span class="dr-hint">{{ plural(overrides(), 'frame override') }}</span>
+      } @else if (store.selectedFrame(); as span) {
         <button
           type="button"
           class="dr-btn"
-          [disabled]="
-            !span.panel.id || store.isDirecting({ kind: 'panel', panelId: span.panel.id })
-          "
-          [title]="span.panel.id ? 'Have the model direct this panel' : 'Saving…'"
-          (click)="store.direct({ kind: 'panel', panelId: span.panel.id })"
+          [class.is-working]="store.isDirecting({ kind: 'frame', frameId: span.frame.id })"
+          [disabled]="!span.frame.id || !store.canDirect({ kind: 'frame', frameId: span.frame.id })"
+          [title]="span.frame.id ? 'Have the model direct this frame' : 'Saving…'"
+          (click)="store.direct({ kind: 'frame', frameId: span.frame.id })"
         >
-          @if (store.isDirecting({ kind: 'panel', panelId: span.panel.id })) {
-            <span class="spinner" aria-hidden="true"></span>
-          }
-          Suggest panel
+          {{
+            store.isDirecting({ kind: 'frame', frameId: span.frame.id })
+              ? 'Suggesting…'
+              : 'Suggest frame'
+          }}
         </button>
         <span class="flex-1"></span>
         <button
           type="button"
           class="dr-danger"
-          [disabled]="span.first === 0"
-          [title]="span.first === 0 ? 'The first panel has nothing before it' : ''"
-          (click)="store.mergePanelUp(span.first)"
+          [disabled]="span.first === 0 || joinBlocked(span)"
+          [title]="span.first === 0 ? 'The first frame has nothing before it' : ''"
+          (click)="store.mergeFrameUp(span.first)"
         >
           Join with previous
         </button>
@@ -278,17 +280,17 @@ export class DirectorInspector {
   protected readonly tabs = TABS;
   protected readonly noPictures = NO_PICTURES;
 
-  /** The All panels generation summary, folded away until asked for. */
+  /** The All frames generation summary, folded away until asked for. */
   protected readonly summaryOpen = signal(false);
   protected readonly scene = computed(() => this.store.inspectorScope() === 'scene');
   protected readonly scopes = computed<{ value: InspectorScope; label: string }[]>(() => [
-    { value: 'panel', label: `Panel ${this.store.selectedPanelNumber() || ''}`.trim() },
-    { value: 'scene', label: 'All panels' },
+    { value: 'frame', label: `Frame ${this.store.selectedFrameNumber() || ''}`.trim() },
+    { value: 'scene', label: 'All frames' },
   ]);
 
   protected readonly allLines = computed(() => this.store.spokenElements().map((e) => e.id));
-  protected readonly panelLines = computed(() => {
-    const span = this.store.selectedPanel();
+  protected readonly frameLines = computed(() => {
+    const span = this.store.selectedFrame();
     if (!span) {
       return [];
     }
@@ -298,13 +300,13 @@ export class DirectorInspector {
       .filter((e) => this.store.audioStates().has(e.id))
       .map((e) => e.id);
   });
-  protected readonly playingPanel = computed(
+  protected readonly playingFrame = computed(
     () =>
       this.store.player.context() !== null &&
-      this.store.player.context() === this.store.selectedPanel()?.panel.firstElementId,
+      this.store.player.context() === this.store.selectedFrame()?.frame.firstElementId,
   );
   protected readonly overrides = computed(() =>
-    this.store.panelSpans().reduce((n, s) => n + overrideCount(s.panel), 0),
+    this.store.frameSpans().reduce((n, s) => n + overrideCount(s.frame), 0),
   );
 
   protected plural(count: number, word: string): string {
@@ -329,12 +331,19 @@ export class DirectorInspector {
     void this.store.generateAudio(need.length > 0 ? need : ids, need.length === 0);
   }
 
-  protected playPanel(): void {
-    const span = this.store.selectedPanel();
-    if (this.playingPanel()) {
+  protected joinBlocked(span: FrameSpan): boolean {
+    const before = this.store.frameAt(span.first - 1);
+    return [span, before].some(
+      (s) => s !== null && this.store.isDirecting({ kind: 'frame', frameId: s.frame.id }),
+    );
+  }
+
+  protected playFrame(): void {
+    const span = this.store.selectedFrame();
+    if (this.playingFrame()) {
       this.store.player.stop();
     } else if (span) {
-      this.store.playLines(this.panelLines(), span.panel.firstElementId);
+      this.store.playLines(this.frameLines(), span.frame.firstElementId);
     }
   }
 }

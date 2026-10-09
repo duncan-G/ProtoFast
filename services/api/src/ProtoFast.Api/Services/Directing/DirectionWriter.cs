@@ -1,8 +1,8 @@
 
 using SceneRecord = ProtoFast.Data.ThePlot.Entities.Scene;
-using PanelRecord = ProtoFast.Data.ThePlot.Entities.Panel;
-using PanelPlacementRecord = ProtoFast.Data.ThePlot.Entities.PanelPlacement;
-using PanelPropRecord = ProtoFast.Data.ThePlot.Entities.PanelProp;
+using FrameRecord = ProtoFast.Data.ThePlot.Entities.Frame;
+using FramePlacementRecord = ProtoFast.Data.ThePlot.Entities.FramePlacement;
+using FramePropRecord = ProtoFast.Data.ThePlot.Entities.FrameProp;
 using CueRecord = ProtoFast.Data.ThePlot.Entities.Cue;
 using SceneAppearanceRecord = ProtoFast.Data.ThePlot.Entities.SceneAppearance;
 using ScenePropStateRecord = ProtoFast.Data.ThePlot.Entities.ScenePropState;
@@ -12,7 +12,7 @@ namespace ProtoFast.Api.Services.Directing;
 
 /// <summary>
 /// Writes a draft over a scene's stored director layer. Rows are matched by their place in the
-/// scene (a cue by its line, a panel by its first row, a look by its character, a state by its
+/// scene (a cue by its line, a frame by its first row, a look by its character, a state by its
 /// prop or location), so they keep their ids; rows the draft leaves out are deleted and new ones get ids from
 /// the database. A row the author changed is marked edited, so a later directing pass keeps it; a
 /// row a directing pass changed loses the mark.
@@ -41,9 +41,9 @@ public static class DirectionWriter
             return changed;
         });
 
-        Sync(scene.Panels, draft.Panels, p => p.FirstElementId, byAuthor, (stored, next) =>
+        Sync(scene.Frames, draft.Frames, p => p.FirstElementId, byAuthor, (stored, next) =>
         {
-            // Position is where the panel sits among the others, not something the author wrote on it.
+            // Position is where the frame sits among the others, not something the author wrote on it.
             var changed = stored.FirstElementId != next.FirstElementId
                           || stored.LastElementId != next.LastElementId
                           || stored.LocationId != next.LocationId
@@ -191,8 +191,8 @@ public static class DirectionWriter
             case CueRecord cue:
                 cue.Id = id;
                 break;
-            case PanelRecord panel:
-                panel.Id = id;
+            case FrameRecord frame:
+                frame.Id = id;
                 break;
             case SceneAppearanceRecord appearance:
                 appearance.Id = id;
@@ -213,8 +213,8 @@ public static class DirectionWriter
             case CueRecord cue:
                 cue.Edited = edited;
                 break;
-            case PanelRecord panel:
-                panel.Edited = edited;
+            case FrameRecord frame:
+                frame.Edited = edited;
                 break;
             case SceneAppearanceRecord appearance:
                 appearance.Edited = edited;
@@ -228,7 +228,7 @@ public static class DirectionWriter
         }
     }
 
-    private static bool SamePlacements(List<PanelPlacementRecord> stored, List<PanelPlacementRecord> next) =>
+    private static bool SamePlacements(List<FramePlacementRecord> stored, List<FramePlacementRecord> next) =>
         stored.Count == next.Count
         && stored.All(s => next.Any(n =>
             n.CharacterId == s.CharacterId
@@ -240,6 +240,6 @@ public static class DirectionWriter
             && n.WardrobeChange == s.WardrobeChange
             && n.AppearanceChange == s.AppearanceChange));
 
-    private static bool SameProps(List<PanelPropRecord> stored, List<PanelPropRecord> next) =>
+    private static bool SameProps(List<FramePropRecord> stored, List<FramePropRecord> next) =>
         stored.Count == next.Count && stored.All(s => next.Any(n => n.PropId == s.PropId && n.InView == s.InView));
 }

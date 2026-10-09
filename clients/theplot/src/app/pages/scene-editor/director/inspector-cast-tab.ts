@@ -14,14 +14,14 @@ import { ChangeLayers } from './change-layers';
 
 type LookField = 'wardrobeId' | 'wardrobeChange' | 'appearanceChange';
 
-/** "Panel 3" or "Panels 2, 5". */
-function panelList(numbers: readonly number[]): string {
-  return (numbers.length === 1 ? 'Panel ' : 'Panels ') + numbers.join(', ');
+/** "Frame 3" or "Frames 2, 5". */
+function frameList(numbers: readonly number[]): string {
+  return (numbers.length === 1 ? 'Frame ' : 'Frames ') + numbers.join(', ');
 }
 
 /**
- * Who is on screen and what they look like, for the selected panel or the whole scene. Looks come
- * from the library, change in the scene, and can change again in a panel.
+ * Who is on screen and what they look like, for the selected frame or the whole scene. Looks come
+ * from the library, change in the scene, and can change again in a frame.
  */
 @Component({
   selector: 'app-inspector-cast-tab',
@@ -33,14 +33,14 @@ function panelList(numbers: readonly number[]): string {
       <div class="dr-field-head">
         <span class="dr-kicker">On screen</span>
         <span class="flex-1"></span>
-        @if (panel(); as panel) {
+        @if (frame(); as frame) {
           @if (castOverridden()) {
             <span class="dr-override"
               >override ·
               <button
                 type="button"
                 class="dr-link is-quiet"
-                (click)="store.resetCast(panel.firstElementId)"
+                (click)="store.resetCast(frame.firstElementId)"
               >
                 reset
               </button></span
@@ -53,7 +53,7 @@ function panelList(numbers: readonly number[]): string {
       <div class="dr-chain" aria-hidden="true">
         <span class="dr-layer-tag is-library">Library</span>→<span class="dr-layer-tag is-scene"
           >Scene</span
-        >→<span class="dr-layer-tag is-here">Panel</span>
+        >→<span class="dr-layer-tag is-here">Frame</span>
       </div>
       @for (row of rows(); track row.character.id) {
         <div class="dr-cast" [class.is-off]="!row.on">
@@ -87,7 +87,7 @@ function panelList(numbers: readonly number[]): string {
               [attr.aria-checked]="row.on"
               [attr.aria-label]="row.character.name + ' on screen'"
               (click)="
-                $event.stopPropagation(); store.setOnScreen(row.character.id, !row.on, panelKey())
+                $event.stopPropagation(); store.setOnScreen(row.character.id, !row.on, frameKey())
               "
             >
               <span></span>
@@ -135,27 +135,27 @@ function panelList(numbers: readonly number[]): string {
                     </button></span
                   >
                 }
-                @if (panel() && row.wardrobeSource === 'panel') {
+                @if (frame() && row.wardrobeSource === 'frame') {
                   <button
                     type="button"
                     class="dr-link self-start"
                     (click)="promote(row.character.id, 'wardrobeId')"
                   >
-                    Use this wardrobe in all panels
+                    Use this wardrobe in all frames
                   </button>
                 }
-                @if (!panel() && row.wardrobePanels.length > 0) {
+                @if (!frame() && row.wardrobeFrames.length > 0) {
                   <div class="dr-note">
                     <span class="flex-1"
-                      >{{ list(row.wardrobePanels) }} override{{
-                        row.wardrobePanels.length === 1 ? 's' : ''
+                      >{{ list(row.wardrobeFrames) }} override{{
+                        row.wardrobeFrames.length === 1 ? 's' : ''
                       }}
                       this</span
                     >
                     <button
                       type="button"
                       class="dr-link is-quiet"
-                      (click)="store.clearPanelLooks(row.character.id, 'wardrobeId')"
+                      (click)="store.clearFrameLooks(row.character.id, 'wardrobeId')"
                     >
                       use this everywhere
                     </button>
@@ -166,40 +166,40 @@ function panelList(numbers: readonly number[]): string {
                 title="Wardrobe changes"
                 baseTag="Outfit"
                 [base]="row.outfit"
-                [sceneText]="panel() ? row.scene.wardrobeChange : ''"
+                [sceneText]="frame() ? row.scene.wardrobeChange : ''"
                 [hereTag]="hereTag()"
                 [text]="row.own.wardrobeChange"
                 [placeholder]="placeholder('e.g. hood up, soaked through')"
                 [hint]="
-                  panel()
+                  frame()
                     ? ''
-                    : 'Applies to every panel in this scene. For a different outfit, pick another wardrobe.'
+                    : 'Applies to every frame in this scene. For a different outfit, pick another wardrobe.'
                 "
-                [canPromote]="!!panel() && !!row.own.wardrobeChange"
-                [panelNote]="note(row.wardrobeChangePanels, 'wardrobe')"
+                [canPromote]="!!frame() && !!row.own.wardrobeChange"
+                [frameNote]="note(row.wardrobeChangeFrames, 'wardrobe')"
                 (edit)="set(row.character.id, 'wardrobeChange', $event)"
                 (clear)="set(row.character.id, 'wardrobeChange', '')"
                 (promote)="promote(row.character.id, 'wardrobeChange')"
-                (clearPanels)="store.clearPanelLooks(row.character.id, 'wardrobeChange')"
+                (clearFrames)="store.clearFrameLooks(row.character.id, 'wardrobeChange')"
               />
               <app-change-layers
                 title="Appearance changes"
                 [base]="row.character.description ?? ''"
-                [sceneText]="panel() ? row.scene.appearanceChange : ''"
+                [sceneText]="frame() ? row.scene.appearanceChange : ''"
                 [hereTag]="hereTag()"
                 [text]="row.own.appearanceChange"
                 [placeholder]="placeholder('e.g. bruise on left cheek')"
                 [hint]="
-                  panel()
+                  frame()
                     ? 'Adds to the library description and scene changes above. Never replaces them.'
-                    : 'Applies to every panel in this scene, on top of the library description.'
+                    : 'Applies to every frame in this scene, on top of the library description.'
                 "
-                [canPromote]="!!panel() && !!row.own.appearanceChange"
-                [panelNote]="note(row.appearancePanels, 'appearance')"
+                [canPromote]="!!frame() && !!row.own.appearanceChange"
+                [frameNote]="note(row.appearanceFrames, 'appearance')"
                 (edit)="set(row.character.id, 'appearanceChange', $event)"
                 (clear)="set(row.character.id, 'appearanceChange', '')"
                 (promote)="promote(row.character.id, 'appearanceChange')"
-                (clearPanels)="store.clearPanelLooks(row.character.id, 'appearanceChange')"
+                (clearFrames)="store.clearFrameLooks(row.character.id, 'appearanceChange')"
               />
             </div>
           }
@@ -213,14 +213,14 @@ function panelList(numbers: readonly number[]): string {
       <div class="dr-field-head">
         <span class="dr-kicker">Props</span>
         <span class="flex-1"></span>
-        @if (panel(); as panel) {
-          @if (panel.props.length > 0) {
+        @if (frame(); as frame) {
+          @if (frame.props.length > 0) {
             <span class="dr-override"
               >override ·
               <button
                 type="button"
                 class="dr-link is-quiet"
-                (click)="store.resetProps(panel.firstElementId)"
+                (click)="store.resetProps(frame.firstElementId)"
               >
                 reset
               </button></span
@@ -237,7 +237,7 @@ function panelList(numbers: readonly number[]): string {
             class="dr-prop"
             [class.is-on]="prop.on"
             [title]="prop.state ? 'In this scene: ' + prop.state : ''"
-            (click)="store.setInView(prop.id, !prop.on, panelKey())"
+            (click)="store.setInView(prop.id, !prop.on, frameKey())"
           >
             @if (prop.on) {
               {{ prop.name }} <span aria-hidden="true">×</span>
@@ -256,10 +256,11 @@ function panelList(numbers: readonly number[]): string {
       <button
         type="button"
         class="dr-link"
-        [disabled]="store.isDirecting({ kind: 'continuity' })"
+        [class.is-working]="store.isDirecting({ kind: 'continuity' })"
+        [disabled]="!store.canDirect({ kind: 'continuity' })"
         (click)="store.direct({ kind: 'continuity' })"
       >
-        Suggest looks
+        {{ store.isDirecting({ kind: 'continuity' }) ? 'Suggesting…' : 'Suggest looks' }}
       </button>
     </div>
   `,
@@ -269,29 +270,29 @@ export class InspectorCastTab {
 
   private readonly openIds = signal<ReadonlySet<string>>(new Set());
 
-  protected readonly panel = computed(() =>
-    this.store.inspectorScope() === 'panel' ? (this.store.selectedPanel()?.panel ?? null) : null,
+  protected readonly frame = computed(() =>
+    this.store.inspectorScope() === 'frame' ? (this.store.selectedFrame()?.frame ?? null) : null,
   );
-  protected readonly panelKey = computed(() => this.panel()?.firstElementId ?? null);
-  protected readonly here = computed<LookSource>(() => (this.panel() ? 'panel' : 'scene'));
+  protected readonly frameKey = computed(() => this.frame()?.firstElementId ?? null);
+  protected readonly here = computed<LookSource>(() => (this.frame() ? 'frame' : 'scene'));
   protected readonly hereTag = computed(() =>
-    this.panel() ? `Panel ${this.store.selectedPanelNumber()}` : 'Scene',
+    this.frame() ? `Frame ${this.store.selectedFrameNumber()}` : 'Scene',
   );
   protected readonly castOverridden = computed(
-    () => this.panel()?.placements.some((p) => p.onScreen !== null) ?? false,
+    () => this.frame()?.placements.some((p) => p.onScreen !== null) ?? false,
   );
 
   protected readonly rows = computed(() => {
     const direction = this.store.direction() ?? emptyDirection('');
-    const panel = this.panel();
+    const frame = this.frame();
     const opened = this.openIds();
     return this.store.cast().map((character) => {
-      const on = onScreenOf(direction, panel, character.id).value;
-      const { wardrobeId, source } = wardrobeOf(direction, panel, character);
+      const on = onScreenOf(direction, frame, character.id).value;
+      const { wardrobeId, source } = wardrobeOf(direction, frame, character);
       const wardrobe = character.wardrobes.find((w) => w.id === wardrobeId) ?? null;
       const scene = this.store.appearanceByCharacter().get(character.id);
-      const placement = panel?.placements.find((p) => p.characterId === character.id);
-      const own = panel
+      const placement = frame?.placements.find((p) => p.characterId === character.id);
+      const own = frame
         ? {
             wardrobeChange: placement?.wardrobeChange ?? '',
             appearanceChange: placement?.appearanceChange ?? '',
@@ -304,7 +305,7 @@ export class InspectorCastTab {
         wardrobeChange: scene?.wardrobeChange ?? '',
         appearanceChange: scene?.appearanceChange ?? '',
       };
-      const variation = joinChanges(sceneLayer.wardrobeChange, panel ? own.wardrobeChange : '');
+      const variation = joinChanges(sceneLayer.wardrobeChange, frame ? own.wardrobeChange : '');
       return {
         character,
         on,
@@ -317,9 +318,9 @@ export class InspectorCastTab {
         summary: on ? [wardrobe?.label, variation].filter(Boolean).join(' · ') : 'Off screen',
         edits: [source === this.here(), own.wardrobeChange, own.appearanceChange].filter(Boolean)
           .length,
-        wardrobePanels: this.store.panelsWithLook(character.id, 'wardrobeId'),
-        wardrobeChangePanels: this.store.panelsWithLook(character.id, 'wardrobeChange'),
-        appearancePanels: this.store.panelsWithLook(character.id, 'appearanceChange'),
+        wardrobeFrames: this.store.framesWithLook(character.id, 'wardrobeId'),
+        wardrobeChangeFrames: this.store.framesWithLook(character.id, 'wardrobeChange'),
+        appearanceFrames: this.store.framesWithLook(character.id, 'appearanceChange'),
       };
     });
   });
@@ -329,7 +330,7 @@ export class InspectorCastTab {
     return this.store.propsInScene().map((prop) => ({
       id: prop.id,
       name: prop.name,
-      on: inViewOf(direction, this.panel(), prop.id).value,
+      on: inViewOf(direction, this.frame(), prop.id).value,
       state: this.store.propStateByProp().get(prop.id)?.state.join(', ') ?? '',
     }));
   });
@@ -339,23 +340,23 @@ export class InspectorCastTab {
   }
 
   protected tagClass(source: LookSource): string {
-    return source === 'panel' ? 'here' : source;
+    return source === 'frame' ? 'here' : source;
   }
 
   protected list(numbers: readonly number[]): string {
-    return panelList(numbers);
+    return frameList(numbers);
   }
 
   protected note(numbers: readonly number[], what: string): string {
-    if (this.panel() || numbers.length === 0) {
+    if (this.frame() || numbers.length === 0) {
       return '';
     }
-    return `${panelList(numbers)} add${numbers.length === 1 ? 's' : ''} further ${what} changes`;
+    return `${frameList(numbers)} add${numbers.length === 1 ? 's' : ''} further ${what} changes`;
   }
 
   protected placeholder(example: string): string {
-    return this.panel()
-      ? `What changes in panel ${this.store.selectedPanelNumber()}? ${example}`
+    return this.frame()
+      ? `What changes in frame ${this.store.selectedFrameNumber()}? ${example}`
       : `What changes in this scene? ${example}`;
   }
 
@@ -373,13 +374,13 @@ export class InspectorCastTab {
   }
 
   protected set(characterId: string, field: LookField, value: string | null): void {
-    this.store.setLook(characterId, field, value || null, this.panelKey());
+    this.store.setLook(characterId, field, value || null, this.frameKey());
   }
 
   protected promote(characterId: string, field: LookField): void {
-    const panelKey = this.panelKey();
-    if (panelKey) {
-      this.store.promoteLook(characterId, field, panelKey);
+    const frameKey = this.frameKey();
+    if (frameKey) {
+      this.store.promoteLook(characterId, field, frameKey);
     }
   }
 

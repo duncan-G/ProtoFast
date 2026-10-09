@@ -1,5 +1,5 @@
 using CueRecord = ProtoFast.Data.ThePlot.Entities.Cue;
-using PanelRecord = ProtoFast.Data.ThePlot.Entities.Panel;
+using FrameRecord = ProtoFast.Data.ThePlot.Entities.Frame;
 using SceneAppearanceRecord = ProtoFast.Data.ThePlot.Entities.SceneAppearance;
 using SceneLocationStateRecord = ProtoFast.Data.ThePlot.Entities.SceneLocationState;
 using ScenePropStateRecord = ProtoFast.Data.ThePlot.Entities.ScenePropState;
@@ -33,7 +33,7 @@ public static class DirectionMessages
             message.Movement = scene.Movement;
         }
 
-        message.Panels.AddRange(scene.Panels.OrderBy(p => p.Position).ThenBy(p => p.Id).Select(ToMessage));
+        message.Frames.AddRange(scene.Frames.OrderBy(p => p.Position).ThenBy(p => p.Id).Select(ToMessage));
         var order = scene.Elements.ToDictionary(e => e.Id, e => e.Position);
         message.Cues.AddRange(scene.Cues
             .OrderBy(c => order.TryGetValue(c.ElementId, out var position) ? position : int.MaxValue)
@@ -54,49 +54,49 @@ public static class DirectionMessages
         return message;
     }
 
-    public static Panel ToMessage(PanelRecord panel)
+    public static Frame ToMessage(FrameRecord frame)
     {
-        var message = new Panel
+        var message = new Frame
         {
-            Id = panel.Id.ToString(),
-            Position = panel.Position,
-            FirstElementId = panel.FirstElementId.ToString(),
-            LastElementId = panel.LastElementId.ToString(),
-            Beat = panel.Beat,
-            LocationChange = panel.LocationChange,
-            Edited = panel.Edited,
+            Id = frame.Id.ToString(),
+            Position = frame.Position,
+            FirstElementId = frame.FirstElementId.ToString(),
+            LastElementId = frame.LastElementId.ToString(),
+            Beat = frame.Beat,
+            LocationChange = frame.LocationChange,
+            Edited = frame.Edited,
         };
-        if (panel.LocationId is { } locationId)
+        if (frame.LocationId is { } locationId)
         {
             message.LocationId = locationId.ToString();
         }
 
-        if (panel.TimeOfDay is not null)
+        if (frame.TimeOfDay is not null)
         {
-            message.TimeOfDay = panel.TimeOfDay;
+            message.TimeOfDay = frame.TimeOfDay;
         }
 
-        if (panel.Shot is not null)
+        if (frame.Shot is not null)
         {
-            message.Shot = panel.Shot;
+            message.Shot = frame.Shot;
         }
 
-        if (panel.Angle is not null)
+        if (frame.Angle is not null)
         {
-            message.Angle = panel.Angle;
+            message.Angle = frame.Angle;
         }
 
-        if (panel.Movement is not null)
+        if (frame.Movement is not null)
         {
-            message.Movement = panel.Movement;
+            message.Movement = frame.Movement;
         }
 
-        if (panel.HoldMs is { } holdMs)
+        if (frame.HoldMs is { } holdMs)
         {
             message.HoldMs = holdMs;
         }
 
-        message.Placements.AddRange(panel.Placements.OrderBy(p => p.CharacterId).Select(p =>
+        message.Placements.AddRange(frame.Placements.OrderBy(p => p.CharacterId).Select(p =>
         {
             var placement = new Placement
             {
@@ -119,7 +119,7 @@ public static class DirectionMessages
 
             return placement;
         }));
-        message.Props.AddRange(panel.Props.OrderBy(p => p.PropId).Select(p => new PanelProp
+        message.Props.AddRange(frame.Props.OrderBy(p => p.PropId).Select(p => new FrameProp
         {
             PropId = p.PropId.ToString(),
             InView = p.InView,

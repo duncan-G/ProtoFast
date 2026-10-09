@@ -6,21 +6,21 @@ using CharacterWardrobeRecord = ProtoFast.Data.ThePlot.Entities.CharacterWardrob
 using CueRecord = ProtoFast.Data.ThePlot.Entities.Cue;
 using SceneRecord = ProtoFast.Data.ThePlot.Entities.Scene;
 using DirectionVocabulary = ProtoFast.Data.ThePlot.Entities.DirectionVocabulary;
-using PanelRecord = ProtoFast.Data.ThePlot.Entities.Panel;
+using FrameRecord = ProtoFast.Data.ThePlot.Entities.Frame;
 using SceneAppearanceRecord = ProtoFast.Data.ThePlot.Entities.SceneAppearance;
 using SceneElementRecord = ProtoFast.Data.ThePlot.Entities.SceneElement;
 using ScenePropStateRecord = ProtoFast.Data.ThePlot.Entities.ScenePropState;
 using SceneLocationStateRecord = ProtoFast.Data.ThePlot.Entities.SceneLocationState;
 
 using SceneElementTypeRecord = ProtoFast.Data.ThePlot.Entities.SceneElementType;
-using PanelPlacementRecord = ProtoFast.Data.ThePlot.Entities.PanelPlacement;
-using PanelPropRecord = ProtoFast.Data.ThePlot.Entities.PanelProp;
+using FramePlacementRecord = ProtoFast.Data.ThePlot.Entities.FramePlacement;
+using FramePropRecord = ProtoFast.Data.ThePlot.Entities.FrameProp;
 
 namespace ProtoFast.Api.Services.Directing;
 
 /// <summary>
 /// Has a language model direct a scene, one part at a time. Code cuts and the model labels: the
-/// model picks tags, panel boundaries, shots, placements and looks by label and name, and code
+/// model picks tags, frame boundaries, shots, placements and looks by label and name, and code
 /// assembles every stored value from the scene's own text and ids. Rows the author edited are kept
 /// unless the caller says otherwise.
 /// </summary>
@@ -45,7 +45,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
                 await StoryDayAsync(brief, draft, ct);
                 await ContinuityAsync(brief, draft, null, null, replace, ct);
                 await CuesAsync(brief, draft, null, replace, ct);
-                await PanelsAsync(brief, draft, replace, ct);
+                await FramesAsync(brief, draft, replace, false, ct);
                 break;
             case DirectRequest.TargetOneofCase.StoryDay:
                 await StoryDayAsync(brief, draft, ct);
@@ -65,11 +65,11 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             case DirectRequest.TargetOneofCase.CueElementId:
                 await CuesAsync(brief, draft, Id(request.CueElementId, DirectionErrors.LineNotFound), true, ct);
                 break;
-            case DirectRequest.TargetOneofCase.Panels:
-                await PanelsAsync(brief, draft, replace, ct);
+            case DirectRequest.TargetOneofCase.Frames:
+                await FramesAsync(brief, draft, replace, true, ct);
                 break;
-            case DirectRequest.TargetOneofCase.PanelId:
-                await PanelAsync(brief, draft, Id(request.PanelId, DirectionErrors.PanelNotFound), ct);
+            case DirectRequest.TargetOneofCase.FrameId:
+                await FrameAsync(brief, draft, Id(request.FrameId, DirectionErrors.FrameNotFound), ct);
                 break;
             default:
                 throw StoryErrors.Invalid("Say what to direct.");
@@ -492,18 +492,19 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
     private static string? Tag(string? tag, IReadOnlyList<string> vocabulary) =>
         tag is null ? null : vocabulary.FirstOrDefault(t => LibraryNames.Same(t, tag.Trim('[', ']')));
 
-    // ─── panels ────────────────────────────────────────────────────────────
+    // ─── frames ────────────────────────────────────────────────────────────
 
-    private async Task PanelsAsync(SceneBrief brief, DirectionDraft draft, bool replaceEdited, CancellationToken ct)
+    /// <summary>With <paramref name="directCuts"/> the author's frames keep their rows but the model directs them too.</summary>
+    private async Task FramesAsync(SceneBrief brief, DirectionDraft draft, bool replaceEdited, bool directCuts, CancellationToken ct)
     {
         if (brief.Elements.Count == 0)
         {
             return;
         }
 
-        var fixedPanels = replaceEdited ? [] : draft.Panels.Where(p => p.Edited).Select(p => (Panel: p, Range: Range(brief, p))).Where(p => p.Range is not null).ToList();
-        var fixedRows = fixedPanels.Sum(p => p.Range!.Value.Last - p.Range.Value.First + 1);
-        if (fixedRows >= brief.Elements.Count)
+        var fixedFrames = replaceEdited ? [] : draft.Frames.Where(p => p.Edited).Select(p => (Frame: p, Range: Range(brief, p))).Where(p => p.Range is not null).ToList();
+        var fixedRows = fixedFrames.Sum(p => p.Range!.Value.Last - p.Range.Value.First + 1);
+        if (fixedRows >= brief.Elements.Count && !directCuts)
         {
             return;
         }
@@ -515,22 +516,25 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
                 .Append(beat.IsDialogue ? " (dialogue)" : " (action)").AppendLine();
         }
 
-        var kept = fixedPanels.Count == 0
+        var cuts = string.Join(", ", fixedFrames.Select(p => $"{brief.Label(brief.Elements[p.Range!.Value.First].Id)}–{brief.Label(brief.Elements[p.Range!.Value.Last].Id)}"));
+        var kept = fixedFrames.Count == 0
             ? ""
-            : $"These rows are already covered by panels the author fixed, so leave them out: {string.Join(", ", fixedPanels.Select(p => $"{brief.Label(brief.Elements[p.Range!.Value.First].Id)}–{brief.Label(brief.Elements[p.Range!.Value.Last].Id)}"))}.\n";
+            : directCuts
+                ? $"The author already cut some rows into frames; answer one frame for each of them with exactly the same from and to ({cuts}), and split the other rows yourself.\n"
+                : $"These rows are already covered by frames the author fixed, so leave them out: {cuts}.\n";
         var prompt = $$"""
-            Split the scene into panels: the pictures a reader sees while the lines play. Each panel
+            Split the scene into frames: the pictures a reader sees while the lines play. Each frame
             covers consecutive rows "from" one label "to" another (inclusive), in order, and together the
-            panels cover every row once. A panel boundary falls where the picture would change, not
-            where the text changes: a run of lines with no action between them can be one panel. Aim
-            for one panel per natural beat; split a long exchange when the shot should change.
+            frames cover every row once. A frame boundary falls where the picture would change, not
+            where the text changes: a run of lines with no action between them can be one frame. Aim
+            for one frame per natural beat; split a long exchange when the shot should change.
             {{kept}}
-            For each panel give "shot" ({{string.Join("|", DirectionVocabulary.Shots)}}), camera "angle"
+            For each frame give "shot" ({{string.Join("|", DirectionVocabulary.Shots)}}), camera "angle"
             ({{string.Join("|", DirectionVocabulary.Angles)}}) and "movement" ({{string.Join("|", DirectionVocabulary.Movements)}}),
             "beat" (one sentence of what is visible), "characters" on screen with "screen" ({{string.Join("|", DirectionVocabulary.ScreenSides)}}),
-            a short "pose" and "expression" and any "change" to their look this panel alone shows (empty
+            a short "pose" and "expression" and any "change" to their look this frame alone shows (empty
             when none), and "props" in view by name. Keep each character on the same screen side across
-            consecutive panels. Most panels share an angle and stay static; change them for a reason.
+            consecutive frames. Most frames share an angle and stay static; change them for a reason.
 
             Natural beats, for guidance: {{beats}}
             Cast:
@@ -539,41 +543,46 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             {{brief.PropSheet()}}
             Scene {{brief.Heading()}}:
             {{brief.Script()}}
-            Reply: {"panels":[{"from":"e1","to":"e2","shot":"wide","angle":"eye level","movement":"static","beat":"…","characters":[{"name":"Name","screen":"left","pose":"…","expression":"…","change":""}],"props":["Name"]}]}
+            Reply: {"frames":[{"from":"e1","to":"e2","shot":"wide","angle":"eye level","movement":"static","beat":"…","characters":[{"name":"Name","screen":"left","pose":"…","expression":"…","change":""}],"props":["Name"]}]}
             """;
 
         using var json = await AskAsync(prompt, ct);
         var answered = new List<(int First, int Last, JsonElement Json)>();
-        foreach (var panel in ModelJson.Array(json.RootElement, "panels"))
+        foreach (var frame in ModelJson.Array(json.RootElement, "frames"))
         {
-            var first = brief.Index(ModelJson.Str(panel, "from") ?? ModelJson.Str(panel, "first"));
-            var last = brief.Index(ModelJson.Str(panel, "to") ?? ModelJson.Str(panel, "last")) ?? first;
+            var first = brief.Index(ModelJson.Str(frame, "from") ?? ModelJson.Str(frame, "first"));
+            var last = brief.Index(ModelJson.Str(frame, "to") ?? ModelJson.Str(frame, "last")) ?? first;
             if (first is null || last is null)
             {
                 continue;
             }
 
-            answered.Add((Math.Min(first.Value, last.Value), Math.Max(first.Value, last.Value), panel));
+            answered.Add((Math.Min(first.Value, last.Value), Math.Max(first.Value, last.Value), frame));
         }
 
-        // Around fixed panels an empty answer is fair: the gaps are closed from them below.
-        if (answered.Count == 0 && fixedPanels.Count == 0)
+        // Around fixed frames an empty answer is fair: the gaps are closed from them below.
+        if (answered.Count == 0 && (fixedFrames.Count == 0 || directCuts))
         {
-            throw new ModelOutputException("No panels in the answer.");
+            throw new ModelOutputException("No frames in the answer.");
         }
 
-        // Fixed panels keep their rows; model panels are clipped around them, then gaps are closed
-        // by stretching the panel before each gap, so every row ends up in exactly one panel.
+        if (directCuts)
+        {
+            fixedFrames = fixedFrames.Select(f => (Frame: InCut(brief, answered, f.Frame, f.Range!.Value), f.Range)).ToList();
+        }
+
+        // Fixed frames keep their rows; model frames are clipped around them, then gaps are closed
+        // by stretching the frame before each gap, so every row ends up in exactly one frame.
         var covered = new bool[brief.Elements.Count];
-        var panels = new List<(int First, int Last, PanelRecord Panel)>();
-        foreach (var (panel, range) in fixedPanels)
+        var frames = new List<(int First, int Last, FrameRecord Frame)>();
+        foreach (var (frame, range) in fixedFrames)
         {
             for (var i = range!.Value.First; i <= range.Value.Last; i++)
             {
                 covered[i] = true;
             }
 
-            panels.Add((range.Value.First, range.Value.Last, panel));
+            frames.Add((range.Value.First, range.Value.Last, frame));
         }
 
         foreach (var (first, last, answer) in answered.OrderBy(a => a.First))
@@ -589,13 +598,13 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
                 }
                 else if (pieceStart is { } start)
                 {
-                    panels.Add((start, i - 1, PanelFrom(brief, answer, start, i - 1)));
+                    frames.Add((start, i - 1, FrameFrom(brief, answer, start, i - 1)));
                     pieceStart = null;
                 }
             }
         }
 
-        panels.Sort((a, b) => a.First.CompareTo(b.First));
+        frames.Sort((a, b) => a.First.CompareTo(b.First));
         for (var i = 0; i < brief.Elements.Count; i++)
         {
             if (covered[i])
@@ -603,35 +612,40 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
                 continue;
             }
 
-            var before = panels.FindLastIndex(p => p.Last < i);
-            if (before >= 0 && (i == 0 || panels[before].Last == i - 1 || !covered[i - 1]))
+            var before = frames.FindLastIndex(p => p.Last < i);
+            if (before >= 0 && (i == 0 || frames[before].Last == i - 1 || !covered[i - 1]))
             {
-                var stretched = panels[before];
+                var stretched = frames[before];
                 stretched.Last = i;
-                stretched.Panel.LastElementId = brief.Elements[i].Id;
-                panels[before] = stretched;
+                stretched.Frame.LastElementId = brief.Elements[i].Id;
+                frames[before] = stretched;
             }
             else
             {
-                var next = panels.FindIndex(p => p.First > i);
+                var next = frames.FindIndex(p => p.First > i);
                 if (next >= 0)
                 {
-                    var pulled = panels[next];
+                    var pulled = frames[next];
+                    for (var row = i; row < pulled.First; row++)
+                    {
+                        covered[row] = true;
+                    }
+
                     pulled.First = i;
-                    pulled.Panel.FirstElementId = brief.Elements[i].Id;
-                    panels[next] = pulled;
+                    pulled.Frame.FirstElementId = brief.Elements[i].Id;
+                    frames[next] = pulled;
                 }
                 else
                 {
-                    panels.Add((i, i, PanelFrom(brief, default, i, i)));
+                    frames.Add((i, i, FrameFrom(brief, default, i, i)));
                 }
             }
 
             covered[i] = true;
-            panels.Sort((a, b) => a.First.CompareTo(b.First));
+            frames.Sort((a, b) => a.First.CompareTo(b.First));
         }
 
-        var directed = panels.Select(p => p.Panel).Where(p => fixedPanels.All(f => f.Panel != p)).ToList();
+        var directed = frames.Select(p => p.Frame).Where(p => !p.Edited).ToList();
         if (draft.Shot is null || replaceEdited)
         {
             draft.Shot = Commonest(directed.Select(p => p.Shot));
@@ -647,46 +661,63 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             draft.Movement = Commonest(directed.Select(p => p.Movement));
         }
 
-        foreach (var panel in directed)
+        foreach (var frame in directed)
         {
-            AgainstScene(brief, draft, panel);
+            AgainstScene(brief, draft, frame);
         }
 
-        draft.Panels = panels.Select((p, index) =>
+        draft.Frames = frames.Select((p, index) =>
         {
-            p.Panel.Position = index;
-            return p.Panel;
+            p.Frame.Position = index;
+            return p.Frame;
         }).ToList();
+    }
+
+    /// <summary>The answer that overlaps the author's cut most, framed over the cut's own rows.</summary>
+    private static FrameRecord InCut(
+        SceneBrief brief, List<(int First, int Last, JsonElement Json)> answered, FrameRecord cut, (int First, int Last) range)
+    {
+        var best = answered
+            .Select(a => (a.Json, Overlap: Math.Min(a.Last, range.Last) - Math.Max(a.First, range.First) + 1))
+            .MaxBy(a => a.Overlap);
+        if (best.Overlap <= 0)
+        {
+            return cut;
+        }
+
+        var directed = FrameFrom(brief, best.Json, range.First, range.Last);
+        directed.Id = cut.Id;
+        return directed;
     }
 
     private static string? Commonest(IEnumerable<string?> labels) =>
         labels.OfType<string>().GroupBy(l => l).OrderByDescending(g => g.Count()).Select(g => g.Key).FirstOrDefault();
 
     /// <summary>
-    /// The model answers each panel in full; what matches the scene is stored as following it, so
-    /// a change to the scene reaches the panel. Only the differences stay on the panel.
+    /// The model answers each frame in full; what matches the scene is stored as following it, so
+    /// a change to the scene reaches the frame. Only the differences stay on the frame.
     /// </summary>
-    private static void AgainstScene(SceneBrief brief, DirectionDraft draft, PanelRecord panel)
+    private static void AgainstScene(SceneBrief brief, DirectionDraft draft, FrameRecord frame)
     {
-        if (panel.Shot == draft.Shot)
+        if (frame.Shot == draft.Shot)
         {
-            panel.Shot = null;
+            frame.Shot = null;
         }
 
-        if (panel.Angle == draft.Angle)
+        if (frame.Angle == draft.Angle)
         {
-            panel.Angle = null;
+            frame.Angle = null;
         }
 
-        if (panel.Movement == draft.Movement)
+        if (frame.Movement == draft.Movement)
         {
-            panel.Movement = null;
+            frame.Movement = null;
         }
 
         foreach (var character in brief.Cast)
         {
             var sceneOn = draft.Appearances.FirstOrDefault(a => a.CharacterId == character.Id)?.OnScreen ?? true;
-            var placement = panel.Placements.FirstOrDefault(p => p.CharacterId == character.Id);
+            var placement = frame.Placements.FirstOrDefault(p => p.CharacterId == character.Id);
             var on = placement?.OnScreen == true;
             if (on == sceneOn)
             {
@@ -697,7 +728,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             }
             else if (placement is null)
             {
-                panel.Placements.Add(new PanelPlacementRecord { CharacterId = character.Id, OnScreen = on });
+                frame.Placements.Add(new FramePlacementRecord { CharacterId = character.Id, OnScreen = on });
             }
             else
             {
@@ -708,32 +739,32 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         foreach (var prop in brief.Props)
         {
             var sceneIn = draft.PropStates.FirstOrDefault(s => s.PropId == prop.Id)?.InView ?? true;
-            var shown = panel.Props.FirstOrDefault(p => p.PropId == prop.Id);
+            var shown = frame.Props.FirstOrDefault(p => p.PropId == prop.Id);
             if ((shown is not null) == sceneIn)
             {
-                panel.Props.RemoveAll(p => p.PropId == prop.Id);
+                frame.Props.RemoveAll(p => p.PropId == prop.Id);
             }
             else if (shown is null)
             {
-                panel.Props.Add(new PanelPropRecord { PropId = prop.Id, InView = false });
+                frame.Props.Add(new FramePropRecord { PropId = prop.Id, InView = false });
             }
         }
     }
 
-    private async Task PanelAsync(SceneBrief brief, DirectionDraft draft, Guid panelId, CancellationToken ct)
+    private async Task FrameAsync(SceneBrief brief, DirectionDraft draft, Guid frameId, CancellationToken ct)
     {
-        var panel = draft.Panels.FirstOrDefault(p => p.Id == panelId) ?? throw StoryErrors.NotFound(DirectionErrors.PanelNotFound);
-        var range = Range(brief, panel) ?? throw StoryErrors.NotFound(DirectionErrors.PanelNotFound);
+        var frame = draft.Frames.FirstOrDefault(p => p.Id == frameId) ?? throw StoryErrors.NotFound(DirectionErrors.FrameNotFound);
+        var range = Range(brief, frame) ?? throw StoryErrors.NotFound(DirectionErrors.FrameNotFound);
         var prompt = $$"""
-            One panel of the scene pictures rows {{brief.Label(brief.Elements[range.First].Id)}} to {{brief.Label(brief.Elements[range.Last].Id)}}.
+            One frame of the scene pictures rows {{brief.Label(brief.Elements[range.First].Id)}} to {{brief.Label(brief.Elements[range.Last].Id)}}.
             Decide its "shot" ({{string.Join("|", DirectionVocabulary.Shots)}}), camera "angle"
             ({{string.Join("|", DirectionVocabulary.Angles)}}) and "movement" ({{string.Join("|", DirectionVocabulary.Movements)}}),
             "beat" (one sentence of what is visible), "characters" on screen with "screen"
             ({{string.Join("|", DirectionVocabulary.ScreenSides)}}), a short "pose" and "expression" and any "change"
-            to their look this panel alone shows, and "props" in view by name. Keep characters on the
-            sides they hold in the other panels, listed below.
+            to their look this frame alone shows, and "props" in view by name. Keep characters on the
+            sides they hold in the other frames, listed below.
 
-            Other panels: {{string.Join("; ", draft.Panels.Where(p => p.Id != panelId).Select(p => Summary(brief, p)))}}
+            Other frames: {{string.Join("; ", draft.Frames.Where(p => p.Id != frameId).Select(p => Summary(brief, p)))}}
 
             Cast:
             {{brief.CastSheet()}}
@@ -745,24 +776,24 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             """;
 
         using var json = await AskAsync(prompt, ct);
-        var answer = json.RootElement.TryGetProperty("panel", out var inner) ? inner : json.RootElement;
+        var answer = json.RootElement.TryGetProperty("frame", out var inner) ? inner : json.RootElement;
         if (ModelJson.Str(answer, "shot") is null && ModelJson.Str(answer, "beat") is null)
         {
-            throw new ModelOutputException("No panel in the answer.");
+            throw new ModelOutputException("No frame in the answer.");
         }
 
-        var directed = PanelFrom(brief, answer, range.First, range.Last);
+        var directed = FrameFrom(brief, answer, range.First, range.Last);
         AgainstScene(brief, draft, directed);
-        directed.Id = panel.Id;
-        directed.Position = panel.Position;
-        draft.Panels[draft.Panels.IndexOf(panel)] = directed;
+        directed.Id = frame.Id;
+        directed.Position = frame.Position;
+        draft.Frames[draft.Frames.IndexOf(frame)] = directed;
     }
 
-    private static PanelRecord PanelFrom(SceneBrief brief, JsonElement answer, int first, int last)
+    private static FrameRecord FrameFrom(SceneBrief brief, JsonElement answer, int first, int last)
     {
         var heading = brief.HeadingAt(first);
         var cast = brief.Cast;
-        var panel = new PanelRecord
+        var frame = new FrameRecord
         {
             FirstElementId = brief.Elements[first].Id,
             LastElementId = brief.Elements[last].Id,
@@ -776,12 +807,12 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         foreach (var placement in ModelJson.Array(answer, "characters"))
         {
             var character = brief.CharacterNamed(ModelJson.Str(placement, "name") ?? ModelJson.Str(placement, "character"));
-            if (character is null || !cast.Contains(character) || panel.Placements.Any(p => p.CharacterId == character.Id))
+            if (character is null || !cast.Contains(character) || frame.Placements.Any(p => p.CharacterId == character.Id))
             {
                 continue;
             }
 
-            panel.Placements.Add(new PanelPlacementRecord
+            frame.Placements.Add(new FramePlacementRecord
             {
                 CharacterId = character.Id,
                 Screen = DirectionVocabulary.ScreenSides.FirstOrDefault(s => LibraryNames.Same(s, ModelJson.Str(placement, "screen") ?? "")) ?? "centre",
@@ -795,29 +826,29 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         foreach (var name in ModelJson.Strings(answer, "props"))
         {
             var prop = brief.PropNamed(name);
-            if (prop is not null && brief.Props.Contains(prop) && panel.Props.All(p => p.PropId != prop.Id))
+            if (prop is not null && brief.Props.Contains(prop) && frame.Props.All(p => p.PropId != prop.Id))
             {
-                panel.Props.Add(new PanelPropRecord { PropId = prop.Id });
+                frame.Props.Add(new FramePropRecord { PropId = prop.Id });
             }
         }
 
-        return panel;
+        return frame;
     }
 
-    private static (int First, int Last)? Range(SceneBrief brief, PanelRecord panel)
+    private static (int First, int Last)? Range(SceneBrief brief, FrameRecord frame)
     {
-        var first = brief.Elements.FindIndex(e => e.Id == panel.FirstElementId);
-        var last = brief.Elements.FindIndex(e => e.Id == panel.LastElementId);
+        var first = brief.Elements.FindIndex(e => e.Id == frame.FirstElementId);
+        var last = brief.Elements.FindIndex(e => e.Id == frame.LastElementId);
         return first < 0 || last < 0 ? null : (Math.Min(first, last), Math.Max(first, last));
     }
 
-    private static string Summary(SceneBrief brief, PanelRecord panel)
+    private static string Summary(SceneBrief brief, FrameRecord frame)
     {
-        var range = Range(brief, panel);
+        var range = Range(brief, frame);
         var rows = range is null ? "?" : $"{brief.Label(brief.Elements[range.Value.First].Id)}–{brief.Label(brief.Elements[range.Value.Last].Id)}";
-        var placements = string.Join(", ", panel.Placements.Where(p => p.Screen.Length > 0).Select(p =>
+        var placements = string.Join(", ", frame.Placements.Where(p => p.Screen.Length > 0).Select(p =>
             $"{brief.Context.Story.Characters.FirstOrDefault(c => c.Id == p.CharacterId)?.Name ?? "?"} {p.Screen}"));
-        return $"{rows} {panel.Shot ?? "scene shot"} [{placements}]";
+        return $"{rows} {frame.Shot ?? "scene shot"} [{placements}]";
     }
 
     // ─── the model ─────────────────────────────────────────────────────────

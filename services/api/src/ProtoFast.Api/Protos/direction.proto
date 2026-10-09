@@ -6,7 +6,7 @@ package direction;
 
 import "story.proto";
 
-// The director layer over a scene: how each line is delivered, which panels picture it, and what
+// The director layer over a scene: how each line is delivered, which frames picture it, and what
 // everyone and everything in it looks like. The author edits it in the scene editor's director
 // mode, and a language model can write any part of it. Every call is confined to the caller the
 // internal JWT names; anything the caller does not own reads as not found.
@@ -44,20 +44,20 @@ message SceneDirection {
     // Which day of the story the scene happens on; looks reset between days.
     optional int32 story_day = 2;
     // In position order.
-    repeated Panel panels = 3;
+    repeated Frame frames = 3;
     repeated Cue cues = 4;
     repeated SceneAppearance appearances = 5;
     repeated ScenePropState prop_states = 6;
-    // Every panel's shot, angle and movement unless it sets its own.
+    // Every frame's shot, angle and movement unless it sets its own.
     optional string shot = 7;
     optional string angle = 8;
     optional string movement = 9;
     repeated SceneLocationState location_states = 10;
 }
 
-// One picture of the scene, covering a contiguous run of its elements in scene order. Panels do
+// One picture of the scene, covering a contiguous run of its elements in scene order. Frames do
 // not overlap.
-message Panel {
+message Frame {
     string id = 1;
     int32 position = 2;
     string first_element_id = 3;
@@ -73,13 +73,13 @@ message Panel {
     optional string angle = 13;
     // static | push in | pull out | pan | handheld; unset takes the scene's.
     optional string movement = 14;
-    // Only for panels with no dialogue to time them.
+    // Only for frames with no dialogue to time them.
     optional int32 hold_ms = 9;
-    // Only the characters the panel says something about; the rest follow the scene.
+    // Only the characters the frame says something about; the rest follow the scene.
     repeated Placement placements = 10;
-    // Only the props the panel shows or hides against the scene.
-    repeated PanelProp props = 16;
-    // What the panel adds to the location's look in the scene.
+    // Only the props the frame shows or hides against the scene.
+    repeated FrameProp props = 16;
+    // What the frame adds to the location's look in the scene.
     string location_change = 15;
     // Written by hand; a directing pass leaves it alone.
     bool edited = 12;
@@ -101,7 +101,7 @@ message Placement {
     string appearance_change = 9;
 }
 
-message PanelProp {
+message FrameProp {
     string prop_id = 1;
     bool in_view = 2;
 }
@@ -133,14 +133,14 @@ message CueAudio {
     string voice = 5;
 }
 
-// A character in the scene: whether panels show them, and a wardrobe from their sheet plus what the
+// A character in the scene: whether frames show them, and a wardrobe from their sheet plus what the
 // scene changes about it and about them.
 message SceneAppearance {
     reserved 4;
     string id = 1;
     string character_id = 2;
     optional string wardrobe_id = 3;
-    // On screen in every panel unless a panel says otherwise; unset is on screen.
+    // On screen in every frame unless a frame says otherwise; unset is on screen.
     optional bool on_screen = 8;
     // "hood up, damp from the drizzle"
     string wardrobe_change = 9;
@@ -160,7 +160,7 @@ message ScenePropState {
     optional string change_reason = 4;
     optional string change_element_id = 5;
     bool edited = 6;
-    // In view in every panel unless a panel says otherwise; unset is in view.
+    // In view in every frame unless a frame says otherwise; unset is in view.
     optional bool in_view = 7;
 }
 
@@ -197,17 +197,17 @@ message SaveDirectedSceneReply {
     SceneDirection direction = 1;
 }
 
-// What to direct. The whole scene runs the story day, looks, prop states, cues and panels in turn.
+// What to direct. The whole scene runs the story day, looks, prop states, cues and frames in turn.
 message DirectRequest {
     string scene_id = 1;
     oneof target {
         bool scene = 2;
         // The cue for this dialogue or narration line.
         string cue_element_id = 3;
-        // This panel's shot, beat, placements and props, keeping its range.
-        string panel_id = 4;
-        // The scene's panels, from scratch.
-        bool panels = 5;
+        // This frame's shot, beat, placements and props, keeping its range.
+        string frame_id = 4;
+        // The scene's frames, from scratch.
+        bool frames = 5;
         // Every line's cue.
         bool cues = 6;
         // This character's look in the scene.

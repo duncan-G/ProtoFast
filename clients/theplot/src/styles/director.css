@@ -1,6 +1,6 @@
 /*
   Director mode (src/app/pages/scene-editor/director), from the Claude Design "Director Mode"
-  (claude.ai/artifact/BWCv7AFs6wTzADpRuAhpCp): the library, the scene read as panels with the
+  (claude.ai/artifact/BWCv7AFs6wTzADpRuAhpCp): the library, the scene read as frames with the
   player under it, and the inspector. Built on the scene editor's tokens, so both themes hold.
 */
 @layer ember {
@@ -374,8 +374,47 @@
     font-size: 11px;
   }
   .dr-split-main:disabled {
-    opacity: 0.75;
+    opacity: 0.55;
     cursor: default;
+  }
+
+  /* The model is writing what this control would: stripes march until the answer lands.
+     An overlay, so hover and open states that reset the background keep them. */
+  .is-working {
+    position: relative;
+  }
+  .is-working:disabled {
+    cursor: progress;
+  }
+  .is-working::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, currentColor 16%, transparent) 25%,
+        transparent 25% 50%,
+        color-mix(in srgb, currentColor 16%, transparent) 50% 75%,
+        transparent 75%
+      )
+      0 0 / 14px 14px;
+    pointer-events: none;
+    animation: dr-march 0.7s linear infinite;
+  }
+  .dr-link.is-working::after {
+    inset: -2px -6px;
+    border-radius: 4px;
+  }
+  @keyframes dr-march {
+    to {
+      background-position: 14px 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .is-working::after {
+      animation: none;
+    }
   }
 
   /* — the script — */
@@ -445,6 +484,9 @@
   }
   .dr-row.is-loose .dr-bracket {
     border-left: 3px dotted var(--se-line-strong);
+  }
+  .dr-row.is-directing .dr-bracket {
+    opacity: 0.4;
   }
   .dr-bracket .dr-badge {
     position: absolute;
@@ -640,6 +682,12 @@
   .dr-gap:focus-visible {
     opacity: 1;
   }
+  .dr-gap:disabled {
+    cursor: default;
+  }
+  .dr-gap:disabled:hover {
+    opacity: 0.4;
+  }
   .dr-gap-join {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
@@ -807,7 +855,7 @@
   .dr-segment[data-state='none'] {
     border: 1px dashed var(--se-line-strong);
   }
-  .dr-segment.is-panel-start {
+  .dr-segment.is-frame-start {
     margin-left: 2px;
   }
   .dr-segment.is-played {
@@ -938,7 +986,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .dr-media.is-panel {
+  .dr-media.is-frame {
     display: grid;
     grid-template-columns: clamp(56px, 26%, 80px) max-content minmax(0, 1fr) max-content;
     align-items: center;
@@ -956,7 +1004,7 @@
     text-transform: uppercase;
     color: var(--se-muted-2);
   }
-  .is-panel .dr-picture {
+  .is-frame .dr-picture {
     grid-row: span 2;
   }
   .dr-media-row {
@@ -981,7 +1029,7 @@
     width: 46px;
     color: var(--se-muted);
   }
-  .is-panel .dr-media-label {
+  .is-frame .dr-media-label {
     width: auto;
   }
   .dr-media .dr-link {

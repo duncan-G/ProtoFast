@@ -11,7 +11,7 @@ import { SpeechVoice } from './model/speech-voice';
 
 /**
  * The director layer over a scene. Rows are known by their place in the scene (a cue by its line,
- * a panel by its first row, a look by its character, a state by its prop); the API assigns ids and
+ * a frame by its first row, a look by its character, a state by its prop); the API assigns ids and
  * returns them with every save.
  */
 @Injectable({ providedIn: 'root', useClass: ConnectDirectionApi })

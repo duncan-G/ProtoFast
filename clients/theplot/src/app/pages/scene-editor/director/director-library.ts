@@ -8,7 +8,7 @@ import { LibraryCastCard } from './library-cast-card';
 import { LibraryEntryCard } from './library-entry-card';
 import { LibraryNarratorCard } from './library-narrator-card';
 
-const DEFAULTS = 'Scenes and panels can override them in the inspector.';
+const DEFAULTS = 'Scenes and frames can override them in the inspector.';
 
 const TABS: { tab: DirectorLibraryTab; label: string; hint: string; placeholder: string }[] = [
   {

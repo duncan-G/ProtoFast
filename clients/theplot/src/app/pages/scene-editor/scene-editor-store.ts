@@ -11,9 +11,9 @@ import {
 } from '../../direction/inheritance';
 import { Cue } from '../../direction/model/cue';
 import { DescribeTarget } from '../../direction/model/describe-target';
-import { DirectTarget, targetKey } from '../../direction/model/direct-target';
+import { covers, DirectTarget } from '../../direction/model/direct-target';
 import { DIRECTION_VOCABULARY } from '../../direction/model/direction-vocabulary';
-import { Panel } from '../../direction/model/panel';
+import { Frame } from '../../direction/model/frame';
 import { blankAppearance, SceneAppearance } from '../../direction/model/scene-appearance';
 import { emptyDirection, isDirected, SceneDirection } from '../../direction/model/scene-direction';
 import { blankPropState, ScenePropState } from '../../direction/model/scene-prop-state';
@@ -23,13 +23,13 @@ import {
   cover,
   headingAt,
   mergeUp,
-  panelSpans,
-  PanelSpan,
-  removePanel,
+  frameSpans,
+  FrameSpan,
+  removeFrame,
   renumber,
   spanAt,
   splitAt,
-} from '../../direction/panels';
+} from '../../direction/frames';
 import { insertTag, reanchor, removeTag, stripTags } from '../../direction/performance';
 import { describeError } from '../../documents/document-api';
 import { forgetInElement, renameInElement } from '../../stories/element-references';
@@ -86,15 +86,15 @@ export class SceneEditorStore implements OnDestroy {
   readonly error = signal('');
 
   readonly mode = signal<EditorMode>('story');
-  readonly inspectorScope = signal<InspectorScope>('panel');
+  readonly inspectorScope = signal<InspectorScope>('frame');
   readonly inspectorTab = signal<InspectorTab>('cast');
   readonly directorLibraryTab = signal<DirectorLibraryTab>('cast');
   /** The library card that is open, by entry id. */
   readonly directorLibraryEntry = signal<string | null>(null);
-  /** The first element id of the selected panel: panels are known by their place, not their id. */
-  readonly selectedPanelKey = signal<string | null>(null);
-  /** Target keys the model is working on. */
-  readonly directing = signal<ReadonlySet<string>>(new Set());
+  /** The first element id of the selected frame: frames are known by their place, not their id. */
+  readonly selectedFrameKey = signal<string | null>(null);
+  /** What the model is working on. */
+  readonly directing = signal<readonly DirectTarget[]>([]);
   /** The library entry the model is describing. */
   readonly describing = signal<string | null>(null);
   /** Element ids whose lines are being spoken; 'scene' while a whole-scene pass runs. */
@@ -220,18 +220,18 @@ export class SceneEditorStore implements OnDestroy {
   readonly cueByElement = computed(
     () => new Map((this.direction()?.cues ?? []).map((c) => [c.elementId, c])),
   );
-  readonly panelSpans = computed<PanelSpan[]>(() =>
-    panelSpans(this.direction()?.panels ?? [], this.elements()),
+  readonly frameSpans = computed<FrameSpan[]>(() =>
+    frameSpans(this.direction()?.frames ?? [], this.elements()),
   );
-  /** The panel the inspector edits: the one picked, else the first. */
-  readonly selectedPanel = computed<PanelSpan | null>(() => {
-    const key = this.selectedPanelKey();
-    const spans = this.panelSpans();
-    return spans.find((s) => s.panel.firstElementId === key) ?? spans[0] ?? null;
+  /** The frame the inspector edits: the one picked, else the first. */
+  readonly selectedFrame = computed<FrameSpan | null>(() => {
+    const key = this.selectedFrameKey();
+    const spans = this.frameSpans();
+    return spans.find((s) => s.frame.firstElementId === key) ?? spans[0] ?? null;
   });
-  readonly selectedPanelNumber = computed(() => {
-    const span = this.selectedPanel();
-    return span ? this.panelSpans().indexOf(span) + 1 : 0;
+  readonly selectedFrameNumber = computed(() => {
+    const span = this.selectedFrame();
+    return span ? this.frameSpans().indexOf(span) + 1 : 0;
   });
   readonly locationStateByLocation = computed(
     () => new Map((this.direction()?.locationStates ?? []).map((l) => [l.locationId, l])),
@@ -310,12 +310,18 @@ export class SceneEditorStore implements OnDestroy {
     return direction ? directionChanges(direction, this.elements()) : [];
   });
 
-  panelAt(index: number): PanelSpan | null {
-    return spanAt(this.panelSpans(), index);
+  frameAt(index: number): FrameSpan | null {
+    return spanAt(this.frameSpans(), index);
   }
 
+  /** The model is writing this target, alone or as part of a wider one. */
   isDirecting(target: DirectTarget): boolean {
-    return this.directing().has(targetKey(target));
+    return this.directing().some((running) => covers(running, target));
+  }
+
+  /** No request in flight writes any of what this one would. */
+  canDirect(target: DirectTarget): boolean {
+    return !this.directing().some((running) => covers(running, target) || covers(target, running));
   }
 
   readonly places = computed<ScenePlace[]>(() =>
@@ -366,7 +372,7 @@ export class SceneEditorStore implements OnDestroy {
         ]);
         this.scene.set(scene);
         this.direction.set(direction);
-        this.selectedPanelKey.set(null);
+        this.selectedFrameKey.set(null);
         this.editingId.set(null);
       }
     } catch (err) {
@@ -1078,149 +1084,149 @@ export class SceneEditorStore implements OnDestroy {
     this.updateCue(elementId, { narratorId });
   }
 
-  // ─── director mode: panels ─────────────────────────────────────────────
+  // ─── director mode: frames ─────────────────────────────────────────────
 
-  selectPanel(key: string | null): void {
-    this.selectedPanelKey.set(key);
+  selectFrame(key: string | null): void {
+    this.selectedFrameKey.set(key);
     if (key !== null) {
-      this.inspectorScope.set('panel');
+      this.inspectorScope.set('frame');
     }
   }
 
-  stepPanel(delta: -1 | 1): void {
-    const spans = this.panelSpans();
-    const at = spans.indexOf(this.selectedPanel()!);
+  stepFrame(delta: -1 | 1): void {
+    const spans = this.frameSpans();
+    const at = spans.indexOf(this.selectedFrame()!);
     const next = spans[Math.min(Math.max(at + delta, 0), spans.length - 1)];
     if (next) {
-      this.selectPanel(next.panel.firstElementId);
+      this.selectFrame(next.frame.firstElementId);
     }
   }
 
-  splitPanelAt(index: number): void {
-    const panels = splitAt(this.direction()?.panels ?? [], this.elements(), index);
-    if (panels) {
-      this.updateDirection((d) => ({ ...d, panels }));
-      this.selectPanel(this.elements()[index].id);
+  splitFrameAt(index: number): void {
+    const frames = splitAt(this.direction()?.frames ?? [], this.elements(), index);
+    if (frames) {
+      this.updateDirection((d) => ({ ...d, frames }));
+      this.selectFrame(this.elements()[index].id);
     }
   }
 
-  mergePanelUp(index: number): void {
-    const panels = mergeUp(this.direction()?.panels ?? [], this.elements(), index);
-    if (panels) {
-      this.updateDirection((d) => ({ ...d, panels }));
-      this.selectPanel(
-        spanAt(panelSpans(panels, this.elements()), index)?.panel.firstElementId ?? null,
+  mergeFrameUp(index: number): void {
+    const frames = mergeUp(this.direction()?.frames ?? [], this.elements(), index);
+    if (frames) {
+      this.updateDirection((d) => ({ ...d, frames }));
+      this.selectFrame(
+        spanAt(frameSpans(frames, this.elements()), index)?.frame.firstElementId ?? null,
       );
     }
   }
 
   coverRow(index: number): void {
-    const panels = cover(this.direction()?.panels ?? [], this.elements(), index);
-    if (panels) {
-      this.updateDirection((d) => ({ ...d, panels }));
-      this.selectPanel(
-        spanAt(panelSpans(panels, this.elements()), index)?.panel.firstElementId ?? null,
+    const frames = cover(this.direction()?.frames ?? [], this.elements(), index);
+    if (frames) {
+      this.updateDirection((d) => ({ ...d, frames }));
+      this.selectFrame(
+        spanAt(frameSpans(frames, this.elements()), index)?.frame.firstElementId ?? null,
       );
     }
   }
 
-  updatePanel(key: string, patch: Partial<Panel>): void {
+  updateFrame(key: string, patch: Partial<Frame>): void {
     this.updateDirection((d) => ({
       ...d,
-      panels: renumber(
-        d.panels.map((p) => (p.firstElementId === key ? { ...p, ...patch, edited: true } : p)),
+      frames: renumber(
+        d.frames.map((p) => (p.firstElementId === key ? { ...p, ...patch, edited: true } : p)),
         this.elements(),
       ),
     }));
   }
 
-  /** In the panel scope a value equal to the scene's follows it rather than overriding it. */
-  setFraming(key: Framing, value: string, panelKey: string | null): void {
+  /** In the frame scope a value equal to the scene's follows it rather than overriding it. */
+  setFraming(key: Framing, value: string, frameKey: string | null): void {
     const direction = this.direction() ?? emptyDirection(this.scene()?.id ?? '');
-    if (panelKey === null) {
+    if (frameKey === null) {
       this.updateDirection((d) => ({ ...d, [key]: value }));
     } else {
-      this.updatePanel(panelKey, { [key]: value === direction[key] ? null : value });
+      this.updateFrame(frameKey, { [key]: value === direction[key] ? null : value });
     }
   }
 
-  setOnScreen(characterId: string, on: boolean, panelKey: string | null): void {
-    if (panelKey === null) {
+  setOnScreen(characterId: string, on: boolean, frameKey: string | null): void {
+    if (frameKey === null) {
       this.setAppearance(characterId, { onScreen: on });
       return;
     }
-    const panel = this.panelByKey(panelKey);
+    const frame = this.frameByKey(frameKey);
     const direction = this.direction();
-    if (!panel || !direction) {
+    if (!frame || !direction) {
       return;
     }
     const scene = onScreenOf(direction, null, characterId).value;
-    this.updatePanel(panelKey, {
-      placements: withPlacement(panel, characterId, { onScreen: on === scene ? null : on }),
+    this.updateFrame(frameKey, {
+      placements: withPlacement(frame, characterId, { onScreen: on === scene ? null : on }),
     });
   }
 
-  setInView(propId: string, on: boolean, panelKey: string | null): void {
-    if (panelKey === null) {
+  setInView(propId: string, on: boolean, frameKey: string | null): void {
+    if (frameKey === null) {
       this.setPropState(propId, { inView: on });
       return;
     }
-    const panel = this.panelByKey(panelKey);
+    const frame = this.frameByKey(frameKey);
     const direction = this.direction();
-    if (!panel || !direction) {
+    if (!frame || !direction) {
       return;
     }
     const scene = inViewOf(direction, null, propId).value;
-    const rest = panel.props.filter((p) => p.propId !== propId);
-    this.updatePanel(panelKey, {
+    const rest = frame.props.filter((p) => p.propId !== propId);
+    this.updateFrame(frameKey, {
       props: on === scene ? rest : [...rest, { propId, inView: on }],
     });
   }
 
-  /** The panel follows the scene again for who is on screen. */
-  resetCast(panelKey: string): void {
-    const panel = this.panelByKey(panelKey);
-    if (panel) {
-      this.updatePanel(panelKey, {
-        placements: panel.placements.flatMap((p) =>
-          withPlacement({ ...panel, placements: [p] }, p.characterId, { onScreen: null }),
+  /** The frame follows the scene again for who is on screen. */
+  resetCast(frameKey: string): void {
+    const frame = this.frameByKey(frameKey);
+    if (frame) {
+      this.updateFrame(frameKey, {
+        placements: frame.placements.flatMap((p) =>
+          withPlacement({ ...frame, placements: [p] }, p.characterId, { onScreen: null }),
         ),
       });
     }
   }
 
-  resetProps(panelKey: string): void {
-    this.updatePanel(panelKey, { props: [] });
+  resetProps(frameKey: string): void {
+    this.updateFrame(frameKey, { props: [] });
   }
 
-  /** In the scene scope a wardrobe goes on the scene's look; in a panel, on its placement. */
+  /** In the scene scope a wardrobe goes on the scene's look; in a frame, on its placement. */
   setLook(
     characterId: string,
     field: 'wardrobeId' | 'wardrobeChange' | 'appearanceChange',
     value: string | null,
-    panelKey: string | null,
+    frameKey: string | null,
   ): void {
-    if (panelKey === null) {
+    if (frameKey === null) {
       this.setAppearance(characterId, { [field]: value ?? (field === 'wardrobeId' ? null : '') });
       return;
     }
-    const panel = this.panelByKey(panelKey);
-    if (panel) {
-      this.updatePanel(panelKey, {
-        placements: withPlacement(panel, characterId, {
+    const frame = this.frameByKey(frameKey);
+    if (frame) {
+      this.updateFrame(frameKey, {
+        placements: withPlacement(frame, characterId, {
           [field]: value ?? (field === 'wardrobeId' ? null : ''),
         }),
       });
     }
   }
 
-  /** A panel's look moves to the scene, so every panel has it; no panel keeps its own. */
+  /** A frame's look moves to the scene, so every frame has it; no frame keeps its own. */
   promoteLook(
     characterId: string,
     field: 'wardrobeId' | 'wardrobeChange' | 'appearanceChange',
-    panelKey: string,
+    frameKey: string,
   ): void {
-    const own = this.panelByKey(panelKey)?.placements.find((p) => p.characterId === characterId);
+    const own = this.frameByKey(frameKey)?.placements.find((p) => p.characterId === characterId);
     const scene = this.appearanceByCharacter().get(characterId);
     if (!own) {
       return;
@@ -1228,17 +1234,17 @@ export class SceneEditorStore implements OnDestroy {
     const value =
       field === 'wardrobeId' ? own.wardrobeId : joinChanges(scene?.[field] ?? '', own[field]);
     this.setAppearance(characterId, { [field]: value });
-    this.clearPanelLooks(characterId, field);
+    this.clearFrameLooks(characterId, field);
   }
 
-  clearPanelLooks(
+  clearFrameLooks(
     characterId: string,
     field: 'wardrobeId' | 'wardrobeChange' | 'appearanceChange',
   ): void {
     const blank = field === 'wardrobeId' ? null : '';
     this.updateDirection((d) => ({
       ...d,
-      panels: d.panels.map((p) =>
+      frames: d.frames.map((p) =>
         p.placements.some((pl) => pl.characterId === characterId && pl[field])
           ? { ...p, placements: withPlacement(p, characterId, { [field]: blank }), edited: true }
           : p,
@@ -1246,19 +1252,19 @@ export class SceneEditorStore implements OnDestroy {
     }));
   }
 
-  /** Panels that set their own value for a character's look field, by number. */
-  panelsWithLook(
+  /** Frames that set their own value for a character's look field, by number. */
+  framesWithLook(
     characterId: string,
     field: 'wardrobeId' | 'wardrobeChange' | 'appearanceChange',
   ): number[] {
-    return this.panelSpans().flatMap((s, i) =>
-      s.panel.placements.some((p) => p.characterId === characterId && p[field]) ? [i + 1] : [],
+    return this.frameSpans().flatMap((s, i) =>
+      s.frame.placements.some((p) => p.characterId === characterId && p[field]) ? [i + 1] : [],
     );
   }
 
-  setLocationChange(locationId: string, change: string, panelKey: string | null): void {
-    if (panelKey !== null) {
-      this.updatePanel(panelKey, { locationChange: change });
+  setLocationChange(locationId: string, change: string, frameKey: string | null): void {
+    if (frameKey !== null) {
+      this.updateFrame(frameKey, { locationChange: change });
       return;
     }
     this.updateDirection((d) => {
@@ -1273,18 +1279,18 @@ export class SceneEditorStore implements OnDestroy {
     });
   }
 
-  promoteLocationChange(locationId: string, panelKey: string): void {
-    const own = this.panelByKey(panelKey)?.locationChange ?? '';
+  promoteLocationChange(locationId: string, frameKey: string): void {
+    const own = this.frameByKey(frameKey)?.locationChange ?? '';
     const scene = this.locationStateByLocation().get(locationId)?.change ?? '';
     this.setLocationChange(locationId, joinChanges(scene, own), null);
-    this.clearPanelLocationChanges(locationId);
+    this.clearFrameLocationChanges(locationId);
   }
 
-  clearPanelLocationChanges(locationId: string): void {
+  clearFrameLocationChanges(locationId: string): void {
     const elements = this.elements();
     this.updateDirection((d) => ({
       ...d,
-      panels: d.panels.map((p) => {
+      frames: d.frames.map((p) => {
         const first = elements.findIndex((e) => e.id === p.firstElementId);
         const at = headingAt(elements, first)?.locationId ?? null;
         return p.locationChange && at === locationId
@@ -1294,21 +1300,21 @@ export class SceneEditorStore implements OnDestroy {
     }));
   }
 
-  deletePanel(key: string): void {
-    const panel = this.panelByKey(key);
-    if (panel) {
+  deleteFrame(key: string): void {
+    const frame = this.frameByKey(key);
+    if (frame) {
       this.updateDirection((d) => ({
         ...d,
-        panels: removePanel(d.panels, this.elements(), panel),
+        frames: removeFrame(d.frames, this.elements(), frame),
       }));
-      if (this.selectedPanelKey() === key) {
-        this.selectedPanelKey.set(null);
+      if (this.selectedFrameKey() === key) {
+        this.selectedFrameKey.set(null);
       }
     }
   }
 
-  private panelByKey(key: string): Panel | null {
-    return this.direction()?.panels.find((p) => p.firstElementId === key) ?? null;
+  private frameByKey(key: string): Frame | null {
+    return this.direction()?.frames.find((p) => p.firstElementId === key) ?? null;
   }
 
   // ─── director mode: continuity ─────────────────────────────────────────
@@ -1349,11 +1355,10 @@ export class SceneEditorStore implements OnDestroy {
   /** Pending edits save first, so the model reads the scene as the author sees it. */
   async direct(target: DirectTarget, replaceEdited = false): Promise<void> {
     const scene = this.scene();
-    const key = targetKey(target);
-    if (!scene || this.directing().has(key)) {
+    if (!scene || !this.canDirect(target)) {
       return;
     }
-    this.directing.update((keys) => new Set([...keys, key]));
+    this.directing.update((running) => [...running, target]);
     try {
       await this.flushSave();
       const direction = await this.directionApi.direct(scene.id, target, replaceEdited);
@@ -1370,7 +1375,7 @@ export class SceneEditorStore implements OnDestroy {
     } catch (err) {
       this.error.set(describeError(err, 'The scene could not be directed.'));
     } finally {
-      this.directing.update((keys) => new Set([...keys].filter((k) => k !== key)));
+      this.directing.update((running) => running.filter((t) => t !== target));
     }
   }
 
@@ -1410,7 +1415,7 @@ export class SceneEditorStore implements OnDestroy {
         (l) => l.locationId,
         (l) => l.edited,
       ),
-      panels: mine.panels.some((p) => p.edited) ? mine.panels : theirs.panels,
+      frames: mine.frames.some((p) => p.edited) ? mine.frames : theirs.frames,
     };
   }
 

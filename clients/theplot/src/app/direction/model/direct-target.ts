@@ -7,8 +7,8 @@ export type DirectTarget =
   | { kind: 'propState'; propId: string }
   | { kind: 'cues' }
   | { kind: 'cue'; elementId: string }
-  | { kind: 'panels' }
-  | { kind: 'panel'; panelId: string };
+  | { kind: 'frames' }
+  | { kind: 'frame'; frameId: string };
 
 /** One string per target, for busy indicators. */
 export function targetKey(target: DirectTarget): string {
@@ -19,9 +19,25 @@ export function targetKey(target: DirectTarget): string {
       return `propState:${target.propId}`;
     case 'cue':
       return `cue:${target.elementId}`;
-    case 'panel':
-      return `panel:${target.panelId}`;
+    case 'frame':
+      return `frame:${target.frameId}`;
     default:
       return target.kind;
   }
+}
+
+const GROUP: Partial<Record<DirectTarget['kind'], DirectTarget['kind']>> = {
+  appearance: 'continuity',
+  propState: 'continuity',
+  cue: 'cues',
+  frame: 'frames',
+};
+
+/** Whether directing `outer` also writes what `inner` would. */
+export function covers(outer: DirectTarget, inner: DirectTarget): boolean {
+  return (
+    outer.kind === 'scene' ||
+    targetKey(outer) === targetKey(inner) ||
+    GROUP[inner.kind] === outer.kind
+  );
 }

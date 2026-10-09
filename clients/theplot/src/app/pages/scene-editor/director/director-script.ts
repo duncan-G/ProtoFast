@@ -8,7 +8,7 @@ import {
   output,
   signal,
 } from '@angular/core';
-import { PanelSpan, spanAt } from '../../../direction/panels';
+import { FrameSpan, spanAt } from '../../../direction/frames';
 import { tokenize } from '../../../direction/performance';
 import { isSpoken } from '../../../direction/direction-changes';
 import { SceneElement } from '../../../stories/model/scene-element';
@@ -21,11 +21,11 @@ import { SceneEditorStore } from '../scene-editor-store';
 interface ScriptRow {
   element: SceneElement;
   index: number;
-  span: PanelSpan | null;
+  span: FrameSpan | null;
   number: number;
   isStart: boolean;
   isEnd: boolean;
-  /** The row before it is in the same panel, so a split can go here. */
+  /** The row before it is in the same frame, so a split can go here. */
   inner: boolean;
 }
 
@@ -46,8 +46,8 @@ const MORE: { type: SceneElementType; label: string }[] = [
 ];
 
 /**
- * The scene as the reader will get it, row by row, with the panels bracketed in the gutter. A row
- * picks its panel; the gap above a row splits its panel there or joins it to the one before.
+ * The scene as the reader will get it, row by row, with the frames bracketed in the gutter. A row
+ * picks its frame; the gap above a row splits its frame there or joins it to the one before.
  */
 @Component({
   selector: 'app-director-script',
@@ -62,18 +62,20 @@ const MORE: { type: SceneElementType; label: string }[] = [
             <button
               type="button"
               class="dr-gap dr-gap-join"
-              title="Join this panel to the one before"
-              (click)="store.mergePanelUp(row.index)"
+              title="Join this frame to the one before"
+              [disabled]="isDirecting(row) || isDirecting(rows()[row.index - 1])"
+              (click)="store.mergeFrameUp(row.index)"
             >
-              <span class="dr-gap-line"></span><span>Join panels</span>
+              <span class="dr-gap-line"></span><span>Join frames</span>
             </button>
           } @else if (row.inner) {
             <button
               type="button"
               class="dr-gap dr-gap-split"
               [class.is-on]="isOn(row)"
-              title="Start a new panel at this row"
-              (click)="store.splitPanelAt(row.index)"
+              title="Start a new frame at this row"
+              [disabled]="isDirecting(row)"
+              (click)="store.splitFrameAt(row.index)"
             >
               <span class="dr-gap-rail"></span><span class="dr-gap-line"></span
               ><span>Split here</span>
@@ -96,7 +98,8 @@ const MORE: { type: SceneElementType; label: string }[] = [
           [class.is-end]="row.isEnd"
           [class.is-loose]="!row.span"
           [class.is-dragged]="isDragged(row.index)"
-          [title]="row.span ? '' : 'No panel pictures this row — click to add one'"
+          [class.is-directing]="isDirecting(row)"
+          [title]="row.span ? '' : 'No frame pictures this row — click to add one'"
           (click)="pick(row)"
           (keydown.enter)="pick(row)"
           (dragover)="onDragOver($event, row.index)"
@@ -263,7 +266,7 @@ export class DirectorScript {
   protected readonly dropAt = signal<number | null>(null);
 
   protected readonly rows = computed<ScriptRow[]>(() => {
-    const spans = this.store.panelSpans();
+    const spans = this.store.frameSpans();
     return this.store.elements().map((element, index) => {
       const span = spanAt(spans, index);
       return {
@@ -304,13 +307,19 @@ export class DirectorScript {
   protected isOn(row: ScriptRow): boolean {
     return (
       row.span !== null &&
-      (this.store.inspectorScope() === 'scene' || row.span === this.store.selectedPanel())
+      (this.store.inspectorScope() === 'scene' || row.span === this.store.selectedFrame())
+    );
+  }
+
+  protected isDirecting(row: ScriptRow): boolean {
+    return this.store.isDirecting(
+      row.span ? { kind: 'frame', frameId: row.span.frame.id } : { kind: 'frames' },
     );
   }
 
   protected pick(row: ScriptRow): void {
     if (row.span) {
-      this.store.selectPanel(row.span.panel.firstElementId);
+      this.store.selectFrame(row.span.frame.firstElementId);
     } else {
       this.store.coverRow(row.index);
     }

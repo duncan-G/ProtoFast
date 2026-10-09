@@ -1,14 +1,14 @@
 namespace ProtoFast.Data.ThePlot.Entities;
 
 /// <summary>
-/// A character in one panel: where they are and how they hold themselves, and what the panel
-/// changes about their look in the scene. Owned by its <see cref="Panel"/>.
+/// A character in one frame: where they are and how they hold themselves, and what the frame
+/// changes about their look in the scene. Owned by its <see cref="Frame"/>.
 /// </summary>
-public sealed class PanelPlacement
+public sealed class FramePlacement
 {
-    public Guid PanelId { get; set; }
+    public Guid FrameId { get; set; }
 
-    public Panel Panel { get; set; } = null!;
+    public Frame Frame { get; set; } = null!;
 
     public Guid CharacterId { get; set; }
 

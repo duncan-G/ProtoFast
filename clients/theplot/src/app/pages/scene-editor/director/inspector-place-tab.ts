@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { headingAt } from '../../../direction/panels';
+import { headingAt } from '../../../direction/frames';
 import { Location } from '../../../stories/model/location';
 import { SceneEditorStore } from '../scene-editor-store';
 import { ChangeLayers } from './change-layers';
@@ -9,11 +9,11 @@ interface Place {
   time: string;
   sceneChange: string;
   own: string;
-  /** Panels that add their own changes to this location. */
-  panels: number[];
+  /** Frames that add their own changes to this location. */
+  frames: number[];
 }
 
-/** Where the panel or the scene is, and what is different about the place here. */
+/** Where the frame or the scene is, and what is different about the place here. */
 @Component({
   selector: 'app-inspector-place-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -30,22 +30,22 @@ interface Place {
       <app-change-layers
         title="Location changes"
         [base]="place.location.description ?? ''"
-        [sceneText]="panel() ? place.sceneChange : ''"
+        [sceneText]="frame() ? place.sceneChange : ''"
         [hereTag]="hereTag()"
         [text]="place.own"
         [placeholder]="placeholder()"
-        [canPromote]="!!panel() && !!place.own"
-        [panelNote]="note(place.panels)"
-        (edit)="store.setLocationChange(place.location.id, $event, panelKey())"
-        (clear)="store.setLocationChange(place.location.id, '', panelKey())"
+        [canPromote]="!!frame() && !!place.own"
+        [frameNote]="note(place.frames)"
+        (edit)="store.setLocationChange(place.location.id, $event, frameKey())"
+        (clear)="store.setLocationChange(place.location.id, '', frameKey())"
         (promote)="promote(place.location.id)"
-        (clearPanels)="store.clearPanelLocationChanges(place.location.id)"
+        (clearFrames)="store.clearFrameLocationChanges(place.location.id)"
       />
     } @empty {
       <p class="dr-empty">
         {{
-          panel()
-            ? 'No location heads this panel yet. Add a heading above it in the story.'
+          frame()
+            ? 'No location heads this frame yet. Add a heading above it in the story.'
             : 'This scene has no location yet. Add a heading in the story.'
         }}
       </p>
@@ -55,10 +55,11 @@ interface Place {
       <button
         type="button"
         class="dr-link"
-        [disabled]="store.isDirecting({ kind: 'continuity' })"
+        [class.is-working]="store.isDirecting({ kind: 'continuity' })"
+        [disabled]="!store.canDirect({ kind: 'continuity' })"
         (click)="store.direct({ kind: 'continuity' })"
       >
-        Suggest
+        {{ store.isDirecting({ kind: 'continuity' }) ? 'Suggesting…' : 'Suggest' }}
       </button>
     </div>
   `,
@@ -67,21 +68,21 @@ export class InspectorPlaceTab {
   protected readonly store = inject(SceneEditorStore);
 
   protected readonly span = computed(() =>
-    this.store.inspectorScope() === 'panel' ? this.store.selectedPanel() : null,
+    this.store.inspectorScope() === 'frame' ? this.store.selectedFrame() : null,
   );
-  protected readonly panel = computed(() => this.span()?.panel ?? null);
-  protected readonly panelKey = computed(() => this.panel()?.firstElementId ?? null);
+  protected readonly frame = computed(() => this.span()?.frame ?? null);
+  protected readonly frameKey = computed(() => this.frame()?.firstElementId ?? null);
   protected readonly hereTag = computed(() =>
-    this.panel() ? `Panel ${this.store.selectedPanelNumber()}` : 'Scene',
+    this.frame() ? `Frame ${this.store.selectedFrameNumber()}` : 'Scene',
   );
 
   protected readonly places = computed<Place[]>(() => {
     const elements = this.store.elements();
-    const spans = this.store.panelSpans();
+    const spans = this.store.frameSpans();
     const states = this.store.locationStateByLocation();
-    const panelsAt = (locationId: string) =>
+    const framesAt = (locationId: string) =>
       spans.flatMap((s, i) =>
-        s.panel.locationChange && headingAt(elements, s.first)?.locationId === locationId
+        s.frame.locationChange && headingAt(elements, s.first)?.locationId === locationId
           ? [i + 1]
           : [],
       );
@@ -97,8 +98,8 @@ export class InspectorPlaceTab {
               location,
               time: heading?.timeOfDay ?? '',
               sceneChange: states.get(location.id)?.change ?? '',
-              own: span.panel.locationChange,
-              panels: [],
+              own: span.frame.locationChange,
+              frames: [],
             },
           ]
         : [];
@@ -109,28 +110,28 @@ export class InspectorPlaceTab {
         elements.find((e) => e.type === 'Heading' && e.locationId === location.id)?.timeOfDay ?? '',
       sceneChange: states.get(location.id)?.change ?? '',
       own: states.get(location.id)?.change ?? '',
-      panels: panelsAt(location.id),
+      frames: framesAt(location.id),
     }));
   });
 
   protected placeholder(): string {
-    return this.panel()
-      ? `What changes in panel ${this.store.selectedPanelNumber()}? e.g. crane silhouetted`
+    return this.frame()
+      ? `What changes in frame ${this.store.selectedFrameNumber()}? e.g. crane silhouetted`
       : 'What changes in this scene? e.g. fog rolling in';
   }
 
-  protected note(panels: readonly number[]): string {
-    if (this.panel() || panels.length === 0) {
+  protected note(frames: readonly number[]): string {
+    if (this.frame() || frames.length === 0) {
       return '';
     }
-    const one = panels.length === 1;
-    return `${one ? 'Panel' : 'Panels'} ${panels.join(', ')} add${one ? 's' : ''} further location changes`;
+    const one = frames.length === 1;
+    return `${one ? 'Frame' : 'Frames'} ${frames.join(', ')} add${one ? 's' : ''} further location changes`;
   }
 
   protected promote(locationId: string): void {
-    const panelKey = this.panelKey();
-    if (panelKey) {
-      this.store.promoteLocationChange(locationId, panelKey);
+    const frameKey = this.frameKey();
+    if (frameKey) {
+      this.store.promoteLocationChange(locationId, frameKey);
     }
   }
 }

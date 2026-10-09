@@ -16,7 +16,7 @@ public sealed class ScenePropState
 
     public Prop Prop { get; set; } = null!;
 
-    /// <summary>In view in every panel of the scene unless a panel says otherwise.</summary>
+    /// <summary>In view in every frame of the scene unless a frame says otherwise.</summary>
     public bool InView { get; set; } = true;
 
     /// <summary>"broken", "lit"; empty means as the sheet describes it.</summary>

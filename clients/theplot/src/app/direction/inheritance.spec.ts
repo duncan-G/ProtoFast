@@ -8,12 +8,12 @@ import {
   wardrobeOf,
   withPlacement,
 } from './inheritance';
-import { Panel } from './model/panel';
+import { Frame } from './model/frame';
 import { blankAppearance } from './model/scene-appearance';
 import { emptyDirection, SceneDirection } from './model/scene-direction';
 import { blankPropState } from './model/scene-prop-state';
 
-function panel(patch: Partial<Panel> = {}): Panel {
+function frame(patch: Partial<Frame> = {}): Frame {
   return {
     id: 'p',
     position: 0,
@@ -54,54 +54,54 @@ function scene(patch: Partial<SceneDirection> = {}): SceneDirection {
 }
 
 describe('inheritance', () => {
-  it('takes the scene framing until the panel sets its own', () => {
-    expect(framingOf(scene(), panel(), 'shot')).toEqual({ value: 'medium', overridden: false });
-    expect(framingOf(scene(), panel({ shot: 'wide' }), 'shot')).toEqual({
+  it('takes the scene framing until the frame sets its own', () => {
+    expect(framingOf(scene(), frame(), 'shot')).toEqual({ value: 'medium', overridden: false });
+    expect(framingOf(scene(), frame({ shot: 'wide' }), 'shot')).toEqual({
       value: 'wide',
       overridden: true,
     });
     expect(framingOf(scene(), null, 'angle')).toEqual({ value: null, overridden: false });
   });
 
-  it('puts everyone on screen unless the scene or the panel takes them off', () => {
+  it('puts everyone on screen unless the scene or the frame takes them off', () => {
     const direction = scene({ appearances: [{ ...blankAppearance('mara'), onScreen: false }] });
-    expect(onScreenOf(scene(), panel(), 'bolt').value).toBe(true);
-    expect(onScreenOf(direction, panel(), 'mara')).toEqual({ value: false, overridden: false });
-    const shown = panel({ placements: withPlacement(panel(), 'mara', { onScreen: true }) });
+    expect(onScreenOf(scene(), frame(), 'bolt').value).toBe(true);
+    expect(onScreenOf(direction, frame(), 'mara')).toEqual({ value: false, overridden: false });
+    const shown = frame({ placements: withPlacement(frame(), 'mara', { onScreen: true }) });
     expect(onScreenOf(direction, shown, 'mara')).toEqual({ value: true, overridden: true });
   });
 
-  it('keeps props in view unless the scene or the panel hides them', () => {
+  it('keeps props in view unless the scene or the frame hides them', () => {
     const direction = scene({ propStates: [{ ...blankPropState('radio'), inView: false }] });
-    expect(inViewOf(scene(), panel(), 'radio').value).toBe(true);
-    expect(inViewOf(direction, panel(), 'radio').value).toBe(false);
+    expect(inViewOf(scene(), frame(), 'radio').value).toBe(true);
+    expect(inViewOf(direction, frame(), 'radio').value).toBe(false);
     expect(
-      inViewOf(direction, panel({ props: [{ propId: 'radio', inView: true }] }), 'radio'),
+      inViewOf(direction, frame({ props: [{ propId: 'radio', inView: true }] }), 'radio'),
     ).toEqual({ value: true, overridden: true });
   });
 
-  it('wears the first wardrobe on the sheet, then the scene’s, then the panel’s', () => {
-    expect(wardrobeOf(scene(), panel(), MARA)).toEqual({ wardrobeId: 'field', source: 'library' });
+  it('wears the first wardrobe on the sheet, then the scene’s, then the frame’s', () => {
+    expect(wardrobeOf(scene(), frame(), MARA)).toEqual({ wardrobeId: 'field', source: 'library' });
     const direction = scene({ appearances: [{ ...blankAppearance('mara'), wardrobeId: 'rain' }] });
-    expect(wardrobeOf(direction, panel(), MARA)).toEqual({ wardrobeId: 'rain', source: 'scene' });
-    const own = panel({ placements: withPlacement(panel(), 'mara', { wardrobeId: 'field' }) });
-    expect(wardrobeOf(direction, own, MARA)).toEqual({ wardrobeId: 'field', source: 'panel' });
+    expect(wardrobeOf(direction, frame(), MARA)).toEqual({ wardrobeId: 'rain', source: 'scene' });
+    const own = frame({ placements: withPlacement(frame(), 'mara', { wardrobeId: 'field' }) });
+    expect(wardrobeOf(direction, own, MARA)).toEqual({ wardrobeId: 'field', source: 'frame' });
   });
 
   it('drops a placement that no longer says anything', () => {
-    const shown = panel({ placements: withPlacement(panel(), 'mara', { onScreen: false }) });
+    const shown = frame({ placements: withPlacement(frame(), 'mara', { onScreen: false }) });
     expect(shown.placements).toHaveLength(1);
     expect(withPlacement(shown, 'mara', { onScreen: null })).toEqual([]);
   });
 
-  it('adds text changes up in order and counts what a panel overrides', () => {
+  it('adds text changes up in order and counts what a frame overrides', () => {
     expect(joinChanges('Hood up.', '', ' Soaked. ')).toBe('Hood up. Soaked.');
-    const busy = panel({
+    const busy = frame({
       shot: 'close',
       locationChange: 'Fog.',
       placements: [
-        ...withPlacement(panel(), 'mara', { onScreen: false }),
-        ...withPlacement(panel(), 'bolt', { appearanceChange: 'Dented.' }),
+        ...withPlacement(frame(), 'mara', { onScreen: false }),
+        ...withPlacement(frame(), 'bolt', { appearanceChange: 'Dented.' }),
       ],
     });
     expect(overrideCount(busy)).toBe(4);
