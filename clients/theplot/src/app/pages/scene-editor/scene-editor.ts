@@ -1,6 +1,7 @@
 import {
   afterNextRender,
   afterRenderEffect,
+  ApplicationRef,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -20,6 +21,7 @@ import { EditorMode } from './editor-mode';
 import { EditorTheme } from './editor-theme';
 import { LibraryPanel } from './library-panel';
 import { LibraryRail } from './library-rail';
+import { morphMode } from './mode-morph';
 import { OverviewPanel } from './overview-panel';
 import { SceneEditorStore } from './scene-editor-store';
 import { StoryView } from './story/story-view';
@@ -52,6 +54,7 @@ export class SceneEditor {
   protected readonly store = inject(SceneEditorStore);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly appRef = inject(ApplicationRef);
 
   protected readonly theme = signal<EditorTheme>('dark');
   protected readonly width = signal(1440);
@@ -107,13 +110,22 @@ export class SceneEditor {
   }
 
   /** The mode lives in the URL, so a director-mode scene can be linked. */
-  protected setMode(mode: EditorMode): void {
-    this.store.mode.set(mode);
-    void this.router.navigate([], {
-      relativeTo: this.route,
-      queryParams: { mode: mode === 'director' ? 'director' : null },
-      queryParamsHandling: 'merge',
-      replaceUrl: true,
+  protected setMode(mode: EditorMode, then?: () => void): void {
+    const shown =
+      mode === this.store.mode()
+        ? Promise.resolve()
+        : morphMode(mode, () => {
+            this.store.mode.set(mode);
+            this.appRef.tick();
+          });
+    void shown.then(() => {
+      then?.();
+      void this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { mode: mode === 'director' ? 'director' : null },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      });
     });
   }
 
@@ -151,8 +163,7 @@ export class SceneEditor {
 
   /** Director mode reads the script; a new line is written in story mode. */
   protected writeInStory(type: SceneElementType): void {
-    this.setMode('story');
-    this.store.insertElement(this.store.elements().length, type);
+    this.setMode('story', () => this.store.insertElement(this.store.elements().length, type));
   }
 
   protected jump(elementId: string): void {

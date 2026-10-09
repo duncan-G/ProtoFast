@@ -1078,8 +1078,33 @@
 
 /* — director mode: the header switch and the sheet details (the rest is director.css) — */
 @layer ember {
+  .se-mode {
+    position: relative;
+    display: inline-grid;
+    grid-template-columns: 1fr 1fr;
+    isolation: isolate;
+  }
+  .se-mode::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    left: 2px;
+    z-index: -1;
+    width: calc(50% - 2px);
+    border-radius: var(--radius-pill);
+    background: var(--se-ink);
+    transition: transform 0.42s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .se-mode:has(button:last-child[aria-pressed='true'])::before {
+    transform: translateX(100%);
+  }
   .se-mode button {
     min-width: 64px;
+    transition: color 0.3s;
+  }
+  .se-mode button[aria-pressed='true'] {
+    background: transparent;
   }
   .se-direction-row {
     display: flex;
@@ -1124,5 +1149,190 @@
   }
   .se-state-chips .se-chip-input {
     min-width: 110px;
+  }
+}
+
+/*
+  — switching modes (mode-morph.ts) — a view transition: each line on screen glides to its
+  place in the other mode while the page around it crossfades, the bars above and below it flip
+  (up into director mode, down out of it), the side panels crossfade and the mode switch slides.
+*/
+@layer ember {
+  .se-morph .se-mode {
+    view-transition-name: se-mode;
+  }
+  .se-morph .dr-toolbar {
+    view-transition-name: se-toolbar;
+  }
+  .se-morph .dr-scroll {
+    view-transition-name: se-script;
+  }
+  .se-morph .st-hints,
+  .se-morph .dr-transport {
+    view-transition-name: se-foot;
+  }
+  @media (min-width: 768px) {
+    .se-morph .se-library,
+    .se-morph .dr-library {
+      view-transition-name: se-library;
+    }
+    .se-morph .se-overview,
+    .se-morph .dr-inspector {
+      view-transition-name: se-aside;
+    }
+  }
+
+  .se-morph::view-transition-group(*) {
+    animation-duration: 0.5s;
+    animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .se-morph::view-transition-old(root),
+  .se-morph::view-transition-new(root) {
+    animation-duration: 0.2s;
+  }
+
+  /* The switch's own pill transition plays on the live new image. */
+  .se-morph::view-transition-old(se-mode) {
+    display: none;
+  }
+  .se-morph::view-transition-new(se-mode) {
+    animation: none;
+  }
+
+  .se-morph [id^='row-'] {
+    view-transition-class: se-row;
+  }
+  .se-morph::view-transition-old(se-script),
+  .se-morph::view-transition-new(se-script) {
+    height: 100%;
+    object-fit: none;
+    object-position: center top;
+  }
+  .se-morph::view-transition-old(se-script) {
+    animation: se-morph-out 0.36s ease-in both;
+  }
+  .se-morph::view-transition-new(se-script) {
+    animation: se-fade-in 0.44s 0.1s ease-out both;
+  }
+  .se-morph::view-transition-group(*.se-row) {
+    animation-duration: 0.56s;
+  }
+  .se-morph::view-transition-old(*.se-row),
+  .se-morph::view-transition-new(*.se-row) {
+    height: 100%;
+    object-fit: none;
+    object-position: left top;
+  }
+  .se-morph::view-transition-old(*.se-row) {
+    animation: se-morph-out 0.3s ease-in both;
+  }
+  .se-morph::view-transition-new(*.se-row) {
+    animation: se-fade-in 0.4s 0.12s ease-out both;
+  }
+
+  .se-morph::view-transition-group(se-toolbar),
+  .se-morph::view-transition-group(se-foot) {
+    overflow: clip;
+  }
+  .se-morph::view-transition-old(se-toolbar),
+  .se-morph::view-transition-old(se-foot) {
+    animation: se-flip-out-up 0.34s cubic-bezier(0.4, 0, 1, 1) both;
+  }
+  .se-morph::view-transition-new(se-toolbar),
+  .se-morph::view-transition-new(se-foot) {
+    animation: se-flip-in-up 0.42s 0.08s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .se-to-story::view-transition-old(se-toolbar),
+  .se-to-story::view-transition-old(se-foot) {
+    animation-name: se-flip-out-down;
+  }
+  .se-to-story::view-transition-new(se-toolbar),
+  .se-to-story::view-transition-new(se-foot) {
+    animation-name: se-flip-in-down;
+  }
+  .se-morph::view-transition-new(se-foot) {
+    animation-delay: 0.14s;
+  }
+
+  .se-morph::view-transition-old(se-library),
+  .se-morph::view-transition-new(se-library),
+  .se-morph::view-transition-old(se-aside),
+  .se-morph::view-transition-new(se-aside) {
+    height: 100%;
+    object-fit: none;
+    object-position: left top;
+  }
+  .se-morph::view-transition-old(se-library),
+  .se-morph::view-transition-old(se-aside) {
+    animation: se-morph-out 0.28s ease-in both;
+  }
+  .se-morph::view-transition-new(se-library),
+  .se-morph::view-transition-new(se-aside) {
+    animation: se-morph-in 0.4s 0.1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .se-morph::view-transition-new(se-aside):only-child {
+    animation: se-slide-in-right 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .se-morph::view-transition-old(se-aside):only-child {
+    animation: se-slide-out-right 0.4s cubic-bezier(0.4, 0, 1, 1) both;
+  }
+
+  @keyframes se-morph-out {
+    to {
+      opacity: 0;
+      filter: blur(3px);
+    }
+  }
+  @keyframes se-morph-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+  @keyframes se-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes se-flip-out-up {
+    to {
+      opacity: 0;
+      transform: translateY(-60%);
+    }
+  }
+  @keyframes se-flip-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(60%);
+    }
+  }
+  @keyframes se-flip-out-down {
+    to {
+      opacity: 0;
+      transform: translateY(60%);
+    }
+  }
+  @keyframes se-flip-in-down {
+    from {
+      opacity: 0;
+      transform: translateY(-60%);
+    }
+  }
+  @keyframes se-slide-in-right {
+    from {
+      transform: translateX(100%);
+    }
+  }
+  @keyframes se-slide-out-right {
+    to {
+      transform: translateX(100%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .se-mode::before,
+    .se-mode button {
+      transition: none;
+    }
   }
 }
