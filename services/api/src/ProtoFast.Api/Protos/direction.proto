@@ -1,0 +1,267 @@
+syntax = "proto3";
+
+option csharp_namespace = "ProtoFast.Api";
+
+package direction;
+
+import "story.proto";
+
+// The director layer over a scene: how each line is delivered, which panels picture it, and what
+// everyone and everything in it looks like. The author edits it in the scene editor's director
+// mode, and a language model can write any part of it. Every call is confined to the caller the
+// internal JWT names; anything the caller does not own reads as not found.
+service Direction {
+
+    rpc GetSceneDirection (GetSceneDirectionRequest) returns (GetSceneDirectionReply);
+
+    // Replaces the scene's director layer. Rows are upserted by id and any left out are deleted;
+    // a row that changed is marked edited, so a later directing pass keeps it.
+    rpc SaveSceneDirection (SaveSceneDirectionRequest) returns (SaveSceneDirectionReply);
+
+    // Saves the scene and its director layer in one write, so a changed line and its cue land together.
+    rpc SaveDirectedScene (SaveDirectedSceneRequest) returns (SaveDirectedSceneReply);
+
+    // Has the language model direct the scene, or one item in it, and saves what it wrote. Rows
+    // the author edited are kept unless the request says to replace them.
+    rpc Direct (DirectRequest) returns (DirectReply);
+
+    // Has the language model write a character's, location's or prop's sheet from everything the
+    // story says about it, and saves it.
+    rpc Describe (DescribeRequest) returns (DescribeReply);
+
+    // Speaks one line, or every dialogue, narration and action line of the scene that has no audio
+    // or whose audio is stale, with the speech provider, and stores the result. A line with no cue
+    // yet is spoken as written and gets one. Regenerate renders again regardless.
+    rpc GenerateAudio (GenerateAudioRequest) returns (GenerateAudioReply);
+
+    // The speech provider's voices, for casting.
+    rpc ListVoices (ListVoicesRequest) returns (ListVoicesReply);
+
+}
+
+message SceneDirection {
+    string scene_id = 1;
+    // Which day of the story the scene happens on; looks reset between days.
+    optional int32 story_day = 2;
+    // In position order.
+    repeated Panel panels = 3;
+    repeated Cue cues = 4;
+    repeated SceneAppearance appearances = 5;
+    repeated ScenePropState prop_states = 6;
+    // Every panel's shot, angle and movement unless it sets its own.
+    optional string shot = 7;
+    optional string angle = 8;
+    optional string movement = 9;
+    repeated SceneLocationState location_states = 10;
+}
+
+// One picture of the scene, covering a contiguous run of its elements in scene order. Panels do
+// not overlap.
+message Panel {
+    string id = 1;
+    int32 position = 2;
+    string first_element_id = 3;
+    string last_element_id = 4;
+    optional string location_id = 5;
+    optional string time_of_day = 6;
+    // What is happening: an action, or "MARA presses, TOM deflects".
+    string beat = 7;
+    reserved 11;
+    // wide | medium | close | extreme close | over-the-shoulder | insert; unset takes the scene's.
+    optional string shot = 8;
+    // eye level | low | high | top-down; unset takes the scene's.
+    optional string angle = 13;
+    // static | push in | pull out | pan | handheld; unset takes the scene's.
+    optional string movement = 14;
+    // Only for panels with no dialogue to time them.
+    optional int32 hold_ms = 9;
+    // Only the characters the panel says something about; the rest follow the scene.
+    repeated Placement placements = 10;
+    // Only the props the panel shows or hides against the scene.
+    repeated PanelProp props = 16;
+    // What the panel adds to the location's look in the scene.
+    string location_change = 15;
+    // Written by hand; a directing pass leaves it alone.
+    bool edited = 12;
+}
+
+message Placement {
+    reserved 5;
+    string character_id = 1;
+    // left | centre | right | off, or empty.
+    string screen = 2;
+    string pose = 3;
+    string expression = 4;
+    // Unset follows the scene's appearance.
+    optional bool on_screen = 6;
+    // Unset wears the scene's wardrobe.
+    optional string wardrobe_id = 7;
+    // Added to the scene's changes, never replacing them.
+    string wardrobe_change = 8;
+    string appearance_change = 9;
+}
+
+message PanelProp {
+    string prop_id = 1;
+    bool in_view = 2;
+}
+
+// How a dialogue, narration or action line is delivered.
+message Cue {
+    string id = 1;
+    string element_id = 2;
+    // The line's own words with delivery tags, e.g. "[sad] I'm sorry." The words never change.
+    string performance = 3;
+    // Minimum silence before the line, in milliseconds; negative overlaps the previous one.
+    int32 gap_before_ms = 4;
+    // Cut off by the next line.
+    bool interrupted = 5;
+    bool edited = 6;
+    // Unset until the line has been spoken.
+    optional CueAudio audio = 7;
+    // Who reads an action or narration line; unset is the story's first narrator.
+    optional string narrator_id = 8;
+}
+
+message CueAudio {
+    string asset_id = 1;
+    // A presigned URL the player streams from; it expires, so it is fetched with the direction.
+    string url = 2;
+    string content_type = 3;
+    // The performance or the voice changed since this was rendered.
+    bool stale = 4;
+    string voice = 5;
+}
+
+// A character in the scene: whether panels show them, and a wardrobe from their sheet plus what the
+// scene changes about it and about them.
+message SceneAppearance {
+    reserved 4;
+    string id = 1;
+    string character_id = 2;
+    optional string wardrobe_id = 3;
+    // On screen in every panel unless a panel says otherwise; unset is on screen.
+    optional bool on_screen = 8;
+    // "hood up, damp from the drizzle"
+    string wardrobe_change = 9;
+    // "left hand bandaged"
+    string appearance_change = 10;
+    // Why this differs from the character's previous look.
+    optional string change_reason = 5;
+    optional string change_element_id = 6;
+    bool edited = 7;
+}
+
+message ScenePropState {
+    string id = 1;
+    string prop_id = 2;
+    // "broken", "lit"; empty means as the sheet describes it.
+    repeated string state = 3;
+    optional string change_reason = 4;
+    optional string change_element_id = 5;
+    bool edited = 6;
+    // In view in every panel unless a panel says otherwise; unset is in view.
+    optional bool in_view = 7;
+}
+
+// What is different about a location in the scene, on top of its sheet: "fog rolling in".
+message SceneLocationState {
+    string id = 1;
+    string location_id = 2;
+    string change = 3;
+    bool edited = 4;
+}
+
+message GetSceneDirectionRequest {
+    string scene_id = 1;
+}
+
+message GetSceneDirectionReply {
+    SceneDirection direction = 1;
+}
+
+message SaveSceneDirectionRequest {
+    SceneDirection direction = 1;
+}
+
+message SaveSceneDirectionReply {
+    SceneDirection direction = 1;
+}
+
+message SaveDirectedSceneRequest {
+    story.Scene scene = 1;
+    SceneDirection direction = 2;
+}
+
+message SaveDirectedSceneReply {
+    SceneDirection direction = 1;
+}
+
+// What to direct. The whole scene runs the story day, looks, prop states, cues and panels in turn.
+message DirectRequest {
+    string scene_id = 1;
+    oneof target {
+        bool scene = 2;
+        // The cue for this dialogue or narration line.
+        string cue_element_id = 3;
+        // This panel's shot, beat, placements and props, keeping its range.
+        string panel_id = 4;
+        // The scene's panels, from scratch.
+        bool panels = 5;
+        // Every line's cue.
+        bool cues = 6;
+        // This character's look in the scene.
+        string appearance_character_id = 7;
+        // This prop's state in the scene.
+        string prop_state_prop_id = 8;
+        // Every look and prop state in the scene.
+        bool continuity = 9;
+        // Which day of the story the scene falls on.
+        bool story_day = 10;
+    }
+    // Also rewrite rows the author edited.
+    bool replace_edited = 11;
+}
+
+message DirectReply {
+    SceneDirection direction = 1;
+}
+
+message DescribeRequest {
+    oneof subject {
+        string character_id = 1;
+        string location_id = 2;
+        string prop_id = 3;
+    }
+}
+
+message DescribeReply {
+    oneof subject {
+        story.Character character = 1;
+        story.Location location = 2;
+        story.Prop prop = 3;
+    }
+}
+
+message GenerateAudioRequest {
+    string scene_id = 1;
+    // One line; unset means every line that needs it.
+    optional string element_id = 2;
+    bool regenerate = 3;
+}
+
+message GenerateAudioReply {
+    SceneDirection direction = 1;
+}
+
+message ListVoicesRequest {}
+
+message ListVoicesReply {
+    string provider = 1;
+    repeated Voice voices = 2;
+}
+
+message Voice {
+    string id = 1;
+    string name = 2;
+}

@@ -1,5 +1,36 @@
 import { computed, inject, Injectable, OnDestroy, signal } from '@angular/core';
 import { Router } from '@angular/router';
+import { DirectionApi } from '../../direction/direction-api';
+import { directionChanges, isSpoken } from '../../direction/direction-changes';
+import {
+  Framing,
+  inViewOf,
+  joinChanges,
+  onScreenOf,
+  withPlacement,
+} from '../../direction/inheritance';
+import { Cue } from '../../direction/model/cue';
+import { DescribeTarget } from '../../direction/model/describe-target';
+import { DirectTarget, targetKey } from '../../direction/model/direct-target';
+import { DIRECTION_VOCABULARY } from '../../direction/model/direction-vocabulary';
+import { Panel } from '../../direction/model/panel';
+import { blankAppearance, SceneAppearance } from '../../direction/model/scene-appearance';
+import { emptyDirection, isDirected, SceneDirection } from '../../direction/model/scene-direction';
+import { blankPropState, ScenePropState } from '../../direction/model/scene-prop-state';
+import { SpeechVoice } from '../../direction/model/speech-voice';
+import { ScenePlayer } from '../../direction/scene-player';
+import {
+  cover,
+  headingAt,
+  mergeUp,
+  panelSpans,
+  PanelSpan,
+  removePanel,
+  renumber,
+  spanAt,
+  splitAt,
+} from '../../direction/panels';
+import { insertTag, reanchor, removeTag, stripTags } from '../../direction/performance';
 import { describeError } from '../../documents/document-api';
 import { forgetInElement, renameInElement } from '../../stories/element-references';
 import { labelProblem, nameProblem, sameName } from '../../stories/library-names';
@@ -18,7 +49,8 @@ import { SceneElement } from '../../stories/model/scene-element';
 import { SceneElementType } from '../../stories/model/scene-element-type';
 import { Story } from '../../stories/model/story';
 import { StoryVocabulary } from '../../stories/model/story-vocabulary';
-import { moveBlock, swapElement } from '../../stories/scene-blocks';
+import { Narrator } from '../../stories/model/narrator';
+import { isBeat, moveBlock, swapElement } from '../../stories/scene-blocks';
 import { StoryApi } from '../../stories/story-api';
 import { CaretRequest } from './caret-request';
 import { nextHue } from './format';
@@ -26,20 +58,53 @@ import { LibraryTab } from './library-tab';
 import { ScenePlace } from './scene-place';
 import { SceneRow } from './scene-row';
 import { SceneStats } from './scene-stats';
+import { EditorMode } from './editor-mode';
+import { AudioState } from './audio-state';
+import { DirectorLibraryTab } from './director-library-tab';
+import { InspectorScope } from './inspector-scope';
+import { InspectorTab } from './inspector-tab';
 
 const SAVE_DELAY_MS = 400;
 const UNTITLED = 'Untitled scene';
 
-/** Scene edits save shortly after typing stops; library and outline changes save at once. */
+/**
+ * Scene edits save shortly after typing stops; library and outline changes save at once. In
+ * director mode the scene and its director layer save together, so a changed line lands with
+ * its cue.
+ */
 @Injectable()
 export class SceneEditorStore implements OnDestroy {
   private readonly api = inject(StoryApi);
+  private readonly directionApi = inject(DirectionApi);
   private readonly router = inject(Router);
+  readonly player = inject(ScenePlayer);
 
   readonly story = signal<Story | null>(null);
   readonly scene = signal<Scene | null>(null);
+  readonly direction = signal<SceneDirection | null>(null);
   readonly loading = signal(true);
   readonly error = signal('');
+
+  readonly mode = signal<EditorMode>('story');
+  readonly inspectorScope = signal<InspectorScope>('panel');
+  readonly inspectorTab = signal<InspectorTab>('cast');
+  readonly directorLibraryOpen = signal(true);
+  readonly directorLibraryTab = signal<DirectorLibraryTab>('cast');
+  /** The library card that is open, by entry id. */
+  readonly directorLibraryEntry = signal<string | null>(null);
+  /** The first element id of the selected panel: panels are known by their place, not their id. */
+  readonly selectedPanelKey = signal<string | null>(null);
+  /** Target keys the model is working on. */
+  readonly directing = signal<ReadonlySet<string>>(new Set());
+  /** The library entry the model is describing. */
+  readonly describing = signal<string | null>(null);
+  /** Element ids whose lines are being spoken; 'scene' while a whole-scene pass runs. */
+  readonly generating = signal<ReadonlySet<string>>(new Set());
+  /** Lines queued or being spoken, by element id. */
+  readonly generatingLines = signal<ReadonlySet<string>>(new Set());
+  /** The speech provider's voices, loaded when a sheet first needs them. */
+  readonly voices = signal<SpeechVoice[] | null>(null);
+  readonly speechProvider = signal('');
 
   readonly editingId = signal<string | null>(null);
   readonly libraryTab = signal<LibraryTab>('characters');
@@ -53,6 +118,10 @@ export class SceneEditorStore implements OnDestroy {
 
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private saving: Promise<void> = Promise.resolve();
+  private sceneDirty = false;
+  private directionDirty = false;
+  /** Bumped on every direction edit, so a save's reply is only adopted when nothing changed since. */
+  private directionVersion = 0;
 
   readonly characters = computed(() => this.story()?.characters ?? []);
   readonly locations = computed(() => this.story()?.locations ?? []);
@@ -67,9 +136,14 @@ export class SceneEditorStore implements OnDestroy {
         timesOfDay: [],
         transitions: [],
         extensions: [],
+        deliveryTags: [],
         characterKinds: [],
       },
   );
+  readonly deliveryTags = computed(() => [
+    ...DIRECTION_VOCABULARY.deliveryTags,
+    ...this.vocabulary().deliveryTags,
+  ]);
   readonly timesOfDay = computed(() => [
     ...DEFAULT_VOCABULARY.timesOfDay,
     ...this.vocabulary().timesOfDay,
@@ -134,6 +208,113 @@ export class SceneEditorStore implements OnDestroy {
     return stats;
   });
 
+  // ─── the director layer ────────────────────────────────────────────────
+
+  readonly directed = computed(() => {
+    const direction = this.direction();
+    return direction !== null && isDirected(direction);
+  });
+  readonly cueByElement = computed(
+    () => new Map((this.direction()?.cues ?? []).map((c) => [c.elementId, c])),
+  );
+  readonly panelSpans = computed<PanelSpan[]>(() =>
+    panelSpans(this.direction()?.panels ?? [], this.elements()),
+  );
+  /** The panel the inspector edits: the one picked, else the first. */
+  readonly selectedPanel = computed<PanelSpan | null>(() => {
+    const key = this.selectedPanelKey();
+    const spans = this.panelSpans();
+    return spans.find((s) => s.panel.firstElementId === key) ?? spans[0] ?? null;
+  });
+  readonly selectedPanelNumber = computed(() => {
+    const span = this.selectedPanel();
+    return span ? this.panelSpans().indexOf(span) + 1 : 0;
+  });
+  readonly locationStateByLocation = computed(
+    () => new Map((this.direction()?.locationStates ?? []).map((l) => [l.locationId, l])),
+  );
+  readonly appearanceByCharacter = computed(
+    () => new Map((this.direction()?.appearances ?? []).map((a) => [a.characterId, a])),
+  );
+  readonly propStateByProp = computed(
+    () => new Map((this.direction()?.propStates ?? []).map((p) => [p.propId, p])),
+  );
+  /** Characters who speak, are mentioned or have a look in the scene, in library order. */
+  readonly cast = computed(() => {
+    const ids = new Set<string>(this.direction()?.appearances.map((a) => a.characterId));
+    for (const element of this.elements()) {
+      if (element.type === 'Dialogue' && element.speakerId) {
+        ids.add(element.speakerId);
+      }
+      for (const mention of element.mentions) {
+        if (mention.characterId) {
+          ids.add(mention.characterId);
+        }
+      }
+    }
+    return this.characters().filter((c) => ids.has(c.id));
+  });
+  readonly propsInScene = computed(() => {
+    const ids = new Set<string | null>(this.direction()?.propStates.map((p) => p.propId));
+    for (const element of this.elements()) {
+      element.mentions.forEach((m) => ids.add(m.propId));
+    }
+    return this.props().filter((p) => ids.has(p.id));
+  });
+  /** Where the scene's headings put it, in scene order. */
+  readonly locationsInScene = computed(() => {
+    const ids = [
+      ...new Set(
+        this.elements().flatMap((e) =>
+          e.type === 'Heading' && e.locationId ? [e.locationId] : [],
+        ),
+      ),
+    ];
+    return ids.flatMap((id) => this.locationById().get(id) ?? []);
+  });
+  readonly narrators = computed(() => this.story()?.narrators ?? []);
+  /** Lines read aloud, in scene order. */
+  readonly spokenElements = computed(() => this.elements().filter((e) => isSpoken(e.type)));
+  readonly audioStates = computed(() => {
+    const generating = this.generatingLines();
+    const cues = this.cueByElement();
+    return new Map<string, AudioState>(
+      this.spokenElements().map((e) => {
+        const audio = cues.get(e.id)?.audio;
+        const state: AudioState = generating.has(e.id)
+          ? 'generating'
+          : !audio
+            ? 'none'
+            : audio.stale
+              ? 'stale'
+              : 'ready';
+        return [e.id, state];
+      }),
+    );
+  });
+  /** Lines without audio, or whose audio has fallen behind the performance or the voice. */
+  readonly linesNeedingAudio = computed(() =>
+    this.spokenElements()
+      .map((e) => e.id)
+      .filter(
+        (id) => this.audioStates().get(id) === 'none' || this.audioStates().get(id) === 'stale',
+      ),
+  );
+
+  /** What the story text has outgrown in the director layer, in scene order. */
+  readonly changes = computed(() => {
+    const direction = this.direction();
+    return direction ? directionChanges(direction, this.elements()) : [];
+  });
+
+  panelAt(index: number): PanelSpan | null {
+    return spanAt(this.panelSpans(), index);
+  }
+
+  isDirecting(target: DirectTarget): boolean {
+    return this.directing().has(targetKey(target));
+  }
+
   readonly places = computed<ScenePlace[]>(() =>
     (this.story()?.containers ?? []).flatMap((container) =>
       container.scenes.map((summary, index) => ({ container, summary, index })),
@@ -150,6 +331,7 @@ export class SceneEditorStore implements OnDestroy {
   readonly canDeleteScene = computed(() => this.places().length > 1);
 
   ngOnDestroy(): void {
+    this.player.stop();
     this.flushSave();
   }
 
@@ -174,7 +356,14 @@ export class SceneEditorStore implements OnDestroy {
       }
       if (this.scene()?.id !== target) {
         await saved;
-        this.scene.set(await this.api.getScene(target));
+        this.player.stop();
+        const [scene, direction] = await Promise.all([
+          this.api.getScene(target),
+          this.directionApi.getSceneDirection(target),
+        ]);
+        this.scene.set(scene);
+        this.direction.set(direction);
+        this.selectedPanelKey.set(null);
         this.editingId.set(null);
       }
     } catch (err) {
@@ -188,7 +377,10 @@ export class SceneEditorStore implements OnDestroy {
   go(sceneId: string, replaceUrl = false): void {
     const storyId = this.story()?.id;
     if (storyId) {
-      void this.router.navigate(['/app/stories', storyId, 'scenes', sceneId], { replaceUrl });
+      void this.router.navigate(['/app/stories', storyId, 'scenes', sceneId], {
+        replaceUrl,
+        queryParams: this.mode() === 'director' ? { mode: 'director' } : {},
+      });
     }
   }
 
@@ -207,6 +399,18 @@ export class SceneEditorStore implements OnDestroy {
       return;
     }
     this.scene.set(update(scene));
+    this.sceneDirty = true;
+    this.queueSave();
+  }
+
+  private updateDirection(update: (direction: SceneDirection) => SceneDirection): void {
+    const scene = this.scene();
+    if (!scene) {
+      return;
+    }
+    this.direction.set(update(this.direction() ?? emptyDirection(scene.id)));
+    this.directionDirty = true;
+    this.directionVersion++;
     this.queueSave();
   }
 
@@ -217,7 +421,10 @@ export class SceneEditorStore implements OnDestroy {
     this.saveTimer = setTimeout(() => this.flushSave(), SAVE_DELAY_MS);
   }
 
-  /** Saves go one at a time, so an older one never lands after a newer one or a library change. */
+  /**
+   * Saves go one at a time, so an older one never lands after a newer one or a library change.
+   * The reply carries the rows' ids and edited marks, adopted unless the layer changed meanwhile.
+   */
   private flushSave(): Promise<void> {
     if (this.saveTimer === null) {
       return this.saving;
@@ -225,13 +432,29 @@ export class SceneEditorStore implements OnDestroy {
     clearTimeout(this.saveTimer);
     this.saveTimer = null;
     const scene = this.scene();
-    if (scene) {
-      this.saving = this.saving.then(() =>
-        this.api
-          .saveScene(scene)
-          .catch((err) => this.error.set(describeError(err, 'Your changes could not be saved.'))),
-      );
+    const direction = this.direction();
+    const { sceneDirty, directionDirty } = this;
+    this.sceneDirty = false;
+    this.directionDirty = false;
+    if (!scene || (!sceneDirty && !directionDirty)) {
+      return this.saving;
     }
+    const version = this.directionVersion;
+    const save = async () => {
+      if (directionDirty && direction) {
+        const saved = sceneDirty
+          ? await this.directionApi.saveDirectedScene(scene, direction)
+          : await this.directionApi.saveSceneDirection(direction);
+        if (this.directionVersion === version && this.scene()?.id === saved.sceneId) {
+          this.direction.set(saved);
+        }
+      } else {
+        await this.api.saveScene(scene);
+      }
+    };
+    this.saving = this.saving.then(() =>
+      save().catch((err) => this.error.set(describeError(err, 'Your changes could not be saved.'))),
+    );
     return this.saving;
   }
 
@@ -269,8 +492,13 @@ export class SceneEditorStore implements OnDestroy {
     }));
   }
 
+  /** In director mode the line's cue follows the words, so the edit resolves itself. */
   setText(id: string, value: MentionedText): void {
     this.updateElement(id, { text: value.text, mentions: value.mentions });
+    const cue = this.cueByElement().get(id);
+    if (this.mode() === 'director' && cue && stripTags(cue.performance) !== value.text.trim()) {
+      this.updateCue(id, { performance: reanchor(cue.performance, value.text) });
+    }
   }
 
   /** Keeps only the fields the new type uses. */
@@ -286,6 +514,30 @@ export class SceneEditorStore implements OnDestroy {
       speakerId: dialogue ? (element.speakerId ?? this.guessSpeaker(index)) : null,
       extension: dialogue ? element.extension : null,
       parenthetical: dialogue ? element.parenthetical : null,
+    });
+  }
+
+  /** Text survives only between beat types; the editor converts to a heading or transition when empty. */
+  changeType(id: string, type: SceneElementType): void {
+    const element = this.elements().find((e) => e.id === id);
+    if (!element || element.type === type) {
+      return;
+    }
+    if (isBeat(type) && isBeat(element.type)) {
+      this.setBeatType(id, type);
+      return;
+    }
+    const index = this.elements().indexOf(element);
+    this.updateElement(id, {
+      type,
+      text: isBeat(type) ? (element.text ?? '') : null,
+      mentions: isBeat(type) ? element.mentions : [],
+      locationId: null,
+      timeOfDay: null,
+      speakerId: type === 'Dialogue' ? this.guessSpeaker(index) : null,
+      extension: null,
+      parenthetical: null,
+      transition: null,
     });
   }
 
@@ -410,6 +662,8 @@ export class SceneEditorStore implements OnDestroy {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
+    this.sceneDirty = false;
+    this.directionDirty = false;
     await this.run(async () => {
       await this.saving;
       await this.api.deleteScene(scene.id);
@@ -498,6 +752,10 @@ export class SceneEditorStore implements OnDestroy {
           name: name.trim(),
           kind,
           hue: nextHue(this.characters().length),
+          description: null,
+          appearance: null,
+          voice: null,
+          wardrobes: [],
         }),
       (s, c) => ({ ...s, characters: [...s.characters, c] }),
     );
@@ -515,6 +773,9 @@ export class SceneEditorStore implements OnDestroy {
           name: name.trim(),
           setting,
           hue: nextHue(this.locations().length, 3),
+          description: null,
+          appearance: null,
+          acoustics: null,
         }),
       (s, l) => ({ ...s, locations: [...s.locations, l] }),
     );
@@ -527,7 +788,7 @@ export class SceneEditorStore implements OnDestroy {
       return problem ?? '';
     }
     return this.create(
-      () => this.api.createProp(story.id, { name: name.trim() }),
+      () => this.api.createProp(story.id, { name: name.trim(), description: null }),
       (s, p) => ({ ...s, props: [...s.props, p] }),
     );
   }
@@ -687,6 +948,18 @@ export class SceneEditorStore implements OnDestroy {
     );
   }
 
+  /** Lowercased, as a cue prints it. */
+  async addDeliveryTag(label: string): Promise<string | null> {
+    const problem = labelProblem(this.deliveryTags(), label);
+    return (
+      problem ??
+      this.saveVocabulary((v) => ({
+        ...v,
+        deliveryTags: [...v.deliveryTags, label.trim().toLowerCase()],
+      }))
+    );
+  }
+
   async addCharacterKind(kind: CharacterKind): Promise<string | null> {
     const problem = labelProblem(
       this.kinds().map((k) => k.label),
@@ -729,6 +1002,627 @@ export class SceneEditorStore implements OnDestroy {
     } catch (err) {
       return describeError(err, 'The label could not be added.');
     }
+  }
+
+  // ─── director mode: cues ───────────────────────────────────────────────
+
+  /** A cue the author writes by hand starts as the line's own words. */
+  ensureCue(elementId: string): Cue | null {
+    const existing = this.cueByElement().get(elementId);
+    if (existing) {
+      return existing;
+    }
+    const element = this.elements().find((e) => e.id === elementId);
+    if (!element || !isSpoken(element.type)) {
+      return null;
+    }
+    const cue: Cue = {
+      id: '',
+      elementId,
+      performance: (element.text ?? '').replace(/@/g, '').trim(),
+      gapBeforeMs: 0,
+      interrupted: false,
+      narratorId: null,
+      edited: true,
+      audio: null,
+    };
+    this.updateDirection((d) => ({ ...d, cues: [...d.cues, cue] }));
+    return cue;
+  }
+
+  updateCue(elementId: string, patch: Partial<Cue>): void {
+    if (!this.ensureCue(elementId)) {
+      return;
+    }
+    this.updateDirection((d) => ({
+      ...d,
+      cues: d.cues.map((c) => (c.elementId === elementId ? { ...c, ...patch, edited: true } : c)),
+    }));
+  }
+
+  /** False when the cue has its three tags or that tag already. */
+  addCueTag(elementId: string, beforeWord: number, tag: string): boolean {
+    const cue = this.ensureCue(elementId);
+    if (!cue) {
+      return false;
+    }
+    const performance = insertTag(cue.performance, beforeWord, tag);
+    if (performance === null) {
+      return false;
+    }
+    this.updateCue(elementId, { performance });
+    return true;
+  }
+
+  removeCueTag(elementId: string, tag: string): void {
+    const cue = this.cueByElement().get(elementId);
+    if (cue) {
+      this.updateCue(elementId, { performance: removeTag(cue.performance, tag) });
+    }
+  }
+
+  /** Carries a stale cue's tags onto the line as it reads now. */
+  reconcileCue(elementId: string): void {
+    const cue = this.cueByElement().get(elementId);
+    const element = this.elements().find((e) => e.id === elementId);
+    if (cue && element) {
+      this.updateCue(elementId, { performance: reanchor(cue.performance, element.text ?? '') });
+    }
+  }
+
+  /** Null hands the line back to the story's first narrator. */
+  setNarrator(elementId: string, narratorId: string | null): void {
+    this.updateCue(elementId, { narratorId });
+  }
+
+  // ─── director mode: panels ─────────────────────────────────────────────
+
+  selectPanel(key: string | null): void {
+    this.selectedPanelKey.set(key);
+    if (key !== null) {
+      this.inspectorScope.set('panel');
+    }
+  }
+
+  stepPanel(delta: -1 | 1): void {
+    const spans = this.panelSpans();
+    const at = spans.indexOf(this.selectedPanel()!);
+    const next = spans[Math.min(Math.max(at + delta, 0), spans.length - 1)];
+    if (next) {
+      this.selectPanel(next.panel.firstElementId);
+    }
+  }
+
+  splitPanelAt(index: number): void {
+    const panels = splitAt(this.direction()?.panels ?? [], this.elements(), index);
+    if (panels) {
+      this.updateDirection((d) => ({ ...d, panels }));
+      this.selectPanel(this.elements()[index].id);
+    }
+  }
+
+  mergePanelUp(index: number): void {
+    const panels = mergeUp(this.direction()?.panels ?? [], this.elements(), index);
+    if (panels) {
+      this.updateDirection((d) => ({ ...d, panels }));
+      this.selectPanel(
+        spanAt(panelSpans(panels, this.elements()), index)?.panel.firstElementId ?? null,
+      );
+    }
+  }
+
+  coverRow(index: number): void {
+    const panels = cover(this.direction()?.panels ?? [], this.elements(), index);
+    if (panels) {
+      this.updateDirection((d) => ({ ...d, panels }));
+      this.selectPanel(
+        spanAt(panelSpans(panels, this.elements()), index)?.panel.firstElementId ?? null,
+      );
+    }
+  }
+
+  updatePanel(key: string, patch: Partial<Panel>): void {
+    this.updateDirection((d) => ({
+      ...d,
+      panels: renumber(
+        d.panels.map((p) => (p.firstElementId === key ? { ...p, ...patch, edited: true } : p)),
+        this.elements(),
+      ),
+    }));
+  }
+
+  /** In the panel scope a value equal to the scene's follows it rather than overriding it. */
+  setFraming(key: Framing, value: string, panelKey: string | null): void {
+    const direction = this.direction() ?? emptyDirection(this.scene()?.id ?? '');
+    if (panelKey === null) {
+      this.updateDirection((d) => ({ ...d, [key]: value }));
+    } else {
+      this.updatePanel(panelKey, { [key]: value === direction[key] ? null : value });
+    }
+  }
+
+  setOnScreen(characterId: string, on: boolean, panelKey: string | null): void {
+    if (panelKey === null) {
+      this.setAppearance(characterId, { onScreen: on });
+      return;
+    }
+    const panel = this.panelByKey(panelKey);
+    const direction = this.direction();
+    if (!panel || !direction) {
+      return;
+    }
+    const scene = onScreenOf(direction, null, characterId).value;
+    this.updatePanel(panelKey, {
+      placements: withPlacement(panel, characterId, { onScreen: on === scene ? null : on }),
+    });
+  }
+
+  setInView(propId: string, on: boolean, panelKey: string | null): void {
+    if (panelKey === null) {
+      this.setPropState(propId, { inView: on });
+      return;
+    }
+    const panel = this.panelByKey(panelKey);
+    const direction = this.direction();
+    if (!panel || !direction) {
+      return;
+    }
+    const scene = inViewOf(direction, null, propId).value;
+    const rest = panel.props.filter((p) => p.propId !== propId);
+    this.updatePanel(panelKey, {
+      props: on === scene ? rest : [...rest, { propId, inView: on }],
+    });
+  }
+
+  /** The panel follows the scene again for who is on screen. */
+  resetCast(panelKey: string): void {
+    const panel = this.panelByKey(panelKey);
+    if (panel) {
+      this.updatePanel(panelKey, {
+        placements: panel.placements.flatMap((p) =>
+          withPlacement({ ...panel, placements: [p] }, p.characterId, { onScreen: null }),
+        ),
+      });
+    }
+  }
+
+  resetProps(panelKey: string): void {
+    this.updatePanel(panelKey, { props: [] });
+  }
+
+  /** In the scene scope a wardrobe goes on the scene's look; in a panel, on its placement. */
+  setLook(
+    characterId: string,
+    field: 'wardrobeId' | 'wardrobeChange' | 'appearanceChange',
+    value: string | null,
+    panelKey: string | null,
+  ): void {
+    if (panelKey === null) {
+      this.setAppearance(characterId, { [field]: value ?? (field === 'wardrobeId' ? null : '') });
+      return;
+    }
+    const panel = this.panelByKey(panelKey);
+    if (panel) {
+      this.updatePanel(panelKey, {
+        placements: withPlacement(panel, characterId, {
+          [field]: value ?? (field === 'wardrobeId' ? null : ''),
+        }),
+      });
+    }
+  }
+
+  /** A panel's look moves to the scene, so every panel has it; no panel keeps its own. */
+  promoteLook(
+    characterId: string,
+    field: 'wardrobeId' | 'wardrobeChange' | 'appearanceChange',
+    panelKey: string,
+  ): void {
+    const own = this.panelByKey(panelKey)?.placements.find((p) => p.characterId === characterId);
+    const scene = this.appearanceByCharacter().get(characterId);
+    if (!own) {
+      return;
+    }
+    const value =
+      field === 'wardrobeId' ? own.wardrobeId : joinChanges(scene?.[field] ?? '', own[field]);
+    this.setAppearance(characterId, { [field]: value });
+    this.clearPanelLooks(characterId, field);
+  }
+
+  clearPanelLooks(
+    characterId: string,
+    field: 'wardrobeId' | 'wardrobeChange' | 'appearanceChange',
+  ): void {
+    const blank = field === 'wardrobeId' ? null : '';
+    this.updateDirection((d) => ({
+      ...d,
+      panels: d.panels.map((p) =>
+        p.placements.some((pl) => pl.characterId === characterId && pl[field])
+          ? { ...p, placements: withPlacement(p, characterId, { [field]: blank }), edited: true }
+          : p,
+      ),
+    }));
+  }
+
+  /** Panels that set their own value for a character's look field, by number. */
+  panelsWithLook(
+    characterId: string,
+    field: 'wardrobeId' | 'wardrobeChange' | 'appearanceChange',
+  ): number[] {
+    return this.panelSpans().flatMap((s, i) =>
+      s.panel.placements.some((p) => p.characterId === characterId && p[field]) ? [i + 1] : [],
+    );
+  }
+
+  setLocationChange(locationId: string, change: string, panelKey: string | null): void {
+    if (panelKey !== null) {
+      this.updatePanel(panelKey, { locationChange: change });
+      return;
+    }
+    this.updateDirection((d) => {
+      const rest = d.locationStates.filter((l) => l.locationId !== locationId);
+      const current = d.locationStates.find((l) => l.locationId === locationId);
+      return {
+        ...d,
+        locationStates: change.trim()
+          ? [...rest, { id: current?.id ?? '', locationId, change, edited: true }]
+          : rest,
+      };
+    });
+  }
+
+  promoteLocationChange(locationId: string, panelKey: string): void {
+    const own = this.panelByKey(panelKey)?.locationChange ?? '';
+    const scene = this.locationStateByLocation().get(locationId)?.change ?? '';
+    this.setLocationChange(locationId, joinChanges(scene, own), null);
+    this.clearPanelLocationChanges(locationId);
+  }
+
+  clearPanelLocationChanges(locationId: string): void {
+    const elements = this.elements();
+    this.updateDirection((d) => ({
+      ...d,
+      panels: d.panels.map((p) => {
+        const first = elements.findIndex((e) => e.id === p.firstElementId);
+        const at = headingAt(elements, first)?.locationId ?? null;
+        return p.locationChange && at === locationId
+          ? { ...p, locationChange: '', edited: true }
+          : p;
+      }),
+    }));
+  }
+
+  deletePanel(key: string): void {
+    const panel = this.panelByKey(key);
+    if (panel) {
+      this.updateDirection((d) => ({
+        ...d,
+        panels: removePanel(d.panels, this.elements(), panel),
+      }));
+      if (this.selectedPanelKey() === key) {
+        this.selectedPanelKey.set(null);
+      }
+    }
+  }
+
+  private panelByKey(key: string): Panel | null {
+    return this.direction()?.panels.find((p) => p.firstElementId === key) ?? null;
+  }
+
+  // ─── director mode: continuity ─────────────────────────────────────────
+
+  setAppearance(characterId: string, patch: Partial<SceneAppearance>): void {
+    this.updateDirection((d) => {
+      const current =
+        d.appearances.find((a) => a.characterId === characterId) ?? blankAppearance(characterId);
+      return {
+        ...d,
+        appearances: [
+          ...d.appearances.filter((a) => a.characterId !== characterId),
+          { ...current, ...patch, edited: true },
+        ],
+      };
+    });
+  }
+
+  setPropState(propId: string, patch: Partial<ScenePropState>): void {
+    this.updateDirection((d) => {
+      const current = d.propStates.find((p) => p.propId === propId) ?? blankPropState(propId);
+      return {
+        ...d,
+        propStates: [
+          ...d.propStates.filter((p) => p.propId !== propId),
+          { ...current, ...patch, edited: true },
+        ],
+      };
+    });
+  }
+
+  setStoryDay(storyDay: number | null): void {
+    this.updateDirection((d) => ({ ...d, storyDay }));
+  }
+
+  // ─── director mode: the model ──────────────────────────────────────────
+
+  /** Pending edits save first, so the model reads the scene as the author sees it. */
+  async direct(target: DirectTarget, replaceEdited = false): Promise<void> {
+    const scene = this.scene();
+    const key = targetKey(target);
+    if (!scene || this.directing().has(key)) {
+      return;
+    }
+    this.directing.update((keys) => new Set([...keys, key]));
+    try {
+      await this.flushSave();
+      const direction = await this.directionApi.direct(scene.id, target, replaceEdited);
+      if (this.scene()?.id === direction.sceneId) {
+        if (this.directionDirty) {
+          // Edits made while the model worked are kept; the next save carries them over its result.
+          this.direction.update(
+            (mine) => mine && { ...direction, ...this.ownEdits(mine, direction) },
+          );
+        } else {
+          this.direction.set(direction);
+        }
+      }
+    } catch (err) {
+      this.error.set(describeError(err, 'The scene could not be directed.'));
+    } finally {
+      this.directing.update((keys) => new Set([...keys].filter((k) => k !== key)));
+    }
+  }
+
+  /** Rows the author touched while a model request was out: they win over the model's. */
+  private ownEdits(mine: SceneDirection, theirs: SceneDirection): Partial<SceneDirection> {
+    const merge = <T>(
+      ours: T[],
+      others: T[],
+      key: (row: T) => string,
+      edited: (row: T) => boolean,
+    ) => [
+      ...others.filter((o) => !ours.some((m) => edited(m) && key(m) === key(o))),
+      ...ours.filter(edited),
+    ];
+    return {
+      cues: merge(
+        mine.cues,
+        theirs.cues,
+        (c) => c.elementId,
+        (c) => c.edited,
+      ),
+      appearances: merge(
+        mine.appearances,
+        theirs.appearances,
+        (a) => a.characterId,
+        (a) => a.edited,
+      ),
+      propStates: merge(
+        mine.propStates,
+        theirs.propStates,
+        (p) => p.propId,
+        (p) => p.edited,
+      ),
+      locationStates: merge(
+        mine.locationStates,
+        theirs.locationStates,
+        (l) => l.locationId,
+        (l) => l.edited,
+      ),
+      panels: mine.panels.some((p) => p.edited) ? mine.panels : theirs.panels,
+    };
+  }
+
+  async describe(target: DescribeTarget): Promise<void> {
+    if (this.describing() !== null) {
+      return;
+    }
+    this.describing.set(target.id);
+    try {
+      await this.flushSave();
+      const entry = await this.directionApi.describe(target);
+      this.replaceEntry(target, entry);
+    } catch (err) {
+      this.error.set(describeError(err, 'The sheet could not be written.'));
+    } finally {
+      this.describing.set(null);
+    }
+  }
+
+  // ─── director mode: audio ──────────────────────────────────────────────
+
+  /** Speaks the lines one at a time, so each becomes playable as soon as it is spoken. */
+  async generateAudio(elementIds: readonly string[], regenerate = false): Promise<void> {
+    const scene = this.scene();
+    const queued = elementIds.filter((id) => !this.generatingLines().has(id));
+    if (!scene || queued.length === 0) {
+      return;
+    }
+    this.generatingLines.update((ids) => new Set([...ids, ...queued]));
+    try {
+      await this.flushSave();
+      for (const id of queued) {
+        if (this.scene()?.id !== scene.id) {
+          return;
+        }
+        this.adoptAudio(await this.directionApi.generateAudio(scene.id, id, regenerate), scene.id);
+        this.generatingLines.update((ids) => new Set([...ids].filter((i) => i !== id)));
+      }
+    } catch (err) {
+      this.error.set(describeError(err, 'The line could not be spoken.'));
+    } finally {
+      this.generatingLines.update((ids) => new Set([...ids].filter((i) => !queued.includes(i))));
+    }
+  }
+
+  /** Only the audio comes from the reply, and cues the server made for unspoken lines. */
+  private adoptAudio(direction: SceneDirection, sceneId: string): void {
+    if (this.scene()?.id !== sceneId) {
+      return;
+    }
+    const theirs = new Map(direction.cues.map((c) => [c.elementId, c]));
+    this.direction.update((mine) => {
+      if (!mine) {
+        return mine;
+      }
+      const known = new Set(mine.cues.map((c) => c.elementId));
+      return {
+        ...mine,
+        cues: [
+          ...mine.cues.map((c) => ({ ...c, audio: theirs.get(c.elementId)?.audio ?? null })),
+          ...direction.cues.filter((c) => !known.has(c.elementId)),
+        ],
+      };
+    });
+  }
+
+  /** Lines in order that have audio to play, from the given element ids. */
+  playLines(elementIds: readonly string[], context: string): void {
+    const cues = this.cueByElement();
+    const playable = elementIds.flatMap((id) => (cues.get(id)?.audio ? [cues.get(id)!] : []));
+    if (playable.length > 0) {
+      void this.player.playRun(playable, context);
+    }
+  }
+
+  async loadVoices(): Promise<void> {
+    if (this.voices() !== null) {
+      return;
+    }
+    try {
+      const { provider, voices } = await this.directionApi.listVoices();
+      this.speechProvider.set(provider);
+      this.voices.set(voices);
+    } catch (err) {
+      this.voices.set([]);
+      this.error.set(describeError(err, 'The voices could not be listed.'));
+    }
+  }
+
+  // ─── narrators ─────────────────────────────────────────────────────────
+
+  addNarrator(): void {
+    void this.saveNarrators([
+      ...this.narrators(),
+      { id: '', name: 'New narrator', voice: { description: '', baseline: '', voiceId: '' } },
+    ]);
+  }
+
+  updateNarrator(index: number, patch: Partial<Narrator>): void {
+    void this.saveNarrators(this.narrators().map((n, i) => (i === index ? { ...n, ...patch } : n)));
+  }
+
+  /** The default goes first; lines that picked it now take it by default. */
+  makeDefaultNarrator(id: string): void {
+    const narrators = this.narrators();
+    const chosen = narrators.find((n) => n.id === id);
+    if (!chosen) {
+      return;
+    }
+    if (this.direction()?.cues.some((c) => c.narratorId === id)) {
+      this.updateDirection((d) => ({
+        ...d,
+        cues: d.cues.map((c) =>
+          c.narratorId === id ? { ...c, narratorId: null, edited: true } : c,
+        ),
+      }));
+    }
+    void this.saveNarrators([chosen, ...narrators.filter((n) => n.id !== id)]);
+  }
+
+  /** Their lines fall back to the default. */
+  removeNarrator(id: string): void {
+    void this.saveNarrators(this.narrators().filter((n) => n.id !== id));
+  }
+
+  private async saveNarrators(narrators: Narrator[]): Promise<void> {
+    const story = this.story();
+    if (!story) {
+      return;
+    }
+    this.story.set({ ...story, narrators });
+    await this.run(async () => {
+      await this.flushSave();
+      const saved = await this.api.saveNarrators(story.id, narrators);
+      this.story.update((s) => s && { ...s, narrators: saved });
+      const ids = new Set(saved.map((n) => n.id));
+      this.direction.update(
+        (d) =>
+          d && {
+            ...d,
+            cues: d.cues.map((c) =>
+              c.narratorId && !ids.has(c.narratorId) ? { ...c, narratorId: null } : c,
+            ),
+          },
+      );
+      await this.refreshAudio();
+    }, 'The narrators could not be saved.');
+  }
+
+  /** Whether each line's audio is still current is the server's call; a voice change moves it. */
+  private async refreshAudio(): Promise<void> {
+    const scene = this.scene();
+    if (scene && this.direction()) {
+      this.adoptAudio(await this.directionApi.getSceneDirection(scene.id), scene.id);
+    }
+  }
+
+  // ─── sheets ────────────────────────────────────────────────────────────
+
+  async saveCharacterSheet(character: Character): Promise<string | null> {
+    return this.saveSheet({ kind: 'character', id: character.id }, () =>
+      this.api.updateCharacterSheet(character),
+    );
+  }
+
+  async saveLocationSheet(location: Location): Promise<string | null> {
+    return this.saveSheet({ kind: 'location', id: location.id }, () =>
+      this.api.updateLocationSheet(location),
+    );
+  }
+
+  async savePropSheet(prop: Prop): Promise<string | null> {
+    return this.saveSheet({ kind: 'prop', id: prop.id }, () => this.api.updatePropSheet(prop));
+  }
+
+  private async saveSheet(
+    target: ReferenceTarget,
+    call: () => Promise<Character | Location | Prop>,
+  ): Promise<string | null> {
+    try {
+      this.replaceEntry(target, await call());
+      if (target.kind === 'character') {
+        await this.refreshAudio();
+      }
+      return null;
+    } catch (err) {
+      return describeError(err, 'The sheet could not be saved.');
+    }
+  }
+
+  private replaceEntry(target: ReferenceTarget, entry: Character | Location | Prop): void {
+    this.story.update((story) => {
+      if (!story) {
+        return story;
+      }
+      switch (target.kind) {
+        case 'character':
+          return {
+            ...story,
+            characters: story.characters.map((c) =>
+              c.id === target.id ? (entry as Character) : c,
+            ),
+          };
+        case 'location':
+          return {
+            ...story,
+            locations: story.locations.map((l) => (l.id === target.id ? (entry as Location) : l)),
+          };
+        case 'prop':
+          return {
+            ...story,
+            props: story.props.map((p) => (p.id === target.id ? (entry as Prop) : p)),
+          };
+      }
+    });
   }
 
   private async run(call: () => Promise<void>, fallback: string): Promise<void> {

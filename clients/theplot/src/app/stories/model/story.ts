@@ -3,6 +3,7 @@ import { Container } from './container';
 import { Location } from './location';
 import { Prop } from './prop';
 import { StoryVocabulary } from './story-vocabulary';
+import { Narrator } from './narrator';
 
 /** Scenes' elements load separately, with `StoryApi.getScene`. */
 export interface Story {
@@ -13,4 +14,6 @@ export interface Story {
   characters: Character[];
   locations: Location[];
   props: Prop[];
+  /** Who reads action and narration, in order; the first is the default. */
+  narrators: Narrator[];
 }

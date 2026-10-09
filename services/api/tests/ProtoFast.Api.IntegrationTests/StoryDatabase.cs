@@ -4,12 +4,16 @@ using Npgsql;
 using ProtoFast.Api.IntegrationTests;
 using ProtoFast.Api.Services;
 using ProtoFast.Api.Services.Admin;
+using ProtoFast.Api.Services.Directing;
 using ProtoFast.Api.Services.Screenplays;
+using ProtoFast.Api.Services.Speech;
 using ProtoFast.Data.ThePlot;
 using ProtoFast.DocumentImport.Data;
 using ProtoFast.DocumentImport.Data.Postgres;
 using ProtoFast.DocumentImport.Engine.InMemory;
 using ProtoFast.DocumentImport.Engine.Storage;
+using ProtoFast.DocumentImport.Screenplay.Models;
+using ProtoFast.Storage.Abstractions;
 using Testcontainers.PostgreSql;
 using Xunit;
 
@@ -37,6 +41,22 @@ public sealed class StoryDatabase : IAsyncLifetime
         services.AddScoped<StoryScope>();
         services.AddScoped<StoryLibrary>();
         services.AddScoped<StoryService>();
+        services.AddScoped<SceneSaver>();
+        services.AddLogging();
+        services.AddSingleton<ScriptedLanguageModelFactory>();
+        services.AddSingleton<ILanguageModelFactory>(sp => sp.GetRequiredService<ScriptedLanguageModelFactory>());
+        services.AddSingleton(new DirectorOptions());
+        services.AddSingleton<SceneDirector>();
+        services.AddSingleton<SheetDescriber>();
+        services.AddScoped<DirectionScope>();
+        services.AddScoped<DirectionService>();
+        services.AddSingleton<ScriptedSpeechSynthesizer>();
+        services.AddSingleton<ISpeechSynthesizer>(sp => sp.GetRequiredService<ScriptedSpeechSynthesizer>());
+        services.AddSingleton<MemoryObjectStore>();
+        services.AddSingleton<IObjectStore>(sp => sp.GetRequiredService<MemoryObjectStore>());
+        services.AddSingleton<IPresignedUrlFactory>(sp => sp.GetRequiredService<MemoryObjectStore>());
+        services.AddScoped<CueAudioGenerator>();
+        services.AddScoped<CueAudioMessages>();
         // The real engine tables, so the console's reads see what the ledger writes; artifacts and
         // registry content would need an object store, so those two stay in memory.
         services.AddSingleton<IArtifactStore, InMemoryArtifactStore>();

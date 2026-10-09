@@ -1,0 +1,459 @@
+using Grpc.Core;
+using ProtoFast.Api.Services.Directing;
+using Xunit;
+using static ProtoFast.Api.IntegrationTests.Rows;
+
+namespace ProtoFast.Api.IntegrationTests;
+
+public class DirectionTests(StoryDatabase database)
+{
+    private readonly Writer _writer = new(database);
+
+    /// <summary>A heading, an action, two lines (Mara, then Bolt) and a transition, with Mara wearing a "work suit".</summary>
+    private async Task<(Story Story, Scene Scene, Character Mara, Character Bolt, Prop Radio, Wardrobe Suit)> DirectedSceneAsync()
+    {
+        var story = await _writer.CreateStoryAsync();
+        var mara = await _writer.CreateCharacterAsync(story.Id, "Mara");
+        var bolt = await _writer.CreateCharacterAsync(story.Id, "Bolt", "Robot");
+        var radio = await _writer.CreatePropAsync(story.Id, "Radio");
+        var docks = await _writer.CreateLocationAsync(story.Id, "Docks");
+        var sheet = await _writer.Call((s, c) => s.UpdateCharacterSheet(new UpdateCharacterSheetRequest
+        {
+            CharacterId = mara.Id,
+            Description = "A dock worker who hears things.",
+            Wardrobes = { new Wardrobe { Label = "work suit", Description = "oil-stained overalls" } },
+        }, c));
+        const string action = "@Mara turns the @Radio.";
+        var scene = await _writer.WriteFirstSceneAsync(
+            story,
+            Heading(docks.Id, "NIGHT"),
+            Action(action, Mention(action, "@Mara", mara), Mention(action, "@Radio", radio)),
+            Dialogue(mara.Id, "Don't move."),
+            Dialogue(bolt.Id, "I never do."),
+            Transition("CUT TO"));
+        return (story, scene, mara, bolt, radio, sheet.Character.Wardrobes[0]);
+    }
+
+    private static SceneDirection Direction(Scene scene, Character mara, Character bolt, Prop radio, Wardrobe suit)
+    {
+        var direction = new SceneDirection { SceneId = scene.Id, StoryDay = 2, Shot = "medium", Angle = "eye level" };
+        direction.Panels.Add(new Panel
+        {
+            FirstElementId = scene.Elements[0].Id,
+            LastElementId = scene.Elements[1].Id,
+            Shot = "Wide",
+            Movement = "push in",
+            Beat = "Mara at the radio.",
+            LocationChange = "Only the radio's glow lights the frame.",
+            Placements =
+            {
+                new Placement { CharacterId = mara.Id, Screen = "left", Pose = "crouched", Expression = "alert", AppearanceChange = "soot on her cheek" },
+                new Placement { CharacterId = bolt.Id, OnScreen = false },
+            },
+            Props = { new PanelProp { PropId = radio.Id, InView = true } },
+        });
+        direction.Panels.Add(new Panel
+        {
+            FirstElementId = scene.Elements[2].Id,
+            LastElementId = scene.Elements[4].Id,
+            Shot = "over-the-shoulder",
+            Beat = "Bolt answers.",
+            Placements =
+            {
+                new Placement { CharacterId = mara.Id, Screen = "left", Pose = "standing", Expression = "wary" },
+                new Placement { CharacterId = bolt.Id, Screen = "right", Pose = "still", Expression = "blank" },
+            },
+        });
+        direction.Cues.Add(new Cue { ElementId = scene.Elements[2].Id, Performance = "[whispers] Don't move.", GapBeforeMs = 400 });
+        direction.Cues.Add(new Cue { ElementId = scene.Elements[3].Id, Performance = "I never [deadpan] do.", Interrupted = true });
+        direction.Appearances.Add(new SceneAppearance
+        {
+            CharacterId = mara.Id,
+            WardrobeId = suit.Id,
+            WardrobeChange = "sleeves rolled",
+            AppearanceChange = "wet hair",
+            ChangeReason = "She came in from the rain.",
+            ChangeElementId = scene.Elements[1].Id,
+        });
+        direction.PropStates.Add(new ScenePropState { PropId = radio.Id, State = { "crackling" }, InView = false });
+        return direction;
+    }
+
+    [Fact]
+    public async Task Saving_a_direction_round_trips_in_scene_order_and_marks_the_rows_edited()
+    {
+        var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        var direction = Direction(scene, mara, bolt, radio, suit);
+        // Sent out of order: the saved panels follow the scene.
+        var reversed = new SceneDirection(direction);
+        reversed.Panels.Clear();
+        reversed.Panels.AddRange(direction.Panels.Reverse());
+
+        var saved = await _writer.SaveDirectionAsync(reversed);
+
+        Assert.Equal(saved, await _writer.GetDirectionAsync(scene.Id));
+        Assert.Equal(2, saved.StoryDay);
+        Assert.Equal([scene.Elements[0].Id, scene.Elements[2].Id], saved.Panels.Select(p => p.FirstElementId));
+        Assert.Equal([0, 1], saved.Panels.Select(p => p.Position));
+        Assert.All(saved.Panels.Concat<object>(saved.Cues).Concat(saved.Appearances).Concat(saved.PropStates), row =>
+            Assert.NotEqual(Guid.Empty, Guid.Parse((string)row.GetType().GetProperty("Id")!.GetValue(row)!)));
+        Assert.Equal(("medium", "eye level", false), (saved.Shot, saved.Angle, saved.HasMovement));
+        Assert.Equal("wide", saved.Panels[0].Shot);
+        Assert.Equal("push in", saved.Panels[0].Movement);
+        Assert.False(saved.Panels[1].HasAngle);
+        Assert.Equal("Only the radio's glow lights the frame.", saved.Panels[0].LocationChange);
+        var maraInFirst = saved.Panels[0].Placements.Single(p => p.CharacterId == mara.Id);
+        Assert.Equal(("soot on her cheek", false), (maraInFirst.AppearanceChange, maraInFirst.HasOnScreen));
+        Assert.False(saved.Panels[0].Placements.Single(p => p.CharacterId == bolt.Id).OnScreen);
+        Assert.Equal(["left", "right"], saved.Panels[1].Placements.OrderBy(p => p.Screen).Select(p => p.Screen));
+        Assert.Equal([(radio.Id, true)], saved.Panels[0].Props.Select(p => (p.PropId, p.InView)));
+        Assert.Equal("[whispers] Don't move.", saved.Cues[0].Performance);
+        Assert.True(saved.Cues[1].Interrupted);
+        Assert.Equal(suit.Id, saved.Appearances[0].WardrobeId);
+        Assert.Equal(("sleeves rolled", "wet hair", true), (saved.Appearances[0].WardrobeChange, saved.Appearances[0].AppearanceChange, saved.Appearances[0].OnScreen));
+        Assert.Equal(["crackling"], saved.PropStates[0].State);
+        Assert.False(saved.PropStates[0].InView);
+        Assert.All(saved.Panels, p => Assert.True(p.Edited));
+        Assert.All(saved.Cues, c => Assert.True(c.Edited));
+        Assert.True(saved.Appearances[0].Edited);
+        Assert.True(saved.PropStates[0].Edited);
+    }
+
+    [Fact]
+    public async Task Rows_left_out_of_a_save_are_deleted_and_the_rest_keep_their_ids()
+    {
+        var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        var saved = await _writer.SaveDirectionAsync(Direction(scene, mara, bolt, radio, suit));
+
+        var next = new SceneDirection(saved);
+        next.Cues.RemoveAt(1);
+        next.Panels.RemoveAt(0);
+        next.PropStates.Clear();
+        next.Cues[0].GapBeforeMs = 900;
+        var again = await _writer.SaveDirectionAsync(next);
+
+        Assert.Equal([saved.Cues[0].Id], again.Cues.Select(c => c.Id));
+        Assert.Equal(900, again.Cues[0].GapBeforeMs);
+        Assert.Equal([saved.Panels[1].Id], again.Panels.Select(p => p.Id));
+        Assert.Equal(0, again.Panels[0].Position);
+        Assert.Empty(again.PropStates);
+        Assert.Single(again.Appearances);
+    }
+
+    [Theory]
+    [InlineData("unknown tag")]
+    [InlineData("too many tags")]
+    [InlineData("cue on a heading")]
+    [InlineData("narrator on a dialogue line")]
+    [InlineData("unknown camera angle")]
+    [InlineData("two cues on one line")]
+    [InlineData("overlapping panels")]
+    [InlineData("panel ending before it starts")]
+    [InlineData("unknown shot")]
+    [InlineData("unknown screen side")]
+    [InlineData("another character's wardrobe")]
+    [InlineData("row from another scene")]
+    [InlineData("story day zero")]
+    public async Task Invalid_directions_are_refused(string problem)
+    {
+        var (story, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        var other = await _writer.CreateSceneAsync(story.Containers[0].Id, 1, "Elsewhere", Heading(), Action("Rain."));
+        var direction = Direction(scene, mara, bolt, radio, suit);
+        switch (problem)
+        {
+            case "unknown tag":
+                direction.Cues[0].Performance = "[wistfully] Don't move.";
+                break;
+            case "too many tags":
+                direction.Cues[0].Performance = "[sad] [slowly] [sighs] Don't [pause] move.";
+                break;
+            case "cue on a heading":
+                direction.Cues[0].ElementId = scene.Elements[0].Id;
+                break;
+            case "narrator on a dialogue line":
+                direction.Cues[0].NarratorId = Guid.NewGuid().ToString();
+                break;
+            case "unknown camera angle":
+                direction.Panels[0].Angle = "dutch";
+                break;
+            case "two cues on one line":
+                direction.Cues[1].ElementId = direction.Cues[0].ElementId;
+                break;
+            case "overlapping panels":
+                direction.Panels[1].FirstElementId = scene.Elements[1].Id;
+                break;
+            case "panel ending before it starts":
+                direction.Panels[0].LastElementId = scene.Elements[0].Id;
+                direction.Panels[0].FirstElementId = scene.Elements[1].Id;
+                break;
+            case "unknown shot":
+                direction.Panels[0].Shot = "dutch angle";
+                break;
+            case "unknown screen side":
+                direction.Panels[0].Placements[0].Screen = "middle";
+                break;
+            case "another character's wardrobe":
+                direction.Appearances[0].CharacterId = bolt.Id;
+                break;
+            case "row from another scene":
+                direction.Cues[0].ElementId = other.Elements[1].Id;
+                break;
+            case "story day zero":
+                direction.StoryDay = 0;
+                break;
+        }
+
+        var error = await Assert.ThrowsAsync<RpcException>(() => _writer.SaveDirectionAsync(direction));
+
+        Assert.Equal(StatusCode.InvalidArgument, error.StatusCode);
+    }
+
+    [Fact]
+    public async Task Deleting_a_line_takes_its_cue_and_the_panel_it_bounds_with_it()
+    {
+        var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        var saved = await _writer.SaveDirectionAsync(Direction(scene, mara, bolt, radio, suit));
+
+        scene.Elements.RemoveAt(4); // the transition, which ends the second panel
+        scene.Elements.RemoveAt(3); // Bolt's line
+        await _writer.SaveSceneAsync(scene);
+
+        var after = await _writer.GetDirectionAsync(scene.Id);
+        Assert.Equal([saved.Cues[0].Id], after.Cues.Select(c => c.Id));
+        Assert.Equal([saved.Panels[0].Id], after.Panels.Select(p => p.Id));
+        Assert.Single(after.Appearances);
+    }
+
+    [Fact]
+    public async Task Saving_the_scene_and_its_direction_together_lands_a_changed_line_with_its_cue()
+    {
+        var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        var direction = Direction(scene, mara, bolt, radio, suit);
+        scene.Elements[2].Text = "Don't you move.";
+        direction.Cues[0].Performance = "[whispers] Don't you move.";
+
+        var saved = await _writer.Direct(async (d, c) =>
+            (await d.SaveDirectedScene(new SaveDirectedSceneRequest { Scene = scene, Direction = direction }, c)).Direction);
+
+        Assert.Equal("Don't you move.", (await _writer.GetSceneAsync(scene.Id)).Elements[2].Text);
+        Assert.Equal("[whispers] Don't you move.", saved.Cues[0].Performance);
+    }
+
+    [Fact]
+    public async Task Directing_a_line_assembles_its_performance_from_the_lines_own_words()
+    {
+        var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        await _writer.SaveDirectionAsync(Direction(scene, mara, bolt, radio, suit));
+        var line = scene.Elements[3];
+        _writer.ScriptModel("""
+            Here you go: {"cues":[{"line":"e4","tags":["Sad","not-a-tag"],"inline":[{"beforeWord":3,"tag":"sighs"}],"gapBeforeMs":"250","interrupted":false}]}
+            """);
+
+        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, CueElementId = line.Id });
+
+        var cue = Assert.Single(directed.Cues, c => c.ElementId == line.Id);
+        Assert.Equal("[sad] I never [sighs] do.", cue.Performance);
+        Assert.Equal(250, cue.GapBeforeMs);
+        Assert.False(cue.Interrupted);
+        Assert.False(cue.Edited);
+        Assert.True(Performances.SameWords(cue.Performance, line.Text));
+        Assert.Contains("e4 BOLT: I never do.", _writer.ModelPrompts()[0]);
+        // The other cue was the author's and is untouched.
+        Assert.Equal("[whispers] Don't move.", Assert.Single(directed.Cues, c => c.ElementId == scene.Elements[2].Id).Performance);
+    }
+
+    [Fact]
+    public async Task Directing_every_cue_keeps_the_authors_edits_unless_told_to_replace_them()
+    {
+        var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        await _writer.SaveDirectionAsync(Direction(scene, mara, bolt, radio, suit));
+        _writer.ScriptModel(
+            """{"cues":[{"line":"e3","tags":["angry"]},{"line":"e4","tags":["calm"]}]}""",
+            """{"cues":[{"line":"e3","tags":["angry"]},{"line":"e4","tags":["calm"]}]}""");
+
+        var kept = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Cues = true });
+        // The action line is read as written: the answer gave it nothing.
+        Assert.Equal(["Mara turns the Radio.", "[whispers] Don't move.", "I never [deadpan] do."], kept.Cues.Select(c => c.Performance));
+        Assert.Contains("Direct every dialogue, narration and action line.", _writer.ModelPrompts()[0]);
+
+        var replaced = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Cues = true, ReplaceEdited = true });
+        Assert.Equal(["Mara turns the Radio.", "[angry] Don't move.", "[calm] I never do."], replaced.Cues.Select(c => c.Performance));
+        Assert.All(replaced.Cues, c => Assert.False(c.Edited));
+    }
+
+    [Fact]
+    public async Task Directing_panels_covers_every_row_once_around_the_authors_fixed_panel()
+    {
+        var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        var direction = Direction(scene, mara, bolt, radio, suit);
+        direction.Panels.RemoveAt(1); // keep only the author's first panel, over e1–e2
+        await _writer.SaveDirectionAsync(direction);
+        // The model's panels overlap the fixed one and leave the transition uncovered.
+        _writer.ScriptModel("""
+            {"panels":[
+              {"from":"e1","to":"e3","shot":"close","beat":"Mara leans in.","characters":[{"name":"Mara","screen":"Left","pose":"leaning","expression":"tense"}],"props":["Radio","Teapot"]},
+              {"from":"e4","to":"e4","shot":"medium","beat":"Bolt replies.","characters":[{"name":"Bolt","screen":"right"},{"name":"Nobody","screen":"left"}]}
+            ]}
+            """);
+
+        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Panels = true });
+
+        var ids = scene.Elements.Select(e => e.Id).ToList();
+        Assert.Equal(
+            [(ids[0], ids[1]), (ids[2], ids[2]), (ids[3], ids[4])],
+            directed.Panels.Select(p => (p.FirstElementId, p.LastElementId)));
+        Assert.Equal([0, 1, 2], directed.Panels.Select(p => p.Position));
+        Assert.True(directed.Panels[0].Edited);
+        Assert.Equal("Mara at the radio.", directed.Panels[0].Beat);
+        // The scene's shot stays the author's; what matches it is left to follow it.
+        Assert.Equal("medium", directed.Shot);
+        Assert.Equal("close", directed.Panels[1].Shot);
+        Assert.False(directed.Panels[2].HasShot);
+        var maraInSecond = directed.Panels[1].Placements.Single(p => p.CharacterId == mara.Id);
+        Assert.Equal(("left", false), (maraInSecond.Screen, maraInSecond.HasOnScreen));
+        Assert.False(directed.Panels[1].Placements.Single(p => p.CharacterId == bolt.Id).OnScreen);
+        Assert.Empty(directed.Panels[1].Props.Where(p => !p.InView));
+        Assert.Equal([radio.Id], directed.Panels[1].Props.Select(p => p.PropId));
+        Assert.False(directed.Panels[2].Placements.Single(p => p.CharacterId == mara.Id).OnScreen);
+        Assert.Equal("right", directed.Panels[2].Placements.Single(p => p.CharacterId == bolt.Id).Screen);
+        Assert.Empty(directed.Panels[2].Props);
+        Assert.All(directed.Panels.Skip(1), p => Assert.False(p.Edited));
+
+        // Deleting the first panel moves the others up; moving is not editing them.
+        var next = new SceneDirection(directed);
+        next.Panels.RemoveAt(0);
+        var shifted = await _writer.SaveDirectionAsync(next);
+        Assert.Equal([0, 1], shifted.Panels.Select(p => p.Position));
+        Assert.All(shifted.Panels, p => Assert.False(p.Edited));
+    }
+
+    [Fact]
+    public async Task Directing_panels_when_the_authors_panels_cover_the_scene_leaves_them_and_skips_the_model()
+    {
+        var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        var saved = await _writer.SaveDirectionAsync(Direction(scene, mara, bolt, radio, suit));
+
+        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Panels = true });
+
+        Assert.Equal(saved.Panels, directed.Panels);
+        Assert.Empty(_writer.ModelPrompts());
+    }
+
+    [Fact]
+    public async Task Directing_continuity_carries_the_previous_scenes_look_forward()
+    {
+        var (story, first, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        await _writer.SaveDirectionAsync(Direction(first, mara, bolt, radio, suit));
+        const string text = "@Mara waits. @Bolt hums.";
+        var second = await _writer.CreateSceneAsync(
+            story.Containers[0].Id, 1, "Later", Heading(), Action(text, Mention(text, "@Mara", mara), Mention(text, "@Bolt", bolt)));
+        // Mara keeps her look; Bolt gets one; the radio is not in this scene.
+        _writer.ScriptModel("""
+            {"looks":[{"name":"Mara","wardrobe":"work suit","appearanceChange":"dry now","changeReason":"The rain stopped.","changeLine":"e2"},{"name":"Bolt","present":false}],"props":[]}
+            """);
+
+        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = second.Id, Continuity = true });
+
+        var maraLook = Assert.Single(directed.Appearances, a => a.CharacterId == mara.Id);
+        Assert.Equal(suit.Id, maraLook.WardrobeId);
+        Assert.Equal(("dry now", "sleeves rolled"), (maraLook.AppearanceChange, maraLook.WardrobeChange));
+        Assert.Equal(second.Elements[1].Id, maraLook.ChangeElementId);
+        var boltLook = Assert.Single(directed.Appearances, a => a.CharacterId == bolt.Id);
+        Assert.False(boltLook.HasWardrobeId);
+        Assert.False(boltLook.OnScreen);
+        Assert.Empty(directed.PropStates);
+        Assert.Contains("previous look: scene \"Untitled scene\" (day 2, a day not set; treat it as the same day): wardrobe \"work suit\", wardrobe change \"sleeves rolled\", appearance change \"wet hair\"", _writer.ModelPrompts()[0]);
+        Assert.Contains("This scene is on story day unknown", _writer.ModelPrompts()[0]);
+    }
+
+    [Fact]
+    public async Task Directing_continuity_keeps_the_previous_look_when_the_answer_gives_no_reason_to_change_it()
+    {
+        var (story, first, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        await _writer.SaveDirectionAsync(Direction(first, mara, bolt, radio, suit));
+        const string text = "@Mara waits.";
+        var second = await _writer.CreateSceneAsync(
+            story.Containers[0].Id, 1, "Later", Heading(), Action(text, Mention(text, "@Mara", mara)));
+        // The model names another wardrobe and an empty state but gives no change: the look carries forward.
+        _writer.ScriptModel("""
+            {"looks":[{"name":"Mara","wardrobe":"Sunday best","appearanceChange":"","changeReason":null,"changeLine":null}],"props":[]}
+            """);
+
+        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = second.Id, Continuity = true });
+
+        var look = Assert.Single(directed.Appearances);
+        Assert.Equal(suit.Id, look.WardrobeId);
+        Assert.Equal("wet hair", look.AppearanceChange);
+        Assert.False(look.HasChangeReason);
+    }
+
+    [Fact]
+    public async Task Directing_continuity_adds_a_wardrobe_the_text_describes_to_the_sheet()
+    {
+        var (story, first, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        await _writer.SaveDirectionAsync(Direction(first, mara, bolt, radio, suit));
+        const string text = "@Mara comes down the stairs in a yellow oilskin.";
+        var second = await _writer.CreateSceneAsync(
+            story.Containers[0].Id, 1, "Later", Heading(), Action(text, Mention(text, "@Mara", mara)));
+        _writer.ScriptModel("""
+            {"looks":[{"name":"Mara","wardrobe":null,"newWardrobe":{"label":"yellow oilskin","description":"a yellow oilskin coat"},"appearanceChange":"","changeReason":"She has changed into the oilskin.","changeLine":"e2"}],"props":[]}
+            """);
+
+        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = second.Id, Continuity = true });
+
+        var character = (await _writer.GetStoryAsync(story.Id)).Characters.Single(c => c.Id == mara.Id);
+        Assert.Equal(["work suit", "yellow oilskin"], character.Wardrobes.Select(w => w.Label));
+        var look = Assert.Single(directed.Appearances);
+        Assert.Equal(character.Wardrobes[1].Id, look.WardrobeId);
+        Assert.Equal("She has changed into the oilskin.", look.ChangeReason);
+        Assert.Equal(second.Elements[1].Id, look.ChangeElementId);
+        Assert.Equal("", look.AppearanceChange);
+    }
+
+    [Fact]
+    public async Task Describing_a_character_writes_the_sheet_and_keeps_existing_wardrobes()
+    {
+        var (story, _, mara, _, _, suit) = await DirectedSceneAsync();
+        _writer.ScriptModel("""
+            {"description":"Mara runs the night shift at the docks.","identity":{"age":"late 30s","build":"wiry","face":"sharp","hair":"cropped black","skin":"olive","marks":["scar over left brow"]},"voice":{"description":"low, quick, Glaswegian","baseline":"dry"},"wardrobes":[{"label":"Work Suit","description":"newer overalls"},{"label":"rain coat","description":"yellow oilskin"}]}
+            """);
+
+        var reply = await _writer.Direct((d, c) => d.Describe(new DescribeRequest { CharacterId = mara.Id }, c));
+
+        var character = reply.Character;
+        Assert.Equal("Mara runs the night shift at the docks.", character.Description);
+        Assert.Equal("late 30s", character.Appearance.Age);
+        Assert.Equal(["scar over left brow"], character.Appearance.Marks);
+        Assert.Equal("dry", character.Voice.Baseline);
+        Assert.Equal(["work suit", "rain coat"], character.Wardrobes.Select(w => w.Label));
+        Assert.Equal(suit.Id, character.Wardrobes[0].Id);
+        Assert.Contains("they say: Don't move.", _writer.ModelPrompts()[0]);
+        Assert.Equal(character, (await _writer.GetStoryAsync(story.Id)).Characters.Single(c => c.Id == mara.Id));
+    }
+
+    [Fact]
+    public async Task An_answer_the_director_cannot_use_is_reported_in_words_after_one_retry()
+    {
+        var (_, scene, _, _, _, _) = await DirectedSceneAsync();
+        _writer.ScriptModel("I'd rather not.", "Still no.");
+
+        var error = await Assert.ThrowsAsync<RpcException>(() =>
+            _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, StoryDay = true }));
+
+        Assert.Equal(StatusCode.FailedPrecondition, error.StatusCode);
+        Assert.Equal(DirectionErrors.ModelUnusable, error.Status.Detail);
+        Assert.Equal(2, _writer.ModelPrompts().Count);
+        Assert.False((await _writer.GetDirectionAsync(scene.Id)).HasStoryDay);
+    }
+
+    [Fact]
+    public async Task Another_users_scene_reads_as_not_found()
+    {
+        var (_, scene, _, _, _, _) = await DirectedSceneAsync();
+        var stranger = new Writer(database);
+
+        var error = await Assert.ThrowsAsync<RpcException>(() => stranger.GetDirectionAsync(scene.Id));
+
+        Assert.Equal(StatusCode.NotFound, error.StatusCode);
+    }
+}

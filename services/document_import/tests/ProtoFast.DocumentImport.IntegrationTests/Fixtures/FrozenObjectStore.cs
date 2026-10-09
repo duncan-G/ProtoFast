@@ -28,6 +28,14 @@ internal sealed class FrozenObjectStore : IObjectStore
         return Task.FromResult(new ObjectRef(key, Convert.ToHexStringLower(SHA256.HashData(content)), content.Length));
     }
 
+    public Task<ObjectRef> WriteBytesAsync(
+        string key, byte[] content, string contentType, string idempotencyKey, CancellationToken ct = default)
+    {
+        _objects[key] = content;
+        Interlocked.Increment(ref Writes);
+        return Task.FromResult(new ObjectRef(key, Convert.ToHexStringLower(SHA256.HashData(content)), content.Length));
+    }
+
     public Task<ObjectRef?> FindExistingAsync(string key, string idempotencyKey, CancellationToken ct = default) => throw new NotSupportedException();
     public Task<IReadOnlyList<string>> ListAsync(string prefix, CancellationToken ct = default) => throw new NotSupportedException();
     public Task<T?> ReadAsync<T>(string key, CancellationToken ct = default) => throw new NotSupportedException();

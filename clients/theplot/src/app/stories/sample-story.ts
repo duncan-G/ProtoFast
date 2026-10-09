@@ -56,6 +56,10 @@ const characters: Character[] = (
   name,
   kind,
   hue,
+  description: null,
+  appearance: null,
+  voice: null,
+  wardrobes: [],
 }));
 
 const locations: Location[] = (
@@ -101,12 +105,16 @@ const locations: Location[] = (
   name,
   setting,
   hue,
+  description: null,
+  appearance: null,
+  acoustics: null,
 }));
 
 const props: Prop[] = ['Radio', 'Brass Key', 'Map'].map((name) => ({
   id: seedId('8900'),
   storyId: SAMPLE_STORY_ID,
   name,
+  description: null,
 }));
 
 const referables: Referable[] = [
@@ -336,7 +344,13 @@ export function sampleStory(): Story {
   return structuredClone({
     id: SAMPLE_STORY_ID,
     title: 'The Signal in the Scrap',
-    vocabulary: { timesOfDay: [], transitions: [], extensions: [], characterKinds: [] },
+    vocabulary: {
+      timesOfDay: [],
+      transitions: [],
+      extensions: [],
+      deliveryTags: [],
+      characterKinds: [],
+    },
     containers: [
       {
         id: ACT_ONE,
@@ -354,6 +368,7 @@ export function sampleStory(): Story {
       },
     ],
     characters,
+    narrators: [],
     locations,
     props,
   });

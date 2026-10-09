@@ -13,4 +13,7 @@ public sealed class StoryVocabulary
     public List<string> Extensions { get; set; } = [];
 
     public List<CharacterKind> CharacterKinds { get; set; } = [];
+
+    /// <summary>Delivery tags beyond <see cref="DirectionVocabulary.DeliveryTags"/>.</summary>
+    public List<string> DeliveryTags { get; set; } = [];
 }

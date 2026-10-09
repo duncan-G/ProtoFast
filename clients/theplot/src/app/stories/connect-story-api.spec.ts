@@ -70,6 +70,7 @@ describe('ConnectStoryApi', () => {
         timesOfDay: ['GOLDEN HOUR'],
         transitions: [],
         extensions: [],
+        deliveryTags: [],
         characterKinds: [{ label: 'Ghost', avatarShape: 'Star' }],
       },
       containers: [
@@ -90,9 +91,33 @@ describe('ConnectStoryApi', () => {
           ],
         },
       ],
-      characters: [{ id: 'mara', storyId: 'story', name: 'Mara', kind: 'Human', hue: 25 }],
-      locations: [{ id: 'docks', storyId: 'story', name: 'Docks', setting: 'Exterior', hue: 200 }],
-      props: [{ id: 'radio', storyId: 'story', name: 'Radio' }],
+      characters: [
+        {
+          id: 'mara',
+          storyId: 'story',
+          name: 'Mara',
+          kind: 'Human',
+          hue: 25,
+          description: null,
+          appearance: null,
+          voice: null,
+          wardrobes: [],
+        },
+      ],
+      locations: [
+        {
+          id: 'docks',
+          storyId: 'story',
+          name: 'Docks',
+          setting: 'Exterior',
+          hue: 200,
+          description: null,
+          appearance: null,
+          acoustics: null,
+        },
+      ],
+      props: [{ id: 'radio', storyId: 'story', name: 'Radio', description: null }],
+      narrators: [],
     });
   });
 
@@ -259,11 +284,15 @@ describe('ConnectStoryApi', () => {
       name: 'Harbor Docks',
       setting: 'Interior',
       hue: 45,
+      description: null,
+      appearance: null,
+      acoustics: null,
     });
     await api.saveVocabulary('story', {
       timesOfDay: ['GOLDEN HOUR'],
       transitions: [],
       extensions: ['FILTERED'],
+      deliveryTags: ['wistful'],
       characterKinds: [{ label: 'Ghost', avatarShape: 'Shield' }],
     });
 
@@ -304,7 +333,15 @@ describe('ConnectStoryApi', () => {
     });
 
     const error = await api
-      .createCharacter('story', { name: 'mara', kind: 'Human', hue: 1 })
+      .createCharacter('story', {
+        name: 'mara',
+        kind: 'Human',
+        hue: 1,
+        description: null,
+        appearance: null,
+        voice: null,
+        wardrobes: [],
+      })
       .catch((e: unknown) => e);
 
     expect(describeError(error, 'fallback')).toBe('There’s already a character called “Mara”.');

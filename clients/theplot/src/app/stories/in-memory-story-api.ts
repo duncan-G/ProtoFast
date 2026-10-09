@@ -5,6 +5,7 @@ import type { StoryApi } from './story-api';
 import { Character } from './model/character';
 import { Container } from './model/container';
 import { Location } from './model/location';
+import { Narrator } from './model/narrator';
 import { Prop } from './model/prop';
 import { ReferenceTarget } from './model/reference-target';
 import { Scene } from './model/scene';
@@ -49,11 +50,18 @@ export class InMemoryStoryApi implements StoryApi {
     this.stories.set(id, {
       id,
       title: requireTitle(title),
-      vocabulary: { timesOfDay: [], transitions: [], extensions: [], characterKinds: [] },
+      vocabulary: {
+        timesOfDay: [],
+        transitions: [],
+        extensions: [],
+        deliveryTags: [],
+        characterKinds: [],
+      },
       containers: [container],
       characters: [],
       locations: [],
       props: [],
+      narrators: [],
     });
     this.dates.set(id, { createdAt: new Date(), lastModifiedAt: new Date() });
     const sceneId = crypto.randomUUID();
@@ -253,6 +261,78 @@ export class InMemoryStoryApi implements StoryApi {
   async saveVocabulary(storyId: string, vocabulary: StoryVocabulary): Promise<void> {
     this.story(storyId).vocabulary = structuredClone(vocabulary);
     this.touch(storyId);
+  }
+
+  async updateCharacterSheet(character: Character): Promise<Character> {
+    const stored = this.characters().find((c) => c.id === character.id);
+    if (!stored) {
+      throw new Error('That character is no longer in the library.');
+    }
+    stored.description = character.description?.trim() || null;
+    stored.appearance = character.appearance && structuredClone(character.appearance);
+    stored.voice = character.voice && structuredClone(character.voice);
+    const labels = new Set<string>();
+    stored.wardrobes = character.wardrobes.map((w) => {
+      const label = w.label.trim();
+      if (!label) {
+        throw new Error('A wardrobe needs a label.');
+      }
+      if (labels.has(label.toLowerCase())) {
+        throw new Error(`“${label}” is already one of this character’s wardrobes.`);
+      }
+      labels.add(label.toLowerCase());
+      const existing = stored.wardrobes.find(
+        (s) => (w.id && s.id === w.id) || s.label.toLowerCase() === label.toLowerCase(),
+      );
+      return { id: existing?.id ?? crypto.randomUUID(), label, description: w.description };
+    });
+    this.touch(stored.storyId);
+    return structuredClone(stored);
+  }
+
+  async updateLocationSheet(location: Location): Promise<Location> {
+    const stored = this.locations().find((l) => l.id === location.id);
+    if (!stored) {
+      throw new Error('That location is no longer in the library.');
+    }
+    stored.description = location.description?.trim() || null;
+    stored.appearance = location.appearance && structuredClone(location.appearance);
+    stored.acoustics = location.acoustics && structuredClone(location.acoustics);
+    this.touch(stored.storyId);
+    return structuredClone(stored);
+  }
+
+  async updatePropSheet(prop: Prop): Promise<Prop> {
+    const stored = this.props().find((p) => p.id === prop.id);
+    if (!stored) {
+      throw new Error('That prop is no longer in the library.');
+    }
+    stored.description = prop.description?.trim() || null;
+    this.touch(stored.storyId);
+    return structuredClone(stored);
+  }
+
+  async saveNarrators(storyId: string, narrators: Narrator[]): Promise<Narrator[]> {
+    const story = this.story(storyId);
+    story.narrators = narrators.map((n) => ({
+      ...structuredClone(n),
+      id: n.id || crypto.randomUUID(),
+      name: n.name.trim(),
+    }));
+    this.touch(storyId);
+    return structuredClone(story.narrators);
+  }
+
+  private characters(): Character[] {
+    return [...this.stories.values()].flatMap((s) => s.characters);
+  }
+
+  private locations(): Location[] {
+    return [...this.stories.values()].flatMap((s) => s.locations);
+  }
+
+  private props(): Prop[] {
+    return [...this.stories.values()].flatMap((s) => s.props);
   }
 
   private replaceEntry<T extends { id: string; storyId: string; name: string }>(

@@ -296,6 +296,31 @@ export function forgetReferences(
   return list.filter((m) => !mentions(m, target));
 }
 
+/** The mentions wholly inside `[from, to)`, moved to start at 0. */
+export function sliceText(
+  value: MentionedText,
+  from: number,
+  to = value.text.length,
+): MentionedText {
+  return {
+    text: value.text.slice(from, to),
+    mentions: value.mentions
+      .filter((m) => m.offset >= from && m.offset + m.length <= to)
+      .map((m) => (from === 0 ? m : { ...m, offset: m.offset - from })),
+  };
+}
+
+export function joinText(first: MentionedText, second: MentionedText): MentionedText {
+  const shift = first.text.length;
+  return {
+    text: first.text + second.text,
+    mentions: [
+      ...first.mentions,
+      ...second.mentions.map((m) => ({ ...m, offset: m.offset + shift })),
+    ],
+  };
+}
+
 export function sortMentions(list: readonly SceneElementMention[]): SceneElementMention[] {
   return [...list].sort((a, b) => a.offset - b.offset);
 }

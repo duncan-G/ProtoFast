@@ -14,6 +14,8 @@ public sealed class Prop : IDateStamped
 
     public required string Name { get; set; }
 
+    public string? Description { get; set; }
+
     public DateTime DateCreated { get; set; }
 
     public DateTime DateLastModified { get; set; }

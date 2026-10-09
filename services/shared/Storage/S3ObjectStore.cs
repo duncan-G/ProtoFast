@@ -173,6 +173,10 @@ internal sealed partial class S3ObjectStore(
         return PutAsync(key, content, idempotencyKey, contentType, retainUntil, ct);
     }
 
+    public Task<ObjectRef> WriteBytesAsync(
+        string key, byte[] content, string contentType, string idempotencyKey, CancellationToken ct = default) =>
+        PutAsync(key, content, idempotencyKey, contentType, retainUntil: null, ct);
+
     public async Task DeleteAsync(string key, CancellationToken ct = default)
     {
         try

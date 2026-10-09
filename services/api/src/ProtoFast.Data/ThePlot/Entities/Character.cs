@@ -20,6 +20,14 @@ public sealed class Character : IDateStamped
     /// <summary>Avatar colour as an OKLCH hue, 0–359.</summary>
     public int Hue { get; set; }
 
+    public string? Description { get; set; }
+
+    public CharacterIdentity? Appearance { get; set; }
+
+    public VoiceProfile? Voice { get; set; }
+
+    public List<CharacterWardrobe> Wardrobes { get; set; } = [];
+
     public DateTime DateCreated { get; set; }
 
     public DateTime DateLastModified { get; set; }

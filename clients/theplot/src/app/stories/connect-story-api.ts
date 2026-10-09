@@ -1,8 +1,11 @@
 import { inject, Injectable } from '@angular/core';
 import { createClient } from '@connectrpc/connect';
 import {
+  type Acoustics as AcousticsMessage,
   AvatarShape as AvatarShapeMessage,
   type Character as CharacterMessage,
+  type CharacterIdentity as CharacterIdentityMessage,
+  type LocationAppearance as LocationAppearanceMessage,
   type Container as ContainerMessage,
   LocationSetting as LocationSettingMessage,
   type Location as LocationMessage,
@@ -16,13 +19,19 @@ import {
   type Story as StoryMessage,
   type StorySummary as StorySummaryMessage,
   type StoryVocabulary as StoryVocabularyMessage,
+  type Narrator as NarratorMessage,
+  type VoiceProfile as VoiceProfileMessage,
 } from '../../lib/gen/story_pb';
 import { GRPC_TRANSPORT } from '../grpc-transport';
 import type { StoryApi } from './story-api';
 import { AvatarShape } from './model/avatar-shape';
+import { Acoustics } from './model/acoustics';
 import { Character } from './model/character';
+import { CharacterIdentity } from './model/character-identity';
+import { LocationAppearance } from './model/location-appearance';
 import { Container } from './model/container';
 import { Location } from './model/location';
+import { Narrator } from './model/narrator';
 import { LocationSetting } from './model/location-setting';
 import { Prop } from './model/prop';
 import { Scene } from './model/scene';
@@ -33,6 +42,7 @@ import { SceneSummary } from './model/scene-summary';
 import { Story } from './model/story';
 import { StorySummary } from './model/story-summary';
 import { StoryVocabulary } from './model/story-vocabulary';
+import { VoiceProfile } from './model/voice-profile';
 
 const ELEMENT_TYPES: Record<SceneElementType, SceneElementTypeMessage> = {
   Heading: SceneElementTypeMessage.HEADING,
@@ -182,12 +192,47 @@ export class ConnectStoryApi implements StoryApi {
         timesOfDay: vocabulary.timesOfDay,
         transitions: vocabulary.transitions,
         extensions: vocabulary.extensions,
+        deliveryTags: vocabulary.deliveryTags,
         characterKinds: vocabulary.characterKinds.map((k) => ({
           label: k.label,
           avatarShape: SHAPES[k.avatarShape],
         })),
       },
     });
+  }
+
+  async updateCharacterSheet(character: Character): Promise<Character> {
+    const reply = await this.client.updateCharacterSheet({
+      characterId: character.id,
+      description: character.description ?? undefined,
+      appearance: character.appearance ?? undefined,
+      voice: character.voice ?? undefined,
+      wardrobes: character.wardrobes.map((w) => ({ ...w })),
+    });
+    return toCharacter(required(reply.character));
+  }
+
+  async updateLocationSheet(location: Location): Promise<Location> {
+    const reply = await this.client.updateLocationSheet({
+      locationId: location.id,
+      description: location.description ?? undefined,
+      appearance: location.appearance ?? undefined,
+      acoustics: location.acoustics ?? undefined,
+    });
+    return toLocation(required(reply.location));
+  }
+
+  async updatePropSheet(prop: Prop): Promise<Prop> {
+    const reply = await this.client.updatePropSheet({
+      propId: prop.id,
+      description: prop.description ?? undefined,
+    });
+    return toProp(required(reply.prop));
+  }
+
+  async saveNarrators(storyId: string, narrators: Narrator[]): Promise<Narrator[]> {
+    const reply = await this.client.saveNarrators({ storyId, narrators });
+    return reply.narrators.map(toNarrator);
   }
 }
 
@@ -225,6 +270,7 @@ function toStory(message: StoryMessage): Story {
     characters: message.characters.map(toCharacter),
     locations: message.locations.map(toLocation),
     props: message.props.map(toProp),
+    narrators: message.narrators.map(toNarrator),
   };
 }
 
@@ -233,6 +279,7 @@ function toVocabulary(message: StoryVocabularyMessage | undefined): StoryVocabul
     timesOfDay: [...(message?.timesOfDay ?? [])],
     transitions: [...(message?.transitions ?? [])],
     extensions: [...(message?.extensions ?? [])],
+    deliveryTags: [...(message?.deliveryTags ?? [])],
     characterKinds: (message?.characterKinds ?? []).map((k) => ({
       label: k.label,
       avatarShape: nameOf(SHAPES, k.avatarShape, 'avatar shape'),
@@ -301,31 +348,83 @@ function toMention(message: SceneElementMentionMessage): SceneElementMention {
   };
 }
 
-function toCharacter(message: CharacterMessage): Character {
+export function toCharacter(message: CharacterMessage): Character {
   return {
     id: message.id,
     storyId: message.storyId,
     name: message.name,
     kind: message.kind,
     hue: message.hue,
+    description: message.description ?? null,
+    appearance: message.appearance ? toIdentity(message.appearance) : null,
+    voice: message.voice ? toVoice(message.voice) : null,
+    wardrobes: message.wardrobes.map((w) => ({
+      id: w.id,
+      label: w.label,
+      description: w.description,
+    })),
   };
 }
 
-function toLocation(message: LocationMessage): Location {
+function toNarrator(message: NarratorMessage): Narrator {
+  return {
+    id: message.id,
+    name: message.name,
+    voice: message.voice ? toVoice(message.voice) : { description: '', baseline: '', voiceId: '' },
+  };
+}
+
+function toVoice(message: VoiceProfileMessage): VoiceProfile {
+  return { description: message.description, baseline: message.baseline, voiceId: message.voiceId };
+}
+
+function toIdentity(message: CharacterIdentityMessage): CharacterIdentity {
+  return {
+    age: message.age,
+    gender: message.gender,
+    build: message.build,
+    face: message.face,
+    hair: message.hair,
+    skin: message.skin,
+    marks: [...message.marks],
+  };
+}
+
+export function toLocation(message: LocationMessage): Location {
   return {
     id: message.id,
     storyId: message.storyId,
     name: message.name,
     setting: nameOf(SETTINGS, message.setting, 'location setting'),
     hue: message.hue,
+    description: message.description ?? null,
+    appearance: message.appearance ? toLocationAppearance(message.appearance) : null,
+    acoustics: message.acoustics ? toAcoustics(message.acoustics) : null,
   };
 }
 
-function toProp(message: PropMessage): Prop {
-  return { id: message.id, storyId: message.storyId, name: message.name };
+function toLocationAppearance(message: LocationAppearanceMessage): LocationAppearance {
+  return {
+    layout: message.layout,
+    keyFeatures: message.keyFeatures,
+    lighting: message.lighting.map((l) => ({ timeOfDay: l.timeOfDay, description: l.description })),
+  };
 }
 
-function fromScene(scene: Scene) {
+function toAcoustics(message: AcousticsMessage): Acoustics {
+  return { space: message.space, ambience: message.ambience };
+}
+
+export function toProp(message: PropMessage): Prop {
+  return {
+    id: message.id,
+    storyId: message.storyId,
+    name: message.name,
+    description: message.description ?? null,
+  };
+}
+
+export function fromScene(scene: Scene) {
   return {
     id: scene.id,
     containerId: scene.containerId,

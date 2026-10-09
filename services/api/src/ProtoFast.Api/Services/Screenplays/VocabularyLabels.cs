@@ -18,10 +18,16 @@ public static class VocabularyLabels
     public static IReadOnlyList<string> Extensions(StoryVocabularyRecord vocabulary) =>
         [.. DefaultVocabulary.Extensions, .. vocabulary.Extensions];
 
+    public static IReadOnlyList<string> DeliveryTags(StoryVocabularyRecord vocabulary) =>
+        [.. DirectionVocabulary.DeliveryTags, .. vocabulary.DeliveryTags];
+
     public static IReadOnlyList<string> CharacterKinds(StoryVocabularyRecord vocabulary) =>
         [.. DefaultVocabulary.CharacterKinds.Select(k => k.Label), .. vocabulary.CharacterKinds.Select(k => k.Label)];
 
-    /// <summary>Times of day, transitions and extensions are stored uppercased, as the script prints them.</summary>
+    /// <summary>
+    /// Times of day, transitions and extensions are stored uppercased, as the script prints them;
+    /// delivery tags lowercased, as a cue prints them.
+    /// </summary>
     public static StoryVocabularyRecord Validate(StoryVocabulary vocabulary)
     {
         var timesOfDay = new List<string>();
@@ -42,6 +48,12 @@ public static class VocabularyLabels
             extensions.Add(Add(label, [.. DefaultVocabulary.Extensions, .. extensions]).ToUpperInvariant());
         }
 
+        var deliveryTags = new List<string>();
+        foreach (var label in vocabulary.DeliveryTags)
+        {
+            deliveryTags.Add(Add(label, [.. DirectionVocabulary.DeliveryTags, .. deliveryTags]).ToLowerInvariant());
+        }
+
         var kinds = new List<CharacterKindRecord>();
         foreach (var kind in vocabulary.CharacterKinds)
         {
@@ -59,6 +71,7 @@ public static class VocabularyLabels
             TimesOfDay = timesOfDay,
             Transitions = transitions,
             Extensions = extensions,
+            DeliveryTags = deliveryTags,
             CharacterKinds = kinds,
         };
     }

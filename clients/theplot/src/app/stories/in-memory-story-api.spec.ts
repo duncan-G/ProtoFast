@@ -37,12 +37,19 @@ describe('InMemoryStoryApi', () => {
         name: 'mara',
         kind: 'Human',
         hue: 10,
+        description: null,
+        appearance: null,
+        voice: null,
+        wardrobes: [],
       }),
     ).rejects.toThrow('There’s already a character called “Mara”.');
     const location = await api.createLocation(SAMPLE_STORY_ID, {
       name: 'Mara',
       setting: 'Interior',
       hue: 10,
+      description: null,
+      appearance: null,
+      acoustics: null,
     });
     expect(location.name).toBe('Mara');
   });

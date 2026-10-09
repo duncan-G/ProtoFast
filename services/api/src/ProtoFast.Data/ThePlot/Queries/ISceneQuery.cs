@@ -22,6 +22,9 @@ public interface ISceneQuery : IQuery<Scene>
     /// <summary>Includes the elements in order, with their mentions, speaker and location.</summary>
     ISceneQuery WithElements();
 
+    /// <summary>Includes the director layer: panels with their placements and props, cues, looks and prop states.</summary>
+    ISceneQuery WithDirection();
+
     /// <summary>By container, then by position within the container.</summary>
     ISceneQuery InOrder();
 }

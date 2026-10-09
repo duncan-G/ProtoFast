@@ -29,9 +29,7 @@ public static class ScreenplayServiceCollectionExtensions
         Action<DocumentClassifierOptions>? configureClassifier = null,
         Action<MentionTaggerOptions>? configureTagger = null)
     {
-        var options = new LanguageModelOptions();
-        configure?.Invoke(options);
-        services.AddSingleton(options);
+        services.AddLanguageModels(configure);
 
         var agentOptions = new DiscoveryAgentOptions();
         configureAgent?.Invoke(agentOptions);
@@ -46,10 +44,6 @@ public static class ScreenplayServiceCollectionExtensions
         configureTagger?.Invoke(taggerOptions);
         services.AddSingleton(taggerOptions);
 
-        services.TryAddSingleton(TimeProvider.System);
-        services.AddHttpClient(GeminiLanguageModel.HttpClientName, http => http.Timeout = TimeSpan.FromMinutes(10));
-        services.TryAddSingleton<ILanguageModelFactory, LanguageModelFactory>();
-
         services.AddSingleton<SynopsisWriter>();
         services.AddSingleton<IDocumentClassifier, LanguageModelDocumentClassifier>();
         services.AddSingleton<IDiscoveryAgent, DiscoveryAgent>();
@@ -58,6 +52,23 @@ public static class ScreenplayServiceCollectionExtensions
         services.AddSingleton<IVerifier, StoryFidelityVerifier>();
         services.AddSingleton<IRubricVerifierFactory, LanguageModelRubricVerifierFactory>();
         services.AddSingleton<MentionTagger>();
+        return services;
+    }
+
+    /// <summary>
+    /// The language models alone: <see cref="ILanguageModelFactory"/> over the configured providers, with
+    /// retries and tracing. For a host that asks models questions without running the engine.
+    /// </summary>
+    public static IServiceCollection AddLanguageModels(
+        this IServiceCollection services, Action<LanguageModelOptions>? configure = null)
+    {
+        var options = new LanguageModelOptions();
+        configure?.Invoke(options);
+        services.AddSingleton(options);
+
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddHttpClient(GeminiLanguageModel.HttpClientName, http => http.Timeout = TimeSpan.FromMinutes(10));
+        services.TryAddSingleton<ILanguageModelFactory, LanguageModelFactory>();
         return services;
     }
 

@@ -2,10 +2,13 @@ using ProtoFast.Data.ThePlot.Queries;
 using ProtoFast.Data.ThePlot.Repositories;
 using ProtoFast.Database.Abstractions;
 using CharacterRecord = ProtoFast.Data.ThePlot.Entities.Character;
+using CharacterWardrobeRecord = ProtoFast.Data.ThePlot.Entities.CharacterWardrobe;
 using LocationRecord = ProtoFast.Data.ThePlot.Entities.Location;
+using NarratorRecord = ProtoFast.Data.ThePlot.Entities.Narrator;
 using PropRecord = ProtoFast.Data.ThePlot.Entities.Prop;
 using SceneElementMentionRecord = ProtoFast.Data.ThePlot.Entities.SceneElementMention;
 using SceneElementRecord = ProtoFast.Data.ThePlot.Entities.SceneElement;
+using StoryRecord = ProtoFast.Data.ThePlot.Entities.Story;
 
 namespace ProtoFast.Api.Services.Screenplays;
 
@@ -16,6 +19,8 @@ namespace ProtoFast.Api.Services.Screenplays;
 public sealed class StoryLibrary(
     IUnitOfWorkFactory unitOfWorkFactory,
     StoryScope storyScope,
+    IStoryRepository storyRepository,
+    IQueryFactory<StoryRecord, IStoryQuery> storyQueries,
     ICharacterRepository characterRepository,
     IQueryFactory<CharacterRecord, ICharacterQuery> characterQueries,
     ILocationRepository locationRepository,
@@ -225,6 +230,160 @@ public sealed class StoryLibrary(
         var story = await storyScope.GetAsync(storyId, cancellationToken);
         story.Vocabulary = vocabulary;
         await unitOfWork.CommitAsync(cancellationToken);
+    }
+
+    /// <summary>Wardrobes keep their ids when their label survives, so the looks that wear them stay valid.</summary>
+    public async Task<Character> UpdateCharacterSheetAsync(UpdateCharacterSheetRequest request, CancellationToken cancellationToken)
+    {
+        var id = StoryIds.Existing(request.CharacterId, CharacterNotFound);
+        var description = SheetText.Description(request.HasDescription ? request.Description : null);
+        var appearance = request.Appearance is { } identity ? StoryMessages.FromMessage(identity) : null;
+        var voice = request.Voice is { } profile ? StoryMessages.FromMessage(profile) : null;
+
+        using var unitOfWork = unitOfWorkFactory.CreateReadWrite(nameof(UpdateCharacterSheetAsync));
+        var storyId = await characterRepository.GetFirstByQueryAsync(
+                          characterQueries.Create().WithId(id), c => (Guid?)c.StoryId, cancellationToken)
+                      ?? throw StoryErrors.NotFound(CharacterNotFound);
+        await storyScope.LockAsync(storyId, cancellationToken);
+
+        var character = await characterRepository.GetFirstByQueryAsync(
+                            characterQueries.Create().WithId(id).WithWardrobes(), cancellationToken)
+                        ?? throw StoryErrors.NotFound(CharacterNotFound);
+        character.Description = description;
+        character.Appearance = appearance;
+        character.Voice = voice;
+        ApplyWardrobes(character, request.Wardrobes);
+
+        await unitOfWork.CommitAsync(cancellationToken);
+        return StoryMessages.ToMessage(character);
+    }
+
+    public async Task<Location> UpdateLocationSheetAsync(UpdateLocationSheetRequest request, CancellationToken cancellationToken)
+    {
+        var id = StoryIds.Existing(request.LocationId, LocationNotFound);
+        var description = SheetText.Description(request.HasDescription ? request.Description : null);
+        var acoustics = request.Acoustics is { } sound ? StoryMessages.FromMessage(sound) : null;
+
+        using var unitOfWork = unitOfWorkFactory.CreateReadWrite(nameof(UpdateLocationSheetAsync));
+        var storyId = await locationRepository.GetFirstByQueryAsync(
+                          locationQueries.Create().WithId(id), l => (Guid?)l.StoryId, cancellationToken)
+                      ?? throw StoryErrors.NotFound(LocationNotFound);
+        await storyScope.LockAsync(storyId, cancellationToken);
+
+        var story = await storyScope.GetAsync(storyId, cancellationToken);
+        var location = await locationRepository.GetFirstByQueryAsync(
+                           locationQueries.Create().WithId(id), cancellationToken)
+                       ?? throw StoryErrors.NotFound(LocationNotFound);
+        location.Description = description;
+        location.Appearance = request.Appearance is { } look
+            ? StoryMessages.FromMessage(look, VocabularyLabels.TimesOfDay(story.Vocabulary))
+            : null;
+        location.Acoustics = acoustics;
+
+        await unitOfWork.CommitAsync(cancellationToken);
+        return StoryMessages.ToMessage(location);
+    }
+
+    public async Task<Prop> UpdatePropSheetAsync(UpdatePropSheetRequest request, CancellationToken cancellationToken)
+    {
+        var id = StoryIds.Existing(request.PropId, PropNotFound);
+        var description = SheetText.Description(request.HasDescription ? request.Description : null);
+
+        using var unitOfWork = unitOfWorkFactory.CreateReadWrite(nameof(UpdatePropSheetAsync));
+        var storyId = await propRepository.GetFirstByQueryAsync(
+                          propQueries.Create().WithId(id), p => (Guid?)p.StoryId, cancellationToken)
+                      ?? throw StoryErrors.NotFound(PropNotFound);
+        await storyScope.LockAsync(storyId, cancellationToken);
+
+        var prop = await propRepository.GetFirstByQueryAsync(propQueries.Create().WithId(id), cancellationToken)
+                   ?? throw StoryErrors.NotFound(PropNotFound);
+        prop.Description = description;
+
+        await unitOfWork.CommitAsync(cancellationToken);
+        return StoryMessages.ToMessage(prop);
+    }
+
+    /// <summary>Upserts by id; a narrator left out is deleted and its cues fall back to the first.</summary>
+    public async Task<IEnumerable<Narrator>> SaveNarratorsAsync(SaveNarratorsRequest request, CancellationToken cancellationToken)
+    {
+        var storyId = StoryIds.Existing(request.StoryId, StoryErrors.StoryNotFound);
+        using var unitOfWork = unitOfWorkFactory.CreateReadWrite(nameof(SaveNarratorsAsync));
+        await storyScope.LockAsync(storyId, cancellationToken);
+
+        var story = await storyRepository.GetFirstByQueryAsync(
+                        storyQueries.Create().WithId(storyId).WithNarrators(), cancellationToken)
+                    ?? throw StoryErrors.NotFound(StoryErrors.StoryNotFound);
+        var kept = new List<NarratorRecord>();
+        foreach (var (narrator, position) in request.Narrators.Select((n, i) => (n, i)))
+        {
+            var name = SheetText.Field(narrator.Name, "narrator name");
+            if (name.Length == 0)
+            {
+                throw StoryErrors.Invalid("A narrator needs a name.");
+            }
+
+            var voice = StoryMessages.FromMessage(narrator.Voice ?? new VoiceProfile());
+            var existing = Guid.TryParse(narrator.Id, out var id) ? story.Narrators.FirstOrDefault(n => n.Id == id) : null;
+            if (narrator.Id.Length > 0 && existing is null)
+            {
+                throw StoryErrors.NotFound("That narrator is no longer in the story.");
+            }
+
+            existing ??= new NarratorRecord { Name = name };
+            existing.Name = name;
+            existing.Position = position;
+            existing.Voice = voice;
+            kept.Add(existing);
+        }
+
+        story.Narrators.RemoveAll(n => !kept.Contains(n));
+        story.Narrators.AddRange(kept.Where(n => !story.Narrators.Contains(n)));
+        await unitOfWork.CommitAsync(cancellationToken);
+        return story.Narrators.OrderBy(n => n.Position).Select(StoryMessages.ToMessage);
+    }
+
+    /// <summary>Upserts by id, then by label, so a renamed wardrobe keeps its id and a re-sent one is not duplicated.</summary>
+    public static void ApplyWardrobes(CharacterRecord character, IEnumerable<Wardrobe> wardrobes)
+    {
+        var kept = new List<CharacterWardrobeRecord>();
+        var labels = new List<string>();
+        var position = 0;
+        foreach (var wardrobe in wardrobes)
+        {
+            var label = SheetText.Field(wardrobe.Label, "wardrobe label");
+            if (label.Length == 0)
+            {
+                throw StoryErrors.Invalid("A wardrobe needs a label.");
+            }
+
+            if (label.Length > LibraryNames.MaxLength)
+            {
+                throw StoryErrors.Invalid($"Wardrobe labels are limited to {LibraryNames.MaxLength} characters.");
+            }
+
+            if (labels.Any(l => LibraryNames.Same(l, label)))
+            {
+                throw StoryErrors.AlreadyExists($"“{label}” is already one of this character’s wardrobes.");
+            }
+
+            labels.Add(label);
+            Guid.TryParse(wardrobe.Id, out var id);
+            var record = character.Wardrobes.FirstOrDefault(w => id != Guid.Empty && w.Id == id)
+                         ?? character.Wardrobes.FirstOrDefault(w => !kept.Contains(w) && LibraryNames.Same(w.Label, label));
+            if (record is null)
+            {
+                // No id: the database assigns one. A client-picked id would read as an existing row.
+                record = new CharacterWardrobeRecord { Label = label };
+                character.Wardrobes.Add(record);
+            }
+
+            record.Position = position++;
+            record.Label = label;
+            record.Description = SheetText.Field(wardrobe.Description, "wardrobe description");
+            kept.Add(record);
+        }
+
+        character.Wardrobes.RemoveAll(w => !kept.Contains(w));
     }
 
     private async Task RenameMentionsAsync(

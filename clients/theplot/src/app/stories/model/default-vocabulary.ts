@@ -5,6 +5,7 @@ export const DEFAULT_VOCABULARY: Readonly<StoryVocabulary> = {
   timesOfDay: ['DAY', 'NIGHT', 'DAWN', 'DUSK', 'CONTINUOUS', 'LATER'],
   transitions: ['CUT TO', 'DISSOLVE TO', 'SMASH CUT TO', 'MATCH CUT TO', 'TIME CUT', 'FADE OUT'],
   extensions: ['V.O.', 'O.S.', 'O.C.'],
+  deliveryTags: [],
   characterKinds: [
     { label: 'Human', avatarShape: 'Circle' },
     { label: 'Robot', avatarShape: 'Square' },

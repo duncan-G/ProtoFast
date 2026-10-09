@@ -59,6 +59,18 @@ service Stories {
     // Replaces the labels the story adds to the default vocabulary.
     rpc SaveVocabulary (SaveVocabularyRequest) returns (SaveVocabularyReply);
 
+    // Replaces the character's sheet: description, identity, voice and wardrobes. Wardrobes are
+    // upserted by id and any left out are deleted, which clears the looks that wore them.
+    rpc UpdateCharacterSheet (UpdateCharacterSheetRequest) returns (UpdateCharacterSheetReply);
+
+    rpc UpdateLocationSheet (UpdateLocationSheetRequest) returns (UpdateLocationSheetReply);
+
+    rpc UpdatePropSheet (UpdatePropSheetRequest) returns (UpdatePropSheetReply);
+
+    // Replaces the story's narrators; the first is the default. Narrators are upserted by id and
+    // any left out are deleted, which hands their lines back to the default.
+    rpc SaveNarrators (SaveNarratorsRequest) returns (SaveNarratorsReply);
+
 }
 
 enum SceneElementType {
@@ -110,6 +122,16 @@ message Story {
     repeated Character characters = 5;
     repeated Location locations = 6;
     repeated Prop props = 7;
+    reserved 8;
+    // Who reads action and narration, in order; the first is the default.
+    repeated Narrator narrators = 9;
+}
+
+message Narrator {
+    // Empty for a new one.
+    string id = 1;
+    string name = 2;
+    VoiceProfile voice = 3;
 }
 
 message StoryVocabulary {
@@ -117,6 +139,8 @@ message StoryVocabulary {
     repeated string transitions = 2;
     repeated CharacterKind character_kinds = 3;
     repeated string extensions = 4;
+    // Delivery tags beyond the defaults, e.g. "wistful".
+    repeated string delivery_tags = 5;
 }
 
 message CharacterKind {
@@ -195,6 +219,39 @@ message Character {
     string kind = 4;
     // OKLCH hue, 0–359.
     int32 hue = 5;
+    // The sheet: who they are for a reader, what never changes about them, and how they sound.
+    optional string description = 6;
+    optional CharacterIdentity appearance = 7;
+    optional VoiceProfile voice = 8;
+    // In position order.
+    repeated Wardrobe wardrobes = 9;
+}
+
+message CharacterIdentity {
+    string age = 1;
+    string gender = 7;
+    string build = 2;
+    string face = 3;
+    string hair = 4;
+    string skin = 5;
+    // Scars, tattoos, glasses: anything a picture has to keep.
+    repeated string marks = 6;
+}
+
+message VoiceProfile {
+    // "late 50s, gravelly, slow, Glaswegian"
+    string description = 1;
+    // The delivery a line without tags falls back to, e.g. "dry, understated".
+    string baseline = 2;
+    // The speech provider's voice; empty takes the provider's default.
+    string voice_id = 3;
+}
+
+// An outfit; a scene's look names one by id. Labels are unique per character.
+message Wardrobe {
+    string id = 1;
+    string label = 2;
+    string description = 3;
 }
 
 message Location {
@@ -204,12 +261,35 @@ message Location {
     LocationSetting setting = 4;
     // OKLCH hue, 0–359.
     int32 hue = 5;
+    optional string description = 6;
+    optional LocationAppearance appearance = 7;
+    optional Acoustics acoustics = 8;
+}
+
+message LocationAppearance {
+    string layout = 1;
+    string key_features = 2;
+    repeated LocationLighting lighting = 3;
+}
+
+message LocationLighting {
+    // A time of day label from the vocabulary.
+    string time_of_day = 1;
+    string description = 2;
+}
+
+message Acoustics {
+    // "small tiled kitchen"
+    string space = 1;
+    // "fridge hum, distant traffic"
+    string ambience = 2;
 }
 
 message Prop {
     string id = 1;
     string story_id = 2;
     string name = 3;
+    optional string description = 4;
 }
 
 message ListStoriesRequest {}
@@ -373,3 +453,45 @@ message SaveVocabularyRequest {
 }
 
 message SaveVocabularyReply {}
+
+message UpdateCharacterSheetRequest {
+    string character_id = 1;
+    optional string description = 2;
+    optional CharacterIdentity appearance = 3;
+    optional VoiceProfile voice = 4;
+    // In order; a wardrobe without an id is new.
+    repeated Wardrobe wardrobes = 5;
+}
+
+message UpdateCharacterSheetReply {
+    Character character = 1;
+}
+
+message UpdateLocationSheetRequest {
+    string location_id = 1;
+    optional string description = 2;
+    optional LocationAppearance appearance = 3;
+    optional Acoustics acoustics = 4;
+}
+
+message UpdateLocationSheetReply {
+    Location location = 1;
+}
+
+message UpdatePropSheetRequest {
+    string prop_id = 1;
+    optional string description = 2;
+}
+
+message UpdatePropSheetReply {
+    Prop prop = 1;
+}
+
+message SaveNarratorsRequest {
+    string story_id = 1;
+    repeated Narrator narrators = 2;
+}
+
+message SaveNarratorsReply {
+    repeated Narrator narrators = 1;
+}

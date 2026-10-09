@@ -47,6 +47,20 @@ public sealed class SceneQuery : Query<Scene>, ISceneQuery
         return this;
     }
 
+    public ISceneQuery WithDirection()
+    {
+        Apply(q => q
+            .Include(s => s.Panels.OrderBy(p => p.Position).ThenBy(p => p.Id))
+            .ThenInclude(p => p.Placements)
+            .Include(s => s.Panels).ThenInclude(p => p.Props)
+            .Include(s => s.Cues).ThenInclude(c => c.Audio)
+            .Include(s => s.Appearances)
+            .Include(s => s.PropStates)
+            .Include(s => s.LocationStates)
+            .AsSplitQuery());
+        return this;
+    }
+
     public ISceneQuery InOrder()
     {
         Apply(q => q.OrderBy(s => s.Container.Position).ThenBy(s => s.Position).ThenBy(s => s.Id));

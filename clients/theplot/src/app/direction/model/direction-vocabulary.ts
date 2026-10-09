@@ -1,0 +1,66 @@
+/** Mirrors the API's `DirectionVocabulary`. Delivery tags can grow per story. */
+export const DIRECTION_VOCABULARY = {
+  shots: ['wide', 'medium', 'close', 'extreme close', 'over-the-shoulder', 'insert'],
+  angles: ['eye level', 'low', 'high', 'top-down'],
+  movements: ['static', 'push in', 'pull out', 'pan', 'handheld'],
+  screenSides: ['left', 'centre', 'right', 'off'],
+  deliveryTags: [
+    'sad',
+    'angry',
+    'happy',
+    'excited',
+    'nervous',
+    'calm',
+    'tired',
+    'afraid',
+    'curious',
+    'sarcastic',
+    'playful',
+    'serious',
+    'warm',
+    'cold',
+    'tender',
+    'bitter',
+    'hopeful',
+    'resigned',
+    'amused',
+    'annoyed',
+    'whispers',
+    'shouts',
+    'quietly',
+    'softly',
+    'slowly',
+    'quickly',
+    'hesitates',
+    'stammers',
+    'firmly',
+    'flatly',
+    'deadpan',
+    'pleading',
+    'mocking',
+    'urgent',
+    'laughs',
+    'chuckles',
+    'sighs',
+    'gasps',
+    'cries',
+    'sobs',
+    'clears throat',
+    'coughs',
+    'sniffs',
+    'exhales',
+    'inhales',
+    'pause',
+    'long pause',
+    'beat',
+  ],
+} as const;
+
+export type Shot = (typeof DIRECTION_VOCABULARY.shots)[number];
+/** How a label reads on a chip. */
+export function labelText(label: string): string {
+  const text = label === 'over-the-shoulder' ? 'over shoulder' : label;
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+export type ScreenSide = (typeof DIRECTION_VOCABULARY.screenSides)[number];

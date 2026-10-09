@@ -18,6 +18,28 @@ public sealed class Scene : IDateStamped
 
     public List<SceneElement> Elements { get; set; } = [];
 
+    /// <summary>Which day of the story the scene happens on; looks reset between days.</summary>
+    public int? StoryDay { get; set; }
+
+    /// <summary>A <see cref="DirectionVocabulary.Shots"/> label every panel takes unless it sets its own.</summary>
+    public string? Shot { get; set; }
+
+    /// <summary>A <see cref="DirectionVocabulary.Angles"/> label, the default for every panel.</summary>
+    public string? Angle { get; set; }
+
+    /// <summary>A <see cref="DirectionVocabulary.Movements"/> label, the default for every panel.</summary>
+    public string? Movement { get; set; }
+
+    public List<Panel> Panels { get; set; } = [];
+
+    public List<Cue> Cues { get; set; } = [];
+
+    public List<SceneAppearance> Appearances { get; set; } = [];
+
+    public List<ScenePropState> PropStates { get; set; } = [];
+
+    public List<SceneLocationState> LocationStates { get; set; } = [];
+
     public DateTime DateCreated { get; set; }
 
     public DateTime DateLastModified { get; set; }

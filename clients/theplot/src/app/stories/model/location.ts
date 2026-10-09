@@ -1,3 +1,5 @@
+import { Acoustics } from './acoustics';
+import { LocationAppearance } from './location-appearance';
 import { LocationSetting } from './location-setting';
 
 export interface Location {
@@ -7,4 +9,7 @@ export interface Location {
   setting: LocationSetting;
   /** OKLCH hue, 0–359. */
   hue: number;
+  description: string | null;
+  appearance: LocationAppearance | null;
+  acoustics: Acoustics | null;
 }

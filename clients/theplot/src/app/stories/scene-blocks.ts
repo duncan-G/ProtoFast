@@ -1,4 +1,10 @@
 import { SceneElement } from './model/scene-element';
+import { SceneElementType } from './model/scene-element-type';
+
+/** A row with text: everything but headings and transitions. */
+export function isBeat(type: SceneElementType): boolean {
+  return type !== 'Heading' && type !== 'Transition';
+}
 
 /** A heading moves with its beats, up to the next heading or transition. */
 export function blockLength(elements: readonly SceneElement[], from: number): number {

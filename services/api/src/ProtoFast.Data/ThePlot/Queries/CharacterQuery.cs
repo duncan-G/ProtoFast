@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using ProtoFast.Data.ThePlot.Entities;
 using ProtoFast.Database;
 
@@ -34,6 +35,12 @@ public sealed class CharacterQuery : Query<Character>, ICharacterQuery
     public ICharacterQuery OfKind(string kind)
     {
         Where(c => c.Kind == kind);
+        return this;
+    }
+
+    public ICharacterQuery WithWardrobes()
+    {
+        Apply(q => q.Include(c => c.Wardrobes.OrderBy(w => w.Position).ThenBy(w => w.Id)));
         return this;
     }
 

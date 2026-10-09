@@ -3,6 +3,7 @@ import { ConnectStoryApi } from './connect-story-api';
 import { Character } from './model/character';
 import { Container } from './model/container';
 import { Location } from './model/location';
+import { Narrator } from './model/narrator';
 import { Prop } from './model/prop';
 import { Scene } from './model/scene';
 import { Story } from './model/story';
@@ -64,4 +65,14 @@ export abstract class StoryApi {
   abstract deleteProp(propId: string): Promise<void>;
 
   abstract saveVocabulary(storyId: string, vocabulary: StoryVocabulary): Promise<void>;
+
+  /** Replaces the sheet; wardrobes keep their ids by id or label, new ones come back with ids. */
+  abstract updateCharacterSheet(character: Character): Promise<Character>;
+
+  abstract updateLocationSheet(location: Location): Promise<Location>;
+
+  abstract updatePropSheet(prop: Prop): Promise<Prop>;
+
+  /** Replaces the story's narrators in order; the first is the default. New ones have no id. */
+  abstract saveNarrators(storyId: string, narrators: Narrator[]): Promise<Narrator[]>;
 }

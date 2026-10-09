@@ -6,4 +6,6 @@ export interface StoryVocabulary {
   transitions: string[];
   extensions: string[];
   characterKinds: CharacterKind[];
+  /** Delivery tags beyond `DIRECTION_VOCABULARY.deliveryTags`, lowercase. */
+  deliveryTags: string[];
 }

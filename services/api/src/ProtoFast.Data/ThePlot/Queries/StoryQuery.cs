@@ -23,9 +23,17 @@ public sealed class StoryQuery : Query<Story>, IStoryQuery
     {
         Apply(q => q
             .Include(s => s.Characters.OrderBy(c => c.Name))
+            .ThenInclude(c => c.Wardrobes.OrderBy(w => w.Position).ThenBy(w => w.Id))
             .Include(s => s.Locations.OrderBy(l => l.Name))
             .Include(s => s.Props.OrderBy(p => p.Name))
+            .Include(s => s.Narrators.OrderBy(n => n.Position).ThenBy(n => n.Id))
             .AsSplitQuery());
+        return this;
+    }
+
+    public IStoryQuery WithNarrators()
+    {
+        Apply(q => q.Include(s => s.Narrators.OrderBy(n => n.Position).ThenBy(n => n.Id)));
         return this;
     }
 

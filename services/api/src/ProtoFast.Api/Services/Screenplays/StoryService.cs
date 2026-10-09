@@ -4,7 +4,6 @@ using ProtoFast.Data.ThePlot.Queries;
 using ProtoFast.Data.ThePlot.Repositories;
 using ProtoFast.Database.Abstractions;
 using ContainerRecord = ProtoFast.Data.ThePlot.Entities.Container;
-using SceneElementMentionRecord = ProtoFast.Data.ThePlot.Entities.SceneElementMention;
 using SceneElementRecord = ProtoFast.Data.ThePlot.Entities.SceneElement;
 using SceneElementTypeRecord = ProtoFast.Data.ThePlot.Entities.SceneElementType;
 using SceneRecord = ProtoFast.Data.ThePlot.Entities.Scene;
@@ -20,6 +19,7 @@ public class StoryService(
     IUnitOfWorkFactory unitOfWorkFactory,
     StoryScope storyScope,
     StoryLibrary library,
+    SceneSaver sceneSaver,
     IStoryRepository storyRepository,
     IQueryFactory<StoryRecord, IStoryQuery> storyQueries,
     IContainerRepository containerRepository,
@@ -133,44 +133,7 @@ public class StoryService(
     public override async Task<SaveSceneReply> SaveScene(SaveSceneRequest request, ServerCallContext context)
     {
         var message = request.Scene ?? throw StoryErrors.Invalid("There’s no scene to save.");
-        var sceneId = StoryIds.Existing(message.Id, StoryErrors.SceneNotFound);
-        var title = OutlineText.SceneTitle(message.Title);
-        var cancellationToken = context.CancellationToken;
-
-        using var unitOfWork = unitOfWorkFactory.CreateReadWrite(nameof(SaveScene));
-        var storyId = await sceneRepository.GetFirstByQueryAsync(
-                          sceneQueries.Create().WithId(sceneId), s => (Guid?)s.Container.StoryId, cancellationToken)
-                      ?? throw StoryErrors.NotFound(StoryErrors.SceneNotFound);
-        await storyScope.LockAsync(storyId, cancellationToken);
-
-        var scene = await sceneRepository.GetFirstByQueryAsync(
-                        sceneQueries.Create().WithId(sceneId).WithElements(), cancellationToken)
-                    ?? throw StoryErrors.NotFound(StoryErrors.SceneNotFound);
-        var references = await storyScope.ReferencesAsync(storyId, cancellationToken);
-        var stored = scene.Elements.ToDictionary(e => e.Id);
-        var elements = SceneValidator.Validate(message.Elements, references, stored);
-
-        scene.Title = title;
-        var kept = elements.Select(e => e.Id).ToHashSet();
-        foreach (var stale in scene.Elements.Where(e => !kept.Contains(e.Id)).ToList())
-        {
-            await sceneElementRepository.RemoveAsync(stale, cancellationToken);
-        }
-
-        foreach (var element in elements)
-        {
-            if (stored.TryGetValue(element.Id, out var existing))
-            {
-                Overwrite(existing, element);
-            }
-            else
-            {
-                element.SceneId = scene.Id;
-                await sceneElementRepository.AddAsync(element, cancellationToken);
-            }
-        }
-
-        await CommitAsync(unitOfWork, "Another scene already uses one of these rows.", cancellationToken);
+        await sceneSaver.SaveAsync(message, context.CancellationToken);
         return new SaveSceneReply();
     }
 
@@ -346,32 +309,29 @@ public class StoryService(
         return new SaveVocabularyReply();
     }
 
-    private static void Overwrite(SceneElementRecord stored, SceneElementRecord element)
-    {
-        stored.Position = element.Position;
-        stored.Type = element.Type;
-        stored.Text = element.Text;
-        stored.LocationId = element.LocationId;
-        stored.TimeOfDay = element.TimeOfDay;
-        stored.SpeakerId = element.SpeakerId;
-        stored.Extension = element.Extension;
-        stored.Parenthetical = element.Parenthetical;
-        stored.Transition = element.Transition;
-        if (!SameMentions(stored.Mentions, element.Mentions))
-        {
-            stored.Mentions.Clear();
-            stored.Mentions.AddRange(element.Mentions);
-        }
-    }
+    public override async Task<UpdateCharacterSheetReply> UpdateCharacterSheet(
+        UpdateCharacterSheetRequest request,
+        ServerCallContext context) =>
+        new() { Character = await library.UpdateCharacterSheetAsync(request, context.CancellationToken) };
 
-    private static bool SameMentions(List<SceneElementMentionRecord> stored, List<SceneElementMentionRecord> next) =>
-        stored.Count == next.Count
-        && stored.OrderBy(m => m.Offset).Zip(next).All(pair =>
-            pair.First.Offset == pair.Second.Offset
-            && pair.First.Length == pair.Second.Length
-            && pair.First.CharacterId == pair.Second.CharacterId
-            && pair.First.LocationId == pair.Second.LocationId
-            && pair.First.PropId == pair.Second.PropId);
+    public override async Task<UpdateLocationSheetReply> UpdateLocationSheet(
+        UpdateLocationSheetRequest request,
+        ServerCallContext context) =>
+        new() { Location = await library.UpdateLocationSheetAsync(request, context.CancellationToken) };
+
+    public override async Task<UpdatePropSheetReply> UpdatePropSheet(
+        UpdatePropSheetRequest request,
+        ServerCallContext context) =>
+        new() { Prop = await library.UpdatePropSheetAsync(request, context.CancellationToken) };
+
+    public override async Task<SaveNarratorsReply> SaveNarrators(
+        SaveNarratorsRequest request,
+        ServerCallContext context)
+    {
+        var reply = new SaveNarratorsReply();
+        reply.Narrators.AddRange(await library.SaveNarratorsAsync(request, context.CancellationToken));
+        return reply;
+    }
 
     /// <summary>Client-picked ids can collide with rows the caller cannot see.</summary>
     private static async Task CommitAsync(IUnitOfWork unitOfWork, string collision, CancellationToken cancellationToken)

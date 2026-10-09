@@ -1,8 +1,13 @@
+using AcousticsRecord = ProtoFast.Data.ThePlot.Entities.Acoustics;
 using AvatarShapeRecord = ProtoFast.Data.ThePlot.Entities.AvatarShape;
+using CharacterIdentityRecord = ProtoFast.Data.ThePlot.Entities.CharacterIdentity;
 using CharacterRecord = ProtoFast.Data.ThePlot.Entities.Character;
+using CharacterWardrobeRecord = ProtoFast.Data.ThePlot.Entities.CharacterWardrobe;
+using LocationAppearanceRecord = ProtoFast.Data.ThePlot.Entities.LocationAppearance;
 using ContainerRecord = ProtoFast.Data.ThePlot.Entities.Container;
 using LocationRecord = ProtoFast.Data.ThePlot.Entities.Location;
 using LocationSettingRecord = ProtoFast.Data.ThePlot.Entities.LocationSetting;
+using NarratorRecord = ProtoFast.Data.ThePlot.Entities.Narrator;
 using PropRecord = ProtoFast.Data.ThePlot.Entities.Prop;
 using SceneElementMentionRecord = ProtoFast.Data.ThePlot.Entities.SceneElementMention;
 using SceneElementRecord = ProtoFast.Data.ThePlot.Entities.SceneElement;
@@ -10,6 +15,7 @@ using SceneElementTypeRecord = ProtoFast.Data.ThePlot.Entities.SceneElementType;
 using SceneRecord = ProtoFast.Data.ThePlot.Entities.Scene;
 using StoryRecord = ProtoFast.Data.ThePlot.Entities.Story;
 using StoryVocabularyRecord = ProtoFast.Data.ThePlot.Entities.StoryVocabulary;
+using VoiceProfileRecord = ProtoFast.Data.ThePlot.Entities.VoiceProfile;
 
 namespace ProtoFast.Api.Services.Screenplays;
 
@@ -32,6 +38,7 @@ public static class StoryMessages
             Title = story.Title,
             Vocabulary = ToMessage(story.Vocabulary),
         };
+        message.Narrators.AddRange(story.Narrators.OrderBy(n => n.Position).ThenBy(n => n.Id).Select(ToMessage));
         message.Containers.AddRange(story.Containers.Select(c => ToMessage(c, openings)));
         message.Characters.AddRange(story.Characters.Select(ToMessage));
         message.Locations.AddRange(story.Locations.Select(ToMessage));
@@ -45,6 +52,7 @@ public static class StoryMessages
         message.TimesOfDay.AddRange(vocabulary.TimesOfDay);
         message.Transitions.AddRange(vocabulary.Transitions);
         message.Extensions.AddRange(vocabulary.Extensions);
+        message.DeliveryTags.AddRange(vocabulary.DeliveryTags);
         message.CharacterKinds.AddRange(vocabulary.CharacterKinds.Select(k => new CharacterKind
         {
             Label = k.Label,
@@ -175,29 +183,162 @@ public static class StoryMessages
         return message;
     }
 
-    public static Character ToMessage(CharacterRecord character) => new()
+    public static Character ToMessage(CharacterRecord character)
     {
-        Id = character.Id.ToString(),
-        StoryId = character.StoryId.ToString(),
-        Name = character.Name,
-        Kind = character.Kind,
-        Hue = character.Hue,
+        var message = new Character
+        {
+            Id = character.Id.ToString(),
+            StoryId = character.StoryId.ToString(),
+            Name = character.Name,
+            Kind = character.Kind,
+            Hue = character.Hue,
+        };
+        if (character.Description is not null)
+        {
+            message.Description = character.Description;
+        }
+
+        if (character.Appearance is { } appearance)
+        {
+            message.Appearance = ToMessage(appearance);
+        }
+
+        if (character.Voice is { } voice)
+        {
+            message.Voice = ToMessage(voice);
+        }
+
+        message.Wardrobes.AddRange(character.Wardrobes.OrderBy(w => w.Position).ThenBy(w => w.Id).Select(ToMessage));
+        return message;
+    }
+
+    public static CharacterIdentity ToMessage(CharacterIdentityRecord identity)
+    {
+        var message = new CharacterIdentity
+        {
+            Age = identity.Age,
+            // Sheets written before gender existed have no such key in their JSON.
+            Gender = identity.Gender ?? "",
+            Build = identity.Build,
+            Face = identity.Face,
+            Hair = identity.Hair,
+            Skin = identity.Skin,
+        };
+        message.Marks.AddRange(identity.Marks);
+        return message;
+    }
+
+    public static Narrator ToMessage(NarratorRecord narrator) => new()
+    {
+        Id = narrator.Id.ToString(),
+        Name = narrator.Name,
+        Voice = ToMessage(narrator.Voice),
     };
 
-    public static Location ToMessage(LocationRecord location) => new()
+    public static VoiceProfile ToMessage(VoiceProfileRecord voice) => new()
     {
-        Id = location.Id.ToString(),
-        StoryId = location.StoryId.ToString(),
-        Name = location.Name,
-        Setting = ToMessage(location.Setting),
-        Hue = location.Hue,
+        Description = voice.Description,
+        Baseline = voice.Baseline,
+        VoiceId = voice.VoiceId ?? "",
     };
 
-    public static Prop ToMessage(PropRecord prop) => new()
+    public static Wardrobe ToMessage(CharacterWardrobeRecord wardrobe) => new()
     {
-        Id = prop.Id.ToString(),
-        StoryId = prop.StoryId.ToString(),
-        Name = prop.Name,
+        Id = wardrobe.Id.ToString(),
+        Label = wardrobe.Label,
+        Description = wardrobe.Description,
+    };
+
+    public static Location ToMessage(LocationRecord location)
+    {
+        var message = new Location
+        {
+            Id = location.Id.ToString(),
+            StoryId = location.StoryId.ToString(),
+            Name = location.Name,
+            Setting = ToMessage(location.Setting),
+            Hue = location.Hue,
+        };
+        if (location.Description is not null)
+        {
+            message.Description = location.Description;
+        }
+
+        if (location.Appearance is { } appearance)
+        {
+            message.Appearance = ToMessage(appearance);
+        }
+
+        if (location.Acoustics is { } acoustics)
+        {
+            message.Acoustics = new Acoustics { Space = acoustics.Space, Ambience = acoustics.Ambience };
+        }
+
+        return message;
+    }
+
+    public static LocationAppearance ToMessage(LocationAppearanceRecord appearance)
+    {
+        var message = new LocationAppearance { Layout = appearance.Layout, KeyFeatures = appearance.KeyFeatures };
+        message.Lighting.AddRange(appearance.Lighting.Select(l => new LocationLighting
+        {
+            TimeOfDay = l.TimeOfDay,
+            Description = l.Description,
+        }));
+        return message;
+    }
+
+    public static Prop ToMessage(PropRecord prop)
+    {
+        var message = new Prop
+        {
+            Id = prop.Id.ToString(),
+            StoryId = prop.StoryId.ToString(),
+            Name = prop.Name,
+        };
+        if (prop.Description is not null)
+        {
+            message.Description = prop.Description;
+        }
+
+        return message;
+    }
+
+    public static CharacterIdentityRecord FromMessage(CharacterIdentity identity) => new()
+    {
+        Age = SheetText.Field(identity.Age, "age"),
+        Gender = SheetText.Field(identity.Gender, "gender"),
+        Build = SheetText.Field(identity.Build, "build"),
+        Face = SheetText.Field(identity.Face, "face"),
+        Hair = SheetText.Field(identity.Hair, "hair"),
+        Skin = SheetText.Field(identity.Skin, "skin"),
+        Marks = SheetText.List(identity.Marks, "mark"),
+    };
+
+    public static VoiceProfileRecord FromMessage(VoiceProfile voice) => new()
+    {
+        Description = SheetText.Field(voice.Description, "voice"),
+        Baseline = SheetText.Field(voice.Baseline, "voice baseline"),
+        VoiceId = SheetText.Field(voice.VoiceId, "voice id") is { Length: > 0 } id ? id : null,
+    };
+
+    public static LocationAppearanceRecord FromMessage(LocationAppearance appearance, IReadOnlyList<string> timesOfDay) => new()
+    {
+        Layout = SheetText.Field(appearance.Layout, "layout"),
+        KeyFeatures = SheetText.Field(appearance.KeyFeatures, "key features"),
+        Lighting = appearance.Lighting
+            .Select(l => new ProtoFast.Data.ThePlot.Entities.LocationLighting
+            {
+                TimeOfDay = VocabularyLabels.Pick(l.TimeOfDay, timesOfDay, current: null, "time of day")!,
+                Description = SheetText.Field(l.Description, "lighting"),
+            })
+            .ToList(),
+    };
+
+    public static AcousticsRecord FromMessage(Acoustics acoustics) => new()
+    {
+        Space = SheetText.Field(acoustics.Space, "acoustic space"),
+        Ambience = SheetText.Field(acoustics.Ambience, "ambience"),
     };
 
     public static SceneElementType ToMessage(SceneElementTypeRecord type) => type switch

@@ -21,5 +21,7 @@ public interface ICharacterQuery : IQuery<Character>
 
     ICharacterQuery OfKind(string kind);
 
+    ICharacterQuery WithWardrobes();
+
     ICharacterQuery ByName();
 }

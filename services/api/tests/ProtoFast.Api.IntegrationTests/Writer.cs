@@ -1,5 +1,6 @@
 using Grpc.Core;
 using Microsoft.Extensions.DependencyInjection;
+using ProtoFast.Api.Services.Directing;
 using ProtoFast.Api.Services.Screenplays;
 using ProtoFast.Database.Abstractions;
 
@@ -16,6 +17,30 @@ public sealed class Writer(StoryDatabase database)
         using var user = scope.ServiceProvider.GetRequiredService<UserContext>().SetCurrentUser(UserId);
         return await call(scope.ServiceProvider.GetRequiredService<StoryService>(), new TestServerCallContext());
     }
+
+    public async Task<TReply> Direct<TReply>(Func<DirectionService, ServerCallContext, Task<TReply>> call)
+    {
+        await using var scope = database.Services.CreateAsyncScope();
+        using var user = scope.ServiceProvider.GetRequiredService<UserContext>().SetCurrentUser(UserId);
+        ScriptedLanguageModelFactory.User.Value = UserId;
+        return await call(scope.ServiceProvider.GetRequiredService<DirectionService>(), new TestServerCallContext());
+    }
+
+    /// <summary>What the language model answers, in order, to this writer's requests.</summary>
+    public void ScriptModel(params string[] replies) =>
+        database.Services.GetRequiredService<ScriptedLanguageModelFactory>().Enqueue(UserId, replies);
+
+    public IReadOnlyList<string> ModelPrompts() =>
+        database.Services.GetRequiredService<ScriptedLanguageModelFactory>().Prompts(UserId);
+
+    public Task<SceneDirection> GetDirectionAsync(string sceneId) =>
+        Direct(async (d, c) => (await d.GetSceneDirection(new GetSceneDirectionRequest { SceneId = sceneId }, c)).Direction);
+
+    public Task<SceneDirection> SaveDirectionAsync(SceneDirection direction) =>
+        Direct(async (d, c) => (await d.SaveSceneDirection(new SaveSceneDirectionRequest { Direction = direction }, c)).Direction);
+
+    public Task<SceneDirection> DirectAsync(DirectRequest request) =>
+        Direct(async (d, c) => (await d.Direct(request, c)).Direction);
 
     public async Task<Story> CreateStoryAsync(string title = "The Signal in the Scrap") =>
         (await Call((s, c) => s.CreateStory(new CreateStoryRequest { Title = title }, c))).Story;

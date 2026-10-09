@@ -19,6 +19,12 @@ public sealed class Location : IDateStamped
     /// <summary>Colour-coding as an OKLCH hue, 0–359.</summary>
     public int Hue { get; set; }
 
+    public string? Description { get; set; }
+
+    public LocationAppearance? Appearance { get; set; }
+
+    public Acoustics? Acoustics { get; set; }
+
     public DateTime DateCreated { get; set; }
 
     public DateTime DateLastModified { get; set; }

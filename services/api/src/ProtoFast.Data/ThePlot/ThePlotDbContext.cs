@@ -50,6 +50,22 @@ public sealed class ThePlotDbContext(
 
     public DbSet<Prop> Props => Set<Prop>();
 
+    public DbSet<CharacterWardrobe> CharacterWardrobes => Set<CharacterWardrobe>();
+
+    public DbSet<SceneAppearance> SceneAppearances => Set<SceneAppearance>();
+
+    public DbSet<ScenePropState> ScenePropStates => Set<ScenePropState>();
+
+    public DbSet<Panel> Panels => Set<Panel>();
+
+    public DbSet<Cue> Cues => Set<Cue>();
+
+    public DbSet<MediaAsset> MediaAssets => Set<MediaAsset>();
+
+    public DbSet<Narrator> Narrators => Set<Narrator>();
+
+    public DbSet<SceneLocationState> SceneLocationStates => Set<SceneLocationState>();
+
     protected override void ConfigureModel(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(Schema);
@@ -91,6 +107,7 @@ public sealed class ThePlotDbContext(
 
         ConfigureScreenplay(modelBuilder);
         ConfigureStoryLibrary(modelBuilder);
+        ConfigureDirection(modelBuilder);
     }
 
     private static void ConfigureScreenplay(ModelBuilder modelBuilder)
@@ -108,8 +125,23 @@ public sealed class ThePlotDbContext(
                     kind => kind.Property(k => k.AvatarShape).HasConversion<string>());
             });
             entity.Navigation(s => s.Vocabulary).IsRequired();
-
             entity.HasIndex(s => new { s.UserId, s.DateLastModified });
+        });
+
+        modelBuilder.Entity<Narrator>(entity =>
+        {
+            entity.HasKey(n => n.Id);
+            entity.Property(n => n.Name).IsRequired().HasMaxLength(NameLength);
+            entity.OwnsOne(n => n.Voice, voice => voice.ToJson());
+            entity.Navigation(n => n.Voice).IsRequired();
+
+            entity.HasOne(n => n.Story)
+                .WithMany(s => s.Narrators)
+                .HasForeignKey(n => n.StoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(n => new { n.StoryId, n.Position });
+            entity.ToTable(t => t.HasCheckConstraint("ck_narrators_position_non_negative", "position >= 0"));
         });
 
         modelBuilder.Entity<Container>(entity =>
@@ -140,7 +172,14 @@ public sealed class ThePlotDbContext(
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(s => new { s.ContainerId, s.Position });
-            entity.ToTable(t => t.HasCheckConstraint("ck_scenes_position_non_negative", "position >= 0"));
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint("ck_scenes_position_non_negative", "position >= 0");
+                t.HasCheckConstraint("ck_scenes_story_day", "story_day IS NULL OR story_day >= 1");
+            });
+            entity.Property(s => s.Shot).HasMaxLength(LabelLength);
+            entity.Property(s => s.Angle).HasMaxLength(LabelLength);
+            entity.Property(s => s.Movement).HasMaxLength(LabelLength);
         });
 
         modelBuilder.Entity<SceneElement>(entity =>
@@ -248,8 +287,25 @@ public sealed class ThePlotDbContext(
                 .HasForeignKey(c => c.StoryId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            entity.OwnsOne(c => c.Appearance, appearance => appearance.ToJson());
+            entity.OwnsOne(c => c.Voice, voice => voice.ToJson());
+
             entity.HasIndex(c => new { c.StoryId, c.Name }).IsUnique();
             entity.ToTable(t => t.HasCheckConstraint("ck_characters_hue", "hue BETWEEN 0 AND 359"));
+        });
+
+        modelBuilder.Entity<CharacterWardrobe>(entity =>
+        {
+            entity.HasKey(w => w.Id);
+            entity.Property(w => w.Label).IsRequired().HasMaxLength(NameLength);
+
+            entity.HasOne(w => w.Character)
+                .WithMany(c => c.Wardrobes)
+                .HasForeignKey(w => w.CharacterId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(w => new { w.CharacterId, w.Label }).IsUnique();
+            entity.ToTable(t => t.HasCheckConstraint("ck_character_wardrobes_position_non_negative", "position >= 0"));
         });
 
         modelBuilder.Entity<Location>(entity =>
@@ -263,6 +319,13 @@ public sealed class ThePlotDbContext(
                 .WithMany(s => s.Locations)
                 .HasForeignKey(l => l.StoryId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            entity.OwnsOne(l => l.Appearance, appearance =>
+            {
+                appearance.ToJson();
+                appearance.OwnsMany(a => a.Lighting);
+            });
+            entity.OwnsOne(l => l.Acoustics, acoustics => acoustics.ToJson());
 
             entity.HasIndex(l => new { l.StoryId, l.Name }).IsUnique();
             entity.ToTable(t => t.HasCheckConstraint("ck_locations_hue", "hue BETWEEN 0 AND 359"));
@@ -280,6 +343,227 @@ public sealed class ThePlotDbContext(
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(p => new { p.StoryId, p.Name }).IsUnique();
+        });
+    }
+
+    /// <summary>
+    /// The director layer over a scene. Every row hangs off the scene or a panel by a required
+    /// foreign key, so the scene's owner scopes it; deleting an element takes its cue and the
+    /// panels it bounds with it.
+    /// </summary>
+    private static void ConfigureDirection(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<SceneAppearance>(entity =>
+        {
+            entity.HasKey(a => a.Id);
+
+            entity.HasOne(a => a.Scene)
+                .WithMany(s => s.Appearances)
+                .HasForeignKey(a => a.SceneId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(a => a.Character)
+                .WithMany()
+                .HasForeignKey(a => a.CharacterId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // A wardrobe the sheet drops leaves the look without one, to be chosen again.
+            entity.HasOne(a => a.Wardrobe)
+                .WithMany()
+                .HasForeignKey(a => a.WardrobeId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(a => a.ChangeElement)
+                .WithMany()
+                .HasForeignKey(a => a.ChangeElementId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(a => new { a.SceneId, a.CharacterId }).IsUnique();
+            entity.HasIndex(a => a.WardrobeId);
+            entity.HasIndex(a => a.ChangeElementId);
+        });
+
+        modelBuilder.Entity<ScenePropState>(entity =>
+        {
+            entity.HasKey(p => p.Id);
+
+            entity.HasOne(p => p.Scene)
+                .WithMany(s => s.PropStates)
+                .HasForeignKey(p => p.SceneId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(p => p.Prop)
+                .WithMany()
+                .HasForeignKey(p => p.PropId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(p => p.ChangeElement)
+                .WithMany()
+                .HasForeignKey(p => p.ChangeElementId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(p => new { p.SceneId, p.PropId }).IsUnique();
+            entity.HasIndex(p => p.ChangeElementId);
+        });
+
+        modelBuilder.Entity<SceneLocationState>(entity =>
+        {
+            entity.HasKey(l => l.Id);
+            entity.Property(l => l.Change).IsRequired();
+
+            entity.HasOne(l => l.Scene)
+                .WithMany(s => s.LocationStates)
+                .HasForeignKey(l => l.SceneId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(l => l.Location)
+                .WithMany()
+                .HasForeignKey(l => l.LocationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(l => new { l.SceneId, l.LocationId }).IsUnique();
+            entity.HasIndex(l => l.LocationId);
+        });
+
+        modelBuilder.Entity<Panel>(entity =>
+        {
+            entity.HasKey(p => p.Id);
+            entity.Property(p => p.TimeOfDay).HasMaxLength(LabelLength);
+            entity.Property(p => p.Shot).HasMaxLength(LabelLength);
+            entity.Property(p => p.Angle).HasMaxLength(LabelLength);
+            entity.Property(p => p.Movement).HasMaxLength(LabelLength);
+            entity.Property(p => p.LocationChange).IsRequired();
+
+            entity.HasOne(p => p.Scene)
+                .WithMany(s => s.Panels)
+                .HasForeignKey(p => p.SceneId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(p => p.FirstElement)
+                .WithMany()
+                .HasForeignKey(p => p.FirstElementId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(p => p.LastElement)
+                .WithMany()
+                .HasForeignKey(p => p.LastElementId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(p => p.Location)
+                .WithMany()
+                .HasForeignKey(p => p.LocationId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(p => new { p.SceneId, p.Position });
+            entity.HasIndex(p => p.FirstElementId);
+            entity.HasIndex(p => p.LastElementId);
+            entity.HasIndex(p => p.LocationId);
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint("ck_panels_position_non_negative", "position >= 0");
+                t.HasCheckConstraint("ck_panels_hold_ms", "hold_ms IS NULL OR hold_ms > 0");
+            });
+        });
+
+        modelBuilder.Entity<PanelPlacement>(entity =>
+        {
+            entity.ToTable("panel_placements");
+            entity.HasKey(p => new { p.PanelId, p.CharacterId });
+            entity.Property(p => p.Screen).IsRequired().HasMaxLength(LabelLength);
+            entity.Property(p => p.Pose).IsRequired().HasMaxLength(NameLength);
+            entity.Property(p => p.Expression).IsRequired().HasMaxLength(NameLength);
+
+            entity.HasOne(p => p.Panel)
+                .WithMany(panel => panel.Placements)
+                .HasForeignKey(p => p.PanelId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(p => p.Character)
+                .WithMany()
+                .HasForeignKey(p => p.CharacterId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // A wardrobe the sheet drops sends the panel back to the scene's.
+            entity.HasOne(p => p.Wardrobe)
+                .WithMany()
+                .HasForeignKey(p => p.WardrobeId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(p => p.CharacterId);
+            entity.HasIndex(p => p.WardrobeId);
+        });
+
+        modelBuilder.Entity<PanelProp>(entity =>
+        {
+            entity.ToTable("panel_props");
+            entity.HasKey(p => new { p.PanelId, p.PropId });
+
+            entity.HasOne(p => p.Panel)
+                .WithMany(panel => panel.Props)
+                .HasForeignKey(p => p.PanelId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(p => p.Prop)
+                .WithMany()
+                .HasForeignKey(p => p.PropId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(p => p.PropId);
+        });
+
+        modelBuilder.Entity<Cue>(entity =>
+        {
+            entity.HasKey(c => c.Id);
+            entity.Property(c => c.Performance).IsRequired();
+
+            entity.HasOne(c => c.Scene)
+                .WithMany(s => s.Cues)
+                .HasForeignKey(c => c.SceneId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(c => c.Element)
+                .WithMany()
+                .HasForeignKey(c => c.ElementId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Deleting an asset leaves the cue unvoiced, to be generated again.
+            entity.HasOne(c => c.Audio)
+                .WithMany()
+                .HasForeignKey(c => c.AudioAssetId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Deleting a narrator hands their lines back to the story's first.
+            entity.HasOne(c => c.Narrator)
+                .WithMany()
+                .HasForeignKey(c => c.NarratorId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(c => c.ElementId).IsUnique();
+            entity.HasIndex(c => c.SceneId);
+            entity.HasIndex(c => c.AudioAssetId);
+            entity.HasIndex(c => c.NarratorId);
+        });
+
+        modelBuilder.Entity<MediaAsset>(entity =>
+        {
+            entity.HasKey(a => a.Id);
+            entity.Property(a => a.UserId).IsRequired().HasMaxLength(UserIdLength);
+            entity.Property(a => a.Kind).HasConversion<string>().HasMaxLength(EnumLength);
+            entity.Property(a => a.StorageKey).IsRequired().HasMaxLength(512);
+            entity.Property(a => a.ContentType).IsRequired().HasMaxLength(NameLength);
+            entity.Property(a => a.ContentHash).IsRequired().HasMaxLength(LabelLength);
+            entity.Property(a => a.RequestHash).IsRequired().HasMaxLength(LabelLength);
+            entity.Property(a => a.Provider).IsRequired().HasMaxLength(LabelLength);
+            entity.Property(a => a.Model).IsRequired().HasMaxLength(NameLength);
+            entity.Property(a => a.Voice).HasMaxLength(NameLength);
+
+            entity.HasOne(a => a.Story)
+                .WithMany()
+                .HasForeignKey(a => a.StoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The media cache: the same request in the same story is rendered once.
+            entity.HasIndex(a => new { a.StoryId, a.Kind, a.RequestHash }).IsUnique();
         });
     }
 }
