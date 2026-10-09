@@ -59,7 +59,7 @@ public sealed class TracedImageGeneratorTests : IDisposable
     }
 
     [Fact]
-    public async Task Captured_content_names_the_references_without_carrying_their_bytes()
+    public async Task Captured_content_carries_the_references_and_the_picture_for_the_dashboard()
     {
         var generator = new TracedImageGenerator(new ScriptedImageGenerator(), "api.meta.ai", captureContent: true);
 
@@ -71,15 +71,40 @@ public sealed class TracedImageGeneratorTests : IDisposable
             ["References follow.", "Image 1: Mara.", "The picture to make: Mara at the radio."],
             input.EnumerateArray().Where(p => p.GetProperty("type").GetString() == "text")
                 .Select(p => p.GetProperty("content").GetString()));
-        var image = input.EnumerateArray().Single(p => p.GetProperty("type").GetString() == "uri");
-        Assert.Equal("stories/s/images/abc.webp", image.GetProperty("uri").GetString());
-        Assert.Equal("image", image.GetProperty("modality").GetString());
+        var reference = input.EnumerateArray().Single(p => p.GetProperty("type").GetString() == "blob");
+        Assert.Equal("image", reference.GetProperty("modality").GetString());
+        Assert.Equal("image/webp", reference.GetProperty("mime_type").GetString());
+        Assert.Equal([1, 2, 3], Convert.FromBase64String(reference.GetProperty("content").GetString()!));
 
         var output = Json(span, "gen_ai.output.messages")[0];
         Assert.Equal("completed", output.GetProperty("finish_reason").GetString());
         var parts = output.GetProperty("parts").EnumerateArray().ToList();
         Assert.Equal("Drew it from 1 references.", parts[0].GetProperty("content").GetString());
+        Assert.Equal("blob", parts[1].GetProperty("type").GetString());
+        Assert.Equal("image", parts[1].GetProperty("modality").GetString());
         Assert.Equal("image/webp", parts[1].GetProperty("mime_type").GetString());
+        Assert.Equal(32, Convert.FromBase64String(parts[1].GetProperty("content").GetString()!).Length);
+    }
+
+    [Fact]
+    public async Task References_past_the_budget_are_named_by_where_they_are_stored()
+    {
+        var generator = new TracedImageGenerator(new ScriptedImageGenerator(), "api.meta.ai", captureContent: true);
+        var big = new byte[700 * 1024];
+
+        await generator.GenerateAsync(Request() with
+        {
+            References =
+            [
+                new ImageInput(big, "image/webp", "Image 1: Mara.", "stories/s/images/one.webp"),
+                new ImageInput(big, "image/webp", "Image 2: the radio.", "stories/s/images/two.webp"),
+            ],
+        }, Ct);
+
+        var images = Json(Span(), "gen_ai.input.messages")[0].GetProperty("parts").EnumerateArray()
+            .Where(p => p.GetProperty("type").GetString() != "text").ToList();
+        Assert.Equal(["blob", "uri"], images.Select(p => p.GetProperty("type").GetString()));
+        Assert.Equal("stories/s/images/two.webp", images[1].GetProperty("uri").GetString());
     }
 
     [Fact]

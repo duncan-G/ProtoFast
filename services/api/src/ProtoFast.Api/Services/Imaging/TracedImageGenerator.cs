@@ -5,13 +5,17 @@ namespace ProtoFast.Api.Services.Imaging;
 
 /// <summary>
 /// Wraps an image call in an OpenTelemetry GenAI <c>generate_content</c> client span, like the
-/// language models' <c>TracedLanguageModel</c>. Captions, the prompt and the model's reasoning are
-/// recorded only when content capture is on; images are named by where they are stored, never
-/// carried in the span.
+/// language models' <c>TracedLanguageModel</c>. Captions, the prompt, the model's reasoning and the
+/// images themselves are recorded only when content capture is on.
 /// </summary>
 public sealed class TracedImageGenerator(IImageGenerator inner, string serverAddress, bool captureContent) : IImageGenerator
 {
     private const string Operation = "generate_content";
+
+    // With the picture's, about 3 MiB once base64'd; references past it are named by their storage key.
+    private const int ReferenceBudgetBytes = 1280 * 1024;
+
+    private const int PictureBudgetBytes = 1024 * 1024;
 
     public string Provider => inner.Provider;
 
@@ -79,21 +83,25 @@ public sealed class TracedImageGenerator(IImageGenerator inner, string serverAdd
         }
     }
 
-    private static object[] InputParts(ImageRequest request) =>
-    [
-        .. Text(request.Preamble),
-        .. request.References.SelectMany(r => (object[])
+    private static object[] InputParts(ImageRequest request)
+    {
+        var media = new GenAiMedia(ReferenceBudgetBytes);
+        return
         [
-            .. Text(r.Caption),
-            new { type = "uri", modality = "image", mime_type = r.ContentType, uri = r.Uri },
-        ]),
-        .. Text(request.Prompt),
-    ];
+            .. Text(request.Preamble),
+            .. request.References.SelectMany(r => (object[])
+            [
+                .. Text(r.Caption),
+                media.Part("image", r.Bytes, r.ContentType, r.Uri),
+            ]),
+            .. Text(request.Prompt),
+        ];
+    }
 
     private static object[] OutputParts(GeneratedImage image) =>
     [
         .. string.IsNullOrEmpty(image.Notes) ? [] : new object[] { new { type = "reasoning", content = image.Notes } },
-        new { type = "image", modality = "image", mime_type = image.ContentType, size = image.Bytes.Length },
+        new GenAiMedia(PictureBudgetBytes).Part("image", image.Bytes, image.ContentType),
     ];
 
     private static object[] Text(string content) =>

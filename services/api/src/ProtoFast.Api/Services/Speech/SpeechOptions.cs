@@ -4,4 +4,7 @@ namespace ProtoFast.Api.Services.Speech;
 public sealed class SpeechOptions
 {
     public ElevenLabsSpeechOptions ElevenLabs { get; set; } = new();
+
+    /// <summary>Records each line's words and audio on its span; copied from <c>Providers:CaptureMessageContent</c>.</summary>
+    public bool CaptureMessageContent { get; set; }
 }

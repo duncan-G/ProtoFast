@@ -9,8 +9,11 @@ public static class SpeechServiceCollectionExtensions
         configure(options);
         services.AddSingleton(options);
         services.AddHttpClient(ElevenLabsSpeechSynthesizer.HttpClientName, http => http.Timeout = TimeSpan.FromMinutes(5));
-        services.AddSingleton<ISpeechSynthesizer>(sp => new ElevenLabsSpeechSynthesizer(
-            options.ElevenLabs, sp.GetRequiredService<IHttpClientFactory>().CreateClient(ElevenLabsSpeechSynthesizer.HttpClientName)));
+        services.AddSingleton<ISpeechSynthesizer>(sp => new TracedSpeechSynthesizer(
+            new ElevenLabsSpeechSynthesizer(
+                options.ElevenLabs, sp.GetRequiredService<IHttpClientFactory>().CreateClient(ElevenLabsSpeechSynthesizer.HttpClientName)),
+            new Uri(options.ElevenLabs.BaseUrl).Host,
+            options.CaptureMessageContent));
         services.AddScoped<CueAudioGenerator>();
         services.AddScoped<CueAudioMessages>();
         return services;

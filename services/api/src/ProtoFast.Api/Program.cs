@@ -59,6 +59,7 @@ builder.Services.AddSpeechSynthesis(options =>
 {
     builder.Configuration.GetSection("Speech").Bind(options);
     options.ElevenLabs.ApiKey = builder.Configuration["Providers:ElevenLabs:ApiKey"];
+    options.CaptureMessageContent = builder.Configuration.GetValue<bool>("Providers:CaptureMessageContent");
 });
 
 // Pictures: Muse draws frames and library entries; its key sits with the model providers' (Api_Providers__meta__ApiKey).
