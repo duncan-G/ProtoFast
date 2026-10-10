@@ -16,6 +16,18 @@ public static partial class ScreenDirections
     public static string Side(string? answer) =>
         Match(DirectionVocabulary.ScreenSides, Normal(answer).Replace("screen ", "").Replace("center", "centre"));
 
+    public static string Depth(string? answer)
+    {
+        var text = Normal(answer);
+        return text switch
+        {
+            "front" or "near" or "close" => "foreground",
+            "middle" or "middle ground" or "mid" or "mid ground" => "midground",
+            "back" or "far" or "distance" => "background",
+            _ => Match(DirectionVocabulary.Depths, text),
+        };
+    }
+
     public static string Facing(string? answer)
     {
         var text = Normal(answer).Replace("towards", "toward").Replace("the camera", "camera");

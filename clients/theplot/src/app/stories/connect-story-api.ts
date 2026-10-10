@@ -250,6 +250,14 @@ export class ConnectStoryApi implements StoryApi {
     return toLocation(required(reply.location));
   }
 
+  async saveLocationVariations(location: Location): Promise<Location> {
+    const reply = await this.client.saveLocationVariations({
+      locationId: location.id,
+      variations: location.variations.map((v) => ({ ...v })),
+    });
+    return toLocation(required(reply.location));
+  }
+
   async updatePropSheet(prop: Prop): Promise<Prop> {
     const reply = await this.client.updatePropSheet({
       propId: prop.id,
@@ -435,6 +443,11 @@ export function toLocation(message: LocationMessage): Location {
     description: message.description ?? null,
     appearance: message.appearance ? toLocationAppearance(message.appearance) : null,
     acoustics: message.acoustics ? toAcoustics(message.acoustics) : null,
+    variations: message.variations.map((v) => ({
+      id: v.id,
+      name: v.name,
+      description: v.description,
+    })),
   };
 }
 

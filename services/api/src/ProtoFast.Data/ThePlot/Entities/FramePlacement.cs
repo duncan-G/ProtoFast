@@ -20,6 +20,12 @@ public sealed class FramePlacement
     /// <summary>A <see cref="DirectionVocabulary.ScreenSides"/> label, or empty.</summary>
     public string Screen { get; set; } = "";
 
+    /// <summary>A <see cref="DirectionVocabulary.Depths"/> label, or empty.</summary>
+    public string Depth { get; set; } = "";
+
+    /// <summary>Where in the place they are, in the place's own terms: "at the near end of the nurse station counter".</summary>
+    public string Mark { get; set; } = "";
+
     /// <summary>A <see cref="DirectionVocabulary.Facings"/> label, or empty.</summary>
     public string Facing { get; set; } = "";
 

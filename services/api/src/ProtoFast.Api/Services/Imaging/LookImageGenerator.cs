@@ -23,9 +23,32 @@ public sealed class LookImageGenerator(
     IImageGenerator generator,
     ImageStaleness staleness,
     ImageAssets assets,
+    ImageRefiner refiner,
     ImagingOptions options,
     ILogger<LookImageGenerator> logger)
 {
+    /// <summary>Edits a look's picture by the author's instructions and reference; every row and frame in that look follows.</summary>
+    /// <param name="elementId">The look change's line; null is the look the scene opens with.</param>
+    /// <returns>The scene with its direction, as stored after the write.</returns>
+    public async Task<DirectedScene> RefineAsync(
+        Guid sceneId, Guid characterId, Guid? elementId, string instructions, Guid? referenceAssetId, CancellationToken ct)
+    {
+        Guid storyId, assetId;
+        using (unitOfWorkFactory.CreateReadOnly(nameof(RefineAsync)))
+        {
+            var directed = await directionScope.LoadAsync(sceneId, withEarlierScenes: false, ct);
+            storyId = directed.Story.Id;
+            var row = Row(directed.Scene, characterId, elementId);
+            assetId = row.Image?.Id ?? throw new ImageException("That look has no picture to refine yet; picture it first.");
+        }
+
+        await refiner.RefineAsync(storyId, assetId, options.CharacterSize, instructions, referenceAssetId, ct);
+        using (unitOfWorkFactory.CreateReadOnly(nameof(RefineAsync)))
+        {
+            return await directionScope.LoadAsync(sceneId, withEarlierScenes: false, ct);
+        }
+    }
+
     /// <summary>Pictures the looks of everyone on screen in the frame that have no current picture.</summary>
     public async Task PictureFrameAsync(Guid sceneId, Guid frameId, CancellationToken ct)
     {

@@ -331,6 +331,11 @@ public class StoryService(
         ServerCallContext context) =>
         new() { Location = await library.UpdateLocationSheetAsync(request, context.CancellationToken) };
 
+    public override async Task<SaveLocationVariationsReply> SaveLocationVariations(
+        SaveLocationVariationsRequest request,
+        ServerCallContext context) =>
+        new() { Location = await library.SaveLocationVariationsAsync(request, context.CancellationToken) };
+
     public override async Task<UpdatePropSheetReply> UpdatePropSheet(
         UpdatePropSheetRequest request,
         ServerCallContext context) =>

@@ -30,6 +30,9 @@ public sealed class Location : IDateStamped
 
     public MediaAsset? Image { get; set; }
 
+    /// <summary>Parts of the place the camera moves to, in position order.</summary>
+    public List<LocationVariation> Variations { get; set; } = [];
+
     public DateTime DateCreated { get; set; }
 
     public DateTime DateLastModified { get; set; }

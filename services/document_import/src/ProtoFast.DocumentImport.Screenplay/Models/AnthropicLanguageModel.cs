@@ -30,6 +30,32 @@ public sealed class AnthropicLanguageModel(
         return Reply(response);
     }
 
+    public async Task<LanguageModelReply> CompleteAsync(
+        string system, IReadOnlyList<ModelImage> images, string user, CancellationToken ct)
+    {
+        var content = new List<ContentBlockParam>();
+        foreach (var image in images)
+        {
+            content.Add(new TextBlockParam(image.Caption));
+            content.Add(new ImageBlockParam(new Base64ImageSource
+            {
+                Data = Convert.ToBase64String(image.Bytes),
+                MediaType = MediaTypeOf(image.ContentType),
+            }));
+        }
+
+        content.Add(new TextBlockParam(user));
+        var response = await _client.Messages.Create(new MessageCreateParams
+        {
+            Model = modelId,
+            MaxTokens = maxOutputTokens,
+            System = system,
+            Messages = [new() { Role = Role.User, Content = content }],
+        }, ct);
+
+        return Reply(response);
+    }
+
     public async Task<LanguageModelReply> ConverseAsync(
         string system, IReadOnlyList<ChatMessage> messages, IReadOnlyList<ToolDefinition> tools, CancellationToken ct)
     {
@@ -111,6 +137,15 @@ public sealed class AnthropicLanguageModel(
                 ? required.Deserialize<List<string>>()
                 : null,
         },
+    };
+
+    private static MediaType MediaTypeOf(string contentType) => contentType.ToLowerInvariant() switch
+    {
+        "image/jpeg" or "image/jpg" => MediaType.ImageJpeg,
+        "image/png" => MediaType.ImagePng,
+        "image/gif" => MediaType.ImageGif,
+        "image/webp" => MediaType.ImageWebP,
+        _ => throw new NotSupportedException($"A model is not shown {contentType} pictures."),
     };
 
     private static string? FinishReason(string? stopReason) => stopReason switch

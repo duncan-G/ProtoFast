@@ -24,6 +24,8 @@ function frame(first: number, last: number): { frame: Frame; first: number; last
       locationChange: '',
       camera: '',
       variation: '',
+      variationMovesCamera: false,
+      locationVariationId: null,
       holdMs: null,
       placements: [],
       props: [],

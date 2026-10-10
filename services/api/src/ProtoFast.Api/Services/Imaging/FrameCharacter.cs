@@ -14,6 +14,8 @@ public sealed record FrameCharacter(
     string WardrobeChange,
     string AppearanceChange,
     string Screen,
+    string Depth,
+    string Mark,
     string Facing,
     string Moving,
     string Looking,

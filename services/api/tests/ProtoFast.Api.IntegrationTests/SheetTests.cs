@@ -41,6 +41,57 @@ public class SheetTests(StoryDatabase database)
     }
 
     [Fact]
+    public async Task Location_variations_keep_their_ids_by_id_or_name_and_frames_there_go_back_to_the_establishing_shot_when_one_goes()
+    {
+        var story = await _writer.CreateStoryAsync();
+        var wing = await _writer.CreateLocationAsync(story.Id, "Trauma wing");
+        var first = await _writer.Call((s, c) => s.SaveLocationVariations(new SaveLocationVariationsRequest
+        {
+            LocationId = wing.Id,
+            Variations =
+            {
+                new LocationVariation { Name = " Elevator end ", Description = "The lift doors under the exit sign." },
+                new LocationVariation { Name = "Nurse station" },
+            },
+        }, c));
+        Assert.Equal(["Elevator end", "Nurse station"], first.Location.Variations.Select(v => v.Name));
+        var elevator = first.Location.Variations[0];
+        var station = first.Location.Variations[1];
+
+        var scene = await _writer.WriteFirstSceneAsync(story, Rows.Heading(wing.Id, "NIGHT"), Rows.Action("He waits."));
+        var direction = new SceneDirection { SceneId = scene.Id };
+        direction.Frames.Add(new Frame
+        {
+            FirstElementId = scene.Elements[0].Id, LastElementId = scene.Elements[1].Id, LocationVariationId = station.Id,
+        });
+        Assert.Equal(station.Id, (await _writer.SaveDirectionAsync(direction)).Frames[0].LocationVariationId);
+
+        // Renamed by id, re-sent by name, the station left out.
+        var second = await _writer.Call((s, c) => s.SaveLocationVariations(new SaveLocationVariationsRequest
+        {
+            LocationId = wing.Id,
+            Variations =
+            {
+                new LocationVariation { Name = "Corridor mouth" },
+                new LocationVariation { Id = elevator.Id, Name = "Lift end", Description = "The lift doors." },
+            },
+        }, c));
+
+        Assert.Equal(["Corridor mouth", "Lift end"], second.Location.Variations.Select(v => v.Name));
+        Assert.Equal(elevator.Id, second.Location.Variations[1].Id);
+        Assert.Equal(second.Location, (await _writer.GetStoryAsync(story.Id)).Locations.Single());
+        Assert.False((await _writer.GetDirectionAsync(scene.Id)).Frames[0].HasLocationVariationId);
+
+        var error = await Assert.ThrowsAsync<RpcException>(() => _writer.Call((s, c) => s.SaveLocationVariations(
+            new SaveLocationVariationsRequest
+            {
+                LocationId = wing.Id,
+                Variations = { new LocationVariation { Name = "Lift end" }, new LocationVariation { Name = "lift END" } },
+            }, c)));
+        Assert.Equal(StatusCode.AlreadyExists, error.StatusCode);
+    }
+
+    [Fact]
     public async Task Two_wardrobes_with_the_same_label_are_refused()
     {
         var story = await _writer.CreateStoryAsync();

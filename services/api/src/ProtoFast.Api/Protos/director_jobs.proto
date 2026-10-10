@@ -1,0 +1,140 @@
+syntax = "proto3";
+
+option csharp_namespace = "ProtoFast.Api";
+
+package direction;
+
+import "direction.proto";
+import "google/protobuf/timestamp.proto";
+
+// Director work that waits on a model (directing, sheets, voices, audio, pictures) runs in the
+// background: the author queues it, keeps writing, and polls for what is done. A job is a list of
+// the Direction service's own requests, run in order as its owner and stopping at the first that
+// fails. Jobs on the same scene, or on the same story's library, run one at a time in the order
+// they were queued; the rest run side by side. Every call is confined to the caller.
+service DirectorJobs {
+
+    rpc StartJob (StartJobRequest) returns (StartJobReply);
+
+    // The caller's jobs that are queued, running, or finished and not yet dismissed, oldest first.
+    rpc ListJobs (ListJobsRequest) returns (ListJobsReply);
+
+    // One job with the replies of its finished steps.
+    rpc GetJob (GetJobRequest) returns (GetJobReply);
+
+    // A queued job never starts; a running one stops after the step under way is abandoned. Steps
+    // already finished stay done.
+    rpc CancelJob (CancelJobRequest) returns (CancelJobReply);
+
+    // Forgets finished jobs; running ones are left alone.
+    rpc DismissJobs (DismissJobsRequest) returns (DismissJobsReply);
+
+}
+
+message JobStep {
+    oneof work {
+        DirectRequest direct = 1;
+        DescribeRequest describe = 2;
+        CastVoiceRequest cast_voice = 3;
+        GenerateAudioRequest audio = 4;
+        GenerateFrameImageRequest frame_image = 5;
+        GenerateLookImageRequest look_image = 6;
+        GenerateLibraryImageRequest library_image = 7;
+    }
+}
+
+// A finished step's reply. Only the newest scene direction of a job is kept; earlier steps that
+// returned one come back without it.
+message JobStepResult {
+    oneof reply {
+        DirectReply direct = 1;
+        DescribeReply describe = 2;
+        CastVoiceReply cast_voice = 3;
+        GenerateAudioReply audio = 4;
+        GenerateFrameImageReply frame_image = 5;
+        GenerateLookImageReply look_image = 6;
+        GenerateLibraryImageReply library_image = 7;
+    }
+}
+
+enum JobStatus {
+    JOB_STATUS_UNSPECIFIED = 0;
+    JOB_STATUS_QUEUED = 1;
+    JOB_STATUS_RUNNING = 2;
+    JOB_STATUS_SUCCEEDED = 3;
+    JOB_STATUS_FAILED = 4;
+    JOB_STATUS_CANCELLED = 5;
+}
+
+message Job {
+    string id = 1;
+    string story_id = 2;
+    // Set when the job works on a scene.
+    optional string scene_id = 3;
+    // What the author asked for, as the client named it: "Suggest frame 3".
+    string label = 4;
+    JobStatus status = 5;
+    repeated JobStep steps = 6;
+    int32 steps_done = 7;
+    // Why it failed, in words for the author.
+    string error = 8;
+    google.protobuf.Timestamp created = 9;
+    optional google.protobuf.Timestamp started = 10;
+    optional google.protobuf.Timestamp finished = 11;
+    // Jobs that share it run one at a time.
+    string lane = 12;
+}
+
+message StartJobRequest {
+    string story_id = 1;
+    string label = 2;
+    // Every scene step names the same scene.
+    repeated JobStep steps = 3;
+    // After a frame is pictured, also redraw the variation that follows it when that has gone stale.
+    bool follow_variations = 4;
+}
+
+message StartJobReply {
+    Job job = 1;
+}
+
+message ListJobsRequest {}
+
+message ListJobsReply {
+    repeated Job jobs = 1;
+}
+
+message GetJobRequest {
+    string job_id = 1;
+    // Only the results of steps from this index on.
+    int32 from_step = 2;
+}
+
+message GetJobReply {
+    Job job = 1;
+    // From from_step, one per finished step.
+    repeated JobStepResult results = 2;
+}
+
+message CancelJobRequest {
+    string job_id = 1;
+}
+
+message CancelJobReply {
+    Job job = 1;
+}
+
+message DismissJobsRequest {
+    repeated string job_ids = 1;
+}
+
+message DismissJobsReply {}
+
+// How a job's steps and results are stored; never sent.
+message JobSteps {
+    repeated JobStep steps = 1;
+}
+
+message JobResults {
+    repeated JobStepResult results = 1;
+}

@@ -11,7 +11,9 @@ import { DescribeTarget } from './model/describe-target';
 import { DirectResult } from './model/direct-result';
 import { DirectTarget } from './model/direct-target';
 import { LibraryImage } from './model/library-image';
+import { PictureTarget } from './model/picture-target';
 import { MediaImage } from './model/media-image';
+import { PictureRefinement } from './model/picture-refinement';
 import { emptyDirection, SceneDirection } from './model/scene-direction';
 import { SpeechVoice } from './model/speech-voice';
 import { VoiceQuery } from './model/voice-query';
@@ -109,6 +111,8 @@ export class InMemoryDirectionApi implements DirectionApi {
           locationChange: '',
           camera: '',
           variation: '',
+          locationVariationId: null,
+          variationMovesCamera: false,
           holdMs: null,
           placements: [],
           props: [],
@@ -130,6 +134,7 @@ export class InMemoryDirectionApi implements DirectionApi {
     return {
       direction: this.store(scene, current, false),
       extras: (await this.sceneStory(sceneId))?.extras ?? [],
+      findings: [],
     };
   }
 
@@ -385,19 +390,79 @@ export class InMemoryDirectionApi implements DirectionApi {
     return current;
   }
 
-  async generateLibraryImage(target: DescribeTarget): Promise<LibraryImage | null> {
+  async generateLibraryImage(target: PictureTarget): Promise<LibraryImage | null> {
     const story = await this.storyOf(target.id);
     const name =
-      [...story.characters, ...story.locations, ...story.props].find((e) => e.id === target.id)
-        ?.name ?? '';
+      [
+        ...story.characters,
+        ...story.locations,
+        ...story.locations.flatMap((l) => l.variations),
+        ...story.props,
+      ].find((e) => e.id === target.id)?.name ?? '';
     const image: LibraryImage = { target, image: placeholderImage(name) };
+    this.libraryImages.set(target.id, image);
+    return structuredClone(image);
+  }
+
+  async refineFrameImage(
+    sceneId: string,
+    frameId: string,
+    refinement: PictureRefinement,
+  ): Promise<SceneDirection> {
+    const current = structuredClone(this.directions.get(sceneId) ?? emptyDirection(sceneId));
+    const frame = current.frames.find((f) => f.id === frameId);
+    if (!frame) {
+      throw new Error('That frame is no longer in the scene.');
+    }
+    if (frame.locked) {
+      return current;
+    }
+    frame.image = refined(frame.image, refinement);
+    this.directions.set(sceneId, structuredClone(current));
+    return current;
+  }
+
+  async refineLookImage(
+    sceneId: string,
+    characterId: string,
+    elementId: string | null,
+    refinement: PictureRefinement,
+  ): Promise<SceneDirection> {
+    const current = structuredClone(this.directions.get(sceneId) ?? emptyDirection(sceneId));
+    const row =
+      elementId === null
+        ? current.appearances.find((a) => a.characterId === characterId)
+        : current.lookChanges.find(
+            (c) => c.characterId === characterId && c.elementId === elementId,
+          );
+    if (!row) {
+      throw new Error('That look is no longer in the scene.');
+    }
+    row.image = refined(row.image, refinement);
+    this.directions.set(sceneId, structuredClone(current));
+    return current;
+  }
+
+  async refineLibraryImage(
+    target: PictureTarget,
+    refinement: PictureRefinement,
+  ): Promise<LibraryImage | null> {
+    const stored = this.libraryImages.get(target.id);
+    const image: LibraryImage = { target, image: refined(stored?.image ?? null, refinement) };
     this.libraryImages.set(target.id, image);
     return structuredClone(image);
   }
 
   async listLibraryImages(storyId: string): Promise<LibraryImage[]> {
     const story = await this.stories.getStory(storyId);
-    const ids = new Set([...story.characters, ...story.locations, ...story.props].map((e) => e.id));
+    const ids = new Set(
+      [
+        ...story.characters,
+        ...story.locations,
+        ...story.locations.flatMap((l) => l.variations),
+        ...story.props,
+      ].map((e) => e.id),
+    );
     return structuredClone([...this.libraryImages.values()].filter((i) => ids.has(i.target.id)));
   }
 
@@ -406,7 +471,9 @@ export class InMemoryDirectionApi implements DirectionApi {
       const story = await this.stories.getStory(summary.id);
       if (
         story.characters.some((c) => c.id === entryId) ||
-        story.locations.some((l) => l.id === entryId) ||
+        story.locations.some(
+          (l) => l.id === entryId || l.variations.some((v) => v.id === entryId),
+        ) ||
         story.props.some((p) => p.id === entryId) ||
         story.extras.some((e) => e.id === entryId)
       ) {
@@ -431,6 +498,20 @@ function plainCue(elementId: string, text: string): Cue {
 }
 
 /** A grey card with its subject written on it, standing in for the image model. */
+function refined(image: MediaImage | null, refinement: PictureRefinement): MediaImage {
+  if (!image) {
+    throw new Error('There is no picture to refine yet; picture it first.');
+  }
+  if (refinement.referenceAssetId === image.assetId) {
+    throw new Error('Pick another picture as the reference.');
+  }
+  return {
+    ...placeholderImage(refinement.instructions),
+    assetId: image.assetId,
+    references: image.references,
+  };
+}
+
 function placeholderImage(label: string): MediaImage {
   const text = label.replace(/[<&"]/g, ' ').slice(0, 40);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200"><rect width="300" height="200" fill="#57534e"/><text x="150" y="105" fill="#e7e5e4" font-family="serif" font-size="16" text-anchor="middle">${text}</text></svg>`;

@@ -19,6 +19,13 @@ public sealed class TracedLanguageModel(
     public Task<LanguageModelReply> CompleteAsync(string system, string user, CancellationToken ct) =>
         TraceAsync(system, () => [new { role = "user", parts = Text(user) }], () => inner.CompleteAsync(system, user, ct));
 
+    public Task<LanguageModelReply> CompleteAsync(
+        string system, IReadOnlyList<ModelImage> images, string user, CancellationToken ct) =>
+        TraceAsync(
+            system,
+            () => [new { role = "user", parts = images.SelectMany(Picture).Concat(Text(user)).ToArray() }],
+            () => inner.CompleteAsync(system, images, user, ct));
+
     public Task<LanguageModelReply> ConverseAsync(
         string system, IReadOnlyList<ChatMessage> messages, IReadOnlyList<ToolDefinition> tools, CancellationToken ct) =>
         TraceAsync(system, () => messages.Select(Message).ToArray(), () => inner.ConverseAsync(system, messages, tools, ct));
@@ -92,6 +99,15 @@ public sealed class TracedLanguageModel(
     ];
 
     private static object[] Text(string content) => [new { type = "text", content }];
+
+    /// <summary>The caption, then where the picture is stored: its bytes would outgrow the span.</summary>
+    private static object[] Picture(ModelImage image) =>
+    [
+        .. Text(image.Caption),
+        image.Uri.Length > 0
+            ? new { type = "uri", modality = "image", mime_type = image.ContentType, uri = image.Uri }
+            : new { type = "image", mime_type = image.ContentType, size = image.Bytes.Length },
+    ];
 
     private static string Json(object[] value) => JsonSerializer.Serialize(value);
 }

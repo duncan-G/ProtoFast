@@ -32,6 +32,8 @@ function frame(patch: Partial<Frame> = {}): Frame {
     locationChange: '',
     camera: '',
     variation: '',
+    variationMovesCamera: false,
+    locationVariationId: null,
     holdMs: null,
     placements: [],
     props: [],
@@ -103,8 +105,28 @@ describe('inheritance', () => {
     expect(inViewOf(scene(), frame(), 'radio').value).toBe(true);
     expect(inViewOf(direction, frame(), 'radio').value).toBe(false);
     expect(
-      inViewOf(direction, frame({ props: [{ propId: 'radio', inView: true }] }), 'radio'),
+      inViewOf(
+        direction,
+        frame({ props: [{ propId: 'radio', inView: true, screen: '', depth: '', mark: '' }] }),
+        'radio',
+      ),
     ).toEqual({ value: true, overridden: true });
+  });
+
+  it('does not count a row that only places a prop as an override', () => {
+    const placed = frame({
+      props: [
+        {
+          propId: 'radio',
+          inView: true,
+          screen: 'left',
+          depth: 'foreground',
+          mark: 'on the table',
+        },
+      ],
+    });
+    expect(inViewOf(scene(), placed, 'radio')).toEqual({ value: true, overridden: false });
+    expect(overrideCount(placed)).toBe(0);
   });
 
   it('shows the scene’s extras unless the scene or the frame takes them off', () => {

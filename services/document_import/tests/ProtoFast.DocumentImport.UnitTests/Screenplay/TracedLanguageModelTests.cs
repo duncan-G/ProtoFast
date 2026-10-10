@@ -88,6 +88,20 @@ public sealed class TracedLanguageModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Captured_pictures_are_their_captions_and_where_they_are_stored()
+    {
+        var model = Traced(new FixedModel(new LanguageModelReply("{}", "m", 1, 1, 0)), captureContent: true);
+
+        await model.CompleteAsync("s", [new ModelImage([1, 2, 3], "image/webp", "The place.", "stories/1/images/a.webp")], "the frame", Ct);
+
+        var parts = Json(Span(), "gen_ai.input.messages")[0].GetProperty("parts");
+        Assert.Equal("The place.", parts[0].GetProperty("content").GetString());
+        Assert.Equal(("uri", "image", "stories/1/images/a.webp"),
+            (parts[1].GetProperty("type").GetString(), parts[1].GetProperty("modality").GetString(), parts[1].GetProperty("uri").GetString()));
+        Assert.Equal("the frame", parts[2].GetProperty("content").GetString());
+    }
+
+    [Fact]
     public async Task A_failed_call_is_an_error_span()
     {
         var model = Traced(new FixedModel(null), captureContent: false);
@@ -113,6 +127,9 @@ public sealed class TracedLanguageModelTests : IDisposable
 
         public Task<LanguageModelReply> CompleteAsync(string system, string user, CancellationToken ct) =>
             reply is null ? throw new InvalidOperationException("refused") : Task.FromResult(reply);
+
+        public Task<LanguageModelReply> CompleteAsync(string system, IReadOnlyList<ModelImage> images, string user, CancellationToken ct) =>
+            CompleteAsync(system, user, ct);
 
         public Task<LanguageModelReply> ConverseAsync(
             string system, IReadOnlyList<ChatMessage> messages, IReadOnlyList<ToolDefinition> tools, CancellationToken ct) =>

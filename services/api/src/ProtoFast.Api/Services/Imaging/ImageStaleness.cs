@@ -1,6 +1,7 @@
 using ProtoFast.Api.Services.Directing;
 using CharacterRecord = ProtoFast.Data.ThePlot.Entities.Character;
 using LocationRecord = ProtoFast.Data.ThePlot.Entities.Location;
+using LocationVariationRecord = ProtoFast.Data.ThePlot.Entities.LocationVariation;
 using MediaAssetRecord = ProtoFast.Data.ThePlot.Entities.MediaAsset;
 using PropRecord = ProtoFast.Data.ThePlot.Entities.Prop;
 using ExtraRecord = ProtoFast.Data.ThePlot.Entities.Extra;
@@ -22,6 +23,18 @@ public sealed class ImageStaleness(IImageGenerator generator, ImagingOptions opt
     public bool Location(LocationRecord location, MediaAssetRecord asset) =>
         Differs(asset, options.LocationSize, ImagePrompts.Location(location, options.Style));
 
+    /// <summary>A part of a place is drawn from the place's picture, so a new render of that stales it too.</summary>
+    public bool LocationVariation(LocationRecord location, LocationVariationRecord variation, MediaAssetRecord asset) =>
+        LocationVariationHash(location, variation) != asset.RequestHash;
+
+    public string LocationVariationHash(LocationRecord location, LocationVariationRecord variation) =>
+        ImageRequests.Hash(generator, options.LocationSize, location.Image is { } plate
+            ? $"{LocationVariationPrompt(location, variation)}\n{plate.ContentHash}"
+            : LocationVariationPrompt(location, variation));
+
+    public string LocationVariationPrompt(LocationRecord location, LocationVariationRecord variation) =>
+        ImagePrompts.LocationVariation(location, variation, options.Style, location.Image is not null);
+
     public bool Prop(PropRecord prop, MediaAssetRecord asset) =>
         Differs(asset, options.PropSize, ImagePrompts.Prop(prop, options.Style));
 
@@ -34,8 +47,11 @@ public sealed class ImageStaleness(IImageGenerator generator, ImagingOptions opt
     /// <summary>A variation is an edit of the previous frame's picture, so a new render of that picture stales it.</summary>
     public string FrameHash(FrameContents frame) =>
         ImageRequests.Hash(generator, options.FrameSize, frame.VariationOf is { } previous
-            ? $"{ImagePrompts.Variation(frame)}\n{previous.Frame.Image!.ContentHash}"
+            ? $"{VariationPrompt(frame)}\n{previous.Frame.Image!.ContentHash}"
             : ImagePrompts.Frame(frame, options.Style));
+
+    public string VariationPrompt(FrameContents frame) =>
+        frame.MovesCamera ? ImagePrompts.Continuation(frame, options.Style) : ImagePrompts.Variation(frame);
 
     public bool Look(CharacterRecord character, Look look, StoryRecord story, MediaAssetRecord asset) =>
         Differs(asset, options.CharacterSize, LookPrompt(character, look, story)) || LibraryMovedOn(asset, story, null);
@@ -59,6 +75,8 @@ public sealed class ImageStaleness(IImageGenerator generator, ImagingOptions opt
                 ReferenceSources.Location => story.Locations.FirstOrDefault(l => l.Id == reference.SubjectId)?.Image,
                 ReferenceSources.Prop => story.Props.FirstOrDefault(p => p.Id == reference.SubjectId)?.Image,
                 ReferenceSources.Extra => story.Extras.FirstOrDefault(e => e.Id == reference.SubjectId)?.Image,
+                ReferenceSources.LocationVariation => story.Locations.SelectMany(l => l.Variations)
+                    .FirstOrDefault(v => v.Id == reference.SubjectId)?.Image,
                 ReferenceSources.Look => scene?.Appearances.Select(a => a.Image).Concat(scene.LookChanges.Select(c => c.Image))
                     .FirstOrDefault(i => i?.Id == reference.AssetId),
                 _ => null,

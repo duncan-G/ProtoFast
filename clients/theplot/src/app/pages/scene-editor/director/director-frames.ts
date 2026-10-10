@@ -110,6 +110,20 @@ interface FrameCard {
                   >Variation</span
                 >
               }
+              @if (card.span?.frame?.locationVariationId; as partId) {
+                @if (store.locationVariationById().get(partId); as part) {
+                  <span
+                    class="dr-shot-chip"
+                    [title]="
+                      part.location.name +
+                      ' · ' +
+                      part.variation.name +
+                      ': its background comes from that variation’s picture'
+                    "
+                    >{{ part.variation.name }}</span
+                  >
+                }
+              }
               <span class="flex-1"></span>
               @if (playable(card)) {
                 <button

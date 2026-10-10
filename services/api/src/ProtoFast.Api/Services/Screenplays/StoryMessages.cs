@@ -279,6 +279,12 @@ public static class StoryMessages
             message.Acoustics = new Acoustics { Space = acoustics.Space, Ambience = acoustics.Ambience };
         }
 
+        message.Variations.AddRange(location.Variations.OrderBy(v => v.Position).ThenBy(v => v.Id).Select(v => new LocationVariation
+        {
+            Id = v.Id.ToString(),
+            Name = v.Name,
+            Description = v.Description,
+        }));
         return message;
     }
 

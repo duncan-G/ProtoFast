@@ -6,7 +6,9 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { DirectorJobs } from '../../../direction/director-jobs';
 import { DescribeTarget } from '../../../direction/model/describe-target';
+import { isActive } from '../../../direction/model/director-job';
 import { plural } from '../format';
 import { SceneEditorStore } from '../scene-editor-store';
 
@@ -144,9 +146,16 @@ export class LibraryToolbar {
   protected readonly groups = GROUPS;
   protected readonly plural = plural;
   protected readonly open = signal<Menu | null>(null);
-  protected readonly running = signal<Run | null>(null);
+  private readonly jobs = inject(DirectorJobs);
+  /** The run this toolbar queued, by its job. */
+  private readonly launched = signal<{ run: Run; jobId: string } | null>(null);
+  private readonly job = computed(() => {
+    const launched = this.launched();
+    return this.jobs.jobs().find((j) => j.id === launched?.jobId && isActive(j)) ?? null;
+  });
+  protected readonly running = computed(() => (this.job() ? this.launched()!.run : null));
 
-  protected readonly busy = computed(() => this.store.describing() !== null);
+  protected readonly busy = computed(() => this.running() !== null);
 
   protected readonly sheets = computed<Record<Group, Sheet[]>>(() => ({
     cast: this.store.characters().map((c) => ({
@@ -186,9 +195,10 @@ export class LibraryToolbar {
   protected readonly unwritten = computed(() => this.all().filter((s) => !s.written));
 
   protected readonly progress = computed(() => {
-    const run = this.store.describeRun();
-    const at = run.indexOf(this.store.describing() ?? '');
-    return at >= 0 ? `Writing ${at + 1} of ${run.length}…` : 'Writing…';
+    const job = this.job();
+    return !job || job.state === 'queued'
+      ? 'Queued…'
+      : `Writing ${Math.min(job.stepsDone + 1, job.steps.length)} of ${job.steps.length}…`;
   });
 
   protected toggle(menu: Menu): void {
@@ -197,11 +207,9 @@ export class LibraryToolbar {
 
   protected async run(run: Run, sheets: readonly Sheet[]): Promise<void> {
     this.open.set(null);
-    this.running.set(run);
-    try {
-      await this.store.describeAll(sheets.map((s) => s.target));
-    } finally {
-      this.running.set(null);
+    const job = await this.store.describeAll(sheets.map((s) => s.target));
+    if (job) {
+      this.launched.set({ run, jobId: job.id });
     }
   }
 

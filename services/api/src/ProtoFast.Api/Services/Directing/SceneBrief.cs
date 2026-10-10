@@ -296,7 +296,8 @@ public sealed class SceneBrief
         return text.Length == 0 ? "- (none)\n" : text.ToString();
     }
 
-    public string LocationSheet()
+    /// <param name="withLayout">Add each place's layout, so staging can say where things are in it.</param>
+    public string LocationSheet(bool withLayout = false)
     {
         var text = new StringBuilder();
         foreach (var location in Locations)
@@ -308,6 +309,21 @@ public sealed class SceneBrief
             }
 
             text.AppendLine();
+            if (withLayout && location.Appearance?.Layout.Trim() is { Length: > 0 } layout)
+            {
+                text.Append("  laid out as (a plan, not a camera): ").AppendLine(layout);
+            }
+
+            foreach (var part in location.Variations.OrderBy(v => v.Position))
+            {
+                text.Append("  - part \"").Append(part.Name).Append('"');
+                if (part.Description.Trim().Length > 0)
+                {
+                    text.Append(": ").Append(part.Description.Trim());
+                }
+
+                text.AppendLine();
+            }
         }
 
         return text.Length == 0 ? "- (none)\n" : text.ToString();

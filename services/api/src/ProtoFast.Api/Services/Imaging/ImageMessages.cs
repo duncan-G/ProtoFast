@@ -32,6 +32,8 @@ public sealed class ImageMessages(ImageStaleness staleness, IPresignedUrlFactory
             .Select(c => Library(ReferenceSources.Character, c.Id, c.Image!, staleness.Character(c, c.Image!)))
             .Concat(story.Locations.Where(l => l.Image is not null)
                 .Select(l => Library(ReferenceSources.Location, l.Id, l.Image!, staleness.Location(l, l.Image!))))
+            .Concat(story.Locations.SelectMany(l => l.Variations.Where(v => v.Image is not null)
+                .Select(v => Library(ReferenceSources.LocationVariation, v.Id, v.Image!, staleness.LocationVariation(l, v, v.Image!)))))
             .Concat(story.Props.Where(p => p.Image is not null)
                 .Select(p => Library(ReferenceSources.Prop, p.Id, p.Image!, staleness.Prop(p, p.Image!))))
             .Concat(story.Extras.Where(e => e.Image is not null)

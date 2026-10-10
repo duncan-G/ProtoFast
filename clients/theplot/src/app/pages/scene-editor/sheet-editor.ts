@@ -34,12 +34,12 @@ import { StateChips } from './state-chips';
         <button
           type="button"
           class="se-btn se-btn-text"
-          [class.is-working]="store.describing() === target().id"
-          [disabled]="store.describing() !== null"
+          [class.is-working]="store.describing().has(target().id)"
+          [disabled]="store.describing().has(target().id)"
           title="Have the model write this sheet from the story"
           (click)="store.describe(target())"
         >
-          {{ store.describing() === target().id ? 'Describing…' : 'Describe' }}
+          {{ store.describing().has(target().id) ? 'Describing…' : 'Describe' }}
         </button>
       </div>
     }

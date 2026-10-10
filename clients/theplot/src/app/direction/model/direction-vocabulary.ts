@@ -4,6 +4,7 @@ export const DIRECTION_VOCABULARY = {
   angles: ['eye level', 'low', 'high', 'top-down'],
   movements: ['static', 'push in', 'pull out', 'pan', 'handheld'],
   screenSides: ['left', 'centre', 'right', 'off'],
+  depths: ['foreground', 'midground', 'background'],
   facings: [
     'toward camera',
     'three-quarter left',

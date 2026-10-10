@@ -3,6 +3,7 @@ import { headingAt } from '../../../direction/frames';
 import { Location } from '../../../stories/model/location';
 import { SceneEditorStore } from '../scene-editor-store';
 import { ChangeLayers } from './change-layers';
+import { LocationVariationSelect } from './location-variation-select';
 
 interface Place {
   location: Location;
@@ -17,7 +18,7 @@ interface Place {
 @Component({
   selector: 'app-inspector-place-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ChangeLayers],
+  imports: [ChangeLayers, LocationVariationSelect],
   host: { class: 'dr-tab-body' },
   template: `
     @for (place of places(); track place.location.id) {
@@ -27,6 +28,9 @@ interface Place {
         <span class="dr-place-name">{{ place.location.name }}</span>
         <span class="dr-place-time">{{ place.time || '—' }}</span>
       </div>
+      @if (span(); as frameSpan) {
+        <app-location-variation-select [span]="frameSpan" />
+      }
       <app-change-layers
         title="Location changes"
         [base]="place.location.description ?? ''"

@@ -18,4 +18,7 @@ public sealed class MuseImageOptions
     public bool EnableImageSearch { get; set; }
 
     public decimal PricePerImage { get; set; } = 0.01m;
+
+    /// <summary>Wait before the first retry of a timed-out or failed call; doubles for each of up to three retries.</summary>
+    public TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(2);
 }

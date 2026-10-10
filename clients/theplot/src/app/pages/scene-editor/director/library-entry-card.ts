@@ -5,13 +5,14 @@ import { ReferenceTarget } from '../../../stories/model/reference-target';
 import { plural, settingPrefix } from '../format';
 import { SceneEditorStore } from '../scene-editor-store';
 import { SheetEditor } from '../sheet-editor';
+import { LibraryLocationVariations } from './library-location-variations';
 import { LibraryPicture } from './library-picture';
 
 /** A place or a prop: its description for every scene, and where this scene uses it. */
 @Component({
   selector: 'app-library-entry-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LibraryPicture, SheetEditor],
+  imports: [LibraryLocationVariations, LibraryPicture, SheetEditor],
   host: { class: 'dr-card', '[class.is-open]': 'open()' },
   template: `
     @if (entry(); as e) {
@@ -37,11 +38,11 @@ import { LibraryPicture } from './library-picture';
               type="button"
               class="dr-btn is-small self-start"
               title="Have the model write the whole sheet from the story: description, look and sound"
-              [class.is-working]="store.describing() === target().id"
-              [disabled]="store.describing() !== null"
+              [class.is-working]="store.describing().has(target().id)"
+              [disabled]="store.describing().has(target().id)"
               (click)="store.describe(target())"
             >
-              {{ store.describing() === target().id ? 'Suggesting…' : 'Suggest place' }}
+              {{ store.describing().has(target().id) ? 'Suggesting…' : 'Suggest place' }}
             </button>
           }
           <app-library-picture [target]="target()" [name]="e.name" />
@@ -54,11 +55,11 @@ import { LibraryPicture } from './library-picture';
                   type="button"
                   class="dr-link"
                   title="Have the model write the sheet from the story"
-                  [class.is-working]="store.describing() === target().id"
-                  [disabled]="store.describing() !== null"
+                  [class.is-working]="store.describing().has(target().id)"
+                  [disabled]="store.describing().has(target().id)"
                   (click)="store.describe(target())"
                 >
-                  {{ store.describing() === target().id ? 'Writing…' : 'Suggest' }}
+                  {{ store.describing().has(target().id) ? 'Writing…' : 'Suggest' }}
                 </button>
               }
             </div>
@@ -81,6 +82,9 @@ import { LibraryPicture } from './library-picture';
             </button>
             @if (details()) {
               <app-sheet-editor [target]="target()" [details]="true" />
+            }
+            @if (store.locationById().get(target().id); as location) {
+              <app-library-location-variations [location]="location" />
             }
           }
           @if (problem()) {

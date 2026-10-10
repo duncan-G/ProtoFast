@@ -12,8 +12,9 @@ namespace ProtoFast.Api.Services.Imaging;
 /// around it (each character's look, library, neighbouring frames, earlier scenes) are offered to
 /// Muse with a caption each, and Muse decides what to take from them. The looks of everyone on screen
 /// are pictured first, so a character carrying something is drawn from one picture in every frame.
-/// A variation is the previous frame's picture edited by its change alone. The provider is called
-/// outside the story lock.
+/// A variation is the previous frame's picture edited by its change alone; when its camera moves, that
+/// picture is offered with the pictures of whatever comes into view and of the place, which at another
+/// part of it is that part's picture. The provider is called outside the story lock.
 /// </summary>
 public sealed class FrameImageGenerator(
     IUnitOfWorkFactory unitOfWorkFactory,
@@ -24,14 +25,42 @@ public sealed class FrameImageGenerator(
     ReferenceCollector collector,
     ImageStaleness staleness,
     ImageAssets assets,
+    ImageRefiner refiner,
     ImagingOptions options,
     ILogger<FrameImageGenerator> logger)
 {
+    /// <summary>Edits the frame's picture by the author's instructions and the reference they picked, if any.</summary>
+    /// <returns>The scene with its direction, as stored after the write; a locked frame is left as it is.</returns>
+    public async Task<DirectedScene> RefineAsync(
+        Guid sceneId, Guid frameId, string instructions, Guid? referenceAssetId, CancellationToken ct)
+    {
+        Guid storyId, assetId;
+        using (unitOfWorkFactory.CreateReadOnly(nameof(RefineAsync)))
+        {
+            var directed = await directionScope.LoadAsync(sceneId, withEarlierScenes: false, ct);
+            var frame = directed.Scene.Frames.FirstOrDefault(f => f.Id == frameId)
+                        ?? throw StoryErrors.NotFound(DirectionErrors.FrameNotFound);
+            if (frame.Locked)
+            {
+                return directed;
+            }
+
+            storyId = directed.Story.Id;
+            assetId = frame.ImageAssetId ?? throw new ImageException("The frame has no picture to refine yet; picture it first.");
+        }
+
+        await refiner.RefineAsync(storyId, assetId, options.FrameSize, instructions, referenceAssetId, ct);
+        using (unitOfWorkFactory.CreateReadOnly(nameof(RefineAsync)))
+        {
+            return await directionScope.LoadAsync(sceneId, withEarlierScenes: false, ct);
+        }
+    }
+
     /// <param name="regenerate">Render again even when the picture is current.</param>
     /// <returns>The scene with its direction, as stored after the write; a locked frame is left as it is.</returns>
     public async Task<DirectedScene> GenerateAsync(Guid sceneId, Guid frameId, bool regenerate, CancellationToken ct)
     {
-        bool variation;
+        bool edit;
         using (unitOfWorkFactory.CreateReadOnly(nameof(GenerateAsync)))
         {
             var directed = await directionScope.LoadAsync(sceneId, withEarlierScenes: false, ct);
@@ -41,10 +70,10 @@ public sealed class FrameImageGenerator(
                 return directed;
             }
 
-            variation = shown?.VariationOf is not null;
+            edit = shown is { VariationOf: not null, MovesCamera: false };
         }
 
-        if (!variation)
+        if (!edit)
         {
             await lookImages.PictureFrameAsync(sceneId, frameId, ct);
         }
@@ -66,10 +95,30 @@ public sealed class FrameImageGenerator(
             // The media cache: the same picture was made before, and nothing it was made from has moved on.
             var cached = await assets.FindAsync(storyId, MediaAssetKindRecord.FrameImage, requestHash, ct);
             var redo = regenerate || cached is null || staleness.Frame(frame, cached, directed.Story);
+            List<ImageInput> inputs = [];
+            async Task OfferAsync(ReferenceCandidate candidate)
+            {
+                if (await assets.ReadAsync(candidate.Asset, ImagePrompts.Caption(inputs.Count + 1, candidate), ct) is not { } input)
+                {
+                    return;
+                }
+
+                inputs.Add(input);
+                references.Add(new MediaReferenceRecord
+                {
+                    AssetId = candidate.Asset.Id,
+                    ContentHash = candidate.Asset.ContentHash,
+                    Source = ReferenceSources.Of(candidate.Source),
+                    SubjectId = candidate.SubjectId,
+                    Label = candidate.Name,
+                });
+            }
+
             if (redo && frame.VariationOf is { } previous)
             {
-                var input = await assets.ReadAsync(previous.Frame.Image!, ImagePrompts.VariationCaption(previous), ct)
-                            ?? throw new ImageException($"Frame {previous.Number}'s picture is missing from storage; picture it again first.");
+                var moves = frame.MovesCamera;
+                inputs.Add(await assets.ReadAsync(previous.Frame.Image!, ImagePrompts.VariationCaption(frame, previous), ct)
+                           ?? throw new ImageException($"Frame {previous.Number}'s picture is missing from storage; picture it again first."));
                 references.Add(new MediaReferenceRecord
                 {
                     AssetId = previous.Frame.Image!.Id,
@@ -78,34 +127,35 @@ public sealed class FrameImageGenerator(
                     SubjectId = previous.Frame.Id,
                     Label = $"Frame {previous.Number}",
                 });
-                request = ImagePrompts.VariationRequest(options.FrameSize, frame, input);
+
+                // Whoever stays is drawn from the previous picture; only what comes into view, and the
+                // place the camera moves through, are offered on their own.
+                if (moves)
+                {
+                    var arrived = frame.NewSince(previous.Pictured);
+                    foreach (var candidate in collector.Collect(directed.Story, frame, scene, earlier)
+                                 .Where(c => c.Source is ReferenceSource.Location or ReferenceSource.LocationVariation
+                                             || (c.Source != ReferenceSource.Frame && arrived.Contains(c.SubjectId)))
+                                 .Take(options.MaxReferences - 1))
+                    {
+                        await OfferAsync(candidate);
+                    }
+                }
+
+                request = new ImageRequest(options.FrameSize, "", inputs, staleness.VariationPrompt(frame));
                 image = await generator.GenerateAsync(request, ct);
-                logger.LogInformation("Pictured frame {Frame} of {Scene} with {Provider}/{Model} as a variation of frame {Previous}",
-                    frameId, sceneId, generator.Provider, generator.Model, previous.Number);
+                logger.LogInformation("Pictured frame {Frame} of {Scene} with {Provider}/{Model} based off frame {Previous} ({Mode}): {References}",
+                    frameId, sceneId, generator.Provider, generator.Model, previous.Number, moves ? "camera moves" : "same shot",
+                    string.Join(", ", references.Select(r => r.Label)));
             }
             else if (redo)
             {
-                var prompt = ImagePrompts.Frame(frame, options.Style);
-                List<ImageInput> inputs = [];
                 foreach (var candidate in collector.Collect(directed.Story, frame, scene, earlier).Take(options.MaxReferences))
                 {
-                    if (await assets.ReadAsync(candidate.Asset, ImagePrompts.Caption(inputs.Count + 1, candidate), ct) is not { } input)
-                    {
-                        continue;
-                    }
-
-                    inputs.Add(input);
-                    references.Add(new MediaReferenceRecord
-                    {
-                        AssetId = candidate.Asset.Id,
-                        ContentHash = candidate.Asset.ContentHash,
-                        Source = ReferenceSources.Of(candidate.Source),
-                        SubjectId = candidate.SubjectId,
-                        Label = candidate.Name,
-                    });
+                    await OfferAsync(candidate);
                 }
 
-                request = ImagePrompts.Request(options.FrameSize, prompt, inputs);
+                request = ImagePrompts.Request(options.FrameSize, ImagePrompts.Frame(frame, options.Style), inputs);
                 image = await generator.GenerateAsync(request, ct);
                 logger.LogInformation("Pictured frame {Frame} of {Scene} with {Provider}/{Model} from {Count} references: {References}",
                     frameId, sceneId, generator.Provider, generator.Model, references.Count, string.Join(", ", references.Select(r => r.Label)));

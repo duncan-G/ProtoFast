@@ -73,6 +73,10 @@ service Stories {
 
     rpc UpdateLocationSheet (UpdateLocationSheetRequest) returns (UpdateLocationSheetReply);
 
+    // Replaces the location's variations. They are upserted by id, then by name, and any left out
+    // are deleted, which puts the frames that were there back at the establishing shot.
+    rpc SaveLocationVariations (SaveLocationVariationsRequest) returns (SaveLocationVariationsReply);
+
     rpc UpdatePropSheet (UpdatePropSheetRequest) returns (UpdatePropSheetReply);
 
     // Replaces the story's narrators; the first is the default. Narrators are upserted by id and
@@ -276,6 +280,19 @@ message Location {
     optional string description = 6;
     optional LocationAppearance appearance = 7;
     optional Acoustics acoustics = 8;
+    // In position order.
+    repeated LocationVariation variations = 9;
+}
+
+// A part of the location and the view from there; a frame there takes its background from this
+// picture. Names are unique per location.
+message LocationVariation {
+    string id = 1;
+    // "Elevator end"
+    string name = 2;
+    // Where the camera stands and what it sees: "the far end of the corridor, facing the lift doors
+    // under the exit sign, the nurse station behind on the left".
+    string description = 3;
 }
 
 message LocationAppearance {
@@ -530,6 +547,16 @@ message UpdateLocationSheetRequest {
 }
 
 message UpdateLocationSheetReply {
+    Location location = 1;
+}
+
+message SaveLocationVariationsRequest {
+    string location_id = 1;
+    // In order; a variation without an id is new.
+    repeated LocationVariation variations = 2;
+}
+
+message SaveLocationVariationsReply {
     Location location = 1;
 }
 

@@ -60,11 +60,11 @@ const SHOWN = 3;
           type="button"
           class="dr-btn is-small self-start"
           title="Have the model write the whole sheet from the story, then cast a voice if none is"
-          [class.is-working]="store.describing() === c.id"
-          [disabled]="store.describing() !== null"
+          [class.is-working]="store.describing().has(c.id)"
+          [disabled]="store.describing().has(c.id)"
           (click)="store.describe({ kind: 'character', id: c.id })"
         >
-          {{ store.describing() === c.id ? 'Suggesting…' : 'Suggest character' }}
+          {{ store.describing().has(c.id) ? 'Suggesting…' : 'Suggest character' }}
         </button>
         <app-library-picture [target]="{ kind: 'character', id: c.id }" [name]="c.name" />
         <div class="dr-card-grid">
@@ -124,11 +124,11 @@ const SHOWN = 3;
               type="button"
               class="dr-link"
               title="Cast a library voice that fits the sheet and no one else uses"
-              [class.is-working]="store.castingVoice() === c.id"
-              [disabled]="store.castingVoice() !== null || store.describing() === c.id"
+              [class.is-working]="store.castingVoice().has(c.id)"
+              [disabled]="store.castingVoice().has(c.id) || store.describing().has(c.id)"
               (click)="store.castVoice(c.id)"
             >
-              {{ store.castingVoice() === c.id ? 'Casting…' : 'Suggest' }}
+              {{ store.castingVoice().has(c.id) ? 'Casting…' : 'Suggest' }}
             </button>
           </div>
           @if (pickingVoice()) {

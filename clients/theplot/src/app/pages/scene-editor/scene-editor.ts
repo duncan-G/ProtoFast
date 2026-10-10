@@ -16,6 +16,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { SceneElementType } from '../../stories/model/scene-element-type';
 import { TheplotLogo } from '../../shared/theplot-logo';
 import { ContainerMenu } from './container-menu';
+import { DirectorJobTray } from './director-job-tray';
 import { DirectorView } from './director/director-view';
 import { EditorMode } from './editor-mode';
 import { EditorTheme } from './editor-theme';
@@ -38,6 +39,7 @@ const DRAWER_MAX_WIDTH = 767;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ContainerMenu,
+    DirectorJobTray,
     DirectorView,
     LibraryPanel,
     LibraryRail,

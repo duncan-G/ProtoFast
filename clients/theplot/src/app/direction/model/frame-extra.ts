@@ -5,6 +5,8 @@ export interface FrameExtra {
   onScreen: boolean | null;
   /** As on a placement; `pose` says which of a group the staging is about. */
   screen: string;
+  depth: string;
+  mark: string;
   facing: string;
   moving: string;
   looking: string;
@@ -12,7 +14,17 @@ export interface FrameExtra {
 }
 
 export function blankFrameExtra(extraId: string): FrameExtra {
-  return { extraId, onScreen: null, screen: '', facing: '', moving: '', looking: '', pose: '' };
+  return {
+    extraId,
+    onScreen: null,
+    screen: '',
+    depth: '',
+    mark: '',
+    facing: '',
+    moving: '',
+    looking: '',
+    pose: '',
+  };
 }
 
 /** A row that says nothing the scene does not. */
@@ -20,6 +32,8 @@ export function isBlankFrameExtra(extra: FrameExtra): boolean {
   return (
     extra.onScreen === null &&
     !extra.screen &&
+    !extra.depth &&
+    !extra.mark &&
     !extra.facing &&
     !extra.moving &&
     !extra.looking &&

@@ -48,10 +48,11 @@ service Direction {
     // locked frame is left as it is.
     // The pictures that already exist around it (the library's, neighbouring frames, earlier scenes
     // in the same place or with the same people) are offered as captioned references; nothing is
-    // generated just to serve as one.
+    // generated just to serve as one. With refine set, the current picture is edited by it instead.
     rpc GenerateFrameImage (GenerateFrameImageRequest) returns (GenerateFrameImageReply);
 
     // Pictures a character, location, prop or extra from its sheet: what frames are kept consistent with.
+    // With refine set, the current picture is edited by it instead.
     rpc GenerateLibraryImage (GenerateLibraryImageRequest) returns (GenerateLibraryImageReply);
 
     // Every library picture in the story, with whether its sheet has moved on.
@@ -60,7 +61,8 @@ service Direction {
     // Pictures a character in one of the scene's looks that differs from the library's (carrying
     // something, hurt, in another outfit), unless its picture is current or regenerate is set.
     // Frames in that look take it as the character's reference instead of the library's picture.
-    // Picturing a frame does this first for everyone on screen.
+    // Picturing a frame does this first for everyone on screen. With refine set, the current picture
+    // is edited by it instead.
     rpc GenerateLookImage (GenerateLookImageRequest) returns (GenerateLookImageReply);
 
 }
@@ -124,6 +126,12 @@ message Frame {
     // Set when the frame is the previous frame with one small change: its picture is made by editing
     // the previous frame's picture with this text alone. Empty pictures it from its full description.
     string variation = 21;
+    // With a variation: the camera moves and people and props may come and go, so the previous picture
+    // gives the place, light and whoever stays, and the frame's own staging and cast say the rest.
+    bool variation_moves_camera = 22;
+    // The part of the location the camera is in, one of its variations; unset is where the
+    // location's establishing shot stands.
+    optional string location_variation_id = 23;
 }
 
 message MediaImage {
@@ -140,7 +148,7 @@ message MediaImage {
 }
 
 message LibraryImage {
-    // character | location | prop | extra
+    // character | location | locationVariation | prop | extra
     string subject_kind = 1;
     string subject_id = 2;
     MediaImage image = 3;
@@ -162,6 +170,10 @@ message Placement {
     string moving = 11;
     // Who or what they look at: "the nurse".
     string looking = 12;
+    // foreground | midground | background, or empty.
+    string depth = 13;
+    // Where in the place they are, in the place's own terms: "at the near end of the nurse station counter".
+    string mark = 14;
     // Unset follows the scene's appearance.
     optional bool on_screen = 6;
     // Unset wears the scene's wardrobe.
@@ -174,6 +186,10 @@ message Placement {
 message FrameProp {
     string prop_id = 1;
     bool in_view = 2;
+    // Where it is, as on a Placement; a carried prop goes where its holder is.
+    string screen = 3;
+    string depth = 4;
+    string mark = 5;
 }
 
 message FrameExtra {
@@ -186,6 +202,8 @@ message FrameExtra {
     string moving = 5;
     string looking = 6;
     string pose = 7;
+    string depth = 8;
+    string mark = 9;
 }
 
 // How a dialogue, narration or action line is delivered.
@@ -338,12 +356,23 @@ message DirectRequest {
     }
     // Also rewrite rows the author edited.
     bool replace_edited = 11;
+    // The author's directions for a single frame, which the model follows over its own choices.
+    string instructions = 13;
 }
 
 message DirectReply {
     SceneDirection direction = 1;
     // The story's extras after the pass, which may have added some.
     repeated story.Extra extras = 2;
+    // What the verifiers still found wrong with the frames the pass directed, after it fixed what it could.
+    repeated FrameFinding findings = 3;
+}
+
+message FrameFinding {
+    string frame_id = 1;
+    // consistency | positioning
+    string check = 2;
+    string issue = 3;
 }
 
 message DescribeRequest {
@@ -416,6 +445,12 @@ message GenerateFrameImageRequest {
     string scene_id = 1;
     string frame_id = 2;
     bool regenerate = 3;
+    // What to change in the current picture, which is edited by this alone and keeps the rest; it
+    // stays current, and pictures composed from it go stale. A redraw starts again from the description.
+    string refine = 4;
+    // A picture of the story's (a library entry's, a frame's) to take what the change needs from;
+    // only with refine.
+    string refine_reference_asset_id = 5;
 }
 
 message GenerateFrameImageReply {
@@ -428,8 +463,14 @@ message GenerateLibraryImageRequest {
         string location_id = 2;
         string prop_id = 3;
         string extra_id = 5;
+        // Drawn from its location's picture when there is one.
+        string location_variation_id = 8;
     }
     bool regenerate = 4;
+    // As GenerateFrameImageRequest.refine.
+    string refine = 6;
+    // As GenerateFrameImageRequest.refine_reference_asset_id.
+    string refine_reference_asset_id = 7;
 }
 
 message GenerateLibraryImageReply {
@@ -450,6 +491,10 @@ message GenerateLookImageRequest {
     // The look change's line; unset is the look the scene opens with.
     optional string element_id = 3;
     bool regenerate = 4;
+    // As GenerateFrameImageRequest.refine.
+    string refine = 5;
+    // As GenerateFrameImageRequest.refine_reference_asset_id.
+    string refine_reference_asset_id = 6;
 }
 
 message GenerateLookImageReply {

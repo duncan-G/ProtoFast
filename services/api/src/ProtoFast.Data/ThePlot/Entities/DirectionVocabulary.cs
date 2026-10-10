@@ -11,6 +11,9 @@ public static class DirectionVocabulary
 
     public static readonly IReadOnlyList<string> ScreenSides = ["left", "centre", "right", "off"];
 
+    /// <summary>How far into the picture someone or something is, nearest the camera first.</summary>
+    public static readonly IReadOnlyList<string> Depths = ["foreground", "midground", "background"];
+
     /// <summary>
     /// Which way a body is turned, as the viewer sees the picture, round the circle: a three-quarter
     /// turn shows the face, a back three-quarter turn shows the back.

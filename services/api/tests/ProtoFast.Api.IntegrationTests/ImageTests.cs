@@ -1,3 +1,4 @@
+using Grpc.Core;
 using Microsoft.Extensions.DependencyInjection;
 using ProtoFast.Api.Services.Imaging;
 using Xunit;
@@ -51,6 +52,133 @@ public class ImageTests(StoryDatabase database)
 
     private Task<GenerateLibraryImageReply> PictureCharacterAsync(Character character, bool regenerate = false) =>
         _writer.Direct((d, c) => d.GenerateLibraryImage(new GenerateLibraryImageRequest { CharacterId = character.Id, Regenerate = regenerate }, c));
+
+    private Task<GenerateFrameImageReply> RefineAsync(
+        Scene scene, SceneDirection direction, int frame, string change, string referenceAssetId = "") =>
+        _writer.Direct((d, c) => d.GenerateFrameImage(new GenerateFrameImageRequest
+        {
+            SceneId = scene.Id,
+            FrameId = direction.Frames[frame].Id,
+            Refine = change,
+            RefineReferenceAssetId = referenceAssetId,
+        }, c));
+
+    [Fact]
+    public async Task A_refined_frame_is_its_own_picture_edited_and_stays_current()
+    {
+        var (_, scene, mara, _, _) = await FramedSceneAsync();
+        await PictureCharacterAsync(mara);
+        var direction = (await PictureAsync(scene, await _writer.GetDirectionAsync(scene.Id), 0)).Direction;
+        direction.Frames[1].Variation = "Mara lifts the radio to her mouth.";
+        direction = await _writer.SaveDirectionAsync(direction);
+        direction = (await PictureAsync(scene, direction, 1)).Direction;
+        var drawn = direction.Frames[0].Image;
+        var before = Images.Requests.Count;
+
+        var refined = (await RefineAsync(scene, direction, 0, "  Make the radio red.  ")).Direction;
+
+        Assert.Equal(1, Images.Requests.Count - before);
+        var request = Images.Requests[^1];
+        Assert.Equal("", request.Preamble);
+        var input = Assert.Single(request.References);
+        Assert.Equal(ImagePrompts.RefineCaption, input.Caption);
+        Assert.Equal(drawn.Url.Replace("https://media.test/", ""), input.Uri);
+        Assert.StartsWith("Edit this picture: Make the radio red.\nChange nothing else.", request.Prompt);
+        Assert.DoesNotContain("Harbour", request.Prompt);
+
+        // The same asset, edited in place: still current, still composed from what it was.
+        var picture = refined.Frames[0].Image;
+        Assert.Equal(drawn.AssetId, picture.AssetId);
+        Assert.NotEqual(drawn.Url, picture.Url);
+        Assert.False(picture.Stale);
+        Assert.Equal(["Mara"], picture.References);
+        await PictureAsync(scene, refined, 0);
+        Assert.Equal(1, Images.Requests.Count - before);
+
+        // The variation edited from it follows it, as after a redraw.
+        Assert.True(refined.Frames[1].Image.Stale);
+
+        // A redraw starts again from the description.
+        var redrawn = (await PictureAsync(scene, refined, 0, regenerate: true)).Direction.Frames[0].Image;
+        Assert.Equal(ImagePrompts.ReferencesPreamble, Images.Requests[^1].Preamble);
+        Assert.Equal(drawn.AssetId, redrawn.AssetId);
+    }
+
+    [Fact]
+    public async Task A_refine_takes_what_the_change_needs_from_a_picked_picture_of_the_story()
+    {
+        var (_, scene, mara, _, _) = await FramedSceneAsync();
+        var sheet = (await PictureCharacterAsync(mara)).Image.Image;
+        var direction = (await PictureAsync(scene, await _writer.GetDirectionAsync(scene.Id), 1)).Direction;
+        var drawn = direction.Frames[1].Image;
+
+        var refined = (await RefineAsync(scene, direction, 1, "Give her the scarf.", sheet.AssetId)).Direction;
+
+        var request = Images.Requests[^1];
+        Assert.Collection(request.References,
+            current =>
+            {
+                Assert.Equal(ImagePrompts.RefineWithReferenceCaption, current.Caption);
+                Assert.Equal(drawn.Url.Replace("https://media.test/", ""), current.Uri);
+            },
+            reference =>
+            {
+                Assert.Equal(ImagePrompts.RefineReferenceCaption, reference.Caption);
+                Assert.Equal(sheet.Url.Replace("https://media.test/", ""), reference.Uri);
+            });
+        Assert.StartsWith("Edit image 1: Give her the scarf. Use image 2 as the reference for the change.", request.Prompt);
+        Assert.Equal(drawn.AssetId, refined.Frames[1].Image.AssetId);
+        Assert.False(refined.Frames[1].Image.Stale);
+
+        var itself = await Assert.ThrowsAsync<RpcException>(() =>
+            RefineAsync(scene, refined, 1, "Brighter.", refined.Frames[1].Image.AssetId));
+        Assert.Equal(StatusCode.InvalidArgument, itself.StatusCode);
+
+        var (_, otherScene, _, _, _) = await FramedSceneAsync();
+        var elsewhere = (await PictureAsync(otherScene, await _writer.GetDirectionAsync(otherScene.Id), 0)).Direction.Frames[0].Image;
+        var before = Images.Requests.Count;
+        var foreign = await Assert.ThrowsAsync<RpcException>(() => RefineAsync(scene, refined, 1, "Brighter.", elsewhere.AssetId));
+        Assert.Equal(StatusCode.NotFound, foreign.StatusCode);
+        Assert.Equal(before, Images.Requests.Count);
+    }
+
+    [Fact]
+    public async Task Refining_a_library_picture_stales_the_frames_composed_from_it()
+    {
+        var (_, scene, mara, _, _) = await FramedSceneAsync();
+        var sheet = (await PictureCharacterAsync(mara)).Image.Image;
+        var direction = (await PictureAsync(scene, await _writer.GetDirectionAsync(scene.Id), 0)).Direction;
+
+        var refined = await _writer.Direct((d, c) => d.GenerateLibraryImage(
+            new GenerateLibraryImageRequest { CharacterId = mara.Id, Refine = "Give her a scar over the left eye." }, c));
+
+        Assert.Equal(sheet.AssetId, refined.Image.Image.AssetId);
+        Assert.False(refined.Image.Image.Stale);
+        Assert.StartsWith("Edit this picture: Give her a scar over the left eye.", Images.Requests[^1].Prompt);
+        Assert.True((await _writer.GetDirectionAsync(scene.Id)).Frames[0].Image.Stale);
+    }
+
+    [Fact]
+    public async Task Only_an_existing_picture_of_an_unlocked_frame_is_refined()
+    {
+        var (_, scene, _, _, _) = await FramedSceneAsync();
+        var direction = await _writer.GetDirectionAsync(scene.Id);
+        var before = Images.Requests.Count;
+
+        var missing = await Assert.ThrowsAsync<RpcException>(() => RefineAsync(scene, direction, 0, "Brighter."));
+        Assert.Equal(StatusCode.FailedPrecondition, missing.StatusCode);
+
+        direction = (await PictureAsync(scene, direction, 0)).Direction;
+        var tooLong = await Assert.ThrowsAsync<RpcException>(() =>
+            RefineAsync(scene, direction, 0, new string('x', ImageRefiner.InstructionsMaxLength + 1)));
+        Assert.Equal(StatusCode.InvalidArgument, tooLong.StatusCode);
+
+        direction.Frames[0].Locked = true;
+        direction = await _writer.SaveDirectionAsync(direction);
+        var locked = await RefineAsync(scene, direction, 0, "Brighter.");
+        Assert.Equal(direction.Frames[0].Image.Url, locked.Direction.Frames[0].Image.Url);
+        Assert.Equal(1, Images.Requests.Count - before);
+    }
 
     [Fact]
     public async Task A_library_entry_is_pictured_from_its_sheet_once_and_reads_stale_when_the_sheet_changes()
@@ -173,6 +301,164 @@ public class ImageTests(StoryDatabase database)
         direction = (await PictureAsync(scene, direction, 1)).Direction;
         direction.Frames[1].Variation = "Mara sets the radio down.";
         Assert.True((await _writer.SaveDirectionAsync(direction)).Frames[1].Image.Stale);
+    }
+
+    [Fact]
+    public async Task A_queued_redraw_of_a_frame_also_redraws_the_variation_it_staled()
+    {
+        var (story, scene, mara, _, _) = await FramedSceneAsync();
+        var direction = await _writer.GetDirectionAsync(scene.Id);
+        direction.Frames[1].Variation = "Mara lifts the radio to her mouth.";
+        direction = await _writer.SaveDirectionAsync(direction);
+        direction = (await PictureAsync(scene, direction, 0)).Direction;
+        direction = (await PictureAsync(scene, direction, 1)).Direction;
+
+        var job = await _writer.Jobs(async (j, c) => (await j.StartJob(new StartJobRequest
+        {
+            StoryId = story.Id,
+            Label = "Picture the scene",
+            FollowVariations = true,
+            Steps =
+            {
+                new JobStep { LibraryImage = new GenerateLibraryImageRequest { CharacterId = mara.Id } },
+                new JobStep { FrameImage = new GenerateFrameImageRequest { SceneId = scene.Id, FrameId = direction.Frames[0].Id, Regenerate = true } },
+            },
+        }, c)).Job);
+        await _writer.RunNextJobAsync();
+
+        var done = await _writer.Jobs((j, c) => j.GetJob(new GetJobRequest { JobId = job.Id }, c));
+        Assert.Equal(JobStatus.Succeeded, done.Job.Status);
+        Assert.Equal(direction.Frames[1].Id, done.Job.Steps[2].FrameImage.FrameId);
+        Assert.Equal(3, done.Job.StepsDone);
+        var after = done.Results[^1].FrameImage.Direction;
+        Assert.False(after.Frames[0].Image.Stale);
+        Assert.False(after.Frames[1].Image.Stale);
+        Assert.NotNull(done.Results[0].LibraryImage.Image);
+    }
+
+    [Fact]
+    public async Task A_variation_whose_camera_moves_keeps_who_stays_and_brings_in_who_arrives()
+    {
+        var (story, scene, mara, _, radio) = await FramedSceneAsync();
+        var tom = await _writer.CreateCharacterAsync(story.Id, "Tom");
+        await PictureCharacterAsync(mara);
+        await PictureCharacterAsync(tom);
+        var direction = await _writer.GetDirectionAsync(scene.Id);
+        direction.Appearances.Add(new SceneAppearance { CharacterId = tom.Id });
+        direction.Frames[0].Placements.Add(new Placement { CharacterId = tom.Id, OnScreen = false });
+        var frame = direction.Frames[1];
+        frame.Variation = "The camera has moved further down the quay; Tom waits by the bollards and Mara has walked up to him.";
+        frame.VariationMovesCamera = true;
+        frame.Camera = "on the quay past the bollards, looking back toward the harbour office";
+        frame.Placements.Add(new Placement { CharacterId = mara.Id, Screen = "right", Facing = "back three-quarter left" });
+        frame.Placements.Add(new Placement { CharacterId = tom.Id, Screen = "left", Facing = "toward camera", Looking = "Mara" });
+        frame.Props.Add(new FrameProp { PropId = radio.Id, InView = false });
+        direction = await _writer.SaveDirectionAsync(direction);
+        direction = (await PictureAsync(scene, direction, 0)).Direction;
+        var before = Images.Requests.Count;
+
+        direction = (await PictureAsync(scene, direction, 1)).Direction;
+
+        Assert.Equal(1, Images.Requests.Count - before);
+        var request = Images.Requests[^1];
+        Assert.Equal(["Frame 1", "Tom"], direction.Frames[1].Image.References);
+        Assert.StartsWith("Image 1: Frame 1 of this scene, the picture just before this one. The camera has moved since", request.References[0].Caption);
+        Assert.StartsWith("Image 2: The library's reference sheet of Tom", request.References[1].Caption);
+        Assert.Contains("a moment after image 1, still in Harbour. The camera has moved", request.Prompt);
+        Assert.Contains("Camera: medium shot, on the quay past the bollards, looking back toward the harbour office.", request.Prompt);
+        Assert.Contains("What changes: The camera has moved further down the quay;", request.Prompt);
+        Assert.Contains("No longer in the picture: Radio.", request.Prompt);
+        Assert.Contains("New in the picture, not in image 1:\nTom (", request.Prompt);
+        Assert.DoesNotContain("Mara (", request.Prompt);
+        Assert.Contains("Mara: frame right; back to the camera, body turned three-quarters toward screen left.", request.Prompt);
+        Assert.Contains("Tom: frame left; body facing the camera; looking at Mara.", request.Prompt);
+        Assert.Contains("Exactly two people in the picture.", request.Prompt);
+        Assert.False(direction.Frames[1].Image.Stale);
+
+        // Turning the camera move off makes it a plain edit again, which is a different picture.
+        direction.Frames[1].VariationMovesCamera = false;
+        direction = await _writer.SaveDirectionAsync(direction);
+        Assert.True(direction.Frames[1].Image.Stale);
+
+        // Frame 2 is now an edit of frame 1's picture, which has no Tom, so a camera move from it brings Tom in.
+        direction = (await PictureAsync(scene, direction, 1)).Direction;
+        direction.Frames[2].Variation = "The camera has pushed in on Tom.";
+        direction.Frames[2].VariationMovesCamera = true;
+        direction = await _writer.SaveDirectionAsync(direction);
+        direction = (await PictureAsync(scene, direction, 2)).Direction;
+        Assert.Equal(["Frame 2", "Tom"], direction.Frames[2].Image.References);
+        Assert.Contains("New in the picture, not in image 1:\nTom (", Images.Requests[^1].Prompt);
+    }
+
+    private async Task<LocationVariation> QuayEndAsync(Location harbour) =>
+        (await _writer.Call((s, c) => s.SaveLocationVariations(new SaveLocationVariationsRequest
+        {
+            LocationId = harbour.Id,
+            Variations = { new LocationVariation { Name = "Quay end", Description = "The end of the quay, facing the open water, the crane on the left." } },
+        }, c))).Location.Variations.Single();
+
+    [Fact]
+    public async Task A_location_variation_is_drawn_from_the_location_picture_and_frames_there_take_their_background_from_it()
+    {
+        var (story, scene, _, harbour, _) = await FramedSceneAsync();
+        var quay = await QuayEndAsync(harbour);
+        await _writer.Direct((d, c) => d.GenerateLibraryImage(new GenerateLibraryImageRequest { LocationId = harbour.Id }, c));
+
+        var plate = await _writer.Direct((d, c) => d.GenerateLibraryImage(new GenerateLibraryImageRequest { LocationVariationId = quay.Id }, c));
+
+        Assert.Equal(("locationVariation", quay.Id), (plate.Image.SubjectKind, plate.Image.SubjectId));
+        Assert.Equal(["Harbour"], plate.Image.Image.References);
+        var drawn = Images.Requests[^1];
+        Assert.Equal(ImagePrompts.LocationVariationCaption, Assert.Single(drawn.References).Caption);
+        Assert.StartsWith("Image 1 is the establishing shot of Harbour.", drawn.Prompt.Split('\n')[1]);
+        Assert.Contains("This part of the place: Quay end. The end of the quay, facing the open water, the crane on the left.", drawn.Prompt);
+
+        var direction = await _writer.GetDirectionAsync(scene.Id);
+        direction.Frames[1].LocationVariationId = quay.Id;
+        direction = await _writer.SaveDirectionAsync(direction);
+        direction = (await PictureAsync(scene, direction, 0)).Direction;
+        Assert.Contains("Harbour", direction.Frames[0].Image.References);
+
+        direction = (await PictureAsync(scene, direction, 1)).Direction;
+
+        var request = Images.Requests[^1];
+        Assert.Equal(["Frame 1", "Harbour (Quay end)"], direction.Frames[1].Image.References);
+        Assert.EndsWith("at another part of the place: keep the people, what they wear and carry, and the light as it shows them, but not its background.",
+            request.References[0].Caption);
+        Assert.StartsWith("Image 2: The library's picture of Quay end in Harbour, empty", request.References[1].Caption);
+        Assert.Contains("Where in the place this picture is: Quay end. The end of the quay", request.Prompt);
+
+        // Frame 3 is back at the establishing view: frame 2 is offered for its people only.
+        direction = (await PictureAsync(scene, direction, 2)).Direction;
+        Assert.EndsWith("but not its background.", Images.Requests[^1].References[0].Caption);
+
+        // A new picture of the place stales the part drawn from it.
+        await _writer.Direct((d, c) => d.GenerateLibraryImage(new GenerateLibraryImageRequest { LocationId = harbour.Id, Regenerate = true }, c));
+        var listed = await _writer.Direct((d, c) => d.ListLibraryImages(new ListLibraryImagesRequest { StoryId = story.Id }, c));
+        Assert.True(listed.Images.Single(i => i.SubjectId == quay.Id).Image.Stale);
+    }
+
+    [Fact]
+    public async Task A_variation_at_another_part_of_the_place_moves_the_camera_and_keeps_only_the_people()
+    {
+        var (_, scene, mara, harbour, _) = await FramedSceneAsync();
+        var quay = await QuayEndAsync(harbour);
+        await PictureCharacterAsync(mara);
+        await _writer.Direct((d, c) => d.GenerateLibraryImage(new GenerateLibraryImageRequest { LocationVariationId = quay.Id }, c));
+        var direction = await _writer.GetDirectionAsync(scene.Id);
+        direction.Frames[1].Variation = "Mara has walked to the end of the quay.";
+        direction.Frames[1].LocationVariationId = quay.Id;
+        direction = await _writer.SaveDirectionAsync(direction);
+        direction = (await PictureAsync(scene, direction, 0)).Direction;
+
+        direction = (await PictureAsync(scene, direction, 1)).Direction;
+
+        var request = Images.Requests[^1];
+        Assert.Equal(["Frame 1", "Harbour (Quay end)"], direction.Frames[1].Image.References);
+        Assert.EndsWith("never its background or composition.", request.References[0].Caption);
+        Assert.Contains("a moment after image 1, at another part of Harbour.", request.Prompt);
+        Assert.Contains("Where in the place this picture is: Quay end.", request.Prompt);
+        Assert.Contains("What changes: Mara has walked to the end of the quay.", request.Prompt);
     }
 
     [Fact]

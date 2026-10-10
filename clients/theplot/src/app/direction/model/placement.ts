@@ -3,6 +3,10 @@ export interface Placement {
   characterId: string;
   /** left | centre | right | off, or empty */
   screen: string;
+  /** foreground | midground | background, or empty */
+  depth: string;
+  /** Where in the place they are, in the place's own terms: "at the nurse station counter". */
+  mark: string;
   /** A `DIRECTION_VOCABULARY.facings` label, or empty: as the viewer sees the picture. */
   facing: string;
   /** A `DIRECTION_VOCABULARY.movings` label, or empty. */
@@ -24,6 +28,8 @@ export function blankPlacement(characterId: string): Placement {
   return {
     characterId,
     screen: '',
+    depth: '',
+    mark: '',
     facing: '',
     moving: '',
     looking: '',
@@ -40,6 +46,8 @@ export function blankPlacement(characterId: string): Placement {
 export function isBlankPlacement(placement: Placement): boolean {
   return (
     !placement.screen &&
+    !placement.depth &&
+    !placement.mark &&
     !placement.facing &&
     !placement.moving &&
     !placement.looking &&

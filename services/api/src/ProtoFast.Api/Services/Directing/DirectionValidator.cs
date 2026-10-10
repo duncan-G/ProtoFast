@@ -146,6 +146,9 @@ public static class DirectionValidator
                 FirstElementId = first.Id,
                 LastElementId = last.Id,
                 LocationId = frame.HasLocationId ? Reference(frame.LocationId, references.Story.LocationIds, where, "location") : null,
+                LocationVariationId = frame.HasLocationVariationId
+                    ? Reference(frame.LocationVariationId, references.LocationVariationIds, where, "location variation")
+                    : null,
                 TimeOfDay = VocabularyLabels.Pick(
                     frame.HasTimeOfDay ? frame.TimeOfDay : null, references.Story.TimesOfDay, current: null, "time of day"),
                 Beat = Text(frame.Beat, BeatMaxLength, where, "beat"),
@@ -155,6 +158,7 @@ public static class DirectionValidator
                 LocationChange = Text(frame.LocationChange, BeatMaxLength, where, "location change"),
                 Camera = Text(frame.Camera, BeatMaxLength, where, "camera position"),
                 Variation = Text(frame.Variation, BeatMaxLength, where, "change from the previous frame"),
+                VariationMovesCamera = frame.VariationMovesCamera,
                 HoldMs = frame.HasHoldMs ? frame.HoldMs : null,
                 Locked = frame.Locked,
                 Placements = Placements(frame.Placements, references, where),
@@ -196,6 +200,8 @@ public static class DirectionValidator
             {
                 CharacterId = characterId,
                 Screen = Staging(placement.Screen, DirectionVocabulary.ScreenSides, where, "screen side"),
+                Depth = Staging(placement.Depth, DirectionVocabulary.Depths, where, "depth"),
+                Mark = Text(placement.Mark, FieldMaxLength, where, "mark"),
                 Facing = Staging(placement.Facing, DirectionVocabulary.Facings, where, "facing"),
                 Moving = Staging(placement.Moving, DirectionVocabulary.Movings, where, "movement across the screen"),
                 Looking = Text(placement.Looking, FieldMaxLength, where, "looking at"),
@@ -219,7 +225,14 @@ public static class DirectionValidator
             var id = Reference(prop.PropId, references.Story.PropIds, where, "prop");
             if (records.All(p => p.PropId != id))
             {
-                records.Add(new FramePropRecord { PropId = id, InView = prop.InView });
+                records.Add(new FramePropRecord
+                {
+                    PropId = id,
+                    InView = prop.InView,
+                    Screen = Staging(prop.Screen, DirectionVocabulary.ScreenSides, where, "screen side"),
+                    Depth = Staging(prop.Depth, DirectionVocabulary.Depths, where, "depth"),
+                    Mark = Text(prop.Mark, FieldMaxLength, where, "mark"),
+                });
             }
         }
 
@@ -239,6 +252,8 @@ public static class DirectionValidator
                     ExtraId = id,
                     OnScreen = extra.HasOnScreen ? extra.OnScreen : null,
                     Screen = Staging(extra.Screen, DirectionVocabulary.ScreenSides, where, "screen side"),
+                    Depth = Staging(extra.Depth, DirectionVocabulary.Depths, where, "depth"),
+                    Mark = Text(extra.Mark, FieldMaxLength, where, "mark"),
                     Facing = Staging(extra.Facing, DirectionVocabulary.Facings, where, "facing"),
                     Moving = Staging(extra.Moving, DirectionVocabulary.Movings, where, "movement across the screen"),
                     Looking = Text(extra.Looking, FieldMaxLength, where, "looking at"),

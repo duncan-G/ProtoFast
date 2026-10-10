@@ -9,7 +9,7 @@ export type DirectTarget =
   | { kind: 'cues' }
   | { kind: 'cue'; elementId: string }
   | { kind: 'frames' }
-  | { kind: 'frame'; frameId: string };
+  | { kind: 'frame'; frameId: string; instructions?: string };
 
 /** One string per target, for busy indicators. */
 export function targetKey(target: DirectTarget): string {

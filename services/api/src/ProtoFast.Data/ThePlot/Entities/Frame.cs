@@ -26,6 +26,11 @@ public sealed class Frame
 
     public Location? Location { get; set; }
 
+    /// <summary>The part of the location the camera is in; null is where its establishing shot stands.</summary>
+    public Guid? LocationVariationId { get; set; }
+
+    public LocationVariation? LocationVariation { get; set; }
+
     public string? TimeOfDay { get; set; }
 
     /// <summary>What is happening: an action, or "MARA presses, TOM deflects".</summary>
@@ -51,6 +56,12 @@ public sealed class Frame
     /// picture edited by this text alone. Empty for a frame pictured from its full description.
     /// </summary>
     public string Variation { get; set; } = "";
+
+    /// <summary>
+    /// The camera moves from where the previous frame had it, and people and props may come and go:
+    /// the previous picture gives the place, light and whoever stays, not the composition.
+    /// </summary>
+    public bool VariationMovesCamera { get; set; }
 
     /// <summary>Only for frames with no dialogue to time them.</summary>
     public int? HoldMs { get; set; }

@@ -117,6 +117,7 @@ describe('ConnectStoryApi', () => {
           description: null,
           appearance: null,
           acoustics: null,
+          variations: [],
         },
       ],
       props: [{ id: 'radio', storyId: 'story', name: 'Radio', description: null }],
@@ -300,6 +301,7 @@ describe('ConnectStoryApi', () => {
       description: null,
       appearance: null,
       acoustics: null,
+      variations: [],
     });
     await api.saveVocabulary('story', {
       timesOfDay: ['GOLDEN HOUR'],

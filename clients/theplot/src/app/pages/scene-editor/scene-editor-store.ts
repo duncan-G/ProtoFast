@@ -1,6 +1,7 @@
 import { computed, inject, Injectable, OnDestroy, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { DirectionApi } from '../../direction/direction-api';
+import { DirectorJobs, JobProgress } from '../../direction/director-jobs';
 import { directionChanges, isSpoken } from '../../direction/direction-changes';
 import {
   ElementOrder,
@@ -19,8 +20,15 @@ import { covers, DirectTarget } from '../../direction/model/direct-target';
 import { DIRECTION_VOCABULARY } from '../../direction/model/direction-vocabulary';
 import { Frame } from '../../direction/model/frame';
 import { Placement } from '../../direction/model/placement';
+import { FrameProp, isPlacedProp } from '../../direction/model/frame-prop';
+import { FrameFinding } from '../../direction/model/frame-finding';
+import { DirectorJob, isActive } from '../../direction/model/director-job';
+import { JobStep } from '../../direction/model/job-step';
+import { JobStepResult } from '../../direction/model/job-step-result';
 import { LibraryImage } from '../../direction/model/library-image';
+import { PictureTarget } from '../../direction/model/picture-target';
 import { LookChange } from '../../direction/model/look-change';
+import { PictureRefinement } from '../../direction/model/picture-refinement';
 import { blankAppearance, SceneAppearance } from '../../direction/model/scene-appearance';
 import { emptyDirection, isDirected, SceneDirection } from '../../direction/model/scene-direction';
 import { blankPropState, ScenePropState } from '../../direction/model/scene-prop-state';
@@ -73,6 +81,7 @@ import { SceneStats } from './scene-stats';
 import { EditorMode } from './editor-mode';
 import { AudioState } from './audio-state';
 import { ImageState } from './image-state';
+import { RefineReference } from './refine-reference';
 import { DirectorLayout } from './director-layout';
 import { DirectorLibraryTab } from './director-library-tab';
 import { InspectorScope } from './inspector-scope';
@@ -95,7 +104,12 @@ export interface StagingSubject {
   id: string;
 }
 
-export type Staging = Pick<Placement, 'screen' | 'facing' | 'moving' | 'looking' | 'pose'>;
+export type Staging = Pick<
+  Placement,
+  'screen' | 'depth' | 'mark' | 'facing' | 'moving' | 'looking' | 'pose'
+>;
+
+export type PropPlace = Pick<FrameProp, 'screen' | 'depth' | 'mark'>;
 
 @Injectable()
 export class SceneEditorStore implements OnDestroy {
@@ -119,22 +133,63 @@ export class SceneEditorStore implements OnDestroy {
   readonly directorLibraryEntry = signal<string | null>(null);
   /** The first element id of the selected frame: frames are known by their place, not their id. */
   readonly selectedFrameKey = signal<string | null>(null);
-  /** What the model is working on. */
-  readonly directing = signal<readonly DirectTarget[]>([]);
-  /** The library entry the model is describing. */
-  readonly describing = signal<string | null>(null);
-  /** The entry ids of the describe run under way, in order. */
-  readonly describeRun = signal<readonly string[]>([]);
-  /** Element ids whose lines are being spoken; 'scene' while a whole-scene pass runs. */
-  readonly generating = signal<ReadonlySet<string>>(new Set());
+  private readonly jobs = inject(DirectorJobs);
+  /** This story's queued work still to do. */
+  private readonly pendingSteps = computed(() => {
+    const storyId = this.story()?.id;
+    return this.jobs
+      .pending()
+      .filter((p) => p.job.storyId === storyId)
+      .map((p) => p.step);
+  });
+  /** What the model is queued for or working on in this scene. */
+  readonly directing = computed<readonly DirectTarget[]>(() => {
+    const sceneId = this.scene()?.id;
+    return this.pendingSteps().flatMap((s) =>
+      s.kind === 'direct' && s.sceneId === sceneId ? [s.target] : [],
+    );
+  });
+  /** What the frame checks still found after the last pass over each frame; not stored. */
+  readonly findings = signal<readonly FrameFinding[]>([]);
+  /** Library entries whose sheets are queued or being written. */
+  readonly describing = computed<ReadonlySet<string>>(
+    () => new Set(this.pendingSteps().flatMap((s) => (s.kind === 'describe' ? [s.target.id] : []))),
+  );
   /** Lines queued or being spoken, by element id. */
-  readonly generatingLines = signal<ReadonlySet<string>>(new Set());
-  /** The character whose voice is being cast. */
-  readonly castingVoice = signal<string | null>(null);
+  readonly generatingLines = computed<ReadonlySet<string>>(() => {
+    const sceneId = this.scene()?.id;
+    return new Set(
+      this.pendingSteps().flatMap((s) =>
+        s.kind === 'audio' && s.sceneId === sceneId ? [s.elementId] : [],
+      ),
+    );
+  });
+  /** Characters whose voices are queued or being cast. */
+  readonly castingVoice = computed<ReadonlySet<string>>(
+    () =>
+      new Set(this.pendingSteps().flatMap((s) => (s.kind === 'castVoice' ? [s.characterId] : []))),
+  );
   /** The story's library pictures, by entry id. */
   readonly libraryImages = signal<ReadonlyMap<string, LibraryImage>>(new Map());
-  /** Frame ids and library entry ids queued or being pictured. */
-  readonly picturing = signal<ReadonlySet<string>>(new Set());
+  /** Frame ids, look keys and library entry ids queued or being pictured. */
+  readonly picturing = computed<ReadonlySet<string>>(
+    () =>
+      new Set(
+        this.pendingSteps().flatMap((s) => {
+          switch (s.kind) {
+            case 'frameImage':
+              return [s.frameId];
+            case 'lookImage':
+              return [lookKey(s.characterId, s.elementId)];
+            case 'libraryImage':
+              return [s.target.id];
+            default:
+              return [];
+          }
+        }),
+      ),
+  );
+  private readonly stopTakingIn = this.jobs.onProgress((progress) => this.takeIn(progress));
 
   readonly editingId = signal<string | null>(null);
   readonly libraryTab = signal<LibraryTab>('characters');
@@ -401,6 +456,82 @@ export class SceneEditorStore implements OnDestroy {
     ...this.extrasInScene().map((e) => ({ kind: 'extra' as const, id: e.id })),
   ]);
 
+  /** The parts of places the scene's frames stand in, as picture targets, in frame order. */
+  readonly scenePartTargets = computed<PictureTarget[]>(() =>
+    [...new Set(this.frameSpans().flatMap((s) => s.frame.locationVariationId ?? []))].map((id) => ({
+      kind: 'locationVariation' as const,
+      id,
+    })),
+  );
+
+  /** Where a frame is: its own place, else the heading in force, else the unheaded place. */
+  frameLocation(span: FrameSpan): Location | null {
+    const elements = this.elements();
+    const id =
+      span.frame.locationId ??
+      headingAt(elements, span.first)?.locationId ??
+      this.locationsInScene().find(
+        (l) => !elements.some((e) => e.type === 'Heading' && e.locationId === l.id),
+      )?.id;
+    return (id && this.locationById().get(id)) || null;
+  }
+
+  /** Every location's variations by id, with the location they belong to. */
+  readonly locationVariationById = computed(
+    () =>
+      new Map(
+        this.locations().flatMap((location) =>
+          location.variations.map((variation) => [variation.id, { location, variation }] as const),
+        ),
+      ),
+  );
+
+  /** Pictures a refine may take its change from: the scene's library pictures, then its frames'. */
+  readonly refineReferences = computed<RefineReference[]>(() => {
+    const images = this.libraryImages();
+    const library = [
+      ...this.cast().map((e) => ({ entry: e, kind: 'Character' })),
+      ...this.locationsInScene().map((e) => ({ entry: e, kind: 'Location' })),
+      ...this.locationsInScene().flatMap((l) =>
+        l.variations.map((v) => ({
+          entry: { id: v.id, name: `${l.name} · ${v.name}` },
+          kind: 'Location',
+        })),
+      ),
+      ...this.propsInScene().map((e) => ({ entry: e, kind: 'Prop' })),
+      ...this.extrasInScene().map((e) => ({ entry: e, kind: 'Extras' })),
+    ].flatMap(({ entry, kind }) => {
+      const image = images.get(entry.id)?.image;
+      return image
+        ? [
+            {
+              assetId: image.assetId,
+              url: image.url,
+              label: entry.name,
+              kind,
+              detail: '',
+              frameNumber: null,
+            },
+          ]
+        : [];
+    });
+    const frames = this.frameSpans().flatMap(({ frame }, i) =>
+      frame.image
+        ? [
+            {
+              assetId: frame.image.assetId,
+              url: frame.image.url,
+              label: `Frame ${i + 1}`,
+              kind: 'Frame',
+              detail: frame.beat,
+              frameNumber: i + 1,
+            },
+          ]
+        : [],
+    );
+    return [...library, ...frames];
+  });
+
   libraryImageState(id: string): ImageState {
     return this.picturing().has(id)
       ? 'generating'
@@ -444,6 +575,7 @@ export class SceneEditorStore implements OnDestroy {
 
   ngOnDestroy(): void {
     this.player.stop();
+    this.stopTakingIn();
     this.flushSave();
   }
 
@@ -452,6 +584,7 @@ export class SceneEditorStore implements OnDestroy {
   async open(storyId: string, sceneId: string | null): Promise<void> {
     const saved = this.flushSave();
     this.error.set('');
+    this.jobs.load();
     try {
       if (this.story()?.id !== storyId) {
         this.loading.set(true);
@@ -901,6 +1034,7 @@ export class SceneEditorStore implements OnDestroy {
           description: null,
           appearance: null,
           acoustics: null,
+          variations: [],
         }),
       (s, l) => ({ ...s, locations: [...s.locations, l] }),
     );
@@ -1391,9 +1525,37 @@ export class SceneEditorStore implements OnDestroy {
       return;
     }
     const scene = inViewOf(direction, null, propId).value;
+    const current = frame.props.find((p) => p.propId === propId);
+    const rest = frame.props.filter((p) => p.propId !== propId);
+    const next: FrameProp = { screen: '', depth: '', mark: '', ...current, propId, inView: on };
+    this.updateFrame(frameKey, {
+      props: on === scene && !isPlacedProp(next) ? rest : [...rest, next],
+    });
+  }
+
+  dismissFindings(frameId: string): void {
+    this.findings.update((all) => all.filter((f) => f.frameId !== frameId));
+  }
+
+  /** Where a prop the frame shows is; a row that neither places nor overrides it is dropped. */
+  setPropPlace(propId: string, patch: Partial<PropPlace>, frameKey: string): void {
+    const frame = this.frameByKey(frameKey);
+    const direction = this.direction();
+    if (!frame || !direction) {
+      return;
+    }
+    const scene = inViewOf(direction, null, propId).value;
+    const current = frame.props.find((p) => p.propId === propId) ?? {
+      propId,
+      inView: scene,
+      screen: '',
+      depth: '',
+      mark: '',
+    };
+    const next = { ...current, ...patch };
     const rest = frame.props.filter((p) => p.propId !== propId);
     this.updateFrame(frameKey, {
-      props: on === scene ? rest : [...rest, { propId, inView: on }],
+      props: next.inView === scene && !isPlacedProp(next) ? rest : [...rest, next],
     });
   }
 
@@ -1411,8 +1573,17 @@ export class SceneEditorStore implements OnDestroy {
     }
   }
 
+  /** The frame follows the scene again for which props are in view; where it puts them stays. */
   resetProps(frameKey: string): void {
-    this.updateFrame(frameKey, { props: [] });
+    const frame = this.frameByKey(frameKey);
+    const direction = this.direction();
+    if (frame && direction) {
+      this.updateFrame(frameKey, {
+        props: frame.props
+          .filter(isPlacedProp)
+          .map((p) => ({ ...p, inView: inViewOf(direction, null, p.propId).value })),
+      });
+    }
   }
 
   setExtraOnScreen(extraId: string, on: boolean, frameKey: string | null): void {
@@ -1733,31 +1904,67 @@ export class SceneEditorStore implements OnDestroy {
 
   // ─── director mode: the model ──────────────────────────────────────────
 
-  /** Pending edits save first, so the model reads the scene as the author sees it. */
+  /** Queues the model's pass; pending edits save first, so it reads the scene as the author sees it. */
   async direct(target: DirectTarget, replaceEdited = false): Promise<void> {
     const scene = this.scene();
     if (!scene || !this.canDirect(target)) {
       return;
     }
-    this.directing.update((running) => [...running, target]);
-    try {
-      await this.flushSave();
-      const { direction, extras } = await this.directionApi.direct(scene.id, target, replaceEdited);
-      this.story.update((s) => s && { ...s, extras });
-      if (this.scene()?.id === direction.sceneId) {
-        if (this.directionDirty) {
-          // Edits made while the model worked are kept; the next save carries them over its result.
-          this.direction.update(
-            (mine) => mine && { ...direction, ...this.ownEdits(mine, direction) },
-          );
-        } else {
-          this.direction.set(direction);
-        }
-      }
-    } catch (err) {
-      this.error.set(describeError(err, 'The scene could not be directed.'));
-    } finally {
-      this.directing.update((running) => running.filter((t) => t !== target));
+    await this.queue(
+      this.directLabel(target),
+      [{ kind: 'direct', sceneId: scene.id, target, replaceEdited }],
+      'The scene could not be directed.',
+    );
+  }
+
+  private directLabel(target: DirectTarget): string {
+    switch (target.kind) {
+      case 'scene':
+        return 'Direct the scene';
+      case 'storyDay':
+        return 'Suggest the story day';
+      case 'extras':
+        return 'Suggest the extras';
+      case 'continuity':
+        return 'Suggest looks and props';
+      case 'appearance':
+        return `Suggest ${this.characterById().get(target.characterId)?.name ?? 'a'}’s look`;
+      case 'propState':
+        return `Suggest the ${this.propById().get(target.propId)?.name ?? 'prop'}’s state`;
+      case 'cues':
+        return 'Suggest every delivery';
+      case 'cue':
+        return `Suggest the delivery of ${this.lineExcerpt(target.elementId)}`;
+      case 'frames':
+        return 'Suggest the frames';
+      case 'frame':
+        return `Suggest frame ${this.frameNumber(target.frameId)}`;
+    }
+  }
+
+  private adoptDirect(
+    target: DirectTarget,
+    result: Extract<JobStepResult, { kind: 'direct' }>,
+  ): void {
+    const { direction, extras, findings } = result;
+    this.story.update((s) => s && { ...s, extras });
+    if (!direction || this.scene()?.id !== direction.sceneId) {
+      return;
+    }
+    // A frame pass looks at every frame again; a single frame only at itself.
+    this.findings.update((all) => [
+      ...(target.kind === 'frame'
+        ? all.filter((f) => f.frameId !== target.frameId)
+        : target.kind === 'frames' || target.kind === 'scene'
+          ? []
+          : all),
+      ...findings,
+    ]);
+    if (this.directionDirty) {
+      // Edits made while the model worked are kept; the next save carries them over its result.
+      this.direction.update((mine) => mine && { ...direction, ...this.ownEdits(mine, direction) });
+    } else {
+      this.direction.set(direction);
     }
   }
 
@@ -1817,26 +2024,16 @@ export class SceneEditorStore implements OnDestroy {
     await this.describeAll([target]);
   }
 
-  /** Writes the sheets one at a time, stopping at the first that fails. */
-  async describeAll(targets: readonly DescribeTarget[]): Promise<void> {
-    if (this.describing() !== null || targets.length === 0) {
-      return;
-    }
-    this.describing.set(targets[0].id);
-    this.describeRun.set(targets.map((t) => t.id));
-    try {
-      await this.flushSave();
-      for (const target of targets) {
-        this.describing.set(target.id);
-        this.replaceEntry(target, await this.directionApi.describe(target));
-      }
-      await Promise.all([this.refreshMedia(), this.refreshLibraryImages()]);
-    } catch (err) {
-      this.error.set(describeError(err, 'The sheet could not be written.'));
-    } finally {
-      this.describing.set(null);
-      this.describeRun.set([]);
-    }
+  /** Queues the sheets as one job, written one at a time and stopping at the first that fails. */
+  async describeAll(targets: readonly DescribeTarget[]): Promise<DirectorJob | null> {
+    const queued = targets.filter((t) => !this.describing().has(t.id));
+    return this.queue(
+      queued.length === 1
+        ? `Describe ${this.entryName(queued[0])}`
+        : `Describe ${queued.length} library entries`,
+      queued.map((target) => ({ kind: 'describe', target })),
+      'The sheet could not be written.',
+    );
   }
 
   // ─── director mode: audio ──────────────────────────────────────────────
@@ -1848,21 +2045,11 @@ export class SceneEditorStore implements OnDestroy {
     if (!scene || queued.length === 0) {
       return;
     }
-    this.generatingLines.update((ids) => new Set([...ids, ...queued]));
-    try {
-      await this.flushSave();
-      for (const id of queued) {
-        if (this.scene()?.id !== scene.id) {
-          return;
-        }
-        this.adoptAudio(await this.directionApi.generateAudio(scene.id, id, regenerate), scene.id);
-        this.generatingLines.update((ids) => new Set([...ids].filter((i) => i !== id)));
-      }
-    } catch (err) {
-      this.error.set(describeError(err, 'The line could not be spoken.'));
-    } finally {
-      this.generatingLines.update((ids) => new Set([...ids].filter((i) => !queued.includes(i))));
-    }
+    await this.queue(
+      queued.length === 1 ? `Speak ${this.lineExcerpt(queued[0])}` : `Speak ${queued.length} lines`,
+      queued.map((elementId) => ({ kind: 'audio', sceneId: scene.id, elementId, regenerate })),
+      'The line could not be spoken.',
+    );
   }
 
   /** Only the audio comes from the reply, and cues the server made for unspoken lines. */
@@ -1894,7 +2081,8 @@ export class SceneEditorStore implements OnDestroy {
   /**
    * Pictures the frames one at a time in scene order, so each can be composed from the one before
    * it. A scene run first pictures the scene's library entries that have no current picture, since
-   * those keep faces and places the same from frame to frame.
+   * those keep faces and places the same from frame to frame, and redraws a variation after a frame
+   * it redrew, which that made stale.
    */
   async generateFrameImages(
     frameIds: readonly string[],
@@ -1902,52 +2090,49 @@ export class SceneEditorStore implements OnDestroy {
     withLibrary = false,
   ): Promise<void> {
     const scene = this.scene();
-    const queued = frameIds.filter(
-      (id) => id && !this.picturing().has(id) && !this.frameById(id)?.locked,
-    );
-    if (!scene || queued.length === 0) {
+    const order = this.frameSpans().map((s) => s.frame.id);
+    const frames = frameIds
+      .filter((id) => id && !this.picturing().has(id) && !this.frameById(id)?.locked)
+      .sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    if (!scene || frames.length === 0) {
       return;
     }
-    this.picturing.update((ids) => new Set([...ids, ...queued]));
-    try {
-      await this.flushSave();
-      if (withLibrary) {
-        const entries = this.sceneEntries().filter((t) =>
-          ['none', 'stale'].includes(this.libraryImageState(t.id)),
-        );
-        await this.generateLibraryImages(entries);
-      }
-      const order = this.frameSpans().map((s) => s.frame.id);
-      const pending = [...queued].sort((a, b) => order.indexOf(a) - order.indexOf(b));
-      for (let at = 0; at < pending.length; at++) {
-        const id = pending[at];
-        if (this.scene()?.id !== scene.id) {
-          return;
-        }
-        this.adoptImages(
-          await this.directionApi.generateFrameImage(scene.id, id, regenerate),
-          scene.id,
-        );
-        this.picturing.update((ids) => new Set([...ids].filter((i) => i !== id)));
-        // A scene pass also redraws the variation after a frame it just redrew, which that made stale.
-        const next = this.frameSpans()[order.indexOf(id) + 1]?.frame;
-        if (
-          withLibrary &&
-          next?.variation &&
-          !next.locked &&
-          !pending.includes(next.id) &&
-          imageState(next.image) === 'stale'
-        ) {
-          pending.splice(at + 1, 0, next.id);
-          queued.push(next.id);
-          this.picturing.update((ids) => new Set([...ids, next.id]));
-        }
-      }
-    } catch (err) {
-      this.error.set(describeError(err, 'The frame could not be pictured.'));
-    } finally {
-      this.picturing.update((ids) => new Set([...ids].filter((i) => !queued.includes(i))));
-    }
+    const needs = (t: PictureTarget) =>
+      !this.picturing().has(t.id) && ['none', 'stale'].includes(this.libraryImageState(t.id));
+    const entries = withLibrary ? this.sceneEntries().filter(needs) : [];
+    // Parts are drawn from their place's picture, so they follow it.
+    const redrawn = new Set(entries.map((t) => t.id));
+    const parts = withLibrary
+      ? this.scenePartTargets().filter(
+          (t) => needs(t) || redrawn.has(this.locationVariationById().get(t.id)?.location.id ?? ''),
+        )
+      : [];
+    await this.queue(
+      frames.length === 1
+        ? `Picture frame ${order.indexOf(frames[0]) + 1}`
+        : `Picture ${frames.length} frames`,
+      [
+        ...[...entries, ...parts].map(
+          (target): JobStep => ({
+            kind: 'libraryImage',
+            target,
+            regenerate: false,
+            refinement: null,
+          }),
+        ),
+        ...frames.map(
+          (frameId): JobStep => ({
+            kind: 'frameImage',
+            sceneId: scene.id,
+            frameId,
+            regenerate,
+            refinement: null,
+          }),
+        ),
+      ],
+      'The frame could not be pictured.',
+      withLibrary,
+    );
   }
 
   /** Pictures a character in a look of the scene: the opening look when `elementId` is null. */
@@ -1957,48 +2142,207 @@ export class SceneEditorStore implements OnDestroy {
     regenerate = false,
   ): Promise<void> {
     const scene = this.scene();
-    const key = `look:${characterId}:${elementId ?? ''}`;
-    if (!scene || this.picturing().has(key)) {
+    if (!scene || this.picturing().has(lookKey(characterId, elementId))) {
       return;
     }
-    this.picturing.update((ids) => new Set([...ids, key]));
-    try {
-      await this.flushSave();
-      this.adoptImages(
-        await this.directionApi.generateLookImage(scene.id, characterId, elementId, regenerate),
-        scene.id,
-      );
-    } catch (err) {
-      this.error.set(describeError(err, 'The look could not be pictured.'));
-    } finally {
-      this.picturing.update((ids) => new Set([...ids].filter((i) => i !== key)));
-    }
+    await this.queue(
+      `Picture ${this.characterById().get(characterId)?.name ?? 'a'}’s look`,
+      [
+        {
+          kind: 'lookImage',
+          sceneId: scene.id,
+          characterId,
+          elementId,
+          regenerate,
+          refinement: null,
+        },
+      ],
+      'The look could not be pictured.',
+    );
   }
 
   /** Pictures library entries one at a time; frames composed from a redone picture go stale. */
   async generateLibraryImages(
-    targets: readonly LibraryTarget[],
+    targets: readonly PictureTarget[],
     regenerate = false,
   ): Promise<void> {
     const queued = targets.filter((t) => !this.picturing().has(t.id));
-    if (queued.length === 0) {
+    await this.queue(
+      queued.length === 1
+        ? `Picture ${this.entryName(queued[0])}`
+        : `Picture ${queued.length} library entries`,
+      queued.map((target) => ({ kind: 'libraryImage', target, regenerate, refinement: null })),
+      'The picture could not be made.',
+    );
+  }
+
+  /**
+   * Edits a frame's current picture by the author's refinement alone. Pictures made from it, like
+   * a variation of it, go stale.
+   */
+  async refineFrameImage(frameId: string, refinement: PictureRefinement): Promise<void> {
+    const scene = this.scene();
+    if (!scene || this.frameById(frameId)?.locked || this.picturing().has(frameId)) {
       return;
     }
-    this.picturing.update((ids) => new Set([...ids, ...queued.map((t) => t.id)]));
+    await this.queue(
+      `Refine frame ${this.frameNumber(frameId)}`,
+      [{ kind: 'frameImage', sceneId: scene.id, frameId, regenerate: false, refinement }],
+      'The picture could not be refined.',
+    );
+  }
+
+  /** Edits a look's current picture by the author's refinement alone. */
+  async refineLookImage(
+    characterId: string,
+    elementId: string | null,
+    refinement: PictureRefinement,
+  ): Promise<void> {
+    const scene = this.scene();
+    if (!scene || this.picturing().has(lookKey(characterId, elementId))) {
+      return;
+    }
+    await this.queue(
+      `Refine ${this.characterById().get(characterId)?.name ?? 'a'}’s look`,
+      [
+        {
+          kind: 'lookImage',
+          sceneId: scene.id,
+          characterId,
+          elementId,
+          regenerate: false,
+          refinement,
+        },
+      ],
+      'The look could not be refined.',
+    );
+  }
+
+  /** Edits a library entry's current picture by the author's refinement alone. */
+  async refineLibraryImage(target: PictureTarget, refinement: PictureRefinement): Promise<void> {
+    if (this.picturing().has(target.id)) {
+      return;
+    }
+    await this.queue(
+      `Refine ${this.entryName(target)}`,
+      [{ kind: 'libraryImage', target, regenerate: false, refinement }],
+      'The picture could not be refined.',
+    );
+  }
+
+  // ─── director mode: the queue ──────────────────────────────────────────
+
+  /** Queues work for the background; pending edits save first, so it reads what the author sees. */
+  private async queue(
+    label: string,
+    steps: JobStep[],
+    failed: string,
+    followVariations = false,
+  ): Promise<DirectorJob | null> {
+    const story = this.story();
+    if (!story || steps.length === 0) {
+      return null;
+    }
     try {
-      for (const target of queued) {
-        const image = await this.directionApi.generateLibraryImage(target, regenerate);
-        if (image) {
-          this.libraryImages.update((m) => new Map(m).set(target.id, image));
-        }
-        this.picturing.update((ids) => new Set([...ids].filter((i) => i !== target.id)));
-      }
-      await this.refreshMedia();
+      return await this.jobs.start(story.id, label, steps, followVariations, this.flushSave());
     } catch (err) {
-      this.error.set(describeError(err, 'The picture could not be made.'));
-    } finally {
-      const done = new Set(queued.map((t) => t.id));
-      this.picturing.update((ids) => new Set([...ids].filter((i) => !done.has(i))));
+      this.error.set(describeError(err, failed));
+      return null;
+    }
+  }
+
+  /** Takes in what a job of this story finished since it was last seen. */
+  private takeIn({ job, results, fromStep }: JobProgress): void {
+    if (job.storyId !== this.story()?.id) {
+      return;
+    }
+    results.forEach((result, i) => {
+      const step = job.steps[fromStep + i];
+      if (result && step) {
+        this.adopt(step, result);
+      }
+    });
+    if (!isActive(job)) {
+      this.settle(job);
+    }
+  }
+
+  private adopt(step: JobStep, result: JobStepResult): void {
+    switch (result.kind) {
+      case 'direct':
+        if (step.kind === 'direct') {
+          this.adoptDirect(step.target, result);
+        }
+        return;
+      case 'describe':
+        if (step.kind === 'describe') {
+          this.replaceEntry(step.target, result.entry);
+        }
+        return;
+      case 'castVoice':
+        this.replaceEntry({ kind: 'character', id: result.character.id }, result.character);
+        return;
+      case 'audio':
+        if (result.direction) {
+          this.adoptAudio(result.direction, result.direction.sceneId);
+        }
+        return;
+      case 'frameImage':
+      case 'lookImage':
+        if (result.direction) {
+          this.adoptImages(result.direction, result.direction.sceneId);
+        }
+        return;
+      case 'libraryImage': {
+        const image = result.image;
+        if (image && step.kind === 'libraryImage') {
+          this.libraryImages.update((m) => new Map(m).set(step.target.id, image));
+        }
+        return;
+      }
+    }
+  }
+
+  /** Whether pictures and audio are still current is the server's call, once a job has moved it. */
+  private settle(job: DirectorJob): void {
+    const done = job.steps.slice(0, job.stepsDone);
+    if (done.some((s) => ['describe', 'castVoice', 'libraryImage'].includes(s.kind))) {
+      this.refreshMedia().catch(() => undefined);
+    }
+    if (
+      done.some(
+        (s) => s.kind === 'describe' || (s.kind === 'libraryImage' && s.target.kind === 'location'),
+      )
+    ) {
+      void this.refreshLibraryImages();
+    }
+  }
+
+  private frameNumber(frameId: string): number {
+    return this.frameSpans().findIndex((s) => s.frame.id === frameId) + 1;
+  }
+
+  /** A line's opening words, quoted, to name it by. */
+  private lineExcerpt(elementId: string): string {
+    const text = this.elements().find((e) => e.id === elementId)?.text ?? '';
+    const words = text.trim();
+    return words.length > 32 ? `“${words.slice(0, 31).trimEnd()}…”` : `“${words}”`;
+  }
+
+  private entryName(target: PictureTarget): string {
+    switch (target.kind) {
+      case 'character':
+        return this.characterById().get(target.id)?.name ?? 'a character';
+      case 'location':
+        return this.locationById().get(target.id)?.name ?? 'a place';
+      case 'prop':
+        return this.propById().get(target.id)?.name ?? 'a prop';
+      case 'extra':
+        return this.extraById().get(target.id)?.name ?? 'extras';
+      case 'locationVariation': {
+        const part = this.locationVariationById().get(target.id);
+        return part ? `${part.location.name} · ${part.variation.name}` : 'a part of a place';
+      }
     }
   }
 
@@ -2067,22 +2411,14 @@ export class SceneEditorStore implements OnDestroy {
   }
 
   async castVoice(characterId: string): Promise<void> {
-    if (this.castingVoice() !== null) {
+    if (this.castingVoice().has(characterId)) {
       return;
     }
-    this.castingVoice.set(characterId);
-    try {
-      await this.flushSave();
-      this.replaceEntry(
-        { kind: 'character', id: characterId },
-        await this.directionApi.castVoice(characterId),
-      );
-      await this.refreshMedia();
-    } catch (err) {
-      this.error.set(describeError(err, 'No voice could be cast.'));
-    } finally {
-      this.castingVoice.set(null);
-    }
+    await this.queue(
+      `Cast a voice for ${this.characterById().get(characterId)?.name ?? 'a character'}`,
+      [{ kind: 'castVoice', characterId }],
+      'No voice could be cast.',
+    );
   }
 
   setCharacterVoice(character: Character, voice: SpeechVoice): Promise<string | null> {
@@ -2191,6 +2527,33 @@ export class SceneEditorStore implements OnDestroy {
     );
   }
 
+  /**
+   * Replaces the location's variations. Frames in a variation left out go back to the establishing
+   * view, as the API has put them.
+   */
+  async saveLocationVariations(
+    location: Location,
+    variations: Location['variations'],
+  ): Promise<string | null> {
+    await this.flushSave();
+    const problem = await this.saveSheet({ kind: 'location', id: location.id }, () =>
+      this.api.saveLocationVariations({ ...location, variations }),
+    );
+    const kept = new Set(this.locationVariationById().keys());
+    this.direction.update(
+      (d) =>
+        d && {
+          ...d,
+          frames: d.frames.map((f) =>
+            f.locationVariationId && !kept.has(f.locationVariationId)
+              ? { ...f, locationVariationId: null }
+              : f,
+          ),
+        },
+    );
+    return problem;
+  }
+
   async savePropSheet(prop: Prop): Promise<string | null> {
     return this.saveSheet({ kind: 'prop', id: prop.id }, () => this.api.updatePropSheet(prop));
   }
@@ -2251,4 +2614,9 @@ export class SceneEditorStore implements OnDestroy {
 
 function imageState(image: { stale: boolean } | null | undefined): ImageState {
   return !image ? 'none' : image.stale ? 'stale' : 'ready';
+}
+
+/** A look's busy key: the opening look when `elementId` is null. */
+function lookKey(characterId: string, elementId: string | null): string {
+  return `look:${characterId}:${elementId ?? ''}`;
 }

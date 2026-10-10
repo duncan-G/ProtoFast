@@ -2,6 +2,7 @@ using ProtoFast.Api.Services.Directing;
 using CharacterRecord = ProtoFast.Data.ThePlot.Entities.Character;
 using FrameRecord = ProtoFast.Data.ThePlot.Entities.Frame;
 using LocationRecord = ProtoFast.Data.ThePlot.Entities.Location;
+using LocationVariationRecord = ProtoFast.Data.ThePlot.Entities.LocationVariation;
 using PropRecord = ProtoFast.Data.ThePlot.Entities.Prop;
 using SceneRecord = ProtoFast.Data.ThePlot.Entities.Scene;
 
@@ -30,6 +31,19 @@ public sealed record FrameContents(
 {
     /// <summary>The previous frame, when this one is a variation of it and it has a picture to edit.</summary>
     public FrameContents? VariationOf { get; init; }
+
+    /// <summary>The part of <see cref="Location"/> the camera is in; null where its establishing shot stands.</summary>
+    public LocationVariationRecord? LocationVariation { get; init; }
+
+    /// <summary>
+    /// A variation is pictured from the previous picture with the camera moved, rather than as an edit
+    /// of it, when the author says so or when it is at another part of the place.
+    /// </summary>
+    public bool MovesCamera => Frame.VariationMovesCamera || (VariationOf is { } previous && !SamePart(previous));
+
+    /// <summary>The same place, and the same part of it.</summary>
+    public bool SamePart(FrameContents other) =>
+        Location?.Id == other.Location?.Id && LocationVariation?.Id == other.LocationVariation?.Id;
 
     public static IReadOnlyList<FrameContents> ForScene(DirectedScene directed)
     {
@@ -85,6 +99,8 @@ public sealed record FrameContents(
                 Join(look.Look.WardrobeChange, placement?.WardrobeChange),
                 Join(look.Look.AppearanceChange, placement?.AppearanceChange),
                 placement?.Screen ?? "",
+                placement?.Depth ?? "",
+                placement?.Mark ?? "",
                 placement?.Facing ?? "",
                 placement?.Moving ?? "",
                 placement?.Looking ?? "",
@@ -100,9 +116,10 @@ public sealed record FrameContents(
             var state = scene.PropStates.FirstOrDefault(s => s.PropId == prop.Id);
             var holder = onScreen.FirstOrDefault(c => c.Holding.Contains(prop));
             var inherited = held.Contains(prop.Id) ? holder is not null : state?.InView ?? true;
-            if (frame.Props.FirstOrDefault(p => p.PropId == prop.Id)?.InView ?? inherited)
+            var own = frame.Props.FirstOrDefault(p => p.PropId == prop.Id);
+            if (own?.InView ?? inherited)
             {
-                inView.Add(new FramePropView(prop, state?.State ?? [], holder?.Character));
+                inView.Add(new FramePropView(prop, state?.State ?? [], holder?.Character, own?.Screen ?? "", own?.Depth ?? "", own?.Mark ?? ""));
             }
         }
 
@@ -110,7 +127,9 @@ public sealed record FrameContents(
             .Select(e => (Scene: e, Own: frame.Extras.FirstOrDefault(f => f.ExtraId == e.ExtraId)))
             .Where(e => e.Own?.OnScreen ?? e.Scene.OnScreen)
             .Select(e => story.Extras.FirstOrDefault(x => x.Id == e.Scene.ExtraId) is { } record
-                ? new FrameExtraView(record, e.Own?.Screen ?? "", e.Own?.Facing ?? "", e.Own?.Moving ?? "", e.Own?.Looking ?? "", e.Own?.Pose ?? "")
+                ? new FrameExtraView(
+                    record, e.Own?.Screen ?? "", e.Own?.Depth ?? "", e.Own?.Mark ?? "", e.Own?.Facing ?? "", e.Own?.Moving ?? "",
+                    e.Own?.Looking ?? "", e.Own?.Pose ?? "")
                 : null)
             .OfType<FrameExtraView>()
             .OrderBy(e => e.Extra.Name)
@@ -128,15 +147,40 @@ public sealed record FrameContents(
             inView,
             extras,
             frame.Shot ?? scene.Shot,
-            frame.Angle ?? scene.Angle);
+            frame.Angle ?? scene.Angle)
+        {
+            LocationVariation = location?.Variations.FirstOrDefault(v => v.Id == frame.LocationVariationId),
+        };
     }
+
+    /// <summary>
+    /// Whose cast and props this frame's picture shows: a same-shot variation is an edit of the picture
+    /// before it, so it shows what that one does, whatever its own rows say.
+    /// </summary>
+    public FrameContents Pictured => VariationOf is { } previous && !MovesCamera ? previous.Pictured : this;
+
+    /// <summary>The people, extras and props in this frame that <paramref name="previous"/> doesn't show.</summary>
+    public IReadOnlySet<Guid> NewSince(FrameContents previous) => Shown().Except(previous.Shown()).ToHashSet();
+
+    /// <summary>Who and what <paramref name="previous"/> shows that this frame doesn't, by name.</summary>
+    public IReadOnlyList<string> GoneSince(FrameContents previous)
+    {
+        var shown = Shown().ToHashSet();
+        return previous.OnScreen.Where(c => !shown.Contains(c.Character.Id)).Select(c => c.Character.Name)
+            .Concat(previous.Extras.Where(e => !shown.Contains(e.Extra.Id)).Select(e => e.Extra.Name))
+            .Concat(previous.InView.Where(p => !shown.Contains(p.Prop.Id)).Select(p => p.Prop.Name))
+            .ToList();
+    }
+
+    private IEnumerable<Guid> Shown() =>
+        OnScreen.Select(c => c.Character.Id).Concat(Extras.Select(e => e.Extra.Id)).Concat(InView.Select(p => p.Prop.Id));
 
     /// <summary>"MARA, TOM at the Harbour (night)"</summary>
     public string Summary()
     {
         var people = OnScreen.Select(c => c.Character.Name).Concat(Extras.Select(e => e.Extra.Name)).ToList();
         var who = people.Count == 0 ? "nobody" : string.Join(", ", people);
-        var where = Location is null ? "" : $" at {Location.Name}";
+        var where = Location is null ? "" : $" at {Location.Name}{(LocationVariation is null ? "" : $" ({LocationVariation.Name})")}";
         var when = string.IsNullOrWhiteSpace(TimeOfDay) ? "" : $" ({TimeOfDay.Trim().ToLowerInvariant()})";
         var shot = Shot is null ? "" : $", {Shot} shot";
         var beat = string.IsNullOrWhiteSpace(Frame.Beat) ? "" : $": {Frame.Beat.Trim().TrimEnd('.')}";

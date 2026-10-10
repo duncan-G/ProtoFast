@@ -24,6 +24,20 @@ public sealed class FallbackLanguageModel(ILanguageModel primary, ILanguageModel
         }
     }
 
+    public async Task<LanguageModelReply> CompleteAsync(
+        string system, IReadOnlyList<ModelImage> images, string user, CancellationToken ct)
+    {
+        try
+        {
+            return await primary.CompleteAsync(system, images, user, ct);
+        }
+        catch (Exception e) when (FallsBack(e))
+        {
+            logger.LogWarning(e, "{Primary} failed; falling back to {Fallback}", primary.ModelId, fallback.ModelId);
+            return await fallback.CompleteAsync(system, images, user, ct);
+        }
+    }
+
     public async Task<LanguageModelReply> ConverseAsync(
         string system, IReadOnlyList<ChatMessage> messages, IReadOnlyList<ToolDefinition> tools, CancellationToken ct)
     {

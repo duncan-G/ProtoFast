@@ -234,6 +234,114 @@ namespace ProtoFast.Data.Migrations
                     b.ToTable("cues", "plot");
                 });
 
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.DirectorJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<DateTime>("DateCreated")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("date_created");
+
+                    b.Property<DateTime>("DateLastModified")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("date_last_modified");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text")
+                        .HasColumnName("error");
+
+                    b.Property<DateTime?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<bool>("FollowVariations")
+                        .HasColumnType("boolean")
+                        .HasColumnName("follow_variations");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("label");
+
+                    b.Property<string>("Lane")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("lane");
+
+                    b.Property<DateTime?>("LeaseUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lease_until");
+
+                    b.Property<byte[]>("Results")
+                        .HasColumnType("bytea")
+                        .HasColumnName("results");
+
+                    b.Property<Guid?>("SceneId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("scene_id");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<int>("StepCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("step_count");
+
+                    b.Property<byte[]>("Steps")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("steps");
+
+                    b.Property<int>("StepsDone")
+                        .HasColumnType("integer")
+                        .HasColumnName("steps_done");
+
+                    b.Property<Guid>("StoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("story_id");
+
+                    b.Property<string>("TraceParent")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("trace_parent");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_director_jobs");
+
+                    b.HasIndex("StoryId")
+                        .HasDatabaseName("ix_director_jobs_story_id");
+
+                    b.HasIndex("Status", "DateCreated")
+                        .HasDatabaseName("ix_director_jobs_status_date_created");
+
+                    b.HasIndex("UserId", "DateCreated")
+                        .HasDatabaseName("ix_director_jobs_user_id_date_created");
+
+                    b.ToTable("director_jobs", "plot");
+                });
+
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Document", b =>
                 {
                     b.Property<string>("Id")
@@ -461,6 +569,10 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("location_id");
 
+                    b.Property<Guid?>("LocationVariationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("location_variation_id");
+
                     b.Property<bool>("Locked")
                         .HasColumnType("boolean")
                         .HasColumnName("locked");
@@ -493,6 +605,10 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("variation");
 
+                    b.Property<bool>("VariationMovesCamera")
+                        .HasColumnType("boolean")
+                        .HasColumnName("variation_moves_camera");
+
                     b.HasKey("Id")
                         .HasName("pk_frames");
 
@@ -507,6 +623,9 @@ namespace ProtoFast.Data.Migrations
 
                     b.HasIndex("LocationId")
                         .HasDatabaseName("ix_frames_location_id");
+
+                    b.HasIndex("LocationVariationId")
+                        .HasDatabaseName("ix_frames_location_variation_id");
 
                     b.HasIndex("SceneId", "Position")
                         .HasDatabaseName("ix_frames_scene_id_position");
@@ -529,6 +648,12 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("extra_id");
 
+                    b.Property<string>("Depth")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("depth");
+
                     b.Property<string>("Facing")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -540,6 +665,12 @@ namespace ProtoFast.Data.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
                         .HasColumnName("looking");
+
+                    b.Property<string>("Mark")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("mark");
 
                     b.Property<string>("Moving")
                         .IsRequired()
@@ -587,6 +718,12 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("appearance_change");
 
+                    b.Property<string>("Depth")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("depth");
+
                     b.Property<string>("Expression")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -604,6 +741,12 @@ namespace ProtoFast.Data.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
                         .HasColumnName("looking");
+
+                    b.Property<string>("Mark")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("mark");
 
                     b.Property<string>("Moving")
                         .IsRequired()
@@ -658,9 +801,27 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("prop_id");
 
+                    b.Property<string>("Depth")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("depth");
+
                     b.Property<bool>("InView")
                         .HasColumnType("boolean")
                         .HasColumnName("in_view");
+
+                    b.Property<string>("Mark")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("mark");
+
+                    b.Property<string>("Screen")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("screen");
 
                     b.HasKey("FrameId", "PropId")
                         .HasName("pk_frame_props");
@@ -733,6 +894,52 @@ namespace ProtoFast.Data.Migrations
                     b.ToTable("locations", "plot", t =>
                         {
                             t.HasCheckConstraint("ck_locations_hue", "hue BETWEEN 0 AND 359");
+                        });
+                });
+
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.LocationVariation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<Guid?>("ImageAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("image_asset_id");
+
+                    b.Property<Guid>("LocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("location_id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.HasKey("Id")
+                        .HasName("pk_location_variations");
+
+                    b.HasIndex("ImageAssetId")
+                        .HasDatabaseName("ix_location_variations_image_asset_id");
+
+                    b.HasIndex("LocationId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_location_variations_location_id_name");
+
+                    b.ToTable("location_variations", "plot", t =>
+                        {
+                            t.HasCheckConstraint("ck_location_variations_position_non_negative", "position >= 0");
                         });
                 });
 
@@ -1611,6 +1818,18 @@ namespace ProtoFast.Data.Migrations
                     b.Navigation("Scene");
                 });
 
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.DirectorJob", b =>
+                {
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Story", "Story")
+                        .WithMany()
+                        .HasForeignKey("StoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_director_jobs_stories_story_id");
+
+                    b.Navigation("Story");
+                });
+
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Document", b =>
                 {
                     b.HasOne("ProtoFast.Data.ThePlot.Entities.DocumentUpload", null)
@@ -1669,6 +1888,12 @@ namespace ProtoFast.Data.Migrations
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_frames_locations_location_id");
 
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.LocationVariation", "LocationVariation")
+                        .WithMany()
+                        .HasForeignKey("LocationVariationId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_frames_location_variations_location_variation_id");
+
                     b.HasOne("ProtoFast.Data.ThePlot.Entities.Scene", "Scene")
                         .WithMany("Frames")
                         .HasForeignKey("SceneId")
@@ -1683,6 +1908,8 @@ namespace ProtoFast.Data.Migrations
                     b.Navigation("LastElement");
 
                     b.Navigation("Location");
+
+                    b.Navigation("LocationVariation");
 
                     b.Navigation("Scene");
                 });
@@ -1851,6 +2078,26 @@ namespace ProtoFast.Data.Migrations
                     b.Navigation("Image");
 
                     b.Navigation("Story");
+                });
+
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.LocationVariation", b =>
+                {
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.MediaAsset", "Image")
+                        .WithMany()
+                        .HasForeignKey("ImageAssetId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_location_variations_media_assets_image_asset_id");
+
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Location", "Location")
+                        .WithMany("Variations")
+                        .HasForeignKey("LocationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_location_variations_locations_location_id");
+
+                    b.Navigation("Image");
+
+                    b.Navigation("Location");
                 });
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.MediaAsset", b =>
@@ -2282,6 +2529,11 @@ namespace ProtoFast.Data.Migrations
                     b.Navigation("Placements");
 
                     b.Navigation("Props");
+                });
+
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Location", b =>
+                {
+                    b.Navigation("Variations");
                 });
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.Scene", b =>

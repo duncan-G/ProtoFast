@@ -120,10 +120,17 @@ public class DirectionService(
         var added = await AddExtrasAsync(draft, current.Story, cancellationToken);
         Prune(draft, current.References, added);
         AddWardrobes(draft, current.Story);
+        AddLocationVariations(draft, current.Story);
         DirectionWriter.Apply(current.Scene, draft, byAuthor: false);
         await CommitAsync(unitOfWork, cancellationToken);
         var reply = new DirectReply { Direction = ToMessage(current) };
         reply.Extras.AddRange(current.Story.Extras.OrderBy(e => e.Name).Select(StoryMessages.ToMessage));
+
+        // A frame the pass made has its id only once saved; its first row still names it.
+        reply.Findings.AddRange(draft.Findings
+            .Select(f => (Finding: f, Stored: current.Scene.Frames.FirstOrDefault(s => s.FirstElementId == f.Frame.FirstElementId)))
+            .Where(f => f.Stored is not null)
+            .Select(f => new FrameFinding { FrameId = f.Stored!.Id.ToString(), Check = f.Finding.Check, Issue = f.Finding.Issue }));
         return reply;
     }
 
@@ -232,7 +239,9 @@ public class DirectionService(
         var frameId = StoryIds.Existing(request.FrameId, DirectionErrors.FrameNotFound);
         try
         {
-            var directed = await frameImages.GenerateAsync(sceneId, frameId, request.Regenerate, context.CancellationToken);
+            var directed = request.Refine.Length > 0
+                ? await frameImages.RefineAsync(sceneId, frameId, request.Refine, RefineReference(request.RefineReferenceAssetId), context.CancellationToken)
+                : await frameImages.GenerateAsync(sceneId, frameId, request.Regenerate, context.CancellationToken);
             return new GenerateFrameImageReply { Direction = ToMessage(directed) };
         }
         catch (ImageException e)
@@ -249,7 +258,10 @@ public class DirectionService(
         var elementId = request.HasElementId ? StoryIds.Existing(request.ElementId, DirectionErrors.LineNotFound) : (Guid?)null;
         try
         {
-            var directed = await lookImages.GenerateAsync(sceneId, characterId, elementId, request.Regenerate, context.CancellationToken);
+            var directed = request.Refine.Length > 0
+                ? await lookImages.RefineAsync(
+                    sceneId, characterId, elementId, request.Refine, RefineReference(request.RefineReferenceAssetId), context.CancellationToken)
+                : await lookImages.GenerateAsync(sceneId, characterId, elementId, request.Regenerate, context.CancellationToken);
             return new GenerateLookImageReply { Direction = ToMessage(directed) };
         }
         catch (ImageException e)
@@ -272,6 +284,11 @@ public class DirectionService(
                 ReferenceSource.Location, StoryIds.Existing(request.LocationId, LocationNotFound), LocationNotFound,
                 (id, ct) => locationRepository.GetFirstByQueryAsync(locationQueries.Create().WithId(id), l => (Guid?)l.StoryId, ct),
                 cancellationToken),
+            GenerateLibraryImageRequest.SubjectOneofCase.LocationVariationId => await SubjectAsync(
+                ReferenceSource.LocationVariation, StoryIds.Existing(request.LocationVariationId, LibraryErrors.LocationVariationNotFound),
+                LibraryErrors.LocationVariationNotFound,
+                (id, ct) => locationRepository.GetFirstByQueryAsync(locationQueries.Create().WithVariation(id), l => (Guid?)l.StoryId, ct),
+                cancellationToken),
             GenerateLibraryImageRequest.SubjectOneofCase.PropId => await SubjectAsync(
                 ReferenceSource.Prop, StoryIds.Existing(request.PropId, PropNotFound), PropNotFound,
                 (id, ct) => propRepository.GetFirstByQueryAsync(propQueries.Create().WithId(id), p => (Guid?)p.StoryId, ct),
@@ -285,7 +302,9 @@ public class DirectionService(
 
         try
         {
-            var story = await libraryImages.GenerateAsync(storyId, source, id, request.Regenerate, cancellationToken);
+            var story = request.Refine.Length > 0
+                ? await libraryImages.RefineAsync(storyId, source, id, request.Refine, RefineReference(request.RefineReferenceAssetId), cancellationToken)
+                : await libraryImages.GenerateAsync(storyId, source, id, request.Regenerate, cancellationToken);
             var kind = ReferenceSources.Of(source);
             var image = imageMessages.ForLibrary(story).FirstOrDefault(i => i.SubjectKind == kind && i.SubjectId == id.ToString())
                         ?? new LibraryImage { SubjectKind = kind, SubjectId = id.ToString() };
@@ -307,6 +326,9 @@ public class DirectionService(
         reply.Images.AddRange(imageMessages.ForLibrary(story));
         return reply;
     }
+
+    private static Guid? RefineReference(string assetId) =>
+        assetId.Length > 0 ? StoryIds.Existing(assetId, ImageRefiner.ReferenceNotFound) : null;
 
     /// <summary>The library entry's story, read as its owner; anyone else's entry reads as not found.</summary>
     private async Task<(ReferenceSource Source, Guid Id, Guid StoryId)> SubjectAsync(
@@ -394,7 +416,7 @@ public class DirectionService(
 
                 using var unitOfWork = unitOfWorkFactory.CreateReadWrite(nameof(Describe));
                 await storyScope.LockAsync(story.Id, cancellationToken);
-                var location = await locationRepository.GetFirstByQueryAsync(locationQueries.Create().WithId(id), cancellationToken)
+                var location = await locationRepository.GetFirstByQueryAsync(locationQueries.Create().WithId(id).WithVariations(), cancellationToken)
                                ?? throw StoryErrors.NotFound(LocationNotFound);
                 location.Description = subject.Description;
                 location.Appearance = subject.Appearance;
@@ -532,6 +554,35 @@ public class DirectionService(
     }
 
     /// <summary>
+    /// Parts of places the pass described join their location, so frames can stand in them; a part of
+    /// the same name added meanwhile is used instead, and a part of a location now gone is dropped.
+    /// </summary>
+    private static void AddLocationVariations(DirectionDraft draft, StoryRecord story)
+    {
+        foreach (var frame in draft.Frames.Where(f => f.LocationVariation is not null))
+        {
+            var variation = frame.LocationVariation!;
+            frame.LocationVariation = null;
+            var location = story.Locations.FirstOrDefault(l => l.Id == variation.LocationId);
+            if (location is null)
+            {
+                continue;
+            }
+
+            if (location.Variations.FirstOrDefault(v => ReferenceEquals(v, variation) || LibraryNames.Same(v.Name, variation.Name)) is { } existing)
+            {
+                frame.LocationVariation = existing.Id == Guid.Empty ? existing : null;
+                frame.LocationVariationId = existing.Id == Guid.Empty ? null : existing.Id;
+                continue;
+            }
+
+            variation.Position = location.Variations.Count == 0 ? 0 : location.Variations.Max(v => v.Position) + 1;
+            location.Variations.Add(variation);
+            frame.LocationVariation = variation;
+        }
+    }
+
+    /// <summary>
     /// Extras the pass found the library lacks join it, unless one of the same name was added
     /// meanwhile, which the rows then point at instead.
     /// </summary>
@@ -608,6 +659,11 @@ public class DirectionService(
             if (frame.LocationId is { } locationId && !references.Story.LocationIds.Contains(locationId))
             {
                 frame.LocationId = null;
+            }
+
+            if (frame.LocationVariationId is { } variationId && !references.LocationVariationIds.Contains(variationId))
+            {
+                frame.LocationVariationId = null;
             }
         }
 

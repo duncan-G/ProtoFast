@@ -54,6 +54,8 @@ public sealed class ThePlotDbContext(
 
     public DbSet<CharacterWardrobe> CharacterWardrobes => Set<CharacterWardrobe>();
 
+    public DbSet<LocationVariation> LocationVariations => Set<LocationVariation>();
+
     public DbSet<SceneAppearance> SceneAppearances => Set<SceneAppearance>();
 
     public DbSet<SceneLookChange> SceneLookChanges => Set<SceneLookChange>();
@@ -71,6 +73,8 @@ public sealed class ThePlotDbContext(
     public DbSet<Narrator> Narrators => Set<Narrator>();
 
     public DbSet<SceneLocationState> SceneLocationStates => Set<SceneLocationState>();
+
+    public DbSet<DirectorJob> DirectorJobs => Set<DirectorJob>();
 
     protected override void ConfigureModel(ModelBuilder modelBuilder)
     {
@@ -114,6 +118,7 @@ public sealed class ThePlotDbContext(
         ConfigureScreenplay(modelBuilder);
         ConfigureStoryLibrary(modelBuilder);
         ConfigureDirection(modelBuilder);
+        ConfigureDirectorJobs(modelBuilder);
     }
 
     private static void ConfigureScreenplay(ModelBuilder modelBuilder)
@@ -351,6 +356,28 @@ public sealed class ThePlotDbContext(
             entity.ToTable(t => t.HasCheckConstraint("ck_locations_hue", "hue BETWEEN 0 AND 359"));
         });
 
+        modelBuilder.Entity<LocationVariation>(entity =>
+        {
+            entity.HasKey(v => v.Id);
+            entity.Property(v => v.Name).IsRequired().HasMaxLength(NameLength);
+            entity.Property(v => v.Description).IsRequired();
+
+            entity.HasOne(v => v.Location)
+                .WithMany(l => l.Variations)
+                .HasForeignKey(v => v.LocationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Deleting an asset leaves it unpictured, to be generated again.
+            entity.HasOne(v => v.Image)
+                .WithMany()
+                .HasForeignKey(v => v.ImageAssetId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(v => v.ImageAssetId);
+
+            entity.HasIndex(v => new { v.LocationId, v.Name }).IsUnique();
+            entity.ToTable(t => t.HasCheckConstraint("ck_location_variations_position_non_negative", "position >= 0"));
+        });
+
         modelBuilder.Entity<Prop>(entity =>
         {
             entity.HasKey(p => p.Id);
@@ -567,6 +594,11 @@ public sealed class ThePlotDbContext(
                 .HasForeignKey(p => p.LocationId)
                 .OnDelete(DeleteBehavior.SetNull);
 
+            entity.HasOne(p => p.LocationVariation)
+                .WithMany()
+                .HasForeignKey(p => p.LocationVariationId)
+                .OnDelete(DeleteBehavior.SetNull);
+
             // Deleting an asset leaves it unpictured, to be generated again.
             entity.HasOne(p => p.Image)
                 .WithMany()
@@ -578,6 +610,7 @@ public sealed class ThePlotDbContext(
             entity.HasIndex(p => p.FirstElementId);
             entity.HasIndex(p => p.LastElementId);
             entity.HasIndex(p => p.LocationId);
+            entity.HasIndex(p => p.LocationVariationId);
             entity.ToTable(t =>
             {
                 t.HasCheckConstraint("ck_frames_position_non_negative", "position >= 0");
@@ -590,6 +623,8 @@ public sealed class ThePlotDbContext(
             entity.ToTable("frame_placements");
             entity.HasKey(p => new { p.FrameId, p.CharacterId });
             entity.Property(p => p.Screen).IsRequired().HasMaxLength(LabelLength);
+            entity.Property(p => p.Depth).IsRequired().HasMaxLength(LabelLength);
+            entity.Property(p => p.Mark).IsRequired().HasMaxLength(NameLength);
             entity.Property(p => p.Facing).IsRequired().HasMaxLength(LabelLength);
             entity.Property(p => p.Moving).IsRequired().HasMaxLength(LabelLength);
             entity.Property(p => p.Looking).IsRequired().HasMaxLength(NameLength);
@@ -620,6 +655,9 @@ public sealed class ThePlotDbContext(
         {
             entity.ToTable("frame_props");
             entity.HasKey(p => new { p.FrameId, p.PropId });
+            entity.Property(p => p.Screen).IsRequired().HasMaxLength(LabelLength);
+            entity.Property(p => p.Depth).IsRequired().HasMaxLength(LabelLength);
+            entity.Property(p => p.Mark).IsRequired().HasMaxLength(NameLength);
 
             entity.HasOne(p => p.Frame)
                 .WithMany(frame => frame.Props)
@@ -639,6 +677,8 @@ public sealed class ThePlotDbContext(
             entity.ToTable("frame_extras");
             entity.HasKey(e => new { e.FrameId, e.ExtraId });
             entity.Property(e => e.Screen).IsRequired().HasMaxLength(LabelLength);
+            entity.Property(e => e.Depth).IsRequired().HasMaxLength(LabelLength);
+            entity.Property(e => e.Mark).IsRequired().HasMaxLength(NameLength);
             entity.Property(e => e.Facing).IsRequired().HasMaxLength(LabelLength);
             entity.Property(e => e.Moving).IsRequired().HasMaxLength(LabelLength);
             entity.Property(e => e.Looking).IsRequired().HasMaxLength(NameLength);
@@ -711,6 +751,28 @@ public sealed class ThePlotDbContext(
 
             // The media cache: the same request in the same story is rendered once.
             entity.HasIndex(a => new { a.StoryId, a.Kind, a.RequestHash }).IsUnique();
+        });
+    }
+
+    private static void ConfigureDirectorJobs(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<DirectorJob>(entity =>
+        {
+            entity.HasKey(j => j.Id);
+            entity.Property(j => j.UserId).IsRequired().HasMaxLength(UserIdLength);
+            entity.Property(j => j.Lane).IsRequired().HasMaxLength(LabelLength);
+            entity.Property(j => j.Label).IsRequired().HasMaxLength(NameLength);
+            entity.Property(j => j.Status).HasConversion<string>().HasMaxLength(EnumLength);
+            entity.Property(j => j.TraceParent).HasMaxLength(LabelLength);
+
+            entity.HasOne(j => j.Story)
+                .WithMany()
+                .HasForeignKey(j => j.StoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The worker claims the oldest queued job whose lane is free.
+            entity.HasIndex(j => new { j.Status, j.DateCreated });
+            entity.HasIndex(j => new { j.UserId, j.DateCreated });
         });
     }
 }

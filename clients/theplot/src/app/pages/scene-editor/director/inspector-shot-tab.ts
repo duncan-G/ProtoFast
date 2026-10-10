@@ -1,8 +1,15 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { extraOnScreenOf, Framing, framingOf, onScreenOf } from '../../../direction/inheritance';
+import {
+  extraOnScreenOf,
+  Framing,
+  framingOf,
+  heldIn,
+  inViewOf,
+  onScreenOf,
+} from '../../../direction/inheritance';
 import { DIRECTION_VOCABULARY, labelText } from '../../../direction/model/direction-vocabulary';
 import { emptyDirection } from '../../../direction/model/scene-direction';
-import { SceneEditorStore, Staging, StagingSubject } from '../scene-editor-store';
+import { PropPlace, SceneEditorStore, Staging, StagingSubject } from '../scene-editor-store';
 
 const GROUPS: { key: Framing; title: string; labels: readonly string[] }[] = [
   { key: 'shot', title: 'Shot size', labels: DIRECTION_VOCABULARY.shots },
@@ -90,6 +97,16 @@ const GROUPS: { key: Framing; title: string; labels: readonly string[] }[] = [
               }
             </div>
             <label class="dr-stage-cell">
+              <span class="dr-stage-label">Mark</span>
+              <input
+                class="dr-input"
+                maxlength="255"
+                placeholder="Where in the place, e.g. at the near end of the nurse station counter"
+                [value]="row.staging.mark"
+                (change)="stage(row.who, 'mark', $any($event.target).value)"
+              />
+            </label>
+            <label class="dr-stage-cell">
               <span class="dr-stage-label">Looking at</span>
               <input
                 class="dr-input"
@@ -118,6 +135,40 @@ const GROUPS: { key: Framing; title: string; labels: readonly string[] }[] = [
           </div>
         } @empty {
           <span class="dr-hint">Nobody is on screen in this frame.</span>
+        }
+        @for (row of props(); track row.id) {
+          <div class="dr-stage">
+            <span class="dr-stage-name">{{ row.name }}</span>
+            <div class="dr-stage-grid">
+              @for (pick of propPicks; track pick.field) {
+                <label class="dr-stage-cell">
+                  <span class="dr-stage-label">{{ pick.title }}</span>
+                  <select
+                    class="dr-input"
+                    [attr.aria-label]="row.name + ' ' + pick.title"
+                    (change)="place(row.id, pick.field, $any($event.target).value)"
+                  >
+                    <option value="" [selected]="!row.place[pick.field]">—</option>
+                    @for (label of pick.labels; track label) {
+                      <option [value]="label" [selected]="label === row.place[pick.field]">
+                        {{ text(label) }}
+                      </option>
+                    }
+                  </select>
+                </label>
+              }
+            </div>
+            <label class="dr-stage-cell">
+              <span class="dr-stage-label">Mark</span>
+              <input
+                class="dr-input"
+                maxlength="255"
+                placeholder="Where in the place, e.g. on the counter beside the phone"
+                [value]="row.place.mark"
+                (change)="place(row.id, 'mark', $any($event.target).value)"
+              />
+            </label>
+          </div>
         }
       </div>
       <div class="dr-field">
@@ -189,8 +240,8 @@ export class InspectorShotTab {
     return GROUPS.map((group) => ({ ...group, ...framingOf(direction, this.frame(), group.key) }));
   });
 
-  protected readonly picks: {
-    field: 'screen' | 'facing' | 'moving';
+  protected readonly propPicks: {
+    field: 'screen' | 'depth';
     title: string;
     labels: readonly string[];
   }[] = [
@@ -199,6 +250,14 @@ export class InspectorShotTab {
       title: 'Side',
       labels: DIRECTION_VOCABULARY.screenSides.filter((s) => s !== 'off'),
     },
+    { field: 'depth', title: 'Depth', labels: DIRECTION_VOCABULARY.depths },
+  ];
+  protected readonly picks: {
+    field: 'screen' | 'depth' | 'facing' | 'moving';
+    title: string;
+    labels: readonly string[];
+  }[] = [
+    ...this.propPicks,
     { field: 'facing', title: 'Facing', labels: DIRECTION_VOCABULARY.facings },
     { field: 'moving', title: 'Moving', labels: DIRECTION_VOCABULARY.movings },
   ];
@@ -211,7 +270,15 @@ export class InspectorShotTab {
     if (!frame || !direction) {
       return [];
     }
-    const blank: Staging = { screen: '', facing: '', moving: '', looking: '', pose: '' };
+    const blank: Staging = {
+      screen: '',
+      depth: '',
+      mark: '',
+      facing: '',
+      moving: '',
+      looking: '',
+      pose: '',
+    };
     const cast = this.store
       .cast()
       .filter((c) => onScreenOf(direction, frame, c.id).value)
@@ -231,6 +298,26 @@ export class InspectorShotTab {
     return [...cast, ...extras];
   });
 
+  /** Props the frame shows that nobody carries: a carried one goes where its holder is. */
+  protected readonly props = computed(() => {
+    const frame = this.frame();
+    const span = this.store.selectedFrame();
+    const direction = this.store.direction();
+    if (!frame || !span || !direction) {
+      return [];
+    }
+    const held = heldIn(direction, span, this.store.elementOrder());
+    const blank: PropPlace = { screen: '', depth: '', mark: '' };
+    return this.store
+      .propsInScene()
+      .filter((p) => !held.has(p.id) && inViewOf(direction, frame, p.id, held).value)
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        place: frame.props.find((own) => own.propId === p.id) ?? blank,
+      }));
+  });
+
   protected readonly travels = computed(() =>
     this.store.cast().map((c) => ({
       id: c.id,
@@ -243,6 +330,13 @@ export class InspectorShotTab {
     const frameKey = this.frameKey();
     if (frameKey) {
       this.store.setStaging(who, { [field]: value.trim() }, frameKey);
+    }
+  }
+
+  protected place(propId: string, field: keyof PropPlace, value: string): void {
+    const frameKey = this.frameKey();
+    if (frameKey) {
+      this.store.setPropPlace(propId, { [field]: value.trim() }, frameKey);
     }
   }
 

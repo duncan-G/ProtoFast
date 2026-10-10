@@ -9,6 +9,8 @@ import { DescribeTarget } from './model/describe-target';
 import { DirectResult } from './model/direct-result';
 import { DirectTarget } from './model/direct-target';
 import { LibraryImage } from './model/library-image';
+import { PictureTarget } from './model/picture-target';
+import { PictureRefinement } from './model/picture-refinement';
 import { SceneDirection } from './model/scene-direction';
 import { SpeechVoice } from './model/speech-voice';
 import { VoiceQuery } from './model/voice-query';
@@ -77,8 +79,32 @@ export abstract class DirectionApi {
 
   /** Pictures a library entry from its sheet; null when the API has nothing to show for it. */
   abstract generateLibraryImage(
-    target: DescribeTarget,
+    target: PictureTarget,
     regenerate?: boolean,
+  ): Promise<LibraryImage | null>;
+
+  /**
+   * Edits the frame's current picture by the refinement alone; it stays current, and pictures made
+   * from it go stale. A locked frame is left as it is.
+   */
+  abstract refineFrameImage(
+    sceneId: string,
+    frameId: string,
+    refinement: PictureRefinement,
+  ): Promise<SceneDirection>;
+
+  /** Edits a look's current picture by the refinement alone. */
+  abstract refineLookImage(
+    sceneId: string,
+    characterId: string,
+    elementId: string | null,
+    refinement: PictureRefinement,
+  ): Promise<SceneDirection>;
+
+  /** Edits a library entry's current picture by the refinement alone. */
+  abstract refineLibraryImage(
+    target: PictureTarget,
+    refinement: PictureRefinement,
   ): Promise<LibraryImage | null>;
 
   abstract listLibraryImages(storyId: string): Promise<LibraryImage[]>;

@@ -23,6 +23,29 @@ public sealed class GeminiLanguageModel(string modelId, ProviderOptions provider
             generationConfig = new { responseMimeType = "application/json", maxOutputTokens },
         }, ct);
 
+    public Task<LanguageModelReply> CompleteAsync(
+        string system, IReadOnlyList<ModelImage> images, string user, CancellationToken ct) =>
+        SendAsync(new
+        {
+            system_instruction = new { parts = new[] { new { text = system } } },
+            contents = new[]
+            {
+                new
+                {
+                    role = "user",
+                    parts = images
+                        .SelectMany(i => new object[]
+                        {
+                            new { text = i.Caption },
+                            new { inline_data = new { mime_type = i.ContentType, data = Convert.ToBase64String(i.Bytes) } },
+                        })
+                        .Append(new { text = user })
+                        .ToList(),
+                },
+            },
+            generationConfig = new { responseMimeType = "application/json", maxOutputTokens },
+        }, ct);
+
     public Task<LanguageModelReply> ConverseAsync(
         string system, IReadOnlyList<ChatMessage> messages, IReadOnlyList<ToolDefinition> tools, CancellationToken ct) =>
         SendAsync(new

@@ -108,6 +108,7 @@ const locations: Location[] = (
   description: null,
   appearance: null,
   acoustics: null,
+  variations: [],
 }));
 
 const props: Prop[] = ['Radio', 'Brass Key', 'Map'].map((name) => ({

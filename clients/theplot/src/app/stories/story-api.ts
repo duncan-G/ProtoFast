@@ -80,6 +80,9 @@ export abstract class StoryApi {
 
   abstract updateLocationSheet(location: Location): Promise<Location>;
 
+  /** Replaces the location's variations; they keep their ids by id or name, new ones come back with ids. */
+  abstract saveLocationVariations(location: Location): Promise<Location>;
+
   abstract updatePropSheet(prop: Prop): Promise<Prop>;
 
   /** Replaces the story's narrators in order; the first is the default. New ones have no id. */

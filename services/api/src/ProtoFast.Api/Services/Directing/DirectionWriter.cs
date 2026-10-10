@@ -56,6 +56,8 @@ public static class DirectionWriter
             var changed = stored.FirstElementId != next.FirstElementId
                           || stored.LastElementId != next.LastElementId
                           || stored.LocationId != next.LocationId
+                          || stored.LocationVariationId != next.LocationVariationId
+                          || next.LocationVariation is not null
                           || stored.TimeOfDay != next.TimeOfDay
                           || stored.Beat != next.Beat
                           || stored.Shot != next.Shot
@@ -64,6 +66,7 @@ public static class DirectionWriter
                           || stored.LocationChange != next.LocationChange
                           || stored.Camera != next.Camera
                           || stored.Variation != next.Variation
+                          || stored.VariationMovesCamera != next.VariationMovesCamera
                           || stored.HoldMs != next.HoldMs
                           || !SamePlacements(stored.Placements, next.Placements)
                           || !SameProps(stored.Props, next.Props)
@@ -72,6 +75,16 @@ public static class DirectionWriter
             stored.FirstElementId = next.FirstElementId;
             stored.LastElementId = next.LastElementId;
             stored.LocationId = next.LocationId;
+            if (next.LocationVariation is not null)
+            {
+                // New with the pass: the database gives it its id.
+                stored.LocationVariation = next.LocationVariation;
+            }
+            else
+            {
+                stored.LocationVariationId = next.LocationVariationId;
+            }
+
             stored.TimeOfDay = next.TimeOfDay;
             stored.Beat = next.Beat;
             stored.Shot = next.Shot;
@@ -80,6 +93,7 @@ public static class DirectionWriter
             stored.LocationChange = next.LocationChange;
             stored.Camera = next.Camera;
             stored.Variation = next.Variation;
+            stored.VariationMovesCamera = next.VariationMovesCamera;
             stored.HoldMs = next.HoldMs;
             // Locking says the author is done, not that they wrote the frame; only the author does it.
             if (byAuthor)
@@ -100,6 +114,8 @@ public static class DirectionWriter
                     }
 
                     existing.Screen = placement.Screen;
+                    existing.Depth = placement.Depth;
+                    existing.Mark = placement.Mark;
                     existing.Facing = placement.Facing;
                     existing.Moving = placement.Moving;
                     existing.Looking = placement.Looking;
@@ -122,6 +138,9 @@ public static class DirectionWriter
                     else
                     {
                         existing.InView = prop.InView;
+                        existing.Screen = prop.Screen;
+                        existing.Depth = prop.Depth;
+                        existing.Mark = prop.Mark;
                     }
                 }
 
@@ -137,6 +156,8 @@ public static class DirectionWriter
                     {
                         existing.OnScreen = extra.OnScreen;
                         existing.Screen = extra.Screen;
+                        existing.Depth = extra.Depth;
+                        existing.Mark = extra.Mark;
                         existing.Facing = extra.Facing;
                         existing.Moving = extra.Moving;
                         existing.Looking = extra.Looking;
@@ -325,6 +346,8 @@ public static class DirectionWriter
         && stored.All(s => next.Any(n =>
             n.CharacterId == s.CharacterId
             && n.Screen == s.Screen
+            && n.Depth == s.Depth
+            && n.Mark == s.Mark
             && n.Facing == s.Facing
             && n.Moving == s.Moving
             && n.Looking == s.Looking
@@ -341,11 +364,15 @@ public static class DirectionWriter
             n.ExtraId == s.ExtraId
             && n.OnScreen == s.OnScreen
             && n.Screen == s.Screen
+            && n.Depth == s.Depth
+            && n.Mark == s.Mark
             && n.Facing == s.Facing
             && n.Moving == s.Moving
             && n.Looking == s.Looking
             && n.Pose == s.Pose));
 
     private static bool SameProps(List<FramePropRecord> stored, List<FramePropRecord> next) =>
-        stored.Count == next.Count && stored.All(s => next.Any(n => n.PropId == s.PropId && n.InView == s.InView));
+        stored.Count == next.Count
+        && stored.All(s => next.Any(n =>
+            n.PropId == s.PropId && n.InView == s.InView && n.Screen == s.Screen && n.Depth == s.Depth && n.Mark == s.Mark));
 }

@@ -52,6 +52,9 @@ public static class ThePlotDataServiceCollectionExtensions
         services.AddQueryFactory<MediaAsset, IMediaAssetQuery, MediaAssetQuery>();
         services.AddScoped<IMediaAssetRepository, MediaAssetRepository>();
 
+        services.AddQueryFactory<DirectorJob, IDirectorJobQuery, DirectorJobQuery>();
+        services.AddScoped<IDirectorJobRepository, DirectorJobRepository>();
+
         return services;
     }
 }

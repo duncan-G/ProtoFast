@@ -4,6 +4,7 @@ using ProtoFast.Database.Abstractions;
 using CharacterRecord = ProtoFast.Data.ThePlot.Entities.Character;
 using CharacterWardrobeRecord = ProtoFast.Data.ThePlot.Entities.CharacterWardrobe;
 using LocationRecord = ProtoFast.Data.ThePlot.Entities.Location;
+using LocationVariationRecord = ProtoFast.Data.ThePlot.Entities.LocationVariation;
 using NarratorRecord = ProtoFast.Data.ThePlot.Entities.Narrator;
 using PropRecord = ProtoFast.Data.ThePlot.Entities.Prop;
 using ExtraRecord = ProtoFast.Data.ThePlot.Entities.Extra;
@@ -334,7 +335,7 @@ public sealed class StoryLibrary(
 
         var story = await storyScope.GetAsync(storyId, cancellationToken);
         var location = await locationRepository.GetFirstByQueryAsync(
-                           locationQueries.Create().WithId(id), cancellationToken)
+                           locationQueries.Create().WithId(id).WithVariations(), cancellationToken)
                        ?? throw StoryErrors.NotFound(LocationNotFound);
         location.Description = description;
         location.Appearance = request.Appearance is { } look
@@ -344,6 +345,67 @@ public sealed class StoryLibrary(
 
         await unitOfWork.CommitAsync(cancellationToken);
         return StoryMessages.ToMessage(location);
+    }
+
+    /// <summary>Variations keep their ids when their name survives, so the frames there stay there.</summary>
+    public async Task<Location> SaveLocationVariationsAsync(SaveLocationVariationsRequest request, CancellationToken cancellationToken)
+    {
+        var id = StoryIds.Existing(request.LocationId, LocationNotFound);
+        using var unitOfWork = unitOfWorkFactory.CreateReadWrite(nameof(SaveLocationVariationsAsync));
+        var storyId = await locationRepository.GetFirstByQueryAsync(
+                          locationQueries.Create().WithId(id), l => (Guid?)l.StoryId, cancellationToken)
+                      ?? throw StoryErrors.NotFound(LocationNotFound);
+        await storyScope.LockAsync(storyId, cancellationToken);
+
+        var location = await locationRepository.GetFirstByQueryAsync(
+                           locationQueries.Create().WithId(id).WithVariations(), cancellationToken)
+                       ?? throw StoryErrors.NotFound(LocationNotFound);
+        ApplyVariations(location, request.Variations);
+
+        await unitOfWork.CommitAsync(cancellationToken);
+        return StoryMessages.ToMessage(location);
+    }
+
+    /// <summary>Upserts by id, then by name, as <see cref="ApplyWardrobes"/> does.</summary>
+    public static void ApplyVariations(LocationRecord location, IEnumerable<LocationVariation> variations)
+    {
+        var kept = new List<LocationVariationRecord>();
+        var position = 0;
+        foreach (var variation in variations)
+        {
+            var name = SheetText.Field(variation.Name, "variation name");
+            if (name.Length == 0)
+            {
+                throw StoryErrors.Invalid("A location variation needs a name.");
+            }
+
+            if (name.Length > LibraryNames.MaxLength)
+            {
+                throw StoryErrors.Invalid($"Variation names are limited to {LibraryNames.MaxLength} characters.");
+            }
+
+            if (kept.Any(v => LibraryNames.Same(v.Name, name)))
+            {
+                throw StoryErrors.AlreadyExists($"“{name}” is already one of this location’s variations.");
+            }
+
+            Guid.TryParse(variation.Id, out var variationId);
+            var record = location.Variations.FirstOrDefault(v => variationId != Guid.Empty && v.Id == variationId)
+                         ?? location.Variations.FirstOrDefault(v => !kept.Contains(v) && LibraryNames.Same(v.Name, name));
+            if (record is null)
+            {
+                // No id: the database assigns one. A client-picked id would read as an existing row.
+                record = new LocationVariationRecord { Name = name };
+                location.Variations.Add(record);
+            }
+
+            record.Position = position++;
+            record.Name = name;
+            record.Description = SheetText.Field(variation.Description, "variation description");
+            kept.Add(record);
+        }
+
+        location.Variations.RemoveAll(v => !kept.Contains(v));
     }
 
     public async Task<Prop> UpdatePropSheetAsync(UpdatePropSheetRequest request, CancellationToken cancellationToken)

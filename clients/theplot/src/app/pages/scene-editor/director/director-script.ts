@@ -109,15 +109,12 @@ const MORE: { type: SceneElementType; label: string }[] = [
         >
           <div class="dr-bracket">
             @if (row.isStart) {
-              <span class="dr-badge">{{ row.number }}</span>
-              @if (row.span?.frame?.locked) {
-                <span class="dr-bracket-lock" title="Locked">
-                  <svg class="dr-lock-icon" viewBox="0 0 16 16" aria-hidden="true">
-                    <path d="M5 7V5a3 3 0 0 1 6 0v2" />
-                    <rect x="3" y="7" width="10" height="7" rx="1.5" />
-                  </svg>
-                </span>
-              }
+              <span
+                class="dr-badge"
+                [class.is-locked]="row.span?.frame?.locked"
+                [attr.title]="row.span?.frame?.locked ? 'Locked' : null"
+                >{{ row.number }}</span
+              >
             } @else if (!row.span) {
               <span class="dr-badge is-loose" aria-hidden="true">+</span>
             }

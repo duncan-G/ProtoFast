@@ -22,4 +22,9 @@ public interface ILocationQuery : IQuery<Location>
     ILocationQuery WithSetting(LocationSetting setting);
 
     ILocationQuery ByName();
+
+    /// <summary>The location that has this variation.</summary>
+    ILocationQuery WithVariation(Guid variationId);
+
+    ILocationQuery WithVariations();
 }

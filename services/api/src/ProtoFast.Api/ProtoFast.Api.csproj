@@ -14,6 +14,7 @@
     <Protobuf Include="Protos\document_upload.proto" ProtoRoot="Protos" GrpcServices="Server" />
     <Protobuf Include="Protos\story.proto" ProtoRoot="Protos" GrpcServices="Server" />
     <Protobuf Include="Protos\direction.proto" ProtoRoot="Protos" GrpcServices="Server" />
+    <Protobuf Include="Protos\director_jobs.proto" ProtoRoot="Protos" GrpcServices="Server" />
     <Protobuf Include="Protos\Admin\Shared\admin_overview.proto" ProtoRoot="Protos" GrpcServices="Server" />
     <Protobuf Include="Protos\Admin\Theplot\theplot_admin.proto" ProtoRoot="Protos" GrpcServices="Server" />
     <Protobuf Include="Protos\Admin\Theplot\theplot_engine.proto" ProtoRoot="Protos" GrpcServices="Server" />

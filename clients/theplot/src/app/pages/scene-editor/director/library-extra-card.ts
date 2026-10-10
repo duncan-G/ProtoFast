@@ -65,11 +65,11 @@ import { LibraryPicture } from './library-picture';
               type="button"
               class="dr-link"
               title="Have the model write the description and wardrobe from the scenes they are in"
-              [class.is-working]="store.describing() === e.id"
-              [disabled]="store.describing() !== null"
+              [class.is-working]="store.describing().has(e.id)"
+              [disabled]="store.describing().has(e.id)"
               (click)="store.describe({ kind: 'extra', id: e.id })"
             >
-              {{ store.describing() === e.id ? 'Writing…' : 'Suggest' }}
+              {{ store.describing().has(e.id) ? 'Writing…' : 'Suggest' }}
             </button>
           </div>
           <textarea

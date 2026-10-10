@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  signal,
+  viewChildren,
+} from '@angular/core';
 import {
   changesOf,
   extraOnScreenOf,
@@ -183,6 +190,10 @@ function isSheet(look: LookAt, character: Character): boolean {
                     <app-picture-preview
                       [url]="image.url"
                       [alt]="'Picture of ' + row.character.name + ' in this look'"
+                      [refinable]="true"
+                      [busy]="row.drawing"
+                      [references]="store.refineReferences()"
+                      (refine)="store.refineLookImage(row.character.id, row.changeId, $event)"
                     />
                   } @else {
                     <div class="dr-picture">
@@ -196,29 +207,42 @@ function isSheet(look: LookAt, character: Character): boolean {
                         ? 'Out of date: the look changed since.'
                         : 'Frames in this look draw ' + row.character.name + ' from it.'
                     }}</span>
-                    <button
-                      type="button"
-                      class="dr-link self-start"
-                      [class.is-working]="row.drawing"
-                      [disabled]="row.drawing"
-                      (click)="
-                        store.generateLookImage(
-                          row.character.id,
-                          row.changeId,
-                          !!row.image && !row.image.stale
-                        )
-                      "
-                    >
-                      {{
-                        row.drawing
-                          ? 'Drawing…'
-                          : row.image
-                            ? row.image.stale
-                              ? 'Update'
-                              : 'Regenerate'
-                            : 'Generate'
-                      }}
-                    </button>
+                    <span class="dr-picture-actions">
+                      @if (row.image; as image) {
+                        <button
+                          type="button"
+                          class="dr-link"
+                          [disabled]="row.drawing"
+                          title="Say what to change in this picture; the rest stays"
+                          (click)="refine(image.url)"
+                        >
+                          Refine
+                        </button>
+                      }
+                      <button
+                        type="button"
+                        class="dr-link"
+                        [class.is-working]="row.drawing"
+                        [disabled]="row.drawing"
+                        (click)="
+                          store.generateLookImage(
+                            row.character.id,
+                            row.changeId,
+                            !!row.image && !row.image.stale
+                          )
+                        "
+                      >
+                        {{
+                          row.drawing
+                            ? 'Drawing…'
+                            : row.image
+                              ? row.image.stale
+                                ? 'Update'
+                                : 'Regenerate'
+                              : 'Generate'
+                        }}
+                      </button>
+                    </span>
                   </div>
                 </div>
               }
@@ -453,6 +477,7 @@ function isSheet(look: LookAt, character: Character): boolean {
 })
 export class InspectorCastTab {
   protected readonly store = inject(SceneEditorStore);
+  private readonly previews = viewChildren(PicturePreview);
 
   private readonly openIds = signal<ReadonlySet<string>>(new Set());
 
@@ -666,5 +691,11 @@ export class InspectorCastTab {
     this.store.libraryCollapsed.set(false);
     this.store.directorLibraryTab.set('cast');
     this.store.directorLibraryEntry.set(characterId);
+  }
+
+  protected refine(url: string): void {
+    this.previews()
+      .find((p) => p.url() === url)
+      ?.open(true);
   }
 }

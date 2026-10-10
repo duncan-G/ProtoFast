@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using ProtoFast.Data.ThePlot.Entities;
 using ProtoFast.Database;
 
@@ -40,6 +41,18 @@ public sealed class LocationQuery : Query<Location>, ILocationQuery
     public ILocationQuery ByName()
     {
         Apply(q => q.OrderBy(l => l.Name).ThenBy(l => l.Id));
+        return this;
+    }
+
+    public ILocationQuery WithVariation(Guid variationId)
+    {
+        Where(l => l.Variations.Any(v => v.Id == variationId));
+        return this;
+    }
+
+    public ILocationQuery WithVariations()
+    {
+        Apply(q => q.Include(l => l.Variations.OrderBy(v => v.Position).ThenBy(v => v.Id)));
         return this;
     }
 }

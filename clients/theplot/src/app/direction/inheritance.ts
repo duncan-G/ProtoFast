@@ -2,6 +2,7 @@ import { Character } from '../stories/model/character';
 import { FrameSpan } from './frames';
 import { Frame } from './model/frame';
 import { blankFrameExtra, FrameExtra, isBlankFrameExtra } from './model/frame-extra';
+import { isPlacedProp } from './model/frame-prop';
 import { LookChange } from './model/look-change';
 import { MediaImage } from './model/media-image';
 import { blankPlacement, isBlankPlacement, Placement } from './model/placement';
@@ -124,8 +125,9 @@ export function inViewOf(
     (frame ? held?.get(propId) : undefined) ??
     direction.propStates.find((p) => p.propId === propId)?.inView ??
     true;
+  // A row may only place the prop, showing it as the scene does.
   const own = frame?.props.find((p) => p.propId === propId)?.inView ?? null;
-  return { value: own ?? scene, overridden: own !== null };
+  return { value: own ?? scene, overridden: own !== null && own !== scene };
 }
 
 export function extraOnScreenOf(
@@ -194,7 +196,7 @@ export function withFrameExtra(
 export function overrideCount(frame: Frame): number {
   const framing = (['shot', 'angle', 'movement'] as const).filter((k) => frame[k] !== null).length;
   const cast = frame.placements.some((p) => p.onScreen !== null) ? 1 : 0;
-  const props = frame.props.length > 0 ? 1 : 0;
+  const props = frame.props.some((p) => !p.inView || !isPlacedProp(p)) ? 1 : 0;
   const looks = frame.placements.filter(
     (p) => p.wardrobeId !== null || p.wardrobeChange || p.appearanceChange,
   ).length;

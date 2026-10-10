@@ -337,6 +337,30 @@ export class InMemoryStoryApi implements StoryApi {
     return structuredClone(stored);
   }
 
+  async saveLocationVariations(location: Location): Promise<Location> {
+    const stored = this.locations().find((l) => l.id === location.id);
+    if (!stored) {
+      throw new Error('That location is no longer in the library.');
+    }
+    const names = new Set<string>();
+    stored.variations = location.variations.map((v) => {
+      const name = v.name.trim();
+      if (!name) {
+        throw new Error('A location variation needs a name.');
+      }
+      if (names.has(name.toLowerCase())) {
+        throw new Error(`“${name}” is already one of this location’s variations.`);
+      }
+      names.add(name.toLowerCase());
+      const existing = stored.variations.find(
+        (s) => (v.id && s.id === v.id) || s.name.toLowerCase() === name.toLowerCase(),
+      );
+      return { id: existing?.id ?? crypto.randomUUID(), name, description: v.description.trim() };
+    });
+    this.touch(stored.storyId);
+    return structuredClone(stored);
+  }
+
   async updatePropSheet(prop: Prop): Promise<Prop> {
     const stored = this.props().find((p) => p.id === prop.id);
     if (!stored) {

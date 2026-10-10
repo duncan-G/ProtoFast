@@ -11,6 +11,8 @@ export interface Frame {
   firstElementId: string;
   lastElementId: string;
   locationId: string | null;
+  /** One of the location's variations, where the camera is; null is its establishing view. */
+  locationVariationId: string | null;
   timeOfDay: string | null;
   /** What is visible: an action, or "MARA presses, TOM deflects". */
   beat: string;
@@ -22,6 +24,8 @@ export interface Frame {
   camera: string;
   /** Set when the frame is the previous frame with this one change: its picture edits that frame's. */
   variation: string;
+  /** With a variation: the camera moves and people may come and go; the frame's cast and staging say how. */
+  variationMovesCamera: boolean;
   /** What this frame adds to the location's look in the scene. */
   locationChange: string;
   /** Only for frames with no dialogue to time them. */

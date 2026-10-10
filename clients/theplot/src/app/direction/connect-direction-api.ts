@@ -2,6 +2,7 @@ import { inject, Injectable } from '@angular/core';
 import { createClient } from '@connectrpc/connect';
 import {
   type Cue as CueMessage,
+  type DescribeReply,
   Direction,
   type DirectRequest,
   type Frame as FrameMessage,
@@ -28,8 +29,10 @@ import { DirectResult } from './model/direct-result';
 import { DirectTarget } from './model/direct-target';
 import { Frame } from './model/frame';
 import { LibraryImage } from './model/library-image';
+import { PictureTarget } from './model/picture-target';
 import { LookChange } from './model/look-change';
 import { MediaImage } from './model/media-image';
+import { PictureRefinement } from './model/picture-refinement';
 import { SceneAppearance } from './model/scene-appearance';
 import { SceneDirection } from './model/scene-direction';
 import { SceneLocationState } from './model/scene-location-state';
@@ -71,8 +74,17 @@ export class ConnectDirectionApi implements DirectionApi {
       sceneId,
       replaceEdited,
       target: fromTarget(target),
+      instructions: target.kind === 'frame' ? (target.instructions ?? '') : '',
     });
-    return { direction: toDirection(required(reply.direction)), extras: reply.extras.map(toExtra) };
+    return {
+      direction: toDirection(required(reply.direction)),
+      extras: reply.extras.map(toExtra),
+      findings: reply.findings.map((f) => ({
+        frameId: f.frameId,
+        check: f.check === 'consistency' ? 'consistency' : 'positioning',
+        issue: f.issue,
+      })),
+    };
   }
 
   async generateAudio(
@@ -127,12 +139,51 @@ export class ConnectDirectionApi implements DirectionApi {
   }
 
   async generateLibraryImage(
-    target: DescribeTarget,
+    target: PictureTarget,
     regenerate = false,
   ): Promise<LibraryImage | null> {
     const reply = await this.client.generateLibraryImage({
       subject: toSubject(target),
       regenerate,
+    });
+    return reply.image ? toLibraryImage(reply.image) : null;
+  }
+
+  async refineFrameImage(
+    sceneId: string,
+    frameId: string,
+    refinement: PictureRefinement,
+  ): Promise<SceneDirection> {
+    const reply = await this.client.generateFrameImage({
+      sceneId,
+      frameId,
+      ...toRefine(refinement),
+    });
+    return toDirection(required(reply.direction));
+  }
+
+  async refineLookImage(
+    sceneId: string,
+    characterId: string,
+    elementId: string | null,
+    refinement: PictureRefinement,
+  ): Promise<SceneDirection> {
+    const reply = await this.client.generateLookImage({
+      sceneId,
+      characterId,
+      elementId: elementId ?? undefined,
+      ...toRefine(refinement),
+    });
+    return toDirection(required(reply.direction));
+  }
+
+  async refineLibraryImage(
+    target: PictureTarget,
+    refinement: PictureRefinement,
+  ): Promise<LibraryImage | null> {
+    const reply = await this.client.generateLibraryImage({
+      subject: toSubject(target),
+      ...toRefine(refinement),
     });
     return reply.image ? toLibraryImage(reply.image) : null;
   }
@@ -143,19 +194,22 @@ export class ConnectDirectionApi implements DirectionApi {
   }
 
   async describe(target: DescribeTarget): Promise<Character | Location | Prop | Extra> {
-    const reply = await this.client.describe({ subject: toSubject(target) });
-    switch (reply.subject.case) {
-      case 'character':
-        return toCharacter(reply.subject.value);
-      case 'location':
-        return toLocation(reply.subject.value);
-      case 'prop':
-        return toProp(reply.subject.value);
-      case 'extra':
-        return toExtra(reply.subject.value);
-      default:
-        throw new Error('The API returned an empty reply.');
-    }
+    return toDescribed(await this.client.describe({ subject: toEntrySubject(target) }));
+  }
+}
+
+export function toDescribed(reply: DescribeReply): Character | Location | Prop | Extra {
+  switch (reply.subject.case) {
+    case 'character':
+      return toCharacter(reply.subject.value);
+    case 'location':
+      return toLocation(reply.subject.value);
+    case 'prop':
+      return toProp(reply.subject.value);
+    case 'extra':
+      return toExtra(reply.subject.value);
+    default:
+      throw new Error('The API returned an empty reply.');
   }
 }
 
@@ -166,7 +220,20 @@ function required<T>(message: T | undefined): T {
   return message;
 }
 
-function toSubject(target: DescribeTarget) {
+export function toRefine(refinement: PictureRefinement) {
+  return {
+    refine: refinement.instructions,
+    refineReferenceAssetId: refinement.referenceAssetId ?? '',
+  };
+}
+
+export function toSubject(target: PictureTarget) {
+  return target.kind === 'locationVariation'
+    ? ({ case: 'locationVariationId', value: target.id } as const)
+    : toEntrySubject(target);
+}
+
+export function toEntrySubject(target: DescribeTarget) {
   switch (target.kind) {
     case 'character':
       return { case: 'characterId', value: target.id } as const;
@@ -190,11 +257,15 @@ function toMediaImage(message: MediaImageMessage): MediaImage {
   };
 }
 
-function toLibraryImage(message: LibraryImageMessage): LibraryImage | null {
+export function toLibraryImage(message: LibraryImageMessage): LibraryImage | null {
   const kind = message.subjectKind;
   if (
     !message.image ||
-    (kind !== 'character' && kind !== 'location' && kind !== 'prop' && kind !== 'extra')
+    (kind !== 'character' &&
+      kind !== 'location' &&
+      kind !== 'locationVariation' &&
+      kind !== 'prop' &&
+      kind !== 'extra')
   ) {
     return null;
   }
@@ -204,7 +275,7 @@ function toLibraryImage(message: LibraryImageMessage): LibraryImage | null {
   };
 }
 
-function fromTarget(target: DirectTarget): DirectRequest['target'] {
+export function fromTarget(target: DirectTarget): DirectRequest['target'] {
   switch (target.kind) {
     case 'scene':
       return { case: 'scene', value: true };
@@ -258,6 +329,7 @@ function toFrame(message: FrameMessage): Frame {
     firstElementId: message.firstElementId,
     lastElementId: message.lastElementId,
     locationId: message.locationId ?? null,
+    locationVariationId: message.locationVariationId ?? null,
     timeOfDay: message.timeOfDay ?? null,
     beat: message.beat,
     shot: message.shot ?? null,
@@ -265,12 +337,15 @@ function toFrame(message: FrameMessage): Frame {
     movement: message.movement ?? null,
     camera: message.camera,
     variation: message.variation,
+    variationMovesCamera: message.variationMovesCamera,
     locked: message.locked,
     locationChange: message.locationChange,
     holdMs: message.holdMs ?? null,
     placements: message.placements.map((p) => ({
       characterId: p.characterId,
       screen: p.screen,
+      depth: p.depth,
+      mark: p.mark,
       facing: p.facing,
       moving: p.moving,
       looking: p.looking,
@@ -281,11 +356,19 @@ function toFrame(message: FrameMessage): Frame {
       wardrobeChange: p.wardrobeChange,
       appearanceChange: p.appearanceChange,
     })),
-    props: message.props.map((p) => ({ propId: p.propId, inView: p.inView })),
+    props: message.props.map((p) => ({
+      propId: p.propId,
+      inView: p.inView,
+      screen: p.screen,
+      depth: p.depth,
+      mark: p.mark,
+    })),
     extras: message.extras.map((e) => ({
       extraId: e.extraId,
       onScreen: e.onScreen ?? null,
       screen: e.screen,
+      depth: e.depth,
+      mark: e.mark,
       facing: e.facing,
       moving: e.moving,
       looking: e.looking,
@@ -383,6 +466,7 @@ export function fromDirection(direction: SceneDirection) {
       firstElementId: p.firstElementId,
       lastElementId: p.lastElementId,
       locationId: p.locationId ?? undefined,
+      locationVariationId: p.locationVariationId ?? undefined,
       timeOfDay: p.timeOfDay ?? undefined,
       beat: p.beat,
       shot: p.shot ?? undefined,
@@ -391,6 +475,7 @@ export function fromDirection(direction: SceneDirection) {
       locationChange: p.locationChange,
       camera: p.camera,
       variation: p.variation,
+      variationMovesCamera: p.variationMovesCamera,
       holdMs: p.holdMs ?? undefined,
       placements: p.placements.map((pl) => ({
         ...pl,
@@ -398,7 +483,10 @@ export function fromDirection(direction: SceneDirection) {
         wardrobeId: pl.wardrobeId ?? undefined,
       })),
       props: p.props.map((pp) => ({ ...pp })),
-      extras: p.extras.map((e) => ({ ...e, onScreen: e.onScreen ?? undefined })),
+      extras: p.extras.map((e) => ({
+        ...e,
+        onScreen: e.onScreen ?? undefined,
+      })),
       edited: p.edited,
       locked: p.locked,
     })),

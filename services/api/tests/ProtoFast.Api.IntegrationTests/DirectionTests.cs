@@ -9,6 +9,9 @@ public class DirectionTests(StoryDatabase database)
 {
     private readonly Writer _writer = new(database);
 
+    /// <summary>The frames pass's answer for where in their places the frames are: nowhere new.</summary>
+    private const string PARTS = """{"frames":[]}""";
+
     /// <summary>A heading, an action, two lines (Mara, then Bolt) and a transition, with Mara wearing a "work suit".</summary>
     private async Task<(Story Story, Scene Scene, Character Mara, Character Bolt, Prop Radio, Wardrobe Suit)> DirectedSceneAsync()
     {
@@ -326,7 +329,7 @@ public class DirectionTests(StoryDatabase database)
               {"from":"e1","to":"e3","shot":"close","beat":"Mara leans in.","characters":[{"name":"Mara","screen":"Left","pose":"leaning","expression":"tense"}],"props":["Radio","Teapot"]},
               {"from":"e4","to":"e4","shot":"medium","beat":"Bolt replies.","characters":[{"name":"Bolt","screen":"right"},{"name":"Nobody","screen":"left"}]}
             ]}
-            """, """{"frames":[]}""");
+            """, """{"frames":[]}""", PARTS);
 
         var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true });
 
@@ -369,7 +372,7 @@ public class DirectionTests(StoryDatabase database)
               {"from":"e1","to":"e2","shot":"wide","beat":"The docks at night."},
               {"from":"e3","to":"e5","shot":"over-the-shoulder","beat":"They face off."}
             ]}
-            """);
+            """, PARTS);
 
         var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true });
 
@@ -389,7 +392,7 @@ public class DirectionTests(StoryDatabase database)
         direction.Frames.Add(new Frame { FirstElementId = scene.Elements[2].Id, LastElementId = scene.Elements[3].Id });
         await _writer.SaveDirectionAsync(direction);
         // The model answers the author's cut only, leaving e1–e2 and e5 to be closed.
-        _writer.ScriptModel("""{"extras":[]}""", """{"frames":[{"from":"e3","to":"e4","shot":"close","beat":"They whisper."}]}""");
+        _writer.ScriptModel("""{"extras":[]}""", """{"frames":[{"from":"e3","to":"e4","shot":"close","beat":"They whisper."}]}""", PARTS);
 
         var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true });
 
@@ -405,7 +408,7 @@ public class DirectionTests(StoryDatabase database)
         var direction = Direction(scene, mara, bolt, radio, suit);
         direction.Frames.Clear();
         await _writer.SaveDirectionAsync(direction);
-        _writer.ScriptModel("""{"extras":[]}""", """{"frames":[{"from":"e1","to":"e5","shot":"wide","visible":"Mara and Bolt on the quay."}]}""");
+        _writer.ScriptModel("""{"extras":[]}""", """{"frames":[{"from":"e1","to":"e5","shot":"wide","visible":"Mara and Bolt on the quay."}]}""", PARTS);
         var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true });
         var asked = _writer.ModelPrompts().Count;
 
@@ -417,6 +420,26 @@ public class DirectionTests(StoryDatabase database)
         Assert.Equal((true, false), (locked.Frames[0].Locked, locked.Frames[0].Edited));
         Assert.Equal(locked.Frames, again.Frames);
         Assert.Equal(asked, _writer.ModelPrompts().Count);
+    }
+
+    [Fact]
+    public async Task Directing_one_frame_hands_the_model_the_authors_instructions()
+    {
+        var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        var saved = await _writer.SaveDirectionAsync(Direction(scene, mara, bolt, radio, suit));
+        _writer.ScriptModel("""{"extras":[]}""", """{"shot":"close","visible":"Mara's hands on the radio dial.","characters":[{"name":"Mara","screen":"left"}]}""");
+
+        var directed = await _writer.DirectAsync(new DirectRequest
+        {
+            SceneId = scene.Id,
+            FrameId = saved.Frames[0].Id,
+            Instructions = "  Close on her hands; keep Bolt out of it.  ",
+        });
+
+        Assert.Contains(
+            "The author's instructions for this frame, which win over your own choices and the rules above:\nClose on her hands; keep Bolt out of it.",
+            _writer.ModelPrompts()[^1]);
+        Assert.Equal(("close", "Mara's hands on the radio dial."), (directed.Frames[0].Shot, directed.Frames[0].Beat));
     }
 
     [Fact]
@@ -436,7 +459,7 @@ public class DirectionTests(StoryDatabase database)
               {"from":"e1","to":"e3","shot":"close","visible":"A radio on the quay."},
               {"from":"e5","to":"e5","shot":"close","visible":"The quay, empty."}
             ]}
-            """);
+            """, PARTS);
 
         var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true, ReplaceEdited = true });
 
@@ -462,7 +485,7 @@ public class DirectionTests(StoryDatabase database)
               {"from":"e3","to":"e3","shot":"medium","visible":"Mara at the radio, looking up."},
               {"from":"e4","to":"e5","shot":"close","visible":"Bolt's face."}
             ]}
-            """, """
+            """, PARTS, """
             {"frames":[
               {"frame":"f2","change":"Mara has looked up from the radio, toward screen right."},
               {"frame":"f3","change":"Bolt's face fills the picture."}
@@ -482,6 +505,45 @@ public class DirectionTests(StoryDatabase database)
         edited.Frames[2].Variation = "Bolt has stepped closer.";
         var saved = await _writer.SaveDirectionAsync(edited);
         Assert.Equal(("Bolt has stepped closer.", true), (saved.Frames[2].Variation, saved.Frames[2].Edited));
+    }
+
+    [Fact]
+    public async Task Directing_frames_puts_each_frame_in_a_part_of_its_place_and_adds_the_parts_the_location_lacks()
+    {
+        var (story, scene, _, _, _, _) = await DirectedSceneAsync();
+        var docks = (await _writer.GetStoryAsync(story.Id)).Locations.Single();
+        var quay = (await _writer.Call((s, c) => s.SaveLocationVariations(new SaveLocationVariationsRequest
+        {
+            LocationId = docks.Id,
+            Variations = { new LocationVariation { Name = "Quay end", Description = "Open water ahead." } },
+        }, c))).Location.Variations.Single();
+        _writer.ScriptModel("""{"extras":[]}""", """
+            {"frames":[
+              {"from":"e1","to":"e2","shot":"medium","camera":"at the gate","visible":"Mara at the radio."},
+              {"from":"e3","to":"e3","shot":"medium","camera":"at the end of the quay","visible":"Mara walks on."},
+              {"from":"e4","to":"e5","shot":"medium","camera":"under the crane, looking back","visible":"Bolt by the crane."}
+            ]}
+            """, """
+            {"parts":[
+              {"place":"Docks","name":"Crane base","description":"Under the crane's legs, looking back at the gate."},
+              {"place":"Nowhere","name":"Ghost","description":"Not a place in this scene."}
+            ],"frames":[
+              {"frame":"f1","part":""},
+              {"frame":"f2","part":"quay END"},
+              {"frame":"f3","part":"Crane base"}
+            ]}
+            """);
+
+        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true });
+
+        var asked = _writer.ModelPrompts()[^1];
+        Assert.Contains("- Docks: establishing view", asked);
+        Assert.Contains("  - part \"Quay end\": Open water ahead.", asked);
+        Assert.Contains("f2 (decide) [Docks] rows e3–e3", asked);
+        var parts = (await _writer.GetStoryAsync(story.Id)).Locations.Single().Variations;
+        Assert.Equal(["Quay end", "Crane base"], parts.Select(v => v.Name));
+        Assert.Equal("Under the crane's legs, looking back at the gate.", parts[1].Description);
+        Assert.Equal(["", quay.Id, parts[1].Id], directed.Frames.Select(f => f.HasLocationVariationId ? f.LocationVariationId : ""));
     }
 
     [Fact]
@@ -524,7 +586,7 @@ public class DirectionTests(StoryDatabase database)
                  {"name":"Mara","screen":"left","facing":"three quarter right","moving":"towards the camera and left to right","looking":"Bolt"},
                  {"name":"Bolt","screen":"right","facing":"rear three-quarter left","moving":"stationary"}],
                "extras":[{"name":"Dockhands","screen":"right","pose":"the nearest one, coiling a rope"}]}]}
-            """);
+            """, PARTS);
 
         var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true });
 
@@ -539,7 +601,7 @@ public class DirectionTests(StoryDatabase database)
         Assert.Equal(("right", "the nearest one, coiling a rope", false), (staged.Screen, staged.Pose, staged.HasOnScreen));
         Assert.Equal("left to right", directed.Appearances.Single(a => a.CharacterId == mara.Id).Travel);
         Assert.All(directed.Appearances.Where(a => a.CharacterId == bolt.Id), a => Assert.Equal("", a.Travel));
-        Assert.Equal(2, _writer.ModelPrompts().Count);
+        Assert.Equal(3, _writer.ModelPrompts().Count);
     }
 
     [Fact]
@@ -557,7 +619,8 @@ public class DirectionTests(StoryDatabase database)
                {"from":"e1","to":"e2","shot":"wide","visible":"Mara walks toward Bolt.","characters":[{"name":"Mara","screen":"left","moving":"left to right"},{"name":"Bolt","screen":"right"}]},
                {"from":"e3","to":"e5","shot":"medium","visible":"Mara faces Bolt.","characters":[{"name":"Mara","screen":"right","facing":"three-quarter right","moving":"away from camera, right to left"},{"name":"Bolt","screen":"left"}]}]}
             """,
-            """{"frames":[{"frame":"f1","camera":"behind Bolt's shoulder","visible":"Mara stops in front of Bolt.","characters":[{"name":"Mara","screen":"left","moving":"still"},{"name":"Bolt","screen":"right","facing":"screen left"}]}]}""");
+            """{"frames":[{"frame":"f1","camera":"behind Bolt's shoulder","visible":"Mara stops in front of Bolt.","characters":[{"name":"Mara","screen":"left","moving":"still"},{"name":"Bolt","screen":"right","facing":"screen left"}]}]}""",
+            PARTS);
 
         var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true });
 
@@ -575,7 +638,7 @@ public class DirectionTests(StoryDatabase database)
         Assert.Equal(("left", "still"), (maraSecond.Screen, maraSecond.Moving));
         var boltSecond = second.Placements.Single(p => p.CharacterId == bolt.Id);
         Assert.Equal(("right", "screen left"), (boltSecond.Screen, boltSecond.Facing));
-        Assert.Equal(3, _writer.ModelPrompts().Count);
+        Assert.Equal(4, _writer.ModelPrompts().Count);
     }
 
     [Fact]
@@ -736,7 +799,8 @@ public class DirectionTests(StoryDatabase database)
             """{"storyDay":1}""",
             """{"looks":[{"name":"Mara"},{"name":"Bolt"}],"props":[{"name":"Radio","state":["crackling"]}],"locations":[{"name":"Docks","change":"fog on the water"}]}""",
             """{"frames":[{"from":"e1","to":"e2","shot":"wide","visible":"Mara and the robot at the water.","characters":[{"name":"Mara","screen":"left"},{"name":"Bolt","screen":"right"}],"props":["Radio"]}]}""",
-            """{"frames":[{"frame":"f1","visible":"Mara stands at the edge of the Docks facing Bolt, who hums beside a stack of crates, its radio crackling."}]}""");
+            """{"frames":[{"frame":"f1","visible":"Mara stands at the edge of the Docks facing Bolt, who hums beside a stack of crates, its radio crackling."}]}""",
+            PARTS);
 
         var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Scene = true });
 
@@ -764,7 +828,8 @@ public class DirectionTests(StoryDatabase database)
         _writer.ScriptModel(
             """{"extras":[]}""",
             """{"frames":[{"from":"e1","to":"e5","shot":"medium","visible":"","characters":[{"name":"Mara","screen":"left","pose":"leaning on the rail","expression":"wary"},{"name":"Bolt","screen":"right"}]}]}""",
-            """{"frames":[{"frame":"f1","visible":"Mara leans on the rail of the pier, watching the water."}]}""");
+            """{"frames":[{"frame":"f1","visible":"Mara leans on the rail of the pier, watching the water."}]}""",
+            PARTS);
 
         var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true });
 

@@ -1,7 +1,9 @@
+using Npgsql;
 using ProtoFast.Api.Services;
 using ProtoFast.Api.Services.Admin;
 using ProtoFast.Api.Services.Directing;
 using ProtoFast.Api.Services.Imaging;
+using ProtoFast.Api.Services.Jobs;
 using ProtoFast.Api.Services.Screenplays;
 using ProtoFast.Api.Services.Speech;
 using ProtoFast.Data.ThePlot;
@@ -55,6 +57,8 @@ builder.Services.AddLanguageModels(options =>
     options.CaptureMessageContent = captureContent;
 });
 builder.Services.AddSingleton(builder.Configuration.GetSection("Director").Get<DirectorOptions>() ?? new DirectorOptions());
+builder.Services.AddSingleton<PictureReader>();
+builder.Services.AddSingleton<FrameVerifier>();
 builder.Services.AddSingleton<SceneDirector>();
 builder.Services.AddSingleton<SheetDescriber>();
 builder.Services.AddSingleton<VoiceCaster>();
@@ -76,6 +80,18 @@ builder.Services.AddImageGeneration(options =>
     options.CaptureMessageContent = captureContent;
 });
 
+// Model work the author asks for runs in the background off a queue in Postgres; the client polls it.
+builder.Services.AddSingleton(builder.Configuration.GetSection("DirectorJobs").Get<DirectorJobOptions>() ?? new DirectorJobOptions());
+builder.Services.AddSingleton<DirectorJobSignal>();
+builder.Services.AddKeyedSingleton(DirectorJobStore.DataSourceKey, (_, _) =>
+    NpgsqlDataSource.Create(builder.Configuration.GetConnectionString("protofast")
+                            ?? throw new InvalidOperationException("ConnectionStrings:protofast is not set.")));
+builder.Services.AddSingleton<DirectorJobStore>();
+builder.Services.AddSingleton<DirectorJobRunner>();
+// Job steps call the service directly, outside a gRPC call.
+builder.Services.AddScoped<DirectionService>();
+builder.Services.AddHostedService<DirectorJobWorker>();
+
 builder.Services.AddS3ObjectStorage(options => builder.Configuration.GetSection("S3").Bind(options));
 
 // Completed uploads are handed to the document-import worker over this queue.
@@ -92,6 +108,7 @@ app.MapGrpcService<DocumentUploadService>();
 app.MapGrpcService<DocumentService>();
 app.MapGrpcService<StoryService>();
 app.MapGrpcService<DirectionService>();
+app.MapGrpcService<DirectorJobsService>();
 app.MapGrpcService<AdminOverviewService>();
 app.MapGrpcService<TheplotAdminService>();
 app.MapGrpcService<TheplotRunsService>();

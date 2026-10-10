@@ -6,6 +6,7 @@ using ProtoFast.Api.Services;
 using ProtoFast.Api.Services.Admin;
 using ProtoFast.Api.Services.Directing;
 using ProtoFast.Api.Services.Imaging;
+using ProtoFast.Api.Services.Jobs;
 using ProtoFast.Api.Services.Screenplays;
 using ProtoFast.Api.Services.Speech;
 using ProtoFast.Data.ThePlot;
@@ -46,7 +47,10 @@ public sealed class StoryDatabase : IAsyncLifetime
         services.AddLogging();
         services.AddSingleton<ScriptedLanguageModelFactory>();
         services.AddSingleton<ILanguageModelFactory>(sp => sp.GetRequiredService<ScriptedLanguageModelFactory>());
-        services.AddSingleton(new DirectorOptions());
+        // Verifying adds model calls to every frames pass; the tests that verify build their own director.
+        services.AddSingleton(new DirectorOptions { Verify = false });
+        services.AddSingleton<PictureReader>();
+        services.AddSingleton<FrameVerifier>();
         services.AddSingleton<SceneDirector>();
         services.AddSingleton<SheetDescriber>();
         services.AddSingleton<VoiceCaster>();
@@ -66,9 +70,16 @@ public sealed class StoryDatabase : IAsyncLifetime
         services.AddSingleton<ReferenceCollector>();
         services.AddScoped<ImageAssets>();
         services.AddScoped<ImageMessages>();
+        services.AddScoped<ImageRefiner>();
         services.AddScoped<FrameImageGenerator>();
         services.AddScoped<LibraryImageGenerator>();
         services.AddScoped<LookImageGenerator>();
+        services.AddSingleton(new DirectorJobOptions { Lease = TimeSpan.FromMinutes(5) });
+        services.AddSingleton<DirectorJobSignal>();
+        services.AddKeyedSingleton(DirectorJobStore.DataSourceKey, (sp, _) => sp.GetRequiredService<NpgsqlDataSource>());
+        services.AddSingleton<DirectorJobStore>();
+        services.AddSingleton<DirectorJobRunner>();
+        services.AddScoped<DirectorJobsService>();
         // The real engine tables, so the console's reads see what the ledger writes; artifacts and
         // registry content would need an object store, so those two stay in memory.
         services.AddSingleton<IArtifactStore, InMemoryArtifactStore>();

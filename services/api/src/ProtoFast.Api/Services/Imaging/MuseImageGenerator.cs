@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -13,6 +14,8 @@ namespace ProtoFast.Api.Services.Imaging;
 public sealed class MuseImageGenerator(MuseImageOptions options, HttpClient http) : IImageGenerator
 {
     public const string HttpClientName = "imaging-muse";
+
+    private const int MaxRetries = 3;
 
     public string Provider => ImageProviders.Meta;
 
@@ -63,14 +66,18 @@ public sealed class MuseImageGenerator(MuseImageOptions options, HttpClient http
             ["tools"] = new JsonArray(tool),
         };
 
-        using var message = new HttpRequestMessage(HttpMethod.Post, $"{options.BaseUrl.TrimEnd('/')}/responses")
+        var key = options.ApiKey is { Length: > 0 } k
+            ? k
+            : throw new ImageException("No Meta API key is configured (Providers:Meta:ApiKey).");
+        using var response = await SendAsync(() =>
         {
-            Content = JsonContent.Create(body),
-        };
-        message.Headers.Authorization = new("Bearer", options.ApiKey is { Length: > 0 } key
-            ? key
-            : throw new ImageException("No Meta API key is configured (Providers:Meta:ApiKey)."));
-        using var response = await SendAsync(message, ct);
+            var message = new HttpRequestMessage(HttpMethod.Post, $"{options.BaseUrl.TrimEnd('/')}/responses")
+            {
+                Content = JsonContent.Create(body),
+            };
+            message.Headers.Authorization = new("Bearer", key);
+            return message;
+        }, ct);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(ct));
         var output = ModelJson.Array(json.RootElement, "output").ToList();
         var image = output
@@ -109,25 +116,48 @@ public sealed class MuseImageGenerator(MuseImageOptions options, HttpClient http
                 ModelJson.Int(usage, "output_tokens")));
     }
 
-    private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage message, CancellationToken ct)
+    private async Task<HttpResponseMessage> SendAsync(Func<HttpRequestMessage> build, CancellationToken ct)
     {
-        HttpResponseMessage response;
-        try
+        for (var attempt = 0; ; attempt++)
         {
-            response = await http.SendAsync(message, ct);
-        }
-        catch (HttpRequestException e)
-        {
-            throw new ImageException("Muse couldn't be reached.", e);
-        }
+            var retry = attempt < MaxRetries;
+            using var message = build();
+            HttpResponseMessage response;
+            try
+            {
+                response = await http.SendAsync(message, ct);
+            }
+            catch (HttpRequestException e)
+            {
+                if (retry)
+                {
+                    await BackoffAsync(attempt, ct);
+                    continue;
+                }
 
-        if (!response.IsSuccessStatusCode)
-        {
+                throw new ImageException("Muse couldn't be reached.", e);
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                return response;
+            }
+
             var detail = await response.Content.ReadAsStringAsync(ct);
             response.Dispose();
+            if (retry && IsTransient(response.StatusCode))
+            {
+                await BackoffAsync(attempt, ct);
+                continue;
+            }
+
             throw new ImageException($"Muse refused the picture ({(int)response.StatusCode}): {(detail.Length <= 200 ? detail : detail[..200] + "…")}");
         }
-
-        return response;
     }
+
+    private static bool IsTransient(HttpStatusCode status) =>
+        status is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests || (int)status >= 500;
+
+    private Task BackoffAsync(int attempt, CancellationToken ct) =>
+        Task.Delay(options.RetryDelay * Math.Pow(2, attempt), ct);
 }

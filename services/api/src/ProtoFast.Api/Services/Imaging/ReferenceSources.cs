@@ -9,6 +9,7 @@ public static class ReferenceSources
     public const string Frame = "frame";
     public const string Look = "look";
     public const string Extra = "extra";
+    public const string LocationVariation = "locationVariation";
 
     public static string Of(ReferenceSource source) => source switch
     {
@@ -17,6 +18,7 @@ public static class ReferenceSources
         ReferenceSource.Prop => Prop,
         ReferenceSource.Look => Look,
         ReferenceSource.Extra => Extra,
+        ReferenceSource.LocationVariation => LocationVariation,
         _ => Frame,
     };
 }

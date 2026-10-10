@@ -50,6 +50,7 @@ describe('InMemoryStoryApi', () => {
       description: null,
       appearance: null,
       acoustics: null,
+      variations: [],
     });
     expect(location.name).toBe('Mara');
   });

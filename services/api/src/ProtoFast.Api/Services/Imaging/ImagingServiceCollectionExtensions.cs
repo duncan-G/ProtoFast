@@ -18,6 +18,7 @@ public static class ImagingServiceCollectionExtensions
         services.AddSingleton<ReferenceCollector>();
         services.AddScoped<ImageAssets>();
         services.AddScoped<ImageMessages>();
+        services.AddScoped<ImageRefiner>();
         services.AddScoped<FrameImageGenerator>();
         services.AddScoped<LibraryImageGenerator>();
         services.AddScoped<LookImageGenerator>();

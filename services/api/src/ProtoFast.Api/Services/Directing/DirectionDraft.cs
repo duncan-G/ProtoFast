@@ -11,6 +11,7 @@ using SceneLocationStateRecord = ProtoFast.Data.ThePlot.Entities.SceneLocationSt
 using SceneExtraRecord = ProtoFast.Data.ThePlot.Entities.SceneExtra;
 using FrameExtraRecord = ProtoFast.Data.ThePlot.Entities.FrameExtra;
 using ExtraRecord = ProtoFast.Data.ThePlot.Entities.Extra;
+using LocationVariationRecord = ProtoFast.Data.ThePlot.Entities.LocationVariation;
 
 namespace ProtoFast.Api.Services.Directing;
 
@@ -45,6 +46,15 @@ public sealed class DirectionDraft
     /// <summary>Extras a directing pass found the library lacks; rows point at them by their new ids.</summary>
     public List<ExtraRecord> NewExtras { get; set; } = [];
 
+    /// <summary>
+    /// Parts of places a directing pass found the library lacks, by their location; frames point at
+    /// them through <c>Frame.LocationVariation</c> until they are saved and have ids.
+    /// </summary>
+    public List<LocationVariationRecord> NewLocationVariations { get; set; } = [];
+
+    /// <summary>What the verifiers still found wrong with the directed frames after the pass fixed what it could; not stored.</summary>
+    public List<StagingFinding> Findings { get; set; } = [];
+
     /// <summary>A copy of the scene's stored layer, for a directing pass to change one part of.</summary>
     public static DirectionDraft From(SceneRecord scene) => new()
     {
@@ -58,6 +68,7 @@ public sealed class DirectionDraft
             FirstElementId = p.FirstElementId,
             LastElementId = p.LastElementId,
             LocationId = p.LocationId,
+            LocationVariationId = p.LocationVariationId,
             TimeOfDay = p.TimeOfDay,
             Beat = p.Beat,
             Shot = p.Shot,
@@ -66,6 +77,7 @@ public sealed class DirectionDraft
             LocationChange = p.LocationChange,
             Camera = p.Camera,
             Variation = p.Variation,
+            VariationMovesCamera = p.VariationMovesCamera,
             HoldMs = p.HoldMs,
             Edited = p.Edited,
             Locked = p.Locked,
@@ -73,6 +85,8 @@ public sealed class DirectionDraft
             {
                 CharacterId = pl.CharacterId,
                 Screen = pl.Screen,
+                Depth = pl.Depth,
+                Mark = pl.Mark,
                 Facing = pl.Facing,
                 Moving = pl.Moving,
                 Looking = pl.Looking,
@@ -83,12 +97,17 @@ public sealed class DirectionDraft
                 WardrobeChange = pl.WardrobeChange,
                 AppearanceChange = pl.AppearanceChange,
             }).ToList(),
-            Props = p.Props.Select(pp => new FramePropRecord { PropId = pp.PropId, InView = pp.InView }).ToList(),
+            Props = p.Props.Select(pp => new FramePropRecord
+            {
+                PropId = pp.PropId, InView = pp.InView, Screen = pp.Screen, Depth = pp.Depth, Mark = pp.Mark,
+            }).ToList(),
             Extras = p.Extras.Select(e => new FrameExtraRecord
             {
                 ExtraId = e.ExtraId,
                 OnScreen = e.OnScreen,
                 Screen = e.Screen,
+                Depth = e.Depth,
+                Mark = e.Mark,
                 Facing = e.Facing,
                 Moving = e.Moving,
                 Looking = e.Looking,

@@ -107,12 +107,18 @@ public static class DirectionMessages
             LocationChange = frame.LocationChange,
             Camera = frame.Camera,
             Variation = frame.Variation,
+            VariationMovesCamera = frame.VariationMovesCamera,
             Edited = frame.Edited,
             Locked = frame.Locked,
         };
         if (frame.LocationId is { } locationId)
         {
             message.LocationId = locationId.ToString();
+        }
+
+        if (frame.LocationVariationId is { } variationId)
+        {
+            message.LocationVariationId = variationId.ToString();
         }
 
         if (frame.TimeOfDay is not null)
@@ -146,6 +152,8 @@ public static class DirectionMessages
             {
                 CharacterId = p.CharacterId.ToString(),
                 Screen = p.Screen,
+                Depth = p.Depth,
+                Mark = p.Mark,
                 Facing = p.Facing,
                 Moving = p.Moving,
                 Looking = p.Looking,
@@ -170,6 +178,9 @@ public static class DirectionMessages
         {
             PropId = p.PropId.ToString(),
             InView = p.InView,
+            Screen = p.Screen,
+            Depth = p.Depth,
+            Mark = p.Mark,
         }));
         message.Extras.AddRange(frame.Extras.OrderBy(e => e.ExtraId).Select(e =>
         {
@@ -177,6 +188,8 @@ public static class DirectionMessages
             {
                 ExtraId = e.ExtraId.ToString(),
                 Screen = e.Screen,
+                Depth = e.Depth,
+                Mark = e.Mark,
                 Facing = e.Facing,
                 Moving = e.Moving,
                 Looking = e.Looking,

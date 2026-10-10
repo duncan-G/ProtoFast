@@ -11,4 +11,7 @@ public enum ReferenceSource
     Look,
 
     Extra,
+
+    /// <summary>A part of a location, pictured from its establishing shot.</summary>
+    LocationVariation,
 }

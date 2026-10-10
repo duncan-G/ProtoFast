@@ -1,6 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { overrideCount } from '../../../direction/inheritance';
 import { FrameSpan } from '../../../direction/frames';
+import { PictureRefinement } from '../../../direction/model/picture-refinement';
 import { plural } from '../format';
 import { ImageState } from '../image-state';
 import { InspectorScope } from '../inspector-scope';
@@ -10,6 +18,8 @@ import { InspectorCastTab } from './inspector-cast-tab';
 import { InspectorLinesTab } from './inspector-lines-tab';
 import { InspectorPlaceTab } from './inspector-place-tab';
 import { InspectorShotTab } from './inspector-shot-tab';
+import { Autofocus } from './autofocus';
+import { LocationVariationSelect } from './location-variation-select';
 import { PicturePreview } from './picture-preview';
 
 const TABS: { tab: InspectorTab; label: string }[] = [
@@ -24,10 +34,12 @@ const TABS: { tab: InspectorTab; label: string }[] = [
   selector: 'app-director-inspector',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    Autofocus,
     InspectorCastTab,
     InspectorLinesTab,
     InspectorPlaceTab,
     InspectorShotTab,
+    LocationVariationSelect,
     PicturePreview,
   ],
   host: { class: 'dr-inspector', 'aria-label': 'Inspector' },
@@ -200,7 +212,14 @@ const TABS: { tab: InspectorTab; label: string }[] = [
       } @else if (store.selectedFrame()) {
         <div class="dr-media is-frame">
           @if (store.selectedFrame()?.frame?.image; as image) {
-            <app-picture-preview [url]="image.url" [alt]="'Frame ' + store.selectedFrameNumber()" />
+            <app-picture-preview
+              [url]="image.url"
+              [alt]="'Frame ' + store.selectedFrameNumber()"
+              [refinable]="!frameLocked()"
+              [busy]="frameImageState() === 'generating'"
+              [references]="frameReferences()"
+              (refine)="refineFrame($event)"
+            />
           } @else {
             <div class="dr-picture">
               {{ frameImageState() === 'generating' ? 'Drawing…' : 'No image' }}
@@ -216,23 +235,36 @@ const TABS: { tab: InspectorTab; label: string }[] = [
           @if (frameLocked()) {
             <span></span>
           } @else {
-            <button
-              type="button"
-              class="dr-link"
-              [class.is-done]="frameImageState() === 'ready'"
-              [class.is-working]="frameImageState() === 'generating'"
-              [disabled]="!store.selectedFrame()?.frame?.id || frameImageState() === 'generating'"
-              [title]="
-                !store.selectedFrame()?.frame?.id
-                  ? 'Saving…'
-                  : variationOf()
-                    ? 'Edits frame ' + variationOf() + '’s picture with the change alone'
-                    : 'Composed from the pictures that already exist around it'
-              "
-              (click)="pictureFrame()"
-            >
-              {{ frameImageAction() }}
-            </button>
+            <span class="dr-media-actions">
+              @if (store.selectedFrame()?.frame?.image) {
+                <button
+                  type="button"
+                  class="dr-link"
+                  [disabled]="frameImageState() === 'generating'"
+                  title="Say what to change in this picture; the rest stays"
+                  (click)="preview()?.open(true)"
+                >
+                  Refine
+                </button>
+              }
+              <button
+                type="button"
+                class="dr-link"
+                [class.is-done]="frameImageState() === 'ready'"
+                [class.is-working]="frameImageState() === 'generating'"
+                [disabled]="!store.selectedFrame()?.frame?.id || frameImageState() === 'generating'"
+                [title]="
+                  !store.selectedFrame()?.frame?.id
+                    ? 'Saving…'
+                    : variationOf()
+                      ? 'Edits frame ' + variationOf() + '’s picture with the change alone'
+                      : 'Composed from the pictures that already exist around it'
+                "
+                (click)="pictureFrame()"
+              >
+                {{ frameImageAction() }}
+              </button>
+            </span>
           }
           <span class="dr-media-label">Audio</span>
           <span
@@ -261,176 +293,277 @@ const TABS: { tab: InspectorTab; label: string }[] = [
             {{ playingFrame() ? '❚❚ Stop' : '▶ Play frame' }}
           </button>
         </div>
-        @if (variationOf() || nextFrame()) {
-          <div class="dr-chain">
-            @if (variationOf(); as previous) {
-              <p class="dr-chain-note">
-                <button type="button" class="dr-link" (click)="store.stepFrame(-1)">
-                  Frame {{ previous }}
-                </button>
-                with one change: {{ store.selectedFrame()?.frame?.variation }}
-              </p>
-            }
-            @if (nextFrame(); as next) {
-              <label
-                class="dr-check"
-                [title]="
-                  next.frame.locked
-                    ? 'Frame ' + (store.selectedFrameNumber() + 1) + ' is locked'
-                    : 'Its picture is made by editing this one, so everything else stays exactly as it is'
-                "
-              >
-                <input
-                  type="checkbox"
-                  [checked]="chained()"
-                  [disabled]="next.frame.locked"
-                  (change)="chain($any($event.target).checked)"
-                />
-                Next frame is this picture with a small change
-              </label>
-              @if (chained()) {
-                <textarea
-                  class="dr-input"
-                  rows="2"
-                  maxlength="2000"
-                  placeholder="What changes, as the viewer sees it. e.g. Mara has looked up from the radio, toward screen right"
-                  [value]="next.frame.variation"
-                  [disabled]="next.frame.locked"
-                  (change)="
-                    store.updateFrame(next.frame.firstElementId, {
-                      variation: $any($event.target).value.trim(),
-                    })
+        @if (store.selectedFrameNumber() > 1) {
+          <div class="dr-variation">
+            <label
+              class="dr-check"
+              [title]="
+                frameLocked()
+                  ? 'Locked. Unlock the frame to change it.'
+                  : 'Its picture is made from frame ' +
+                    (store.selectedFrameNumber() - 1) +
+                    '’s, so the place, light and people stay as they are'
+              "
+            >
+              <input
+                type="checkbox"
+                [checked]="chained()"
+                [disabled]="frameLocked()"
+                (change)="chain($any($event.target).checked)"
+              />
+              Based off previous frame
+            </label>
+            @if (chained()) {
+              @let moves = movesCamera();
+              <div class="dr-pills" role="radiogroup" aria-label="Camera">
+                <button
+                  type="button"
+                  class="dr-pill"
+                  role="radio"
+                  [title]="
+                    movedPart()
+                      ? 'This frame is at another part of the place than the frame before, so the camera moves'
+                      : 'Edits the previous picture: same camera, same people, only the change moves'
                   "
-                ></textarea>
+                  [attr.aria-checked]="!moves"
+                  [disabled]="frameLocked() || !!movedPart()"
+                  (click)="setMovesCamera(false)"
+                >
+                  Same shot
+                </button>
+                <button
+                  type="button"
+                  class="dr-pill"
+                  role="radio"
+                  title="The camera repositions and people and props come and go: set who is in view and where on the tabs below"
+                  [attr.aria-checked]="moves"
+                  [disabled]="frameLocked()"
+                  (click)="setMovesCamera(true)"
+                >
+                  Camera moves
+                </button>
+              </div>
+              @if (store.selectedFrame(); as span) {
+                <app-location-variation-select [span]="span" />
+              }
+              @if (movedPart(); as moved) {
+                <span class="dr-hint">{{ moved }}</span>
+              }
+              <textarea
+                class="dr-input"
+                [rows]="moves ? 5 : 9"
+                maxlength="2000"
+                [placeholder]="
+                  moves
+                    ? 'Where the camera has gone and what that shows. e.g. The camera has moved further down the hallway; the visitors from mid-corridor are now close at screen left and Bryan stands just past them'
+                    : 'What changes, as the viewer sees it. e.g. Mara has looked up from the radio, toward screen right'
+                "
+                [value]="store.selectedFrame()?.frame?.variation ?? ''"
+                [disabled]="frameLocked()"
+                (change)="variation($any($event.target).value)"
+              ></textarea>
+            }
+          </div>
+        }
+      }
+
+      @if (frameFindings(); as findings) {
+        @if (findings.length > 0) {
+          <div class="dr-findings" role="status">
+            <div class="dr-field-head">
+              <span class="dr-kicker">Still to fix after the checks</span>
+              <span class="flex-1"></span>
+              <button
+                type="button"
+                class="dr-link is-quiet"
+                (click)="store.dismissFindings(findings[0].frameId)"
+              >
+                dismiss
+              </button>
+            </div>
+            <ul>
+              @for (finding of findings; track $index) {
+                <li>
+                  <span class="dr-finding-check">{{
+                    finding.check === 'consistency' ? 'Consistency' : 'Positioning'
+                  }}</span>
+                  {{ finding.issue }}
+                </li>
+              }
+            </ul>
+          </div>
+        }
+      }
+
+      @if (!based()) {
+        <div class="dr-tabs" role="tablist">
+          @for (t of tabs; track t.tab) {
+            <button
+              type="button"
+              role="tab"
+              [attr.aria-selected]="store.inspectorTab() === t.tab"
+              (click)="store.inspectorTab.set(t.tab)"
+            >
+              {{ t.label }}
+            </button>
+          }
+        </div>
+      }
+    </div>
+
+    @if (!based()) {
+      <div class="dr-inspector-body">
+        @if (!scene() && !store.selectedFrame()) {
+          <div class="dr-empty">
+            <p>No frames yet. Let the model split the scene, or picture it all in one frame.</p>
+            <div class="dr-row-actions">
+              <button
+                type="button"
+                class="dr-btn"
+                [class.is-working]="store.isDirecting({ kind: 'frames' })"
+                [disabled]="!store.canDirect({ kind: 'frames' })"
+                (click)="store.direct({ kind: 'frames' })"
+              >
+                {{ store.isDirecting({ kind: 'frames' }) ? 'Suggesting…' : 'Suggest frames' }}
+              </button>
+              <button
+                type="button"
+                class="dr-btn"
+                [disabled]="store.elements().length === 0"
+                (click)="store.coverRow(0)"
+              >
+                One frame
+              </button>
+            </div>
+          </div>
+        } @else {
+          @if (frameLocked() && store.inspectorTab() !== 'lines') {
+            <p class="dr-locked-note">Locked. Unlock the frame to change it.</p>
+          }
+          <fieldset
+            class="dr-fieldset"
+            [disabled]="frameLocked() && store.inspectorTab() !== 'lines'"
+          >
+            @switch (store.inspectorTab()) {
+              @case ('shot') {
+                <app-inspector-shot-tab />
+              }
+              @case ('cast') {
+                <app-inspector-cast-tab />
+              }
+              @case ('place') {
+                <app-inspector-place-tab />
+              }
+              @case ('lines') {
+                <app-inspector-lines-tab />
               }
             }
-          </div>
-        }
-      }
-
-      <div class="dr-tabs" role="tablist">
-        @for (t of tabs; track t.tab) {
-          <button
-            type="button"
-            role="tab"
-            [attr.aria-selected]="store.inspectorTab() === t.tab"
-            (click)="store.inspectorTab.set(t.tab)"
-          >
-            {{ t.label }}
-          </button>
+          </fieldset>
         }
       </div>
-    </div>
+    } @else {
+      <span class="flex-1"></span>
+    }
 
-    <div class="dr-inspector-body">
-      @if (!scene() && !store.selectedFrame()) {
-        <div class="dr-empty">
-          <p>No frames yet. Let the model split the scene, or picture it all in one frame.</p>
-          <div class="dr-row-actions">
-            <button
-              type="button"
-              class="dr-btn"
-              [class.is-working]="store.isDirecting({ kind: 'frames' })"
-              [disabled]="!store.canDirect({ kind: 'frames' })"
-              (click)="store.direct({ kind: 'frames' })"
-            >
-              {{ store.isDirecting({ kind: 'frames' }) ? 'Suggesting…' : 'Suggest frames' }}
-            </button>
-            <button
-              type="button"
-              class="dr-btn"
-              [disabled]="store.elements().length === 0"
-              (click)="store.coverRow(0)"
-            >
-              One frame
-            </button>
-          </div>
+    @if (askingFor(); as span) {
+      <div class="dr-inspector-foot is-asking">
+        <label class="dr-field">
+          <span class="dr-kicker">Instructions for the model</span>
+          <textarea
+            class="dr-input"
+            rows="4"
+            maxlength="2000"
+            placeholder="What this frame should show. e.g. Close on Mara’s hands at the radio; Bolt stays out of shot"
+            [value]="draft()"
+            (input)="setDraft($any($event.target).value)"
+            (keydown.escape)="asking.set(null)"
+            (keydown.control.enter)="suggestFrame(span)"
+            (keydown.meta.enter)="suggestFrame(span)"
+            drAutofocus
+          ></textarea>
+        </label>
+        <div class="dr-row-actions">
+          <button
+            type="button"
+            class="dr-btn is-dark"
+            [disabled]="!store.canDirect({ kind: 'frame', frameId: span.frame.id })"
+            (click)="suggestFrame(span)"
+          >
+            Suggest frame
+          </button>
+          <button type="button" class="dr-link" (click)="asking.set(null)">Cancel</button>
         </div>
-      } @else {
-        @if (frameLocked() && store.inspectorTab() !== 'lines') {
-          <p class="dr-locked-note">Locked. Unlock the frame to change it.</p>
-        }
-        <fieldset
-          class="dr-fieldset"
-          [disabled]="frameLocked() && store.inspectorTab() !== 'lines'"
-        >
-          @switch (store.inspectorTab()) {
-            @case ('shot') {
-              <app-inspector-shot-tab />
-            }
-            @case ('cast') {
-              <app-inspector-cast-tab />
-            }
-            @case ('place') {
-              <app-inspector-place-tab />
-            }
-            @case ('lines') {
-              <app-inspector-lines-tab />
-            }
-          }
-        </fieldset>
-      }
-    </div>
-
-    <div class="dr-inspector-foot">
-      @if (scene()) {
-        <button
-          type="button"
-          class="dr-btn"
-          title="The model splits the scene into frames; frames you edited keep their rows and locked frames stay as they are"
-          [disabled]="store.isDirecting({ kind: 'frames' })"
-          (click)="store.direct({ kind: 'frames' })"
-        >
-          @if (store.isDirecting({ kind: 'frames' })) {
-            <span class="spinner" aria-hidden="true"></span>
-          }
-          Direct all frames
-        </button>
-        <span class="flex-1"></span>
-        <span class="dr-hint">{{ plural(overrides(), 'frame override') }}</span>
-      } @else if (store.selectedFrame(); as span) {
-        @if (!span.frame.locked) {
+      </div>
+    } @else {
+      <div class="dr-inspector-foot">
+        @if (scene()) {
           <button
             type="button"
             class="dr-btn"
-            [class.is-working]="store.isDirecting({ kind: 'frame', frameId: span.frame.id })"
-            [disabled]="
-              !span.frame.id || !store.canDirect({ kind: 'frame', frameId: span.frame.id })
-            "
-            [title]="span.frame.id ? 'Have the model direct this frame' : 'Saving…'"
-            (click)="store.direct({ kind: 'frame', frameId: span.frame.id })"
+            title="The model splits the scene into frames; frames you edited keep their rows and locked frames stay as they are"
+            [disabled]="store.isDirecting({ kind: 'frames' })"
+            (click)="store.direct({ kind: 'frames' })"
           >
-            {{
-              store.isDirecting({ kind: 'frame', frameId: span.frame.id })
-                ? 'Suggesting…'
-                : 'Suggest frame'
-            }}
+            @if (store.isDirecting({ kind: 'frames' })) {
+              <span class="spinner" aria-hidden="true"></span>
+            }
+            Direct all frames
           </button>
           <span class="flex-1"></span>
-          <button
-            type="button"
-            class="dr-danger"
-            [disabled]="span.first === 0 || joinBlocked(span)"
-            [title]="joinTitle(span)"
-            (click)="store.mergeFrameUp(span.first)"
-          >
-            Join with previous
-          </button>
+          <span class="dr-hint">{{ plural(overrides(), 'frame override') }}</span>
+        } @else if (store.selectedFrame(); as span) {
+          @if (!span.frame.locked) {
+            <button
+              type="button"
+              class="dr-btn"
+              [class.is-working]="store.isDirecting({ kind: 'frame', frameId: span.frame.id })"
+              [disabled]="
+                !span.frame.id || !store.canDirect({ kind: 'frame', frameId: span.frame.id })
+              "
+              [title]="
+                span.frame.id
+                  ? 'Have the model direct this frame, with your instructions'
+                  : 'Saving…'
+              "
+              (click)="asking.set(span.frame.id)"
+            >
+              {{
+                store.isDirecting({ kind: 'frame', frameId: span.frame.id })
+                  ? 'Suggesting…'
+                  : 'Suggest frame'
+              }}
+            </button>
+            <span class="flex-1"></span>
+            <button
+              type="button"
+              class="dr-danger"
+              [disabled]="span.first === 0 || joinBlocked(span)"
+              [title]="joinTitle(span)"
+              (click)="store.mergeFrameUp(span.first)"
+            >
+              Join with previous
+            </button>
+          }
         }
-      }
-    </div>
+      </div>
+    }
   `,
 })
 export class DirectorInspector {
   protected readonly store = inject(SceneEditorStore);
 
   protected readonly tabs = TABS;
+  protected readonly preview = viewChild(PicturePreview);
   protected readonly sceneImagesTitle =
     'Pictures the scene’s cast, places and props first when they have none, then each frame in order';
 
   /** The All frames generation summary, folded away until asked for. */
   protected readonly summaryOpen = signal(false);
   protected readonly scene = computed(() => this.store.inspectorScope() === 'scene');
+  protected readonly frameFindings = computed(() => {
+    const id = this.scene() ? null : this.store.selectedFrame()?.frame?.id;
+    return id ? this.store.findings().filter((f) => f.frameId === id) : [];
+  });
   protected readonly scopes = computed<{ value: InspectorScope; label: string }[]>(() => [
     {
       value: 'frame',
@@ -460,26 +593,73 @@ export class DirectorInspector {
     this.store.frameSpans().reduce((n, s) => n + overrideCount(s.frame), 0),
   );
 
-  protected readonly nextFrame = computed(() => {
-    const span = this.store.selectedFrame();
-    return span ? this.store.frameAt(span.last + 1) : null;
-  });
   /** The number of the frame this one edits, when it is a variation. */
   protected readonly variationOf = computed(() => {
     const number = this.store.selectedFrameNumber();
     return number > 1 && this.store.selectedFrame()?.frame.variation ? number - 1 : null;
   });
-  /** The frame whose box was ticked before its next frame's change was written. */
+  /** The frame whose box was ticked before its change was written. */
   private readonly chaining = signal<string | null>(null);
   protected readonly chained = computed(
     () =>
-      !!this.nextFrame()?.frame.variation ||
-      this.chaining() === this.store.selectedFrame()?.frame.firstElementId,
+      !!this.variationOf() || this.chaining() === this.store.selectedFrame()?.frame.firstElementId,
   );
+  /**
+   * Said when this frame is at another part of the place than the one before: it can't be an edit
+   * of that picture, so it is drawn with the camera moved and that part's own background.
+   */
+  protected readonly movedPart = computed(() => {
+    const spans = this.store.frameSpans();
+    const number = this.store.selectedFrameNumber();
+    const here = spans[number - 1]?.frame.locationVariationId ?? null;
+    const before = spans[number - 2]?.frame.locationVariationId ?? null;
+    if (number < 2 || here === before) {
+      return '';
+    }
+    const name = (id: string | null) =>
+      id
+        ? (this.store.locationVariationById().get(id)?.variation.name ?? 'a variation')
+        : 'the establishing view';
+    const source = here ? 'that variation’s picture' : 'the location’s picture';
+    return (
+      `Frame ${number - 1} is at ${name(before)} and this one at ${name(here)}: ` +
+      `the place comes from ${source}, and frame ${number - 1} gives only the people.`
+    );
+  });
+  protected readonly movesCamera = computed(
+    () => !!this.store.selectedFrame()?.frame?.variationMovesCamera || !!this.movedPart(),
+  );
+  /** A same-shot variation is pictured from its change alone, so its tabs are hidden. */
+  protected readonly based = computed(
+    () =>
+      !this.scene() &&
+      this.store.selectedFrameNumber() > 1 &&
+      this.chained() &&
+      !this.movesCamera(),
+  );
+
+  /** The frame whose instructions box is open. */
+  protected readonly asking = signal<string | null>(null);
+  /** Instructions typed per frame id, kept for another try. */
+  private readonly drafts = signal<ReadonlyMap<string, string>>(new Map());
+  protected readonly askingFor = computed(() => {
+    const span = this.store.selectedFrame();
+    return !this.scene() && span && !span.frame.locked && span.frame.id === this.asking()
+      ? span
+      : null;
+  });
+  protected readonly draft = computed(() => this.drafts().get(this.asking() ?? '') ?? '');
 
   protected readonly frameLocked = computed(
     () => this.store.inspectorScope() === 'frame' && !!this.store.selectedFrame()?.frame.locked,
   );
+  /** The library's pictures and the frames before this one. */
+  protected readonly frameReferences = computed(() => {
+    const number = this.store.selectedFrameNumber();
+    return this.store
+      .refineReferences()
+      .filter((r) => r.frameNumber === null || r.frameNumber < number);
+  });
   protected readonly frameImageState = computed<ImageState>(() => {
     const span = this.store.selectedFrame();
     return (span && this.store.frameImageStates().get(span.frame.firstElementId)) ?? 'none';
@@ -526,17 +706,60 @@ export class DirectorInspector {
   }
 
   protected chain(on: boolean): void {
-    const next = this.nextFrame();
-    this.chaining.set(on ? (this.store.selectedFrame()?.frame.firstElementId ?? null) : null);
-    if (!on && next?.frame.variation) {
-      this.store.updateFrame(next.frame.firstElementId, { variation: '' });
+    const span = this.store.selectedFrame();
+    this.chaining.set(on ? (span?.frame.firstElementId ?? null) : null);
+    if (!on && (span?.frame.variation || span?.frame.variationMovesCamera)) {
+      this.store.updateFrame(span.frame.firstElementId, {
+        variation: '',
+        variationMovesCamera: false,
+      });
     }
+  }
+
+  protected setMovesCamera(moves: boolean): void {
+    const span = this.store.selectedFrame();
+    if (span) {
+      this.store.updateFrame(span.frame.firstElementId, { variationMovesCamera: moves });
+    }
+  }
+
+  protected variation(text: string): void {
+    const span = this.store.selectedFrame();
+    if (span) {
+      this.store.updateFrame(span.frame.firstElementId, { variation: text.trim() });
+    }
+  }
+
+  protected setDraft(text: string): void {
+    const id = this.asking();
+    if (id) {
+      this.drafts.update((drafts) => new Map(drafts).set(id, text));
+    }
+  }
+
+  protected suggestFrame(span: FrameSpan): void {
+    if (!this.store.canDirect({ kind: 'frame', frameId: span.frame.id })) {
+      return;
+    }
+    this.asking.set(null);
+    void this.store.direct({
+      kind: 'frame',
+      frameId: span.frame.id,
+      instructions: this.drafts().get(span.frame.id)?.trim() ?? '',
+    });
   }
 
   protected pictureFrame(): void {
     const id = this.store.selectedFrame()?.frame.id;
     if (id) {
       void this.store.generateFrameImages([id], this.frameImageState() === 'ready');
+    }
+  }
+
+  protected refineFrame(refinement: PictureRefinement): void {
+    const id = this.store.selectedFrame()?.frame.id;
+    if (id) {
+      void this.store.refineFrameImage(id, refinement);
     }
   }
 

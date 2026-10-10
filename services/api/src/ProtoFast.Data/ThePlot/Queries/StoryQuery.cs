@@ -26,6 +26,8 @@ public sealed class StoryQuery : Query<Story>, IStoryQuery
             .ThenInclude(c => c.Wardrobes.OrderBy(w => w.Position).ThenBy(w => w.Id))
             .Include(s => s.Characters).ThenInclude(c => c.Image)
             .Include(s => s.Locations.OrderBy(l => l.Name)).ThenInclude(l => l.Image)
+            .Include(s => s.Locations)
+            .ThenInclude(l => l.Variations.OrderBy(v => v.Position).ThenBy(v => v.Id)).ThenInclude(v => v.Image)
             .Include(s => s.Props.OrderBy(p => p.Name)).ThenInclude(p => p.Image)
             .Include(s => s.Extras.OrderBy(e => e.Name)).ThenInclude(e => e.Image)
             .Include(s => s.Narrators.OrderBy(n => n.Position).ThenBy(n => n.Id))

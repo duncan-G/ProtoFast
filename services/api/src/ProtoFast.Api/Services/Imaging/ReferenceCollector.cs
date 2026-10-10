@@ -11,7 +11,8 @@ namespace ProtoFast.Api.Services.Imaging;
 /// library's pictures of the place, extras and props, the nearest pictured frames around it in
 /// its scene, and the latest pictured frames of earlier scenes in the same place or with the same
 /// people. Nothing is generated to serve as a reference; a frame in the middle of an unpictured
-/// scene is composed from whatever exists.
+/// scene is composed from whatever exists. A frame at a part of the place (a location variation)
+/// takes the place from that part's picture, and frames at other parts are offered for their people only.
 /// </summary>
 public sealed class ReferenceCollector(ImageStaleness staleness)
 {
@@ -45,8 +46,11 @@ public sealed class ReferenceCollector(ImageStaleness staleness)
             var gap = frame.Number - last.Number;
             Add(ReferenceSource.Frame, last.Frame.Id, last.Frame.Image!, $"Frame {last.Number}",
                 $"Frame {last.Number} of this scene, {(gap == 1 ? "the shot just before this one" : $"{gap} before this one")}, showing {last.Summary()}. "
-                + "This picture continues from it: keep the people, what they wear and carry, the place and the light as it shows them, "
-                + "and change only what the description changes.",
+                + (frame.SamePart(last)
+                    ? "This picture continues from it: keep the people, what they wear and carry, the place and the light as it shows them, "
+                      + "and change only what the description changes."
+                    : "This picture continues from it at another part of the place: keep the people, what they wear and carry, and the light "
+                      + "as it shows them, but not its background."),
                 staleness.Frame(last, last.Frame.Image!, story));
         }
 
@@ -72,10 +76,20 @@ public sealed class ReferenceCollector(ImageStaleness staleness)
             }
         }
 
-        if (frame.Location is { Image: { } plate } location)
+        if (frame is { Location: { } place, LocationVariation: { Image: { } partPlate } part })
+        {
+            Add(ReferenceSource.LocationVariation, part.Id, partPlate, $"{place.Name} ({part.Name})",
+                $"The library's picture of {part.Name} in {place.Name}, empty: the part of the place this picture is in. "
+                + "Draw the place around everyone from it; it shows what is there, while the description says where the camera points.",
+                staleness.LocationVariation(place, part, partPlate));
+        }
+        else if (frame.Location is { Image: { } plate } location)
         {
             Add(ReferenceSource.Location, location.Id, plate, location.Name,
-                $"The library's establishing shot of {location.Name}, empty. It shows what the place looks like, not where this picture's camera stands.",
+                $"The library's establishing shot of {location.Name}, empty. It shows what the place looks like, not where this picture's camera stands."
+                + (frame.LocationVariation is { } elsewhere
+                    ? $" This picture is at {elsewhere.Name}, another part of it: take the place's look from it, not its view."
+                    : ""),
                 staleness.Location(location, plate));
         }
 
@@ -104,7 +118,7 @@ public sealed class ReferenceCollector(ImageStaleness staleness)
             var distance = neighbour.Number - frame.Number;
             var where = distance < 0 ? $"{-distance} before this one" : $"{distance} after this one";
             Add(ReferenceSource.Frame, neighbour.Frame.Id, neighbour.Frame.Image!, $"Frame {neighbour.Number}",
-                $"Frame {neighbour.Number} of this scene ({where}), showing {neighbour.Summary()}.",
+                $"Frame {neighbour.Number} of this scene ({where}), showing {neighbour.Summary()}.{Elsewhere(frame, neighbour)}",
                 staleness.Frame(neighbour, neighbour.Frame.Image!, story));
         }
 
@@ -133,13 +147,20 @@ public sealed class ReferenceCollector(ImageStaleness staleness)
                 taken++;
                 var title = SceneTitle(previous.Scene);
                 Add(ReferenceSource.Frame, previous.Frame.Id, previous.Frame.Image!, $"Frame {previous.Number} of {title}",
-                    $"Frame {previous.Number} of an earlier scene, \"{title}\"{(previous.Scene.StoryDay is { } day ? $" (story day {day})" : "")}, showing {previous.Summary()}.",
+                    $"Frame {previous.Number} of an earlier scene, \"{title}\"{(previous.Scene.StoryDay is { } day ? $" (story day {day})" : "")}, showing {previous.Summary()}."
+                    + (samePlace ? Elsewhere(frame, previous) : ""),
                     staleness.Frame(previous, previous.Frame.Image!, story));
             }
         }
 
         return candidates;
     }
+
+    /// <summary>Said of a frame in the same place but at another part of it, so its background stays there.</summary>
+    private static string Elsewhere(FrameContents frame, FrameContents other) =>
+        frame.Location is not null && other.Location?.Id == frame.Location.Id && !frame.SamePart(other)
+            ? " It is at another part of the place: take the people from it, not its background."
+            : "";
 
     /// <summary>"carrying Refrigerated cooler", "hood up", "Night shift"</summary>
     private static string LookName(FrameCharacter shown)

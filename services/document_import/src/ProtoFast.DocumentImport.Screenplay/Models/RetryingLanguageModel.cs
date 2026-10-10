@@ -14,6 +14,10 @@ public sealed class RetryingLanguageModel(ILanguageModel inner, ModelRetryOption
     public Task<LanguageModelReply> CompleteAsync(string system, string user, CancellationToken ct) =>
         RetryAsync(() => inner.CompleteAsync(system, user, ct), ct);
 
+    public Task<LanguageModelReply> CompleteAsync(
+        string system, IReadOnlyList<ModelImage> images, string user, CancellationToken ct) =>
+        RetryAsync(() => inner.CompleteAsync(system, images, user, ct), ct);
+
     public Task<LanguageModelReply> ConverseAsync(
         string system, IReadOnlyList<ChatMessage> messages, IReadOnlyList<ToolDefinition> tools, CancellationToken ct) =>
         RetryAsync(() => inner.ConverseAsync(system, messages, tools, ct), ct);

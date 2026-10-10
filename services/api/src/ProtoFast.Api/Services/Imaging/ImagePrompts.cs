@@ -3,6 +3,7 @@ using ProtoFast.Api.Services.Directing;
 using ProtoFast.Api.Services.Screenplays;
 using CharacterRecord = ProtoFast.Data.ThePlot.Entities.Character;
 using LocationRecord = ProtoFast.Data.ThePlot.Entities.Location;
+using LocationVariationRecord = ProtoFast.Data.ThePlot.Entities.LocationVariation;
 using LocationSettingRecord = ProtoFast.Data.ThePlot.Entities.LocationSetting;
 using PropRecord = ProtoFast.Data.ThePlot.Entities.Prop;
 using ExtraRecord = ProtoFast.Data.ThePlot.Entities.Extra;
@@ -85,6 +86,38 @@ public static class ImagePrompts
         return text.ToString();
     }
 
+    /// <summary>
+    /// A part of the place, empty, seen from where the camera stands there. With <paramref name="fromPlate"/>
+    /// it is drawn from image 1, the location's establishing shot, so both pictures show one place.
+    /// </summary>
+    public static string LocationVariation(LocationRecord location, LocationVariationRecord variation, string style, bool fromPlate)
+    {
+        var text = new StringBuilder();
+        text.AppendLine(style);
+        text.AppendLine(fromPlate
+            ? $"Image 1 is the establishing shot of {location.Name}. Picture the same place, empty of people, from another spot in it: "
+              + "the camera has moved, so compose this picture afresh from where it stands now. Keep the walls, floor, ceiling, "
+              + "fittings, materials, colours, wear and light exactly as image 1 shows them, and build what image 1 doesn't show "
+              + "in the same way, following the layout below."
+            : $"A wide shot of one part of {location.Name}, {Setting(location.Setting)}, empty of people.");
+        text.AppendLine($"This part of the place: {variation.Name.Trim()}. {variation.Description.Trim()}".TrimEnd());
+        AppendPlace(text, location, plan: true);
+        if (location.Appearance?.Lighting.FirstOrDefault(l => l.Description.Length > 0) is { } light)
+        {
+            text.AppendLine($"Light ({light.TimeOfDay.ToLowerInvariant()}): {light.Description.Trim()}");
+        }
+
+        if (!fromPlate)
+        {
+            AppendLine(text, location.Description);
+        }
+
+        text.Append(NoText);
+        return text.ToString();
+    }
+
+    public const string LocationVariationCaption = "Image 1: the establishing shot of the place, empty. Take the place from it, not its camera.";
+
     public static string Prop(PropRecord prop, string style)
     {
         var text = new StringBuilder();
@@ -128,6 +161,7 @@ public static class ImagePrompts
         {
             text.AppendLine($"Place: {location.Name}, {Setting(location.Setting)}.");
             AppendPlace(text, location, plan: true);
+            AppendPart(text, frame);
         }
 
         var timeOfDay = frame.TimeOfDay?.Trim() ?? "";
@@ -152,23 +186,9 @@ public static class ImagePrompts
             text.AppendLine();
             text.AppendLine($"{shown.Character.Name} ({shown.Character.Kind.ToLowerInvariant()}):");
             AppendIdentity(text, shown.Character);
-            if (shown.Wardrobe is not null || shown.WardrobeChange.Length > 0)
-            {
-                var wearing = shown.Wardrobe is null ? "" : Wardrobe(shown.Wardrobe.Label, shown.Wardrobe.Description);
-                text.AppendLine($"Wearing {string.Join("; ", new[] { wearing, shown.WardrobeChange }.Where(p => p.Length > 0))}.");
-            }
+            AppendWearing(text, shown, frame.InView);
 
-            if (shown.AppearanceChange.Length > 0)
-            {
-                text.AppendLine($"In this moment: {shown.AppearanceChange}");
-            }
-
-            if (shown.Holding.Count > 0)
-            {
-                text.AppendLine($"Carrying: {Carried(shown.Holding, frame.InView)}");
-            }
-
-            var staging = Staging(shown.Screen, shown.Facing, shown.Moving, shown.Looking, shown.Pose)
+            var staging = Staging(shown.Screen, shown.Depth, shown.Mark, shown.Facing, shown.Moving, shown.Looking, shown.Pose)
                 .Append(shown.Expression.Length > 0 ? $"expression: {shown.Expression}" : "")
                 .Where(p => p.Length > 0)
                 .ToList();
@@ -180,18 +200,10 @@ public static class ImagePrompts
 
         foreach (var shown in frame.Extras)
         {
-            var extra = shown.Extra;
             text.AppendLine();
-            text.AppendLine(extra.Headcount is { } count
-                ? $"{extra.Name} (extras, in the background, {Headcount.Words(count)}):"
-                : $"{extra.Name} (extras, in the background):");
-            AppendLine(text, extra.Description);
-            if (!string.IsNullOrWhiteSpace(extra.Wardrobe))
-            {
-                text.AppendLine($"Wearing: {extra.Wardrobe.Trim()}");
-            }
-
-            var staging = Staging(shown.Screen, shown.Facing, shown.Moving, shown.Looking, shown.Pose).Where(p => p.Length > 0).ToList();
+            AppendExtra(text, shown.Extra);
+            var staging = Staging(shown.Screen, shown.Depth, shown.Mark, shown.Facing, shown.Moving, shown.Looking, shown.Pose)
+                .Where(p => p.Length > 0).ToList();
             if (staging.Count > 0)
             {
                 text.AppendLine($"Staging: {string.Join("; ", staging)}.");
@@ -205,10 +217,32 @@ public static class ImagePrompts
             {
                 var state = prop.State.Count > 0 ? $" ({string.Join(", ", prop.State)})" : "";
                 text.AppendLine($"{prop.Prop.Name}{state}{(string.IsNullOrWhiteSpace(prop.Prop.Description) ? "" : $": {prop.Prop.Description.Trim()}")}");
+                if (Where(prop) is { Length: > 0 } where)
+                {
+                    text.AppendLine($"Where it is: {where}.");
+                }
             }
         }
 
         text.AppendLine();
+        AppendCamera(text, frame);
+        if (frame.OnScreen.Count + frame.Extras.Count > 0)
+        {
+            text.AppendLine("Left and right mean the viewer's left and right in the picture, never a person's own.");
+        }
+
+        if (frame.Frame.Beat.Trim() is { Length: > 0 } beat)
+        {
+            text.AppendLine($"In the picture: {beat}");
+        }
+
+        AppendPeople(text, frame);
+        text.Append(NoText);
+        return text.ToString();
+    }
+
+    private static void AppendCamera(StringBuilder text, FrameContents frame)
+    {
         var camera = new[]
         {
             frame.Shot is null ? "" : $"{frame.Shot} shot",
@@ -223,20 +257,15 @@ public static class ImagePrompts
         {
             text.AppendLine($"Camera: {string.Join(", ", camera)}.");
         }
+    }
 
-        if (frame.OnScreen.Count + frame.Extras.Count > 0)
+    /// <summary>Who is left out, then the headcount, so the model neither drops nor adds anyone.</summary>
+    /// <param name="named">Already said to be out of the picture.</param>
+    private static void AppendPeople(StringBuilder text, FrameContents frame, IReadOnlyList<string>? named = null)
+    {
+        if (frame.OffScreen.Select(c => c.Name).Except(named ?? []).ToList() is { Count: > 0 } off)
         {
-            text.AppendLine("Left and right mean the viewer's left and right in the picture, never a person's own.");
-        }
-
-        if (frame.Frame.Beat.Trim() is { Length: > 0 } beat)
-        {
-            text.AppendLine($"In the picture: {beat}");
-        }
-
-        if (frame.OffScreen.Count > 0)
-        {
-            text.AppendLine($"Not in the picture: {string.Join(", ", frame.OffScreen.Select(c => c.Name))}.");
+            text.AppendLine($"Not in the picture: {string.Join(", ", off)}.");
         }
 
         text.AppendLine((frame.OnScreen.Count, frame.Extras.Count) switch
@@ -246,8 +275,6 @@ public static class ImagePrompts
             (var count, 0) => $"Exactly {People(count)} in the picture.",
             var (count, _) => $"Exactly {People(count)} in the picture besides the extras described.",
         });
-        text.Append(NoText);
-        return text.ToString();
     }
 
     /// <summary>A variation is the previous frame's picture edited, so it says only what changes.</summary>
@@ -260,16 +287,173 @@ public static class ImagePrompts
         {NoText}
         """;
 
-    public static ImageRequest VariationRequest(string size, FrameContents frame, ImageInput previous) =>
-        new(size, "", [previous], Variation(frame));
+    public const string RefineCaption = "The picture to edit.";
 
-    public static string VariationCaption(FrameContents previous) =>
-        $"Frame {previous.Number} of this scene: the picture to edit.";
+    /// <summary>The author's edit of an existing picture: only what they ask changes.</summary>
+    public static string Refine(string change) =>
+        $"""
+        Edit this picture: {change.TrimEnd('.')}.
+        Change nothing else. Keep the same people with the same faces, clothes and whatever they carry,
+        the same place and light, the same style, camera, framing and composition, and everything the
+        change doesn't touch exactly as it is.
+        {NoText}
+        """;
 
-    /// <summary>"frame left", "turned three-quarters toward screen right", "coming toward the camera, …"</summary>
-    private static IEnumerable<string> Staging(string screen, string facing, string moving, string looking, string pose)
+    public const string RefineWithReferenceCaption = "Image 1: the picture to edit.";
+
+    public const string RefineReferenceCaption =
+        "Image 2: a reference the author picked for the change. Take from it only what the change asks for.";
+
+    /// <summary>The author's edit of image 1, taking what it needs from image 2: only what they ask changes.</summary>
+    public static string RefineWithReference(string change) =>
+        $"""
+        Edit image 1: {change.TrimEnd('.')}. Use image 2 as the reference for the change.
+        Change nothing else in image 1. Keep the same people with the same faces, clothes and whatever
+        they carry, the same place and light, the same style, camera, framing and composition, and
+        everything the change doesn't touch exactly as it is. Image 2 is not the picture to make.
+        {NoText}
+        """;
+
+    /// <summary>
+    /// A frame based off the previous one whose camera moves: image 1 carries the place, its light and
+    /// whoever stays; only what comes into view is described in full, and everyone is staged afresh.
+    /// </summary>
+    public static string Continuation(FrameContents frame, string style)
     {
-        yield return screen is { Length: > 0 } and not "off" ? $"frame {screen}" : "";
+        var previous = frame.VariationOf!;
+        var text = new StringBuilder();
+        text.AppendLine(style);
+        text.AppendLine(frame.SamePart(previous)
+            ? $"The next picture of the same scene, a moment after image 1{(frame.Location is { } at ? $", still in {at.Name}" : "")}. "
+              + "The camera has moved, so compose this picture afresh from where it stands now. Keep the place, its light and "
+              + "everyone still in the picture exactly as image 1 shows them: faces, bodies, clothes and what they carry."
+            : $"The next picture of the same scene, a moment after image 1, at another part of {frame.Location?.Name ?? "the place"}. "
+              + "The camera has moved there, so compose this picture afresh from where it stands now. Keep everyone still in the "
+              + "picture exactly as image 1 shows them: faces, bodies, clothes and what they carry. Take nothing of the place from "
+              + "image 1's background: draw the place around them as the picture of this part of it shows.");
+        if (frame.Location is { } location)
+        {
+            AppendPlace(text, location, plan: true);
+            AppendPart(text, frame);
+        }
+
+        if (frame.LocationChange.Length > 0)
+        {
+            text.AppendLine($"Right now: {frame.LocationChange}");
+        }
+
+        text.AppendLine();
+        AppendCamera(text, frame);
+        text.AppendLine($"What changes: {frame.Frame.Variation.Trim()}");
+        var gone = frame.GoneSince(previous.Pictured);
+        if (gone.Count > 0)
+        {
+            text.AppendLine($"No longer in the picture: {string.Join(", ", gone)}.");
+        }
+
+        var arrived = frame.NewSince(previous.Pictured);
+        var newcomers = frame.OnScreen.Where(c => arrived.Contains(c.Character.Id)).ToList();
+        var newExtras = frame.Extras.Where(e => arrived.Contains(e.Extra.Id)).ToList();
+        var newProps = frame.InView.Where(p => arrived.Contains(p.Prop.Id) && p.HeldBy is null).ToList();
+        if (newcomers.Count + newExtras.Count + newProps.Count > 0)
+        {
+            text.AppendLine();
+            text.AppendLine("New in the picture, not in image 1:");
+            foreach (var shown in newcomers)
+            {
+                text.AppendLine($"{shown.Character.Name} ({shown.Character.Kind.ToLowerInvariant()}):");
+                AppendIdentity(text, shown.Character);
+                AppendWearing(text, shown);
+            }
+
+            foreach (var shown in newExtras)
+            {
+                AppendExtra(text, shown.Extra);
+            }
+
+            foreach (var prop in newProps)
+            {
+                text.AppendLine($"{prop.Prop.Name}{(string.IsNullOrWhiteSpace(prop.Prop.Description) ? "" : $": {prop.Prop.Description.Trim()}")}");
+            }
+        }
+
+        var staging = frame.OnScreen
+            .Select(c => (c.Character.Name, Parts: Staging(c.Screen, c.Depth, c.Mark, c.Facing, c.Moving, c.Looking, c.Pose)
+                .Append(c.Expression.Length > 0 ? $"expression: {c.Expression}" : "")
+                .Append(c.Holding.Count > 0 ? $"carrying {string.Join(" and ", c.Holding.Select(p => p.Name))}" : "")))
+            .Concat(frame.Extras.Select(e => (e.Extra.Name, Parts: Staging(e.Screen, e.Depth, e.Mark, e.Facing, e.Moving, e.Looking, e.Pose))))
+            .Concat(frame.InView.Where(p => p.HeldBy is null).Select(p => (p.Prop.Name, Parts: (IEnumerable<string>)[Where(p)])))
+            .Select(s => (s.Name, Parts: s.Parts.Where(p => p.Length > 0).ToList()))
+            .Where(s => s.Parts.Count > 0)
+            .ToList();
+        if (staging.Count > 0)
+        {
+            text.AppendLine();
+            text.AppendLine("Where everyone is now, as the viewer sees the picture (left and right are the viewer's, never a person's own):");
+            foreach (var (name, parts) in staging)
+            {
+                text.AppendLine($"{name}: {string.Join("; ", parts)}.");
+            }
+        }
+
+        AppendPeople(text, frame, gone);
+        text.Append(NoText);
+        return text.ToString();
+    }
+
+    /// <param name="frame">The frame being pictured, whose camera moves when it is not an edit of <paramref name="previous"/>.</param>
+    public static string VariationCaption(FrameContents frame, FrameContents previous) => !frame.MovesCamera
+        ? $"Frame {previous.Number} of this scene: the picture to edit."
+        : frame.SamePart(previous)
+            ? $"Image 1: Frame {previous.Number} of this scene, the picture just before this one. The camera has moved since: "
+              + "take the place, its light and the people who stay from it, not its composition."
+            : $"Image 1: Frame {previous.Number} of this scene, the picture just before this one, at another part of the place. "
+              + "Take only the people who stay from it, as they look and what they wear and carry, never its background or composition.";
+
+    /// <summary>"Where in the place: Elevator end. The far end of the corridor…"</summary>
+    private static void AppendPart(StringBuilder text, FrameContents frame)
+    {
+        if (frame.LocationVariation is { } part)
+        {
+            text.AppendLine($"Where in the place this picture is: {part.Name.Trim()}. {part.Description.Trim()}".TrimEnd());
+        }
+    }
+
+    private static void AppendWearing(StringBuilder text, FrameCharacter shown, IReadOnlyList<FramePropView>? inView = null)
+    {
+        if (shown.Wardrobe is not null || shown.WardrobeChange.Length > 0)
+        {
+            var wearing = shown.Wardrobe is null ? "" : Wardrobe(shown.Wardrobe.Label, shown.Wardrobe.Description);
+            text.AppendLine($"Wearing {string.Join("; ", new[] { wearing, shown.WardrobeChange }.Where(p => p.Length > 0))}.");
+        }
+
+        if (shown.AppearanceChange.Length > 0)
+        {
+            text.AppendLine($"In this moment: {shown.AppearanceChange}");
+        }
+
+        if (shown.Holding.Count > 0)
+        {
+            text.AppendLine($"Carrying: {Carried(shown.Holding, inView)}");
+        }
+    }
+
+    private static void AppendExtra(StringBuilder text, ExtraRecord extra)
+    {
+        text.AppendLine(extra.Headcount is { } count
+            ? $"{extra.Name} (extras, in the background, {Headcount.Words(count)}):"
+            : $"{extra.Name} (extras, in the background):");
+        AppendLine(text, extra.Description);
+        if (!string.IsNullOrWhiteSpace(extra.Wardrobe))
+        {
+            text.AppendLine($"Wearing: {extra.Wardrobe.Trim()}");
+        }
+    }
+
+    /// <summary>"frame left, in the foreground, at the nurse station", "turned three-quarters toward screen right", …</summary>
+    private static IEnumerable<string> Staging(string screen, string depth, string mark, string facing, string moving, string looking, string pose)
+    {
+        yield return Position(screen, depth, mark);
         yield return facing switch
         {
             "" => "",
@@ -284,6 +468,16 @@ public static class ImagePrompts
         yield return looking.Trim() is { Length: > 0 } at ? $"looking at {at}" : "";
         yield return pose;
     }
+
+    private static string Where(FramePropView prop) => Position(prop.Screen, prop.Depth, prop.Mark);
+
+    private static string Position(string screen, string depth, string mark) =>
+        string.Join(", ", new[]
+        {
+            screen is { Length: > 0 } and not "off" ? $"frame {screen}" : "",
+            depth.Length > 0 ? $"in the {depth}" : "",
+            mark.Trim().TrimEnd('.'),
+        }.Where(p => p.Length > 0));
 
     private static string Moving(string moving)
     {

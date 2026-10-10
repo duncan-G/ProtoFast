@@ -19,6 +19,9 @@ public sealed class ImageAssets(
     public Task<MediaAssetRecord?> FindAsync(Guid storyId, MediaAssetKindRecord kind, string requestHash, CancellationToken ct) =>
         assets.GetFirstByQueryAsync(assetQueries.Create().InStory(storyId).OfKind(kind).WithRequestHash(requestHash), ct);
 
+    public Task<MediaAssetRecord?> GetAsync(Guid storyId, Guid assetId, CancellationToken ct) =>
+        assets.GetFirstByQueryAsync(assetQueries.Create().InStory(storyId).WithId(assetId), ct);
+
     public async Task<ImageInput?> ReadAsync(MediaAssetRecord asset, string caption, CancellationToken ct)
     {
         await using var stream = await objectStore.OpenReadAsync(asset.StorageKey, ct);
@@ -42,10 +45,7 @@ public sealed class ImageAssets(
         List<MediaReferenceRecord> references,
         CancellationToken ct)
     {
-        var contentHash = Convert.ToHexStringLower(SHA256.HashData(image.Bytes));
-        var key = $"stories/{storyId}/images/{contentHash}.{ImageRequests.Extension(image.ContentType)}";
-        await objectStore.WriteBytesAsync(key, image.Bytes, image.ContentType, requestHash, ct);
-
+        var (key, contentHash) = await WriteAsync(storyId, image, requestHash, ct);
         var asset = await FindAsync(storyId, kind, requestHash, ct);
         if (asset is null)
         {
@@ -75,5 +75,27 @@ public sealed class ImageAssets(
         asset.References = references;
         asset.Notes = image.Notes;
         return asset;
+    }
+
+    /// <summary>
+    /// Puts an edit of the picture in its place. The request hash stays, so the picture is still current
+    /// for what it pictures; the edit is added to its prompt for the record.
+    /// </summary>
+    public async Task ReplaceAsync(MediaAssetRecord asset, ImageRequest request, GeneratedImage image, CancellationToken ct)
+    {
+        (asset.StorageKey, asset.ContentHash) = await WriteAsync(asset.StoryId, image, asset.RequestHash, ct);
+        asset.ContentType = image.ContentType;
+        asset.ByteSize = image.Bytes.Length;
+        asset.CostUsdMicros += image.CostUsdMicros;
+        asset.Prompt = string.Join("\n\n", new[] { asset.Prompt ?? "", request.Transcript() }.Where(t => t.Length > 0));
+        asset.Notes = image.Notes;
+    }
+
+    private async Task<(string Key, string ContentHash)> WriteAsync(Guid storyId, GeneratedImage image, string requestHash, CancellationToken ct)
+    {
+        var contentHash = Convert.ToHexStringLower(SHA256.HashData(image.Bytes));
+        var key = $"stories/{storyId}/images/{contentHash}.{ImageRequests.Extension(image.ContentType)}";
+        await objectStore.WriteBytesAsync(key, image.Bytes, image.ContentType, requestHash, ct);
+        return (key, contentHash);
     }
 }

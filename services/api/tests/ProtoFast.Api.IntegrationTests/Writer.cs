@@ -1,8 +1,10 @@
 using Grpc.Core;
 using Microsoft.Extensions.DependencyInjection;
 using ProtoFast.Api.Services.Directing;
+using ProtoFast.Api.Services.Jobs;
 using ProtoFast.Api.Services.Screenplays;
 using ProtoFast.Database.Abstractions;
+using Xunit;
 
 namespace ProtoFast.Api.IntegrationTests;
 
@@ -24,6 +26,27 @@ public sealed class Writer(StoryDatabase database)
         using var user = scope.ServiceProvider.GetRequiredService<UserContext>().SetCurrentUser(UserId);
         ScriptedLanguageModelFactory.User.Value = UserId;
         return await call(scope.ServiceProvider.GetRequiredService<DirectionService>(), new TestServerCallContext());
+    }
+
+    public async Task<TReply> Jobs<TReply>(Func<DirectorJobsService, ServerCallContext, Task<TReply>> call)
+    {
+        await using var scope = database.Services.CreateAsyncScope();
+        using var user = scope.ServiceProvider.GetRequiredService<UserContext>().SetCurrentUser(UserId);
+        return await call(scope.ServiceProvider.GetRequiredService<DirectorJobsService>(), new TestServerCallContext());
+    }
+
+    /// <summary>Claims and runs this writer's next runnable job, as the worker would; false when none is.</summary>
+    public async Task<bool> RunNextJobAsync()
+    {
+        var store = database.Services.GetRequiredService<DirectorJobStore>();
+        if (await store.ClaimAsync(TestContext.Current.CancellationToken, UserId) is not { } job)
+        {
+            return false;
+        }
+
+        ScriptedLanguageModelFactory.User.Value = UserId;
+        await database.Services.GetRequiredService<DirectorJobRunner>().RunAsync(job, CancellationToken.None);
+        return true;
     }
 
     /// <summary>What the language model answers, in order, to this writer's requests.</summary>
