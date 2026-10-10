@@ -1,0 +1,246 @@
+/*
+  The frame story mode writes on (src/app/pages/scene-editor/story): the toolbar over the script,
+  the scrolling page and its row columns, menus and the continue bar. Its dr- classes and tokens
+  are the director view's, so switching between the two modes leaves the script where it was.
+*/
+@layer ember {
+  .scene-editor {
+    --dr-field: var(--se-raised);
+    --dr-seg: color-mix(in srgb, var(--se-ink) 9%, transparent);
+    --dr-wash: color-mix(in srgb, var(--se-ink) 5%, transparent);
+    --dr-accent-soft: color-mix(in srgb, var(--se-accent) 22%, transparent);
+    --dr-accent-wash: color-mix(in srgb, var(--se-accent) 9%, transparent);
+    --dr-dark: var(--se-ink);
+    --dr-on-dark: var(--se-bg);
+    --dr-rule: var(--se-line);
+  }
+  .scene-editor[data-theme='light'] {
+    --dr-field: #ffffff;
+    --dr-seg: #ece5d8;
+    --dr-wash: #f6f1e8;
+    --dr-accent-soft: #f3e2d7;
+    --dr-accent-wash: #f8ebe3;
+    --dr-dark: #1f1b16;
+    --dr-on-dark: #fbf8f2;
+    --dr-rule: #eadfc8;
+  }
+
+  .dr-center {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .dr-btn {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid var(--se-line-strong);
+    border-radius: 7px;
+    background: transparent;
+    font: 13px var(--font-body);
+    color: var(--se-ink-2);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .dr-btn:hover:not(:disabled),
+  .dr-btn[aria-expanded='true'] {
+    background: var(--dr-seg);
+  }
+  .dr-btn:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+
+  /* — menus — */
+  .dr-anchor {
+    position: relative;
+  }
+  .dr-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    width: 280px;
+    padding: 6px;
+    border: 1px solid var(--se-line);
+    border-radius: 10px;
+    background: var(--dr-field);
+    box-shadow: var(--se-shadow);
+  }
+  .dr-menu-up {
+    top: auto;
+    right: auto;
+    bottom: calc(100% + 6px);
+    left: 0;
+    width: 180px;
+  }
+  .dr-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    font: 13px var(--font-body);
+    color: var(--se-ink);
+    text-align: left;
+    cursor: pointer;
+  }
+  .dr-menu-item:hover:not(:disabled) {
+    background: var(--dr-wash);
+  }
+  .dr-menu-item:disabled {
+    color: var(--se-faint);
+    cursor: default;
+  }
+
+  /* — the toolbar over the script — */
+  .dr-toolbar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 12px;
+    height: 52px;
+    min-width: 0;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--se-line);
+    white-space: nowrap;
+  }
+  .dr-slug {
+    flex: none;
+    font: 600 12px var(--font-mono);
+    letter-spacing: 0.06em;
+  }
+  .dr-toolbar-meta {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 12px;
+    color: var(--se-muted-2);
+    text-overflow: ellipsis;
+  }
+
+  /* — the script — */
+  .dr-scroll {
+    display: block;
+    flex: 1;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 24px 20px 40px;
+  }
+  .dr-page {
+    display: flex;
+    flex-direction: column;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 22px 28px 10px;
+    border: 1px solid var(--se-line);
+    border-radius: 10px;
+    background: var(--se-page);
+  }
+  .dr-handle {
+    display: flex;
+    justify-content: center;
+    padding-top: 14px;
+    font-size: 13px;
+    line-height: 1;
+    color: var(--se-faint);
+    cursor: grab;
+    opacity: 0;
+  }
+  .dr-type {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    min-width: 0;
+    padding: 14px 6px 14px 12px;
+    border-left: 2px solid var(--dr-rule);
+    font: 500 11px var(--font-mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--se-muted-2);
+  }
+  .dr-drop {
+    position: relative;
+    height: 0;
+    margin-left: 44px;
+    border-top: 2px solid var(--se-accent);
+  }
+  .dr-drop span {
+    position: absolute;
+    top: -9px;
+    left: 8px;
+    padding: 0 6px;
+    background: var(--se-page);
+    font: 500 10.5px var(--font-mono);
+    color: var(--se-accent-ink);
+  }
+  .dr-continue {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 18px;
+    padding: 14px 0 14px 44px;
+    border-top: 1px dashed var(--se-line-strong);
+  }
+  .dr-continue-kicker {
+    margin-right: 8px;
+    font: 500 11px var(--font-mono);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--se-muted-2);
+  }
+  .dr-continue-btn,
+  .dr-continue-more {
+    padding: 5px 10px;
+    border: 1px solid var(--se-line-strong);
+    border-radius: 6px;
+    background: transparent;
+    font: 13px var(--font-body);
+    color: var(--se-ink-2);
+    cursor: pointer;
+  }
+  .dr-continue-btn:hover,
+  .dr-continue-more:hover {
+    background: var(--dr-wash);
+  }
+  .dr-continue-more {
+    border-color: transparent;
+    color: var(--se-muted-2);
+  }
+  .dr-continue-hint {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--se-faint);
+  }
+}
+
+@media (max-width: 1023px) {
+  @layer ember {
+    .dr-toolbar-meta,
+    .dr-continue-hint {
+      display: none;
+    }
+  }
+}
+
+@media (max-width: 767px) {
+  @layer ember {
+    .dr-scroll {
+      padding: 12px 8px 24px;
+    }
+    .dr-page {
+      padding: 14px 8px 8px;
+    }
+  }
+}

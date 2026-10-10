@@ -18,7 +18,7 @@ import { SceneElement } from '../../stories/model/scene-element';
 import { SceneElementType } from '../../stories/model/scene-element-type';
 import { Story } from '../../stories/model/story';
 import { StoryVocabulary } from '../../stories/model/story-vocabulary';
-import { moveBlock, swapElement } from '../../stories/scene-blocks';
+import { isBeat, moveBlock, swapElement } from '../../stories/scene-blocks';
 import { StoryApi } from '../../stories/story-api';
 import { CaretRequest } from './caret-request';
 import { nextHue } from './format';
@@ -290,6 +290,29 @@ export class SceneEditorStore implements OnDestroy {
   }
 
   /** Whoever spoke before the last speaker, as a conversation alternates. */
+  changeType(id: string, type: SceneElementType): void {
+    const element = this.elements().find((e) => e.id === id);
+    if (!element || element.type === type) {
+      return;
+    }
+    if (isBeat(type) && isBeat(element.type)) {
+      this.setBeatType(id, type);
+      return;
+    }
+    const index = this.elements().indexOf(element);
+    this.updateElement(id, {
+      type,
+      text: isBeat(type) ? (element.text ?? '') : null,
+      mentions: isBeat(type) ? element.mentions : [],
+      locationId: null,
+      timeOfDay: null,
+      speakerId: type === 'Dialogue' ? this.guessSpeaker(index) : null,
+      extension: null,
+      parenthetical: null,
+      transition: null,
+    });
+  }
+
   guessSpeaker(at: number): string | null {
     const speakers = this.elements()
       .slice(0, at)

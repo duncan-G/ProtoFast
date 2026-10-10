@@ -1,0 +1,645 @@
+/*
+  Story mode (src/app/pages/scene-editor/story), from the Claude Design block editor
+  (claude.ai/artifact/NDj7FnRQ5qSYnhyd8et7qX). Rows use the director view's columns, fonts and
+  page, so switching between the two modes leaves the script where it was.
+*/
+@layer ember {
+  .st-page {
+    position: relative;
+  }
+  .st-rail {
+    position: absolute;
+    top: 0;
+    right: 28px;
+    left: 28px;
+    height: 0;
+    border-radius: 6px;
+    background: var(--dr-wash);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1),
+      height 0.24s cubic-bezier(0.2, 0.8, 0.2, 1),
+      opacity 0.2s;
+  }
+  .st-rail.is-shown {
+    opacity: 1;
+  }
+
+  /* — rows: the director's 44 / 16 / 92 / text / 34 columns — */
+  .st-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: 44px 16px 92px minmax(0, 1fr) 34px;
+    scroll-margin-block: 90px 140px;
+  }
+  .st-row.is-new {
+    animation: st-row-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .st-row.is-dragged {
+    opacity: 0.35;
+  }
+  .st-gutter {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 12px;
+  }
+  .st-add,
+  .st-remove {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    font: 15px/1 var(--font-body);
+    color: var(--se-faint);
+    cursor: pointer;
+    opacity: 0;
+  }
+  .st-row:hover .st-add,
+  .st-row:hover .st-remove,
+  .st-row:hover .st-handle,
+  .st-row.is-active .st-remove {
+    opacity: 1;
+  }
+  .st-add:hover {
+    background: var(--dr-seg);
+    color: var(--se-ink);
+  }
+  .st-remove:hover {
+    background: var(--dr-wash);
+    color: var(--se-danger);
+  }
+  /* Writer design: only the cursor's block shows its type; the column stays so text never shifts. */
+  .st-type {
+    cursor: text;
+    user-select: none;
+    opacity: 0;
+    transition:
+      opacity 0.2s,
+      color 0.2s,
+      border-color 0.2s;
+  }
+  .st-row.is-active .st-type {
+    border-left-color: var(--se-accent);
+    color: var(--se-accent-ink);
+    opacity: 1;
+  }
+  .st-text {
+    display: block;
+    min-width: 0;
+    padding: 11px 20px 11px 8px;
+    font:
+      16px/1.6 'Courier Prime',
+      'Courier New',
+      monospace;
+  }
+  .st-end {
+    display: flex;
+    justify-content: center;
+    padding-top: 12px;
+  }
+
+  /* — the gaps: a click adds a block there — */
+  .st-gap {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 12px;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+  }
+  .st-gap.is-top {
+    position: absolute;
+    top: 5px;
+    right: 28px;
+    left: 28px;
+    width: auto;
+  }
+  .st-gap-line {
+    position: absolute;
+    top: 50%;
+    right: 34px;
+    left: 44px;
+    height: 2px;
+    margin-top: -1px;
+    border-radius: 1px;
+    background: var(--se-accent);
+    opacity: 0;
+    transition: opacity 0.12s;
+  }
+  .st-gap-label {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    padding: 0 8px;
+    background: var(--se-page);
+    font: 500 10.5px/12px var(--font-mono);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--se-accent-ink);
+    opacity: 0;
+    translate: -50% -50%;
+    transition: opacity 0.12s;
+  }
+  .st-gap:hover .st-gap-line,
+  .st-gap:hover .st-gap-label {
+    opacity: 1;
+  }
+  .st-tail {
+    height: 40px;
+    cursor: text;
+  }
+
+  /* — text: the textarea sits over a copy of its text that draws the mention marks — */
+  .st-field {
+    position: relative;
+  }
+  .st-copy {
+    min-height: 1lh;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    color: transparent;
+    pointer-events: none;
+  }
+  .st-textarea {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    outline: none;
+    overflow: hidden;
+    resize: none;
+    background: transparent;
+    font: inherit;
+    letter-spacing: inherit;
+    text-align: inherit;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    color: inherit;
+    caret-color: var(--se-ink);
+  }
+  .st-textarea::placeholder {
+    color: var(--se-faint);
+  }
+  .st-action.is-description {
+    font-style: italic;
+    color: var(--se-ink-2);
+  }
+
+  /* — inline fields: monospaced, so --chars sizes them to their text — */
+  .st-inline {
+    width: calc(var(--chars, 8) * (1ch + var(--ls, 0em)));
+    margin: 0;
+    padding: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    color: inherit;
+    caret-color: var(--se-ink);
+  }
+  /* Room for the caret after the last character. */
+  .st-inline:focus {
+    width: calc(var(--chars, 8) * (1ch + var(--ls, 0em)) + 2px);
+  }
+  .st-inline::placeholder {
+    color: var(--se-faint);
+  }
+  .st-part {
+    cursor: text;
+    transition: box-shadow 0.2s;
+  }
+  .st-part.is-empty {
+    color: var(--se-faint);
+  }
+  .st-part.is-on {
+    box-shadow: inset 0 -2px 0 var(--se-accent);
+  }
+
+  .st-heading {
+    --ls: 0.06em;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 1ch;
+    font: 600 12px/2.2 var(--font-mono);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .st-heading.has-hue .st-place {
+    color: oklch(var(--se-hue-text) var(--hue));
+  }
+  .st-dash {
+    color: var(--se-muted-2);
+  }
+  .st-transition {
+    display: flex;
+    justify-content: flex-end;
+    text-transform: uppercase;
+  }
+  .st-transition .st-inline {
+    text-align: right;
+  }
+
+  .st-dialogue {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+  .st-speaker {
+    --ls: 0.08em;
+    position: relative;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    font:
+      700 14px 'Courier Prime',
+      monospace;
+    letter-spacing: 0.08em;
+    cursor: text;
+  }
+  .st-speaker .is-empty {
+    color: var(--se-faint);
+  }
+  .st-speaker-input {
+    text-transform: uppercase;
+  }
+  .st-cue-avatar {
+    position: absolute;
+    top: 50%;
+    right: calc(100% + 8px);
+    translate: 0 -50%;
+  }
+  .st-ext {
+    font-weight: 400;
+    letter-spacing: 0;
+    color: var(--se-muted);
+  }
+  .st-paren {
+    display: inline-flex;
+    align-items: baseline;
+    font-size: 14px;
+    color: var(--se-muted);
+  }
+  .st-paren.is-empty {
+    color: var(--se-faint);
+  }
+  .st-line {
+    width: 100%;
+    max-width: 420px;
+    text-align: center;
+  }
+
+  /* — chip steps: extension, setting, time — */
+  .st-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 6px 0 4px;
+    font: 12px/18px var(--font-mono);
+    letter-spacing: 0;
+    text-transform: none;
+    animation: st-chip-in 0.18s ease-out;
+  }
+  .st-dialogue .st-chips {
+    justify-content: center;
+  }
+  .st-chips-title {
+    margin-right: 4px;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--se-muted-2);
+  }
+  .st-chip {
+    padding: 3px 10px;
+    border: 1px solid var(--se-line-strong);
+    border-radius: 99px;
+    background: var(--dr-field);
+    font: inherit;
+    color: var(--se-ink-2);
+    cursor: pointer;
+    transition:
+      background 0.14s,
+      color 0.14s,
+      border-color 0.14s;
+  }
+  .st-chip.is-on {
+    border-color: var(--dr-dark);
+    background: var(--dr-dark);
+    color: var(--dr-on-dark);
+  }
+  .st-chip.is-new {
+    border-style: dashed;
+    color: var(--se-accent-ink);
+  }
+  .st-chip-input {
+    width: 13ch;
+    padding: 2px 4px;
+    border: 0;
+    border-bottom: 1px solid var(--se-line-strong);
+    outline: none;
+    background: transparent;
+    font: inherit;
+    text-transform: uppercase;
+    color: var(--se-ink);
+  }
+  .st-chip-input::placeholder {
+    text-transform: none;
+    color: var(--se-faint);
+  }
+
+  /* — the menu under the cursor's field — */
+  .st-menu {
+    position: absolute;
+    z-index: 30;
+    width: 296px;
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 6px;
+    border: 1px solid var(--se-line-strong);
+    border-radius: 10px;
+    background: var(--dr-field);
+    box-shadow: var(--se-shadow);
+    font-family: var(--font-body);
+    visibility: hidden;
+  }
+  .st-menu.is-placed {
+    visibility: visible;
+    animation: st-pop 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .st-menu-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 8px 6px;
+    font: 500 10px var(--font-mono);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--se-muted-2);
+  }
+  .st-menu-query {
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--se-accent-ink);
+  }
+  .st-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: 44px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    font: inherit;
+    text-align: left;
+    color: var(--se-ink);
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .st-menu-item.is-active {
+    background: var(--dr-seg);
+  }
+  .st-menu-icon {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    background: var(--dr-accent-wash);
+    font: 600 13px var(--font-body);
+    color: var(--se-accent-ink);
+  }
+  .st-menu-icon.is-location {
+    font: 600 9px var(--font-mono);
+    color: #fff;
+  }
+  .st-menu-icon.is-prop {
+    background: var(--dr-wash);
+    color: var(--se-muted);
+  }
+  .st-menu-item.is-new .st-menu-icon {
+    background: var(--dr-accent-soft);
+  }
+  .st-menu-item.is-new .st-menu-label {
+    color: var(--se-accent-ink);
+  }
+  .st-menu-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .st-menu-label,
+  .st-menu-sub {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .st-menu-label {
+    font-size: 14px;
+    line-height: 18px;
+  }
+  .st-menu-sub {
+    font-size: 11.5px;
+    line-height: 15px;
+    color: var(--se-muted-2);
+  }
+  .st-menu-kbd {
+    padding: 1px 5px;
+    border: 1px solid var(--se-line-strong);
+    border-radius: 4px;
+    font: 10px var(--font-mono);
+    color: var(--se-muted);
+    opacity: 0;
+    transition: opacity 0.14s;
+  }
+  .st-menu-item.is-active .st-menu-kbd {
+    opacity: 1;
+  }
+  .st-menu-empty {
+    padding: 8px 8px 10px;
+    font-size: 13px;
+    color: var(--se-muted-2);
+  }
+
+  /* — the toolbar and the key hints, where the director view has its toolbar and player — */
+  .st-confirm {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 13px;
+    text-overflow: ellipsis;
+  }
+  .st-btn-danger {
+    border-color: var(--se-danger-line);
+    color: var(--se-danger);
+  }
+  .st-hints {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    height: 56px;
+    min-width: 0;
+    padding: 0 20px;
+    border-top: 1px solid var(--se-line);
+    background: var(--se-panel);
+    white-space: nowrap;
+  }
+  .st-hint-pill {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    max-width: 100%;
+    overflow: hidden;
+    padding: 8px 18px 8px 16px;
+    border: 1px solid var(--se-line-strong);
+    border-radius: 99px;
+    background: var(--se-raised);
+    font-size: 12.5px;
+    color: var(--se-ink-2);
+  }
+  .scene-editor[data-theme='light'] .st-hint-pill {
+    border-color: transparent;
+    background: var(--dr-dark);
+    color: var(--dr-on-dark);
+  }
+  .st-hint-mode {
+    font: 500 10.5px var(--font-mono);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--se-accent);
+  }
+  .st-hint-steps {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .st-hint-steps span {
+    opacity: 0.42;
+    transition: opacity 0.2s;
+  }
+  .st-hint-steps .is-on {
+    opacity: 1;
+  }
+  .st-hint-rule {
+    width: 1px;
+    height: 14px;
+    background: currentColor;
+    opacity: 0.2;
+  }
+  .st-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .st-hint kbd {
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: color-mix(in srgb, currentColor 13%, transparent);
+    font: 11px var(--font-mono);
+  }
+  .st-scroll > .se-end,
+  .st-scene-cards {
+    max-width: 860px;
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  @keyframes st-row-in {
+    from {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+  }
+  @keyframes st-chip-in {
+    from {
+      opacity: 0;
+      transform: translateY(-3px);
+    }
+  }
+  @keyframes st-pop {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.985);
+    }
+  }
+}
+
+/* The overview stands where the director view's inspector does, at its width. */
+@media (min-width: 768px) {
+  @layer ember {
+    .se-overview.st-overview {
+      width: clamp(300px, 30vw, 372px);
+    }
+  }
+}
+
+@media (max-width: 1023px) {
+  @layer ember {
+    .st-hint {
+      display: none;
+    }
+    .st-hint:nth-of-type(-n + 2) {
+      display: flex;
+    }
+  }
+}
+
+@media (max-width: 767px) {
+  @layer ember {
+    .st-view.dr-center {
+      flex: 1;
+      height: auto;
+    }
+    .st-row {
+      grid-template-columns: 30px 0 64px minmax(0, 1fr) 30px;
+    }
+    .st-hints,
+    .st-view .dr-slug {
+      display: none;
+    }
+    .st-handle {
+      display: block;
+      visibility: hidden;
+      overflow: hidden;
+    }
+    .st-text {
+      padding-right: 6px;
+      font-size: 14.5px;
+    }
+    .st-rail,
+    .st-gap.is-top {
+      right: 8px;
+      left: 8px;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @layer ember {
+    .st-rail,
+    .st-row.is-new,
+    .st-chips,
+    .st-menu.is-placed {
+      transition: none;
+      animation: none;
+    }
+  }
+}
