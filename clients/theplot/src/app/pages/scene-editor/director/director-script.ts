@@ -57,17 +57,19 @@ const MORE: { type: SceneElementType; label: string }[] = [
   template: `
     <div class="dr-page" [class.is-scene]="store.inspectorScope() === 'scene'">
       @for (row of rows(); track row.element.id) {
-        @if (row.index > 0 && row.span && dragFrom() === null) {
+        @if (row.index > 0 && row.span && !row.span.frame.locked && dragFrom() === null) {
           @if (row.isStart) {
-            <button
-              type="button"
-              class="dr-gap dr-gap-join"
-              title="Join this frame to the one before"
-              [disabled]="isDirecting(row) || isDirecting(rows()[row.index - 1])"
-              (click)="store.mergeFrameUp(row.index)"
-            >
-              <span class="dr-gap-line"></span><span>Join frames</span>
-            </button>
+            @if (!rows()[row.index - 1].span?.frame?.locked) {
+              <button
+                type="button"
+                class="dr-gap dr-gap-join"
+                title="Join this frame to the one before"
+                [disabled]="isDirecting(row) || isDirecting(rows()[row.index - 1])"
+                (click)="store.mergeFrameUp(row.index)"
+              >
+                <span class="dr-gap-line"></span><span>Join frames</span>
+              </button>
+            }
           } @else if (row.inner) {
             <button
               type="button"
@@ -108,6 +110,14 @@ const MORE: { type: SceneElementType; label: string }[] = [
           <div class="dr-bracket">
             @if (row.isStart) {
               <span class="dr-badge">{{ row.number }}</span>
+              @if (row.span?.frame?.locked) {
+                <span class="dr-bracket-lock" title="Locked">
+                  <svg class="dr-lock-icon" viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M5 7V5a3 3 0 0 1 6 0v2" />
+                    <rect x="3" y="7" width="10" height="7" rx="1.5" />
+                  </svg>
+                </span>
+              }
             } @else if (!row.span) {
               <span class="dr-badge is-loose" aria-hidden="true">+</span>
             }

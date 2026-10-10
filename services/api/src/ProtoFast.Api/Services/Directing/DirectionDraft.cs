@@ -67,6 +67,7 @@ public sealed class DirectionDraft
             Camera = p.Camera,
             HoldMs = p.HoldMs,
             Edited = p.Edited,
+            Locked = p.Locked,
             Placements = p.Placements.Select(pl => new FramePlacementRecord
             {
                 CharacterId = pl.CharacterId,

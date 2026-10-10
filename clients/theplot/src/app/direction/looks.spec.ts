@@ -28,6 +28,7 @@ function frame(first: number, last: number): { frame: Frame; first: number; last
       props: [],
       extras: [],
       edited: false,
+      locked: false,
       image: null,
     },
   };

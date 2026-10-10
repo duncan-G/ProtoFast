@@ -27,9 +27,18 @@ public sealed class FrameImageGenerator(
     ILogger<FrameImageGenerator> logger)
 {
     /// <param name="regenerate">Render again even when the picture is current.</param>
-    /// <returns>The scene with its direction, as stored after the write.</returns>
+    /// <returns>The scene with its direction, as stored after the write; a locked frame is left as it is.</returns>
     public async Task<DirectedScene> GenerateAsync(Guid sceneId, Guid frameId, bool regenerate, CancellationToken ct)
     {
+        using (unitOfWorkFactory.CreateReadOnly(nameof(GenerateAsync)))
+        {
+            var directed = await directionScope.LoadAsync(sceneId, withEarlierScenes: false, ct);
+            if (directed.Scene.Frames.FirstOrDefault(f => f.Id == frameId) is { Locked: true })
+            {
+                return directed;
+            }
+        }
+
         await lookImages.PictureFrameAsync(sceneId, frameId, ct);
 
         Guid storyId;

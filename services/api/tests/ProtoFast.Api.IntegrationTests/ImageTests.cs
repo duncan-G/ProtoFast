@@ -115,14 +115,29 @@ public class ImageTests(StoryDatabase database)
         Assert.Contains("In the picture: Mara calls out.", request.Prompt);
         Assert.Contains("Radio", request.Prompt);
 
-        // The next frame is offered the one before it as well.
+        // The next frame leads with the one before it.
         var next = await PictureAsync(scene, reply.Direction, 2);
-        Assert.Equal(["Mara", "Frame 2"], next.Direction.Frames[2].Image.References);
-        Assert.Equal("Image 2: Frame 2 of this scene (1 before this one), showing Mara at Harbour (night), medium shot: Mara calls out.", Images.Requests[^1].References[1].Caption);
+        Assert.Equal(["Frame 2", "Mara"], next.Direction.Frames[2].Image.References);
+        Assert.StartsWith("Image 1: Frame 2 of this scene, the shot just before this one, showing Mara at Harbour (night), medium shot: Mara calls out. This picture continues from it", Images.Requests[^1].References[0].Caption);
 
         // Current frames draw nothing again.
         await PictureAsync(scene, next.Direction, 1);
         Assert.Equal(2, Images.Requests.Count - before);
+    }
+
+    [Fact]
+    public async Task A_locked_frame_is_never_pictured()
+    {
+        var (_, scene, _, _, _) = await FramedSceneAsync();
+        var direction = await _writer.GetDirectionAsync(scene.Id);
+        direction.Frames[1].Locked = true;
+        direction = await _writer.SaveDirectionAsync(direction);
+        var before = Images.Requests.Count;
+
+        var reply = await PictureAsync(scene, direction, 1, regenerate: true);
+
+        Assert.Equal(before, Images.Requests.Count);
+        Assert.Null(reply.Direction.Frames[1].Image);
     }
 
     [Fact]
@@ -201,12 +216,12 @@ public class ImageTests(StoryDatabase database)
         // The next frame in the same look draws only itself.
         var second = await PictureAsync(scene, first.Direction, 1);
         Assert.Equal(4, Images.Requests.Count - before);
-        Assert.Equal("Mara (carrying Radio)", second.Direction.Frames[1].Image.References[0]);
+        Assert.Equal(["Frame 1", "Mara (carrying Radio)"], second.Direction.Frames[1].Image.References);
 
         // Once she puts it down she is drawn from the library's sheet again, and the radio stands alone.
         var third = await PictureAsync(scene, second.Direction, 2);
         Assert.Equal(5, Images.Requests.Count - before);
-        Assert.Equal("Mara", third.Direction.Frames[2].Image.References[0]);
+        Assert.Equal("Mara", third.Direction.Frames[2].Image.References[1]);
         Assert.DoesNotContain("Carrying", Images.Requests[^1].Prompt);
         Assert.Null(Assert.Single(third.Direction.LookChanges).Image);
 

@@ -497,6 +497,22 @@
     left: -14px;
     background: var(--br);
   }
+  .dr-bracket-lock {
+    position: absolute;
+    top: 38px;
+    left: -10px;
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--br);
+    color: #fff;
+  }
+  .dr-bracket-lock .dr-lock-icon {
+    width: 10px;
+    height: 10px;
+  }
   .dr-row.is-loose .dr-bracket .dr-badge {
     background: var(--se-page);
     opacity: 0;
@@ -850,6 +866,9 @@
     padding: 12px 12px 0;
   }
   .dr-shot-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     padding: 3px 8px;
     border-radius: 999px;
     background: rgba(0, 0, 0, 0.6);
@@ -1167,6 +1186,59 @@
   .dr-step:disabled {
     opacity: 0.4;
     cursor: default;
+  }
+  .dr-lock {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--se-line-strong);
+    border-radius: 6px;
+    background: transparent;
+    font: 12px var(--font-body);
+    color: var(--se-ink-2);
+    cursor: pointer;
+  }
+  .dr-lock.is-locked {
+    border-color: var(--se-accent);
+    background: var(--se-accent);
+    color: var(--se-on-accent);
+  }
+  .dr-lock:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .dr-lock-icon {
+    flex: none;
+    width: 12px;
+    height: 12px;
+  }
+  .dr-lock-icon path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+  }
+  .dr-lock-icon rect {
+    fill: currentColor;
+  }
+  .dr-fieldset {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .dr-fieldset:disabled {
+    opacity: 0.6;
+  }
+  .dr-locked-note {
+    margin: 0 0 14px;
+    font-size: 12px;
+    color: var(--se-muted);
   }
   .dr-media {
     display: flex;

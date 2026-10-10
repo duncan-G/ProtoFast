@@ -5,6 +5,7 @@ import {
   Component,
   computed,
   inject,
+  untracked,
 } from '@angular/core';
 import { FrameSpan, spanAt } from '../../../direction/frames';
 import { isSpoken } from '../../../direction/direction-changes';
@@ -86,7 +87,18 @@ interface FrameCard {
               } @else {
                 <span class="dr-badge is-loose" aria-hidden="true">+</span>
               }
-              @if (state === 'generating') {
+              @if (card.span?.frame?.locked) {
+                <span
+                  class="dr-shot-chip"
+                  title="Directing and picturing leave this frame as it is"
+                >
+                  <svg class="dr-lock-icon" viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M5 7V5a3 3 0 0 1 6 0v2" />
+                    <rect x="3" y="7" width="10" height="7" rx="1.5" />
+                  </svg>
+                  Locked
+                </span>
+              } @else if (state === 'generating') {
                 <span class="dr-shot-chip is-working">Drawing…</span>
               } @else if (state === 'stale') {
                 <span class="dr-shot-chip is-warn">Out of date</span>
@@ -204,6 +216,18 @@ export class DirectorFrames {
         document.getElementById(`frame-${staged}`)?.scrollIntoView({ block: 'center' });
         staged = null;
       }
+    });
+
+    // The reel follows the selected frame, wherever it was picked from.
+    let opened = false;
+    afterRenderEffect(() => {
+      const key = this.store.selectedFrame()?.frame.firstElementId;
+      if (key && !untracked(this.staging)) {
+        document
+          .getElementById(`frame-${key}`)
+          ?.scrollIntoView(opened ? { block: 'nearest', behavior: 'smooth' } : { block: 'center' });
+      }
+      opened = true;
     });
   }
 

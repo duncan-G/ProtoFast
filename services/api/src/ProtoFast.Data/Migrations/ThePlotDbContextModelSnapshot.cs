@@ -461,6 +461,10 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("location_id");
 
+                    b.Property<bool>("Locked")
+                        .HasColumnType("boolean")
+                        .HasColumnName("locked");
+
                     b.Property<string>("Movement")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")

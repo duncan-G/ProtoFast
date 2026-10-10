@@ -155,6 +155,7 @@ public static class DirectionValidator
                 LocationChange = Text(frame.LocationChange, BeatMaxLength, where, "location change"),
                 Camera = Text(frame.Camera, BeatMaxLength, where, "camera position"),
                 HoldMs = frame.HasHoldMs ? frame.HoldMs : null,
+                Locked = frame.Locked,
                 Placements = Placements(frame.Placements, references, where),
                 Props = FrameProps(frame.Props, references, where),
                 Extras = FrameExtras(frame.Extras, references, where),

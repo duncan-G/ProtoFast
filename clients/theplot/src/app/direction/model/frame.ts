@@ -32,6 +32,8 @@ export interface Frame {
   extras: FrameExtra[];
   /** Written by hand; a directing pass leaves it alone. */
   edited: boolean;
+  /** The author is done with it: no edit, directing pass or picture touches it. */
+  locked: boolean;
   /** Null until pictured. Read only: saves leave it alone. */
   image: MediaImage | null;
 }

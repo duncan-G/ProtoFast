@@ -107,6 +107,7 @@ public static class DirectionMessages
             LocationChange = frame.LocationChange,
             Camera = frame.Camera,
             Edited = frame.Edited,
+            Locked = frame.Locked,
         };
         if (frame.LocationId is { } locationId)
         {

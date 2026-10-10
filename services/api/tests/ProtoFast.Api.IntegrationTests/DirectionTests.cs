@@ -399,6 +399,60 @@ public class DirectionTests(StoryDatabase database)
     }
 
     [Fact]
+    public async Task Locking_a_frame_is_not_editing_it_and_directing_it_alone_does_nothing()
+    {
+        var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        var direction = Direction(scene, mara, bolt, radio, suit);
+        direction.Frames.Clear();
+        await _writer.SaveDirectionAsync(direction);
+        _writer.ScriptModel("""{"extras":[]}""", """{"frames":[{"from":"e1","to":"e5","shot":"wide","visible":"Mara and Bolt on the quay."}]}""");
+        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true });
+        var asked = _writer.ModelPrompts().Count;
+
+        var locking = new SceneDirection(directed);
+        locking.Frames[0].Locked = true;
+        var locked = await _writer.SaveDirectionAsync(locking);
+        var again = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, FrameId = locked.Frames[0].Id, ReplaceEdited = true });
+
+        Assert.Equal((true, false), (locked.Frames[0].Locked, locked.Frames[0].Edited));
+        Assert.Equal(locked.Frames, again.Frames);
+        Assert.Equal(asked, _writer.ModelPrompts().Count);
+    }
+
+    [Fact]
+    public async Task Directing_frames_from_scratch_leaves_locked_frames_and_frames_the_rows_around_them()
+    {
+        var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        var direction = Direction(scene, mara, bolt, radio, suit);
+        direction.Frames.RemoveAt(0);
+        direction.Frames[0].FirstElementId = scene.Elements[1].Id;
+        direction.Frames[0].LastElementId = scene.Elements[2].Id;
+        direction.Frames[0].ClearShot();
+        direction.Frames[0].Locked = true;
+        var saved = await _writer.SaveDirectionAsync(direction);
+        // The model frames over the locked rows and leaves e4 open, right after them.
+        _writer.ScriptModel("""{"extras":[]}""", """
+            {"frames":[
+              {"from":"e1","to":"e3","shot":"close","visible":"A radio on the quay."},
+              {"from":"e5","to":"e5","shot":"close","visible":"The quay, empty."}
+            ]}
+            """);
+
+        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true, ReplaceEdited = true });
+
+        var ids = scene.Elements.Select(e => e.Id).ToList();
+        Assert.Equal(
+            [(ids[0], ids[0]), (ids[1], ids[2]), (ids[3], ids[4])],
+            directed.Frames.Select(p => (p.FirstElementId, p.LastElementId)));
+        Assert.Contains("leave them out: e2–e3", _writer.ModelPrompts()[1]);
+        var kept = directed.Frames[1];
+        Assert.Equal((saved.Frames[0].Id, saved.Frames[0].Beat, true, true), (kept.Id, kept.Beat, kept.Locked, kept.Edited));
+        Assert.Equal(saved.Frames[0].Placements, kept.Placements);
+        // The scene now frames close, so the locked frame keeps the medium it followed.
+        Assert.Equal(("close", "medium"), (directed.Shot, directed.Frames[1].Shot));
+    }
+
+    [Fact]
     public async Task The_camera_and_screen_directions_round_trip()
     {
         var (story, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();

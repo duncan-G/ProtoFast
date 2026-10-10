@@ -34,6 +34,22 @@ public sealed class ReferenceCollector(ImageStaleness staleness)
             }
         }
 
+        var before = scene.Where(f => f.Number < frame.Number && f.Frame.Image is not null)
+            .OrderByDescending(f => f.Number).Take(NeighboursBefore).ToList();
+        var after = scene.Where(f => f.Number > frame.Number && f.Frame.Image is not null)
+            .OrderBy(f => f.Number).Take(NeighboursAfter);
+
+        // First, so it leads the references and is never the one cut.
+        if (before.FirstOrDefault() is { } last)
+        {
+            var gap = frame.Number - last.Number;
+            Add(ReferenceSource.Frame, last.Frame.Id, last.Frame.Image!, $"Frame {last.Number}",
+                $"Frame {last.Number} of this scene, {(gap == 1 ? "the shot just before this one" : $"{gap} before this one")}, showing {last.Summary()}. "
+                + "This picture continues from it: keep the people, what they wear and carry, the place and the light as it shows them, "
+                + "and change only what the description changes.",
+                staleness.Frame(last, last.Frame.Image!, story));
+        }
+
         foreach (var shown in frame.OnScreen)
         {
             var name = shown.Character.Name;
@@ -83,10 +99,6 @@ public sealed class ReferenceCollector(ImageStaleness staleness)
             }
         }
 
-        var before = scene.Where(f => f.Number < frame.Number && f.Frame.Image is not null)
-            .OrderByDescending(f => f.Number).Take(NeighboursBefore);
-        var after = scene.Where(f => f.Number > frame.Number && f.Frame.Image is not null)
-            .OrderBy(f => f.Number).Take(NeighboursAfter);
         foreach (var neighbour in before.Concat(after))
         {
             var distance = neighbour.Number - frame.Number;

@@ -36,6 +36,7 @@ function frame(patch: Partial<Frame> = {}): Frame {
     props: [],
     extras: [],
     edited: true,
+    locked: false,
     image: null,
     ...patch,
   };

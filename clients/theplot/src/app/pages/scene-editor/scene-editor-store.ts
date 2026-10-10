@@ -380,12 +380,15 @@ export class SceneEditorStore implements OnDestroy {
       ]),
     );
   });
-  /** Saved frames without a picture, or whose picture has fallen behind, in scene order. */
+  /** Saved, unlocked frames without a picture, or whose picture has fallen behind, in scene order. */
   readonly framesNeedingImages = computed(() =>
-    this.frameSpans()
-      .map((s) => s.frame)
-      .filter((f) => f.id && ['none', 'stale'].includes(imageState(f.image)))
-      .map((f) => f.id),
+    this.unlockedFrameIds().filter((id) =>
+      ['none', 'stale'].includes(imageState(this.frameById(id)?.image ?? null)),
+    ),
+  );
+  /** Saved frames a picture pass may draw, in scene order. */
+  readonly unlockedFrameIds = computed(() =>
+    this.frameSpans().flatMap((s) => (s.frame.id && !s.frame.locked ? [s.frame.id] : [])),
   );
   /** The scene's cast, places, props and extras, as library targets. */
   readonly sceneEntries = computed<LibraryTarget[]>(() => [
@@ -1285,6 +1288,9 @@ export class SceneEditorStore implements OnDestroy {
   }
 
   splitFrameAt(index: number): void {
+    if (this.frameAt(index)?.frame.locked) {
+      return;
+    }
     const frames = splitAt(this.direction()?.frames ?? [], this.elements(), index);
     if (frames) {
       this.updateDirection((d) => ({ ...d, frames }));
@@ -1293,6 +1299,10 @@ export class SceneEditorStore implements OnDestroy {
   }
 
   mergeFrameUp(index: number): void {
+    const span = this.frameAt(index);
+    if (!span || span.frame.locked || this.frameAt(span.first - 1)?.frame.locked) {
+      return;
+    }
     const frames = mergeUp(this.direction()?.frames ?? [], this.elements(), index);
     if (frames) {
       this.updateDirection((d) => ({ ...d, frames }));
@@ -1313,6 +1323,9 @@ export class SceneEditorStore implements OnDestroy {
   }
 
   updateFrame(key: string, patch: Partial<Frame>): void {
+    if (this.frameByKey(key)?.locked) {
+      return;
+    }
     this.updateDirection((d) => ({
       ...d,
       frames: renumber(
@@ -1322,11 +1335,26 @@ export class SceneEditorStore implements OnDestroy {
     }));
   }
 
+  /** Locking is not editing: the frame keeps whether the author or the model wrote it. */
+  setFrameLocked(key: string, locked: boolean): void {
+    this.updateDirection((d) => ({
+      ...d,
+      frames: d.frames.map((p) => (p.firstElementId === key ? { ...p, locked } : p)),
+    }));
+  }
+
   /** In the frame scope a value equal to the scene's follows it rather than overriding it. */
   setFraming(key: Framing, value: string, frameKey: string | null): void {
     const direction = this.direction() ?? emptyDirection(this.scene()?.id ?? '');
     if (frameKey === null) {
-      this.updateDirection((d) => ({ ...d, [key]: value }));
+      // A locked frame that followed the scene keeps what it showed.
+      this.updateDirection((d) => ({
+        ...d,
+        [key]: value,
+        frames: d.frames.map((f) =>
+          f.locked && f[key] === null && d[key] !== value ? { ...f, [key]: d[key] } : f,
+        ),
+      }));
     } else {
       this.updateFrame(frameKey, {
         [key]: value === direction[key] ? null : value,
@@ -1463,7 +1491,7 @@ export class SceneEditorStore implements OnDestroy {
       ...d,
       extras: d.extras.filter((e) => e.extraId !== extraId),
       frames: d.frames.map((f) =>
-        f.extras.some((e) => e.extraId === extraId)
+        !f.locked && f.extras.some((e) => e.extraId === extraId)
           ? { ...f, extras: f.extras.filter((e) => e.extraId !== extraId), edited: true }
           : f,
       ),
@@ -1518,7 +1546,7 @@ export class SceneEditorStore implements OnDestroy {
     this.updateDirection((d) => ({
       ...d,
       frames: d.frames.map((p) =>
-        p.placements.some((pl) => pl.characterId === characterId && pl[field])
+        !p.locked && p.placements.some((pl) => pl.characterId === characterId && pl[field])
           ? {
               ...p,
               placements: withPlacement(p, characterId, { [field]: blank }),
@@ -1570,7 +1598,7 @@ export class SceneEditorStore implements OnDestroy {
       frames: d.frames.map((p) => {
         const first = elements.findIndex((e) => e.id === p.firstElementId);
         const at = headingAt(elements, first)?.locationId ?? null;
-        return p.locationChange && at === locationId
+        return !p.locked && p.locationChange && at === locationId
           ? { ...p, locationChange: '', edited: true }
           : p;
       }),
@@ -1579,7 +1607,7 @@ export class SceneEditorStore implements OnDestroy {
 
   deleteFrame(key: string): void {
     const frame = this.frameByKey(key);
-    if (frame) {
+    if (frame && !frame.locked) {
       this.updateDirection((d) => ({
         ...d,
         frames: removeFrame(d.frames, this.elements(), frame),
@@ -1592,6 +1620,10 @@ export class SceneEditorStore implements OnDestroy {
 
   private frameByKey(key: string): Frame | null {
     return this.direction()?.frames.find((p) => p.firstElementId === key) ?? null;
+  }
+
+  private frameById(id: string): Frame | null {
+    return this.direction()?.frames.find((p) => p.id === id) ?? null;
   }
 
   // ─── director mode: continuity ─────────────────────────────────────────
@@ -1870,7 +1902,9 @@ export class SceneEditorStore implements OnDestroy {
     withLibrary = false,
   ): Promise<void> {
     const scene = this.scene();
-    const queued = frameIds.filter((id) => id && !this.picturing().has(id));
+    const queued = frameIds.filter(
+      (id) => id && !this.picturing().has(id) && !this.frameById(id)?.locked,
+    );
     if (!scene || queued.length === 0) {
       return;
     }

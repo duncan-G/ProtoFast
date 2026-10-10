@@ -67,6 +67,7 @@ export function blankFrame(elements: readonly SceneElement[], first: number, las
     props: [],
     extras: [],
     edited: true,
+    locked: false,
     image: null,
   };
 }

@@ -159,11 +159,12 @@ const SUGGESTIONS: { label: string; hint: string; target: DirectTarget }[] = [
             type="button"
             class="dr-menu-item"
             role="menuitem"
-            [disabled]="frameIds().length === 0"
-            (click)="picture(frameIds(), true)"
+            title="Locked frames keep their pictures"
+            [disabled]="store.unlockedFrameIds().length === 0"
+            (click)="picture(store.unlockedFrameIds(), true)"
           >
             <span class="flex-1">Regenerate everything</span>
-            <span class="dr-menu-meta">{{ framesLabel(frameIds().length) }}</span>
+            <span class="dr-menu-meta">{{ framesLabel(store.unlockedFrameIds().length) }}</span>
           </button>
         </div>
       }
@@ -235,10 +236,6 @@ export class DirectorToolbar {
   });
 
   protected readonly frames = computed(() => plural(this.store.frameSpans().length, 'frame'));
-
-  protected readonly frameIds = computed(() =>
-    this.store.frameSpans().flatMap((s) => (s.frame.id ? [s.frame.id] : [])),
-  );
 
   protected beats(count: number): string {
     return plural(count, 'beat');

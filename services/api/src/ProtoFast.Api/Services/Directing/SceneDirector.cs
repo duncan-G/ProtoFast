@@ -136,6 +136,11 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
                 await FramesAsync(brief, draft, replace, true, ct);
                 break;
             case DirectRequest.TargetOneofCase.FrameId:
+                if (draft.Frames.FirstOrDefault(f => f.Id == Id(request.FrameId, DirectionErrors.FrameNotFound)) is { Locked: true })
+                {
+                    break;
+                }
+
                 if (brief.Extras.Count == 0)
                 {
                     await ExtrasAsync(brief, draft, false, ct);
@@ -931,7 +936,10 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
 
     // ─── frames ────────────────────────────────────────────────────────────
 
-    /// <summary>With <paramref name="directCuts"/> the author's frames keep their rows but the model directs them too.</summary>
+    /// <summary>
+    /// With <paramref name="directCuts"/> the author's frames keep their rows but the model directs them too.
+    /// Locked frames are never directed, moved or stretched, even when replacing.
+    /// </summary>
     private async Task FramesAsync(SceneBrief brief, DirectionDraft draft, bool replaceEdited, bool directCuts, CancellationToken ct)
     {
         if (brief.Elements.Count == 0)
@@ -939,9 +947,12 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             return;
         }
 
-        var fixedFrames = replaceEdited ? [] : draft.Frames.Where(p => p.Edited).Select(p => (Frame: p, Range: Range(brief, p))).Where(p => p.Range is not null).ToList();
-        var fixedRows = fixedFrames.Sum(p => p.Range!.Value.Last - p.Range.Value.First + 1);
-        if (fixedRows >= brief.Elements.Count && !directCuts)
+        var fixedFrames = draft.Frames.Where(p => p.Locked || (p.Edited && !replaceEdited))
+            .Select(p => (Frame: p, Range: Range(brief, p))).Where(p => p.Range is not null).ToList();
+        static int Rows(IEnumerable<(FrameRecord Frame, (int First, int Last)? Range)> frames) =>
+            frames.Sum(p => p.Range!.Value.Last - p.Range.Value.First + 1);
+        var lockedRows = Rows(fixedFrames.Where(p => p.Frame.Locked));
+        if (lockedRows >= brief.Elements.Count || (Rows(fixedFrames) >= brief.Elements.Count && !directCuts))
         {
             return;
         }
@@ -954,12 +965,12 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         }
 
         var fixedTravel = replaceEdited ? "" : TravelSheet(brief, draft);
-        var cuts = string.Join(", ", fixedFrames.Select(p => $"{brief.Label(brief.Elements[p.Range!.Value.First].Id)}–{brief.Label(brief.Elements[p.Range!.Value.Last].Id)}"));
-        var kept = fixedFrames.Count == 0
-            ? ""
-            : directCuts
-                ? $"The author already cut some rows into frames; answer one frame for each of them with exactly the same from and to ({cuts}), and split the other rows yourself.\n"
-                : $"These rows are already covered by frames the author fixed, so leave them out: {cuts}.\n";
+        string Cuts(IEnumerable<(FrameRecord Frame, (int First, int Last)? Range)> frames) =>
+            string.Join(", ", frames.Select(p => $"{brief.Label(brief.Elements[p.Range!.Value.First].Id)}–{brief.Label(brief.Elements[p.Range!.Value.Last].Id)}"));
+        var left = fixedFrames.Where(p => p.Frame.Locked || !directCuts).ToList();
+        var redirected = fixedFrames.Except(left).ToList();
+        var kept = (left.Count == 0 ? "" : $"These rows are already covered by frames the author fixed, so leave them out: {Cuts(left)}.\n")
+                   + (redirected.Count == 0 ? "" : $"The author already cut some rows into frames; answer one frame for each of them with exactly the same from and to ({Cuts(redirected)}), and split the other rows yourself.\n");
         var prompt = $$"""
             Split the scene into frames: the pictures a reader sees while the lines play. Each frame
             covers consecutive rows "from" one label "to" another (inclusive), in order, and together the
@@ -1011,18 +1022,19 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         }
 
         // Around fixed frames an empty answer is fair: the gaps are closed from them below.
-        if (answered.Count == 0 && (fixedFrames.Count == 0 || directCuts))
+        if (answered.Count == 0 && (fixedFrames.Count == 0 || redirected.Count > 0))
         {
             throw new ModelOutputException("No frames in the answer.");
         }
 
         if (directCuts)
         {
-            fixedFrames = fixedFrames.Select(f => (Frame: InCut(brief, answered, f.Frame, f.Range!.Value, sceneExtras), f.Range)).ToList();
+            fixedFrames = fixedFrames.Select(f => (Frame: f.Frame.Locked ? f.Frame : InCut(brief, answered, f.Frame, f.Range!.Value, sceneExtras), f.Range)).ToList();
         }
 
         // Fixed frames keep their rows; model frames are clipped around them, then gaps are closed
-        // by stretching the frame before each gap, so every row ends up in exactly one frame.
+        // by stretching the frame before each gap (or pulling back the one after it, or a new frame
+        // when both are locked), so every row ends up in exactly one frame.
         var covered = new bool[brief.Elements.Count];
         var frames = new List<(int First, int Last, FrameRecord Frame)>();
         foreach (var (frame, range) in fixedFrames)
@@ -1063,55 +1075,58 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             }
 
             var before = frames.FindLastIndex(p => p.Last < i);
-            if (before >= 0 && (i == 0 || frames[before].Last == i - 1 || !covered[i - 1]))
+            var next = frames.FindIndex(p => p.First > i);
+            if (before >= 0 && frames[before].Last == i - 1 && !frames[before].Frame.Locked)
             {
                 var stretched = frames[before];
                 stretched.Last = i;
                 stretched.Frame.LastElementId = brief.Elements[i].Id;
                 frames[before] = stretched;
             }
+            else if (next >= 0 && !frames[next].Frame.Locked)
+            {
+                var pulled = frames[next];
+                for (var row = i; row < pulled.First; row++)
+                {
+                    covered[row] = true;
+                }
+
+                pulled.First = i;
+                pulled.Frame.FirstElementId = brief.Elements[i].Id;
+                frames[next] = pulled;
+            }
             else
             {
-                var next = frames.FindIndex(p => p.First > i);
-                if (next >= 0)
-                {
-                    var pulled = frames[next];
-                    for (var row = i; row < pulled.First; row++)
-                    {
-                        covered[row] = true;
-                    }
-
-                    pulled.First = i;
-                    pulled.Frame.FirstElementId = brief.Elements[i].Id;
-                    frames[next] = pulled;
-                }
-                else
-                {
-                    frames.Add((i, i, FrameFrom(brief, default, i, i, sceneExtras)));
-                }
+                frames.Add((i, i, FrameFrom(brief, default, i, i, sceneExtras)));
             }
 
             covered[i] = true;
             frames.Sort((a, b) => a.First.CompareTo(b.First));
         }
 
-        var directed = frames.Select(p => p.Frame).Where(p => !p.Edited).ToList();
+        var directed = frames.Select(p => p.Frame).Where(p => !p.Edited && !p.Locked).ToList();
         Travels(brief, draft, json.RootElement, directed, replaceEdited);
         await ScreenDirectionAsync(brief, draft, frames.Select(p => p.Frame).ToList(), directed, ct);
         await VisibleAsync(brief, draft, directed, ct);
         if (draft.Shot is null || replaceEdited)
         {
-            draft.Shot = Commonest(directed.Select(p => p.Shot));
+            var shot = Commonest(directed.Select(p => p.Shot));
+            KeepFraming(frames.Select(p => p.Frame), draft.Shot, shot, f => f.Shot, (f, v) => f.Shot = v);
+            draft.Shot = shot;
         }
 
         if (draft.Angle is null || replaceEdited)
         {
-            draft.Angle = Commonest(directed.Select(p => p.Angle));
+            var angle = Commonest(directed.Select(p => p.Angle));
+            KeepFraming(frames.Select(p => p.Frame), draft.Angle, angle, f => f.Angle, (f, v) => f.Angle = v);
+            draft.Angle = angle;
         }
 
         if (draft.Movement is null || replaceEdited)
         {
-            draft.Movement = Commonest(directed.Select(p => p.Movement));
+            var movement = Commonest(directed.Select(p => p.Movement));
+            KeepFraming(frames.Select(p => p.Frame), draft.Movement, movement, f => f.Movement, (f, v) => f.Movement = v);
+            draft.Movement = movement;
         }
 
         foreach (var frame in directed)
@@ -1142,6 +1157,21 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         var directed = FrameFrom(brief, best.Json, range.First, range.Last, sceneExtras);
         directed.Id = cut.Id;
         return directed;
+    }
+
+    /// <summary>A locked frame that followed the scene's framing keeps it when the scene's framing changes.</summary>
+    private static void KeepFraming(
+        IEnumerable<FrameRecord> frames, string? before, string? after, Func<FrameRecord, string?> get, Action<FrameRecord, string?> set)
+    {
+        if (before == after)
+        {
+            return;
+        }
+
+        foreach (var frame in frames.Where(f => f.Locked && get(f) is null))
+        {
+            set(frame, before);
+        }
     }
 
     private static string? Commonest(IEnumerable<string?> labels) =>

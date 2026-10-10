@@ -264,6 +264,7 @@ function toFrame(message: FrameMessage): Frame {
     angle: message.angle ?? null,
     movement: message.movement ?? null,
     camera: message.camera,
+    locked: message.locked,
     locationChange: message.locationChange,
     holdMs: message.holdMs ?? null,
     placements: message.placements.map((p) => ({
@@ -397,6 +398,7 @@ export function fromDirection(direction: SceneDirection) {
       props: p.props.map((pp) => ({ ...pp })),
       extras: p.extras.map((e) => ({ ...e, onScreen: e.onScreen ?? undefined })),
       edited: p.edited,
+      locked: p.locked,
     })),
     cues: direction.cues.map(({ audio: _audio, ...cue }) => ({
       ...cue,

@@ -46,6 +46,12 @@ public static class DirectionWriter
 
         Sync(scene.Frames, draft.Frames, p => p.FirstElementId, byAuthor, (stored, next) =>
         {
+            // A pass that read the frame before the author locked it leaves it alone.
+            if (stored.Locked && !next.Locked && !byAuthor)
+            {
+                return false;
+            }
+
             // Position is where the frame sits among the others, not something the author wrote on it.
             var changed = stored.FirstElementId != next.FirstElementId
                           || stored.LastElementId != next.LastElementId
@@ -73,6 +79,12 @@ public static class DirectionWriter
             stored.LocationChange = next.LocationChange;
             stored.Camera = next.Camera;
             stored.HoldMs = next.HoldMs;
+            // Locking says the author is done, not that they wrote the frame; only the author does it.
+            if (byAuthor)
+            {
+                stored.Locked = next.Locked;
+            }
+
             if (changed)
             {
                 stored.Placements.RemoveAll(p => next.Placements.All(n => n.CharacterId != p.CharacterId));
@@ -131,7 +143,8 @@ public static class DirectionWriter
                 }
             }
 
-            return changed;
+            // A locked frame keeps its edited mark through a pass that only pins the scene's framing on it.
+            return changed && !next.Locked;
         });
 
         Sync(scene.Appearances, draft.Appearances, a => a.CharacterId, byAuthor, (stored, next) =>

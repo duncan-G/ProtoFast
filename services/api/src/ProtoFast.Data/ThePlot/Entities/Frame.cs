@@ -52,6 +52,9 @@ public sealed class Frame
     /// <summary>Written by the author; a later directing pass leaves it alone.</summary>
     public bool Edited { get; set; }
 
+    /// <summary>The author is done with it: no directing pass or picture generation touches it.</summary>
+    public bool Locked { get; set; }
+
     /// <summary>Only the characters this frame says something about; the rest follow the scene.</summary>
     public List<FramePlacement> Placements { get; set; } = [];
 

@@ -88,7 +88,11 @@ export class InMemoryDirectionApi implements DirectionApi {
         });
       }
     }
-    if ((target.kind === 'scene' || target.kind === 'frames') && scene.elements.length > 0) {
+    if (
+      (target.kind === 'scene' || target.kind === 'frames') &&
+      scene.elements.length > 0 &&
+      !current.frames.some((f) => f.locked)
+    ) {
       const heading = scene.elements.find((e) => e.type === 'Heading');
       current.frames = [
         {
@@ -109,6 +113,7 @@ export class InMemoryDirectionApi implements DirectionApi {
           props: [],
           extras: [],
           edited: false,
+          locked: false,
           image: null,
         },
       ];
@@ -259,6 +264,7 @@ export class InMemoryDirectionApi implements DirectionApi {
                 ...was,
                 id: '',
                 edited: false,
+                locked: false,
                 position: 0,
                 image: null,
               }) !==
@@ -266,6 +272,7 @@ export class InMemoryDirectionApi implements DirectionApi {
                   ...p,
                   id: '',
                   edited: false,
+                  locked: false,
                   position: 0,
                   image: null,
                 });
@@ -348,6 +355,9 @@ export class InMemoryDirectionApi implements DirectionApi {
     const frame = current.frames.find((f) => f.id === frameId);
     if (!frame) {
       throw new Error('That frame is no longer in the scene.');
+    }
+    if (frame.locked) {
+      return current;
     }
     frame.image = placeholderImage(frame.beat || `Frame ${frame.position + 1}`);
     this.directions.set(sceneId, structuredClone(current));

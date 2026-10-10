@@ -44,7 +44,8 @@ service Direction {
     // never the one they have. Describe casts one too, when the character has none.
     rpc CastVoice (CastVoiceRequest) returns (CastVoiceReply);
 
-    // Pictures one frame with the image model, unless its picture is current or regenerate is set.
+    // Pictures one frame with the image model, unless its picture is current or regenerate is set. A
+    // locked frame is left as it is.
     // The pictures that already exist around it (the library's, neighbouring frames, earlier scenes
     // in the same place or with the same people) are offered as captioned references; nothing is
     // generated just to serve as one.
@@ -118,6 +119,8 @@ message Frame {
     // Where the camera stands in the place and what it looks toward: "inside the corridor, looking
     // back at the double doors".
     string camera = 19;
+    // The author is done with it: directing passes keep it as it is and its picture is never redone.
+    bool locked = 20;
 }
 
 message MediaImage {
@@ -306,14 +309,14 @@ message SaveDirectedSceneReply {
 }
 
 // What to direct. The whole scene finds its extras, then runs the story day, looks, prop states, cues
-// and frames in turn.
+// and frames in turn. Locked frames keep their rows and everything on them, even when replacing.
 message DirectRequest {
     string scene_id = 1;
     oneof target {
         bool scene = 2;
         // The cue for this dialogue or narration line.
         string cue_element_id = 3;
-        // This frame's shot, beat, placements and props, keeping its range.
+        // This frame's shot, beat, placements and props, keeping its range. A locked frame is left as it is.
         string frame_id = 4;
         // The scene's frames, from scratch.
         bool frames = 5;

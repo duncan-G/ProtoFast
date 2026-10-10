@@ -65,6 +65,27 @@ const TABS: { tab: InspectorTab; label: string }[] = [
           <span class="flex-1"></span>
           <button
             type="button"
+            class="dr-lock"
+            [class.is-locked]="span.frame.locked"
+            [attr.aria-pressed]="span.frame.locked"
+            [disabled]="frameDirecting(span) || frameImageState() === 'generating'"
+            [title]="
+              span.frame.locked
+                ? 'Locked: directing and picturing leave this frame as it is. Click to unlock.'
+                : 'Lock this frame once you are happy with it'
+            "
+            (click)="store.setFrameLocked(span.frame.firstElementId, !span.frame.locked)"
+          >
+            <svg class="dr-lock-icon" viewBox="0 0 16 16" aria-hidden="true">
+              <path
+                [attr.d]="span.frame.locked ? 'M5 7V5a3 3 0 0 1 6 0v2' : 'M5 7V5a3 3 0 0 1 5.8-1.1'"
+              />
+              <rect x="3" y="7" width="10" height="7" rx="1.5" />
+            </svg>
+            {{ span.frame.locked ? 'Locked' : 'Lock' }}
+          </button>
+          <button
+            type="button"
             class="dr-step"
             aria-label="Previous frame"
             [disabled]="store.selectedFrameNumber() <= 1"
@@ -154,7 +175,7 @@ const TABS: { tab: InspectorTab; label: string }[] = [
                 type="button"
                 class="dr-link"
                 [title]="sceneImagesTitle"
-                [disabled]="frameIds().length === 0"
+                [disabled]="store.unlockedFrameIds().length === 0"
                 (click)="pictureScene()"
               >
                 {{ sceneImageAction() }}
@@ -188,25 +209,29 @@ const TABS: { tab: InspectorTab; label: string }[] = [
           <span class="dr-media-label">Image</span>
           <span
             class="dr-media-value"
-            [class.is-warn]="frameImageState() === 'stale'"
+            [class.is-warn]="frameImageState() === 'stale' && !frameLocked()"
             [title]="frameImageTitle()"
             >{{ stateLabel(frameImageState()) }}</span
           >
-          <button
-            type="button"
-            class="dr-link"
-            [class.is-done]="frameImageState() === 'ready'"
-            [class.is-working]="frameImageState() === 'generating'"
-            [disabled]="!store.selectedFrame()?.frame?.id || frameImageState() === 'generating'"
-            [title]="
-              store.selectedFrame()?.frame?.id
-                ? 'Composed from the pictures that already exist around it'
-                : 'Saving…'
-            "
-            (click)="pictureFrame()"
-          >
-            {{ frameImageAction() }}
-          </button>
+          @if (frameLocked()) {
+            <span></span>
+          } @else {
+            <button
+              type="button"
+              class="dr-link"
+              [class.is-done]="frameImageState() === 'ready'"
+              [class.is-working]="frameImageState() === 'generating'"
+              [disabled]="!store.selectedFrame()?.frame?.id || frameImageState() === 'generating'"
+              [title]="
+                store.selectedFrame()?.frame?.id
+                  ? 'Composed from the pictures that already exist around it'
+                  : 'Saving…'
+              "
+              (click)="pictureFrame()"
+            >
+              {{ frameImageAction() }}
+            </button>
+          }
           <span class="dr-media-label">Audio</span>
           <span
             class="dr-media-value"
@@ -275,20 +300,28 @@ const TABS: { tab: InspectorTab; label: string }[] = [
           </div>
         </div>
       } @else {
-        @switch (store.inspectorTab()) {
-          @case ('shot') {
-            <app-inspector-shot-tab />
-          }
-          @case ('cast') {
-            <app-inspector-cast-tab />
-          }
-          @case ('place') {
-            <app-inspector-place-tab />
-          }
-          @case ('lines') {
-            <app-inspector-lines-tab />
-          }
+        @if (frameLocked() && store.inspectorTab() !== 'lines') {
+          <p class="dr-locked-note">Locked. Unlock the frame to change it.</p>
         }
+        <fieldset
+          class="dr-fieldset"
+          [disabled]="frameLocked() && store.inspectorTab() !== 'lines'"
+        >
+          @switch (store.inspectorTab()) {
+            @case ('shot') {
+              <app-inspector-shot-tab />
+            }
+            @case ('cast') {
+              <app-inspector-cast-tab />
+            }
+            @case ('place') {
+              <app-inspector-place-tab />
+            }
+            @case ('lines') {
+              <app-inspector-lines-tab />
+            }
+          }
+        </fieldset>
       }
     </div>
 
@@ -297,7 +330,7 @@ const TABS: { tab: InspectorTab; label: string }[] = [
         <button
           type="button"
           class="dr-btn"
-          title="The model splits the scene into frames; frames you edited keep their rows"
+          title="The model splits the scene into frames; frames you edited keep their rows and locked frames stay as they are"
           [disabled]="store.isDirecting({ kind: 'frames' })"
           (click)="store.direct({ kind: 'frames' })"
         >
@@ -309,30 +342,34 @@ const TABS: { tab: InspectorTab; label: string }[] = [
         <span class="flex-1"></span>
         <span class="dr-hint">{{ plural(overrides(), 'frame override') }}</span>
       } @else if (store.selectedFrame(); as span) {
-        <button
-          type="button"
-          class="dr-btn"
-          [class.is-working]="store.isDirecting({ kind: 'frame', frameId: span.frame.id })"
-          [disabled]="!span.frame.id || !store.canDirect({ kind: 'frame', frameId: span.frame.id })"
-          [title]="span.frame.id ? 'Have the model direct this frame' : 'Saving…'"
-          (click)="store.direct({ kind: 'frame', frameId: span.frame.id })"
-        >
-          {{
-            store.isDirecting({ kind: 'frame', frameId: span.frame.id })
-              ? 'Suggesting…'
-              : 'Suggest frame'
-          }}
-        </button>
-        <span class="flex-1"></span>
-        <button
-          type="button"
-          class="dr-danger"
-          [disabled]="span.first === 0 || joinBlocked(span)"
-          [title]="span.first === 0 ? 'The first frame has nothing before it' : ''"
-          (click)="store.mergeFrameUp(span.first)"
-        >
-          Join with previous
-        </button>
+        @if (!span.frame.locked) {
+          <button
+            type="button"
+            class="dr-btn"
+            [class.is-working]="store.isDirecting({ kind: 'frame', frameId: span.frame.id })"
+            [disabled]="
+              !span.frame.id || !store.canDirect({ kind: 'frame', frameId: span.frame.id })
+            "
+            [title]="span.frame.id ? 'Have the model direct this frame' : 'Saving…'"
+            (click)="store.direct({ kind: 'frame', frameId: span.frame.id })"
+          >
+            {{
+              store.isDirecting({ kind: 'frame', frameId: span.frame.id })
+                ? 'Suggesting…'
+                : 'Suggest frame'
+            }}
+          </button>
+          <span class="flex-1"></span>
+          <button
+            type="button"
+            class="dr-danger"
+            [disabled]="span.first === 0 || joinBlocked(span)"
+            [title]="joinTitle(span)"
+            (click)="store.mergeFrameUp(span.first)"
+          >
+            Join with previous
+          </button>
+        }
       }
     </div>
   `,
@@ -376,8 +413,8 @@ export class DirectorInspector {
     this.store.frameSpans().reduce((n, s) => n + overrideCount(s.frame), 0),
   );
 
-  protected readonly frameIds = computed(() =>
-    this.store.frameSpans().flatMap((s) => (s.frame.id ? [s.frame.id] : [])),
+  protected readonly frameLocked = computed(
+    () => this.store.inspectorScope() === 'frame' && !!this.store.selectedFrame()?.frame.locked,
   );
   protected readonly frameImageState = computed<ImageState>(() => {
     const span = this.store.selectedFrame();
@@ -434,7 +471,7 @@ export class DirectorInspector {
   protected pictureScene(): void {
     const need = this.store.framesNeedingImages();
     void this.store.generateFrameImages(
-      need.length > 0 ? need : this.frameIds(),
+      need.length > 0 ? need : this.store.unlockedFrameIds(),
       need.length === 0,
       true,
     );
@@ -464,9 +501,20 @@ export class DirectorInspector {
 
   protected joinBlocked(span: FrameSpan): boolean {
     const before = this.store.frameAt(span.first - 1);
-    return [span, before].some(
-      (s) => s !== null && this.store.isDirecting({ kind: 'frame', frameId: s.frame.id }),
+    return (
+      !!before?.frame.locked || [span, before].some((s) => s !== null && this.frameDirecting(s))
     );
+  }
+
+  protected joinTitle(span: FrameSpan): string {
+    if (span.first === 0) {
+      return 'The first frame has nothing before it';
+    }
+    return this.store.frameAt(span.first - 1)?.frame.locked ? 'The frame before is locked' : '';
+  }
+
+  protected frameDirecting(span: FrameSpan): boolean {
+    return this.store.isDirecting({ kind: 'frame', frameId: span.frame.id });
   }
 
   protected playFrame(): void {
