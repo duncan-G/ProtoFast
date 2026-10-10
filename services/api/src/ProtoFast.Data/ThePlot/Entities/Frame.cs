@@ -40,6 +40,9 @@ public sealed class Frame
     /// <summary>A <see cref="DirectionVocabulary.Movements"/> label; null takes the scene's.</summary>
     public string? Movement { get; set; }
 
+    /// <summary>Where the camera stands in the place and what it looks toward: "inside the corridor, looking back at the doors".</summary>
+    public string Camera { get; set; } = "";
+
     /// <summary>What this frame adds to the location's look in the scene: "crane silhouetted".</summary>
     public string LocationChange { get; set; } = "";
 

@@ -132,7 +132,9 @@ public sealed class SheetDescriber(ILanguageModelFactory models, DirectorOptions
             Write its sheet. "description": one or two sentences on what the place looks like: what kind
             of place it is, its size, architecture, materials, condition and atmosphere. Describe only
             what a camera would see; leave out the plot, the characters and what happens there.
-            "layout": how the space is arranged, for a picture. "keyFeatures": the things a picture of it should always show.
+            "layout": how the space is arranged, as a plan rather than a view: what is where, and on which
+            side as you come in by the main way in, so any camera position in it can be worked out. No
+            camera, shot, framing or perspective words. "keyFeatures": the things a picture of it should always show.
             "lighting": one entry per time of day used here ({{string.Join(", ", timesOfDay)}}) with "timeOfDay"
             spelled exactly so and a "description" of the light. "acoustics": "space" (the room sound,
             e.g. "small tiled kitchen") and "ambience" (what is heard under the scene).
@@ -186,6 +188,7 @@ public sealed class SheetDescriber(ILanguageModelFactory models, DirectorOptions
     {
         var current = string.Join(" ", new[]
         {
+            extra.Headcount is { } count ? $"Headcount: {count}." : "",
             string.IsNullOrWhiteSpace(extra.Description) ? "" : extra.Description.Trim(),
             string.IsNullOrWhiteSpace(extra.Wardrobe) ? "" : $"Wearing: {extra.Wardrobe.Trim()}",
         }.Where(p => p.Length > 0));
@@ -194,16 +197,19 @@ public sealed class SheetDescriber(ILanguageModelFactory models, DirectorOptions
             or a group. {{(current.Length == 0 ? "" : $"Their sheet so far: {current}")}}
             The scenes they appear in, in story order (scene, line):
             {{Excerpts(story, excerpts, null)}}
-            Write their sheet. "description": one or two sentences on who they are and how many, their
-            ages and general look, concrete enough to draw the same people in every scene; no names,
-            no plot. "wardrobe": what they wear, in a short phrase or sentence.
-            Reply: {"description":"…","wardrobe":"…"}
+            Write their sheet. "headcount": how many people they are, 1 for one person (a guess for a
+            crowd); keep the headcount so far unless the scenes contradict it. "description": one or two
+            sentences on who they are and how many, their ages and general look, concrete enough to
+            draw the same people in every scene; no names, no plot. "wardrobe": what they wear, in a
+            short phrase or sentence.
+            Reply: {"headcount":1,"description":"…","wardrobe":"…"}
             """;
 
         using var json = await AskAsync(prompt, ct);
         var description = ModelJson.Str(json.RootElement, "description") ?? throw new ModelOutputException("No description in the answer.");
         extra.Description = SheetText.Description(Clip(description, SheetText.DescriptionMaxLength));
         extra.Wardrobe = SheetText.Description(Clip(ModelJson.Str(json.RootElement, "wardrobe") ?? "", SheetText.DescriptionMaxLength));
+        extra.Headcount = Headcount.FromModel(ModelJson.Int(json.RootElement, "headcount")) ?? extra.Headcount;
     }
 
     /// <summary>The excerpts in story order, earliest first, capped at <see cref="DirectorOptions.MaxExcerpts"/>.</summary>

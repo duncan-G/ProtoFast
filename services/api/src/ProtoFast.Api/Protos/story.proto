@@ -313,6 +313,8 @@ message Extra {
     // Who they are and how many: "three teenage boys on bikes".
     optional string description = 4;
     optional string wardrobe = 5;
+    // 1 is one person alone; unset leaves the number to the description.
+    optional int32 headcount = 6;
 }
 
 message ListStoriesRequest {}
@@ -475,6 +477,7 @@ message CreateExtraRequest {
     string name = 2;
     optional string description = 3;
     optional string wardrobe = 4;
+    optional int32 headcount = 5;
 }
 
 message CreateExtraReply {
@@ -486,6 +489,7 @@ message UpdateExtraRequest {
     string name = 2;
     optional string description = 3;
     optional string wardrobe = 4;
+    optional int32 headcount = 5;
 }
 
 message UpdateExtraReply {

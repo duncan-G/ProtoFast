@@ -105,6 +105,7 @@ public static class DirectionMessages
             LastElementId = frame.LastElementId.ToString(),
             Beat = frame.Beat,
             LocationChange = frame.LocationChange,
+            Camera = frame.Camera,
             Edited = frame.Edited,
         };
         if (frame.LocationId is { } locationId)
@@ -143,6 +144,9 @@ public static class DirectionMessages
             {
                 CharacterId = p.CharacterId.ToString(),
                 Screen = p.Screen,
+                Facing = p.Facing,
+                Moving = p.Moving,
+                Looking = p.Looking,
                 Pose = p.Pose,
                 Expression = p.Expression,
                 WardrobeChange = p.WardrobeChange,
@@ -165,10 +169,23 @@ public static class DirectionMessages
             PropId = p.PropId.ToString(),
             InView = p.InView,
         }));
-        message.Extras.AddRange(frame.Extras.OrderBy(e => e.ExtraId).Select(e => new FrameExtra
+        message.Extras.AddRange(frame.Extras.OrderBy(e => e.ExtraId).Select(e =>
         {
-            ExtraId = e.ExtraId.ToString(),
-            OnScreen = e.OnScreen,
+            var extra = new FrameExtra
+            {
+                ExtraId = e.ExtraId.ToString(),
+                Screen = e.Screen,
+                Facing = e.Facing,
+                Moving = e.Moving,
+                Looking = e.Looking,
+                Pose = e.Pose,
+            };
+            if (e.OnScreen is { } onScreen)
+            {
+                extra.OnScreen = onScreen;
+            }
+
+            return extra;
         }));
         return message;
     }
@@ -199,6 +216,7 @@ public static class DirectionMessages
             Id = appearance.Id.ToString(),
             CharacterId = appearance.CharacterId.ToString(),
             OnScreen = appearance.OnScreen,
+            Travel = appearance.Travel,
             WardrobeChange = appearance.WardrobeChange,
             AppearanceChange = appearance.AppearanceChange,
             Edited = appearance.Edited,

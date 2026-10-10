@@ -3,7 +3,6 @@ using CharacterRecord = ProtoFast.Data.ThePlot.Entities.Character;
 using FrameRecord = ProtoFast.Data.ThePlot.Entities.Frame;
 using LocationRecord = ProtoFast.Data.ThePlot.Entities.Location;
 using PropRecord = ProtoFast.Data.ThePlot.Entities.Prop;
-using ExtraRecord = ProtoFast.Data.ThePlot.Entities.Extra;
 using SceneRecord = ProtoFast.Data.ThePlot.Entities.Scene;
 
 namespace ProtoFast.Api.Services.Imaging;
@@ -25,7 +24,7 @@ public sealed record FrameContents(
     IReadOnlyList<FrameCharacter> OnScreen,
     IReadOnlyList<CharacterRecord> OffScreen,
     IReadOnlyList<FramePropView> InView,
-    IReadOnlyList<ExtraRecord> Extras,
+    IReadOnlyList<FrameExtraView> Extras,
     string? Shot,
     string? Angle)
 {
@@ -75,6 +74,9 @@ public sealed record FrameContents(
                 Join(look.Look.WardrobeChange, placement?.WardrobeChange),
                 Join(look.Look.AppearanceChange, placement?.AppearanceChange),
                 placement?.Screen ?? "",
+                placement?.Facing ?? "",
+                placement?.Moving ?? "",
+                placement?.Looking ?? "",
                 placement?.Pose ?? "",
                 placement?.Expression ?? "",
                 look,
@@ -94,10 +96,13 @@ public sealed record FrameContents(
         }
 
         var extras = scene.Extras
-            .Where(e => frame.Extras.FirstOrDefault(f => f.ExtraId == e.ExtraId)?.OnScreen ?? e.OnScreen)
-            .Select(e => story.Extras.FirstOrDefault(x => x.Id == e.ExtraId))
-            .OfType<ExtraRecord>()
-            .OrderBy(e => e.Name)
+            .Select(e => (Scene: e, Own: frame.Extras.FirstOrDefault(f => f.ExtraId == e.ExtraId)))
+            .Where(e => e.Own?.OnScreen ?? e.Scene.OnScreen)
+            .Select(e => story.Extras.FirstOrDefault(x => x.Id == e.Scene.ExtraId) is { } record
+                ? new FrameExtraView(record, e.Own?.Screen ?? "", e.Own?.Facing ?? "", e.Own?.Moving ?? "", e.Own?.Looking ?? "", e.Own?.Pose ?? "")
+                : null)
+            .OfType<FrameExtraView>()
+            .OrderBy(e => e.Extra.Name)
             .ToList();
 
         return new FrameContents(
@@ -118,7 +123,7 @@ public sealed record FrameContents(
     /// <summary>"MARA, TOM at the Harbour (night)"</summary>
     public string Summary()
     {
-        var people = OnScreen.Select(c => c.Character.Name).Concat(Extras.Select(e => e.Name)).ToList();
+        var people = OnScreen.Select(c => c.Character.Name).Concat(Extras.Select(e => e.Extra.Name)).ToList();
         var who = people.Count == 0 ? "nobody" : string.Join(", ", people);
         var where = Location is null ? "" : $" at {Location.Name}";
         var when = string.IsNullOrWhiteSpace(TimeOfDay) ? "" : $" ({TimeOfDay.Trim().ToLowerInvariant()})";

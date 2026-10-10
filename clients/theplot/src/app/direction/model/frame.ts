@@ -18,6 +18,8 @@ export interface Frame {
   shot: string | null;
   angle: string | null;
   movement: string | null;
+  /** Where the camera stands in the place and what it looks toward. */
+  camera: string;
   /** What this frame adds to the location's look in the scene. */
   locationChange: string;
   /** Only for frames with no dialogue to time them. */
@@ -26,7 +28,7 @@ export interface Frame {
   placements: Placement[];
   /** Only the props the frame shows or hides against the scene. */
   props: FrameProp[];
-  /** Only the extras the frame shows or hides against the scene. */
+  /** Only the extras the frame shows, hides or stages against the scene. */
   extras: FrameExtra[];
   /** Written by hand; a directing pass leaves it alone. */
   edited: boolean;

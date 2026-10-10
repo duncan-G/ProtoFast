@@ -42,6 +42,21 @@ import { LibraryPicture } from './library-picture';
             (change)="save({ name: $any($event.target).value })"
           />
         </div>
+        <div class="dr-count">
+          <span>Headcount</span>
+          <input
+            class="dr-input dr-input-mono"
+            type="number"
+            min="1"
+            max="500"
+            step="1"
+            placeholder="?"
+            aria-label="Headcount"
+            [value]="e.headcount ?? ''"
+            (change)="save({ headcount: headcount($any($event.target).value) })"
+          />
+          <span class="dr-hint">{{ countHint() }}</span>
+        </div>
         <div class="dr-field">
           <div class="dr-field-head">
             <span class="dr-kicker">Description</span>
@@ -139,6 +154,20 @@ export class LibraryExtraCard {
     ).length;
     return `In Scene ${scene} · on screen in ${shown} of ${plural(spans.length, 'frame')}`;
   });
+
+  protected readonly countHint = computed(() => {
+    const count = this.extra().headcount;
+    return count === null
+      ? 'as the description says'
+      : count === 1
+        ? 'one person, alone'
+        : 'people, drawn as one group';
+  });
+
+  protected headcount(value: string): number | null {
+    const count = Math.round(+value);
+    return count >= 1 ? count : null;
+  }
 
   protected toggle(): void {
     this.store.directorLibraryEntry.set(this.open() ? null : this.extra().id);

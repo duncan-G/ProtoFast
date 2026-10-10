@@ -59,11 +59,11 @@ public sealed class ReferenceCollector(ImageStaleness staleness)
         if (frame.Location is { Image: { } plate } location)
         {
             Add(ReferenceSource.Location, location.Id, plate, location.Name,
-                $"The library's establishing shot of {location.Name}, empty.",
+                $"The library's establishing shot of {location.Name}, empty. It shows what the place looks like, not where this picture's camera stands.",
                 staleness.Location(location, plate));
         }
 
-        foreach (var extra in frame.Extras)
+        foreach (var extra in frame.Extras.Select(e => e.Extra))
         {
             if (extra.Image is { } image)
             {

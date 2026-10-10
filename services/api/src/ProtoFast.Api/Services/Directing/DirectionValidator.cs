@@ -153,6 +153,7 @@ public static class DirectionValidator
                 Angle = OptionalLabel(frame.HasAngle ? frame.Angle : null, DirectionVocabulary.Angles, where, "camera angle"),
                 Movement = OptionalLabel(frame.HasMovement ? frame.Movement : null, DirectionVocabulary.Movements, where, "camera movement"),
                 LocationChange = Text(frame.LocationChange, BeatMaxLength, where, "location change"),
+                Camera = Text(frame.Camera, BeatMaxLength, where, "camera position"),
                 HoldMs = frame.HasHoldMs ? frame.HoldMs : null,
                 Placements = Placements(frame.Placements, references, where),
                 Props = FrameProps(frame.Props, references, where),
@@ -192,9 +193,10 @@ public static class DirectionValidator
             records.Add(new FramePlacement
             {
                 CharacterId = characterId,
-                Screen = placement.Screen.Trim().Length == 0
-                    ? ""
-                    : Label(placement.Screen, DirectionVocabulary.ScreenSides, where, "screen side"),
+                Screen = Staging(placement.Screen, DirectionVocabulary.ScreenSides, where, "screen side"),
+                Facing = Staging(placement.Facing, DirectionVocabulary.Facings, where, "facing"),
+                Moving = Staging(placement.Moving, DirectionVocabulary.Movings, where, "movement across the screen"),
+                Looking = Text(placement.Looking, FieldMaxLength, where, "looking at"),
                 Pose = Text(placement.Pose, FieldMaxLength, where, "pose"),
                 Expression = Text(placement.Expression, FieldMaxLength, where, "expression"),
                 OnScreen = placement.HasOnScreen ? placement.OnScreen : null,
@@ -230,7 +232,16 @@ public static class DirectionValidator
             var id = Reference(extra.ExtraId, references.ExtraIds, where, "extra");
             if (records.All(e => e.ExtraId != id))
             {
-                records.Add(new FrameExtraRecord { ExtraId = id, OnScreen = extra.OnScreen });
+                records.Add(new FrameExtraRecord
+                {
+                    ExtraId = id,
+                    OnScreen = extra.HasOnScreen ? extra.OnScreen : null,
+                    Screen = Staging(extra.Screen, DirectionVocabulary.ScreenSides, where, "screen side"),
+                    Facing = Staging(extra.Facing, DirectionVocabulary.Facings, where, "facing"),
+                    Moving = Staging(extra.Moving, DirectionVocabulary.Movings, where, "movement across the screen"),
+                    Looking = Text(extra.Looking, FieldMaxLength, where, "looking at"),
+                    Pose = Text(extra.Pose, FieldMaxLength, where, "pose"),
+                });
             }
         }
 
@@ -270,6 +281,7 @@ public static class DirectionValidator
             {
                 CharacterId = characterId,
                 OnScreen = !appearance.HasOnScreen || appearance.OnScreen,
+                Travel = Staging(appearance.Travel, DirectionVocabulary.Travels, where, "screen direction"),
                 WardrobeId = appearance.HasWardrobeId ? Wardrobe(appearance.WardrobeId, characterId, references, where) : null,
                 WardrobeChange = Text(appearance.WardrobeChange, BeatMaxLength, where, "wardrobe change"),
                 AppearanceChange = Text(appearance.AppearanceChange, BeatMaxLength, where, "appearance change"),
@@ -388,6 +400,9 @@ public static class DirectionValidator
     private static string Label(string label, IReadOnlyList<string> labels, string where, string noun) =>
         labels.FirstOrDefault(l => LibraryNames.Same(l, label))
         ?? throw StoryErrors.Invalid($"{where}: “{label}” isn’t a {noun}.");
+
+    private static string Staging(string label, IReadOnlyList<string> labels, string where, string noun) =>
+        label.Trim().Length == 0 ? "" : Label(label, labels, where, noun);
 
     private static string Text(string text, int max, string where, string noun)
     {

@@ -113,8 +113,11 @@ message Frame {
     bool edited = 12;
     // Unset until the frame has been pictured. Read only: saves ignore it.
     optional MediaImage image = 17;
-    // Only the extras the frame shows or hides against the scene.
+    // Only the extras the frame shows, hides or stages against the scene.
     repeated FrameExtra extras = 18;
+    // Where the camera stands in the place and what it looks toward: "inside the corridor, looking
+    // back at the double doors".
+    string camera = 19;
 }
 
 message MediaImage {
@@ -144,6 +147,15 @@ message Placement {
     string screen = 2;
     string pose = 3;
     string expression = 4;
+    // toward camera | three-quarter left | screen left | back three-quarter left | away from camera |
+    // back three-quarter right | screen right | three-quarter right, or empty. A three-quarter turn
+    // shows the face; a back three-quarter turn shows the back.
+    string facing = 10;
+    // still | left to right | right to left | toward camera | away from camera, or toward/away from
+    // camera with a side ("toward camera, left to right"), or empty.
+    string moving = 11;
+    // Who or what they look at: "the nurse".
+    string looking = 12;
     // Unset follows the scene's appearance.
     optional bool on_screen = 6;
     // Unset wears the scene's wardrobe.
@@ -160,7 +172,14 @@ message FrameProp {
 
 message FrameExtra {
     string extra_id = 1;
-    bool on_screen = 2;
+    // Unset follows the scene.
+    optional bool on_screen = 2;
+    // As on a Placement; pose says which of a group the staging is about.
+    string screen = 3;
+    string facing = 4;
+    string moving = 5;
+    string looking = 6;
+    string pose = 7;
 }
 
 // How a dialogue, narration or action line is delivered.
@@ -211,6 +230,8 @@ message SceneAppearance {
     repeated string holding = 11;
     // Unset while the look is the library's, or until pictured. Read only: saves ignore it.
     optional MediaImage image = 12;
+    // left to right | right to left, or empty: the way they move across the screen all scene.
+    string travel = 13;
 }
 
 // A character's whole look from one line of the scene on: the frame covering the line and every

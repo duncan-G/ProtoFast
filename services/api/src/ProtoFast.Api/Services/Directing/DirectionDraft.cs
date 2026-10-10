@@ -64,12 +64,16 @@ public sealed class DirectionDraft
             Angle = p.Angle,
             Movement = p.Movement,
             LocationChange = p.LocationChange,
+            Camera = p.Camera,
             HoldMs = p.HoldMs,
             Edited = p.Edited,
             Placements = p.Placements.Select(pl => new FramePlacementRecord
             {
                 CharacterId = pl.CharacterId,
                 Screen = pl.Screen,
+                Facing = pl.Facing,
+                Moving = pl.Moving,
+                Looking = pl.Looking,
                 Pose = pl.Pose,
                 Expression = pl.Expression,
                 OnScreen = pl.OnScreen,
@@ -78,7 +82,16 @@ public sealed class DirectionDraft
                 AppearanceChange = pl.AppearanceChange,
             }).ToList(),
             Props = p.Props.Select(pp => new FramePropRecord { PropId = pp.PropId, InView = pp.InView }).ToList(),
-            Extras = p.Extras.Select(e => new FrameExtraRecord { ExtraId = e.ExtraId, OnScreen = e.OnScreen }).ToList(),
+            Extras = p.Extras.Select(e => new FrameExtraRecord
+            {
+                ExtraId = e.ExtraId,
+                OnScreen = e.OnScreen,
+                Screen = e.Screen,
+                Facing = e.Facing,
+                Moving = e.Moving,
+                Looking = e.Looking,
+                Pose = e.Pose,
+            }).ToList(),
         }).ToList(),
         Cues = scene.Cues.Select(c => new CueRecord
         {
@@ -95,6 +108,7 @@ public sealed class DirectionDraft
             Id = a.Id,
             CharacterId = a.CharacterId,
             OnScreen = a.OnScreen,
+            Travel = a.Travel,
             WardrobeId = a.WardrobeId,
             WardrobeChange = a.WardrobeChange,
             AppearanceChange = a.AppearanceChange,

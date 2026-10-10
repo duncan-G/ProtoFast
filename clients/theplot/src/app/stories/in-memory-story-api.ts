@@ -282,6 +282,7 @@ export class InMemoryStoryApi implements StoryApi {
     stored.name = checkName(story.extras, extra.name, 'extra', extra.id);
     stored.description = extra.description?.trim() || null;
     stored.wardrobe = extra.wardrobe?.trim() || null;
+    stored.headcount = extra.headcount;
     this.touch(story.id);
     return structuredClone(stored);
   }

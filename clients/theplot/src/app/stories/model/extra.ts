@@ -6,4 +6,6 @@ export interface Extra {
   /** Who they are and how many: "three teenage boys on bikes". */
   description: string | null;
   wardrobe: string | null;
+  /** 1 is one person alone; null leaves the number to the description. */
+  headcount: number | null;
 }

@@ -10,6 +10,7 @@ import {
   joinChanges,
   lookAt,
   onScreenOf,
+  withFrameExtra,
   withPlacement,
 } from '../../direction/inheritance';
 import { Cue } from '../../direction/model/cue';
@@ -17,6 +18,7 @@ import { DescribeTarget } from '../../direction/model/describe-target';
 import { covers, DirectTarget } from '../../direction/model/direct-target';
 import { DIRECTION_VOCABULARY } from '../../direction/model/direction-vocabulary';
 import { Frame } from '../../direction/model/frame';
+import { Placement } from '../../direction/model/placement';
 import { LibraryImage } from '../../direction/model/library-image';
 import { LookChange } from '../../direction/model/look-change';
 import { blankAppearance, SceneAppearance } from '../../direction/model/scene-appearance';
@@ -86,6 +88,15 @@ const NARRATOR_TEXT_MAX = 1000;
  * director mode the scene and its director layer save together, so a changed line lands with
  * its cue.
  */
+
+/** Who a frame stages: one of the cast, or a group of extras. */
+export interface StagingSubject {
+  kind: 'character' | 'extra';
+  id: string;
+}
+
+export type Staging = Pick<Placement, 'screen' | 'facing' | 'moving' | 'looking' | 'pose'>;
+
 @Injectable()
 export class SceneEditorStore implements OnDestroy {
   private readonly api = inject(StoryApi);
@@ -912,7 +923,12 @@ export class SceneEditorStore implements OnDestroy {
     }
     return this.create(
       () =>
-        this.api.createExtra(story.id, { name: name.trim(), description: null, wardrobe: null }),
+        this.api.createExtra(story.id, {
+          name: name.trim(),
+          description: null,
+          wardrobe: null,
+          headcount: null,
+        }),
       (s, e) => ({ ...s, extras: [...s.extras, e] }),
     );
   }
@@ -1387,14 +1403,50 @@ export class SceneEditorStore implements OnDestroy {
       return;
     }
     const scene = extraOnScreenOf(direction, null, extraId).value;
-    const rest = frame.extras.filter((e) => e.extraId !== extraId);
     this.updateFrame(frameKey, {
-      extras: on === scene ? rest : [...rest, { extraId, onScreen: on }],
+      extras: withFrameExtra(frame, extraId, { onScreen: on === scene ? null : on }),
     });
   }
 
+  /** The frame follows the scene again for which extras are on screen; their staging stays. */
   resetExtras(frameKey: string): void {
-    this.updateFrame(frameKey, { extras: [] });
+    const frame = this.frameByKey(frameKey);
+    if (frame) {
+      this.updateFrame(frameKey, {
+        extras: frame.extras.flatMap((e) =>
+          withFrameExtra({ ...frame, extras: [e] }, e.extraId, { onScreen: null }),
+        ),
+      });
+    }
+  }
+
+  /** Where someone is in the frame and which way they face, move and look. */
+  setStaging(who: StagingSubject, patch: Partial<Staging>, frameKey: string): void {
+    const frame = this.frameByKey(frameKey);
+    if (!frame) {
+      return;
+    }
+    this.updateFrame(
+      frameKey,
+      who.kind === 'character'
+        ? { placements: withPlacement(frame, who.id, patch) }
+        : { extras: withFrameExtra(frame, who.id, patch) },
+    );
+  }
+
+  /** Set by the frames pass too, so it does not mark the look as the author's. */
+  setTravel(characterId: string, travel: string): void {
+    this.updateDirection((d) => {
+      const current =
+        d.appearances.find((a) => a.characterId === characterId) ?? blankAppearance(characterId);
+      return {
+        ...d,
+        appearances: [
+          ...d.appearances.filter((a) => a.characterId !== characterId),
+          { ...current, travel },
+        ],
+      };
+    });
   }
 
   addExtraToScene(extraId: string): void {

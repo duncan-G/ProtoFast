@@ -20,6 +20,15 @@ public sealed class FramePlacement
     /// <summary>A <see cref="DirectionVocabulary.ScreenSides"/> label, or empty.</summary>
     public string Screen { get; set; } = "";
 
+    /// <summary>A <see cref="DirectionVocabulary.Facings"/> label, or empty.</summary>
+    public string Facing { get; set; } = "";
+
+    /// <summary>A <see cref="DirectionVocabulary.Movings"/> label, or empty.</summary>
+    public string Moving { get; set; } = "";
+
+    /// <summary>Who or what they look at: "the nurse", "the doors".</summary>
+    public string Looking { get; set; } = "";
+
     public string Pose { get; set; } = "";
 
     public string Expression { get; set; } = "";

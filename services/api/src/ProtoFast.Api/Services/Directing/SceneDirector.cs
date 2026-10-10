@@ -43,14 +43,45 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
 
     /// <summary>The picture is drawn from a frame's "visible", so it has to stage the whole frame.</summary>
     private const string VisibleRule = """
-        "visible" is what the picture shows, in two to four present-tense sentences, written so an
-        illustrator could draw it without the script. Name everyone on screen and say what each is
-        doing. Where two or more are on screen, say how they are placed and turned toward each other
-        (facing across the table, back to back, one behind the other, an arm's length apart). Place
-        each of them in the location (at the window, on the bottom stair, behind the bar). Then
-        anything else happening in the picture: props in use, extras and animals in the background,
-        weather, light, smoke, movement. Only what a camera sees: no thoughts, sounds or dialogue.
-        Call props and extras by their names as listed.
+        "visible" is a single still picture: one frozen instant, not a stretch of time. In two to four
+        sentences, written so an illustrator could draw it without the script, say exactly what is
+        there at that instant. Name everyone on screen and the position each is caught in (seated
+        with a cup halfway to her lips, mid-stride with one foot off the floor, leaning in, his hand
+        on the door handle). Where two or more are on screen, say where they are relative to each
+        other and where each is turned and looking (facing across the table, she a step past him with
+        her head turned back to his face, back to back, an arm's length apart). Place each of them in
+        the location (at the window, on the bottom stair, behind the bar). Then everything else in
+        the picture at that instant: props and where they are, extras and animals and the position
+        each is caught in, weather, light, smoke. No sequence and nothing that takes time: no "as",
+        "while", "then", "keeps", "begins", "passing", "crossing", no glances held or moves
+        completed; write the moment, not the action. Only what a camera sees: no thoughts, sounds or
+        dialogue. Call props and extras by their names as listed. Every direction is as the viewer
+        sees the picture: screen left, screen right, toward or away from the camera; never someone's
+        own left or right, except for their hands. Where the rows have someone going through, onto or
+        past part of the place (a door, stairs, a car, a counter), catch them at it (half through the
+        doorway, a palm on the swinging door; one foot on the bottom stair) and say where that part of
+        the place is in the picture.
+        """;
+
+    /// <summary>The picture model needs the camera and every direction spelled out, or it picks its own.</summary>
+    private static readonly string StagingRule = $"""
+        "camera" is where the camera stands in the place and what it looks toward, in the place's own
+        terms ("inside the corridor a few steps past the double doors, looking back at them"). Put it
+        where the action reads: someone coming through a door is seen from the side they come into,
+        with the door behind them; two people talking are seen with both faces in view.
+        For each character, and each extra you stage, "screen" is the side of the picture they are on
+        ({string.Join("|", DirectionVocabulary.ScreenSides)}), "facing" the way their body is turned
+        ({string.Join("|", DirectionVocabulary.Facings)}), "moving" the way they are going across the
+        picture ({string.Join("|", DirectionVocabulary.Movings)}) and "looking" who or what they look
+        at, by name. All of these as the viewer sees the picture. A three-quarter turn shows the face,
+        a back three-quarter turn shows the back: someone going away from the camera, or through a
+        door away from it, has their back to it. The body faces the way it moves; the head can turn to
+        whoever they look at. Stage an extra when the rows single one of them out, and say in its
+        "pose" which of the group it is.
+        Screen direction: someone who moves keeps the same "travel" ({string.Join("|", DirectionVocabulary.Travels)})
+        in every frame of the scene, so a cut never reverses them, and two people keep the same sides
+        of each other from frame to frame unless a frame shows one cross the other. Only turn someone
+        around when the script does, and then show the turn in "visible".
         """;
 
     /// <summary>A held prop is part of the look, so frames have to keep it in the holder's hands.</summary>
@@ -58,7 +89,8 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         Looks says what each character carries and from which line that changes. In every frame from
         that line until the next change they carry it, in their hands or on them, the same object
         each time: say so in "visible" and in their pose, and never show them without it or with
-        something else in its place. On the line where they hand it over, the frame shows the handover.
+        something else in its place. On the line where they hand it over, the frame catches the object
+        between their hands.
         """;
 
     public async Task<DirectionDraft> DirectAsync(DirectedScene context, DirectRequest request, CancellationToken ct)
@@ -216,8 +248,9 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             Reuse an extra from the library where one fits, named exactly as listed. Otherwise add one:
             an extra can come back in later scenes, so name it for who they are ("Night-shift nurses",
             "Pub regulars"), not for what they do here, and never with a cast member's name. A group is
-            one extra. For a new one give "description": who they are, how many, their ages and look, in
-            one or two sentences; and "wardrobe": what they wear. At most {{MaxExtras}} extras.
+            one extra. For a new one give "headcount": how many people it is, 1 for one person (a guess
+            for a crowd); "description": who they are, how many, their ages and look, in one or two
+            sentences; and "wardrobe": what they wear. At most {{MaxExtras}} extras.
 
             Cast (not extras):
             {{brief.CastSheet()}}
@@ -227,7 +260,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             {{SceneBrief.ExtraSheet(brief.Extras)}}
             Scene {{brief.Heading()}}:
             {{brief.Script()}}
-            Reply: {"extras":[{"name":"Pub regulars","description":"…","wardrobe":"…"}]}
+            Reply: {"extras":[{"name":"Pub regulars","headcount":12,"description":"…","wardrobe":"…"}]}
             """;
 
         using var json = await AskAsync(prompt, ct);
@@ -258,6 +291,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
                     Name = name,
                     Description = Sheet(ModelJson.Str(answer, "description")),
                     Wardrobe = Sheet(ModelJson.Str(answer, "wardrobe")),
+                    Headcount = Headcount.FromModel(ModelJson.Int(answer, "headcount")),
                 };
                 draft.NewExtras.Add(extra);
             }
@@ -494,6 +528,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
                 Id = existing?.Id ?? Guid.Empty,
                 CharacterId = character.Id,
                 OnScreen = existing?.OnScreen ?? true,
+                Travel = existing?.Travel ?? "",
                 WardrobeId = previous?.WardrobeId is { } carried && character.Wardrobes.Any(w => w.Id == carried) ? carried : null,
                 WardrobeChange = previous?.WardrobeChange ?? "",
                 AppearanceChange = previous?.AppearanceChange ?? "",
@@ -918,6 +953,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
                 .Append(beat.IsDialogue ? " (dialogue)" : " (action)").AppendLine();
         }
 
+        var fixedTravel = replaceEdited ? "" : TravelSheet(brief, draft);
         var cuts = string.Join(", ", fixedFrames.Select(p => $"{brief.Label(brief.Elements[p.Range!.Value.First].Id)}–{brief.Label(brief.Elements[p.Range!.Value.Last].Id)}"));
         var kept = fixedFrames.Count == 0
             ? ""
@@ -933,11 +969,14 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             {{kept}}
             For each frame give "shot" ({{string.Join("|", DirectionVocabulary.Shots)}}), camera "angle"
             ({{string.Join("|", DirectionVocabulary.Angles)}}) and "movement" ({{string.Join("|", DirectionVocabulary.Movements)}}),
-            "visible", "characters" on screen with "screen" ({{string.Join("|", DirectionVocabulary.ScreenSides)}}),
-            a short "pose" and "expression" and any "change" to their look this frame alone shows (empty
-            when none), "extras" in the picture and "props" in view, by name. Keep each character on the
-            same screen side across consecutive frames. Most frames share an angle and stay static;
-            change them for a reason.
+            "camera", "visible", "characters" on screen with "screen", "facing", "moving", "looking", a
+            short "pose" and "expression" and any "change" to their look this frame alone shows (empty
+            when none), "extras" in the picture by name, staged like characters where the rows single
+            one out, and "props" in view, by name. Keep each character on the same screen side across
+            consecutive frames. Most frames share an angle and stay static; change them for a reason.
+            Give the scene's "travel" for each character who moves across the screen.
+            {{fixedTravel}}
+            {{StagingRule}}
             {{VisibleRule}}
             {{HoldingRule}}
             Natural beats, for guidance: {{beats}}
@@ -953,7 +992,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             {{brief.LocationSheet()}}
             Scene {{brief.Heading()}}:
             {{brief.Script()}}
-            Reply: {"frames":[{"from":"e1","to":"e2","shot":"wide","angle":"eye level","movement":"static","visible":"…","characters":[{"name":"Name","screen":"left","pose":"…","expression":"…","change":""}],"extras":["Name"],"props":["Name"]}]}
+            Reply: {"travel":{"Name":"left to right"},"frames":[{"from":"e1","to":"e2","shot":"wide","angle":"eye level","movement":"static","camera":"…","visible":"…","characters":[{"name":"Name","screen":"left","facing":"three-quarter right","moving":"left to right","looking":"…","pose":"…","expression":"…","change":""}],"extras":["Name",{"name":"Name","screen":"right","facing":"…","moving":"…","looking":"…","pose":"which of them, and how"}],"props":["Name"]}]}
             """;
 
         using var json = await AskAsync(prompt, ct);
@@ -1057,6 +1096,8 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         }
 
         var directed = frames.Select(p => p.Frame).Where(p => !p.Edited).ToList();
+        Travels(brief, draft, json.RootElement, directed, replaceEdited);
+        await ScreenDirectionAsync(brief, draft, frames.Select(p => p.Frame).ToList(), directed, ct);
         await VisibleAsync(brief, draft, directed, ct);
         if (draft.Shot is null || replaceEdited)
         {
@@ -1178,17 +1219,25 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             }
         }
 
+        // A row the answer gave says the extra is shown; it stays only to override or stage them.
         foreach (var extra in brief.Extras)
         {
             var sceneOn = draft.Extras.FirstOrDefault(e => e.ExtraId == extra.Id)?.OnScreen ?? true;
             var shown = frame.Extras.FirstOrDefault(e => e.ExtraId == extra.Id);
-            if ((shown is not null) == sceneOn)
+            if (shown is null)
             {
-                frame.Extras.RemoveAll(e => e.ExtraId == extra.Id);
+                if (sceneOn)
+                {
+                    frame.Extras.Add(new FrameExtraRecord { ExtraId = extra.Id, OnScreen = false });
+                }
+
+                continue;
             }
-            else if (shown is null)
+
+            shown.OnScreen = sceneOn ? null : true;
+            if (shown.OnScreen is null && !Staged(shown))
             {
-                frame.Extras.Add(new FrameExtraRecord { ExtraId = extra.Id, OnScreen = false });
+                frame.Extras.Remove(shown);
             }
         }
 
@@ -1203,10 +1252,13 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             One frame of the scene pictures rows {{brief.Label(brief.Elements[range.First].Id)}} to {{brief.Label(brief.Elements[range.Last].Id)}}.
             Decide its "shot" ({{string.Join("|", DirectionVocabulary.Shots)}}), camera "angle"
             ({{string.Join("|", DirectionVocabulary.Angles)}}) and "movement" ({{string.Join("|", DirectionVocabulary.Movements)}}),
-            "visible", "characters" on screen with "screen"
-            ({{string.Join("|", DirectionVocabulary.ScreenSides)}}), a short "pose" and "expression" and any "change"
-            to their look this frame alone shows, "extras" in the picture and "props" in view, by name.
-            Keep characters on the sides they hold in the other frames, listed below.
+            "camera", "visible", "characters" on screen with "screen", "facing", "moving", "looking", a
+            short "pose" and "expression" and any "change" to their look this frame alone shows,
+            "extras" in the picture by name, staged like characters where the rows single one out, and
+            "props" in view, by name. Keep characters on the sides they hold in the other frames, listed
+            below, and going the way they travel in this scene.
+            {{TravelSheet(brief, draft)}}
+            {{StagingRule}}
             {{VisibleRule}}
             {{HoldingRule}}
             Other frames: {{string.Join("; ", draft.Frames.Where(p => p.Id != frameId).Select(p => Summary(brief, p)))}}
@@ -1223,7 +1275,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             {{brief.LocationSheet()}}
             Scene {{brief.Heading()}}:
             {{brief.Script()}}
-            Reply: {"shot":"medium","angle":"eye level","movement":"static","visible":"…","characters":[{"name":"Name","screen":"left","pose":"…","expression":"…","change":""}],"extras":["Name"],"props":["Name"]}
+            Reply: {"shot":"medium","angle":"eye level","movement":"static","camera":"…","visible":"…","characters":[{"name":"Name","screen":"left","facing":"three-quarter right","moving":"still","looking":"…","pose":"…","expression":"…","change":""}],"extras":["Name",{"name":"Name","screen":"right","facing":"…","moving":"…","looking":"…","pose":"which of them, and how"}],"props":["Name"]}
             """;
 
         using var json = await AskAsync(prompt, ct);
@@ -1234,6 +1286,8 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         }
 
         var directed = FrameFrom(brief, answer, range.First, range.Last, SceneExtras(brief, draft));
+        var ordered = draft.Frames.Select(f => f == frame ? directed : f).ToList();
+        await ScreenDirectionAsync(brief, draft, ordered, [directed], ct);
         await VisibleAsync(brief, draft, [directed], ct);
         AgainstScene(brief, draft, directed);
         directed.Id = frame.Id;
@@ -1256,6 +1310,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             Angle = DirectionVocabulary.Angles.FirstOrDefault(s => LibraryNames.Same(s, ModelJson.Str(answer, "angle") ?? "")) ?? "eye level",
             Movement = DirectionVocabulary.Movements.FirstOrDefault(s => LibraryNames.Same(s, ModelJson.Str(answer, "movement") ?? "")) ?? "static",
             Beat = Trim(Visible(answer) ?? "", DirectionValidator.BeatMaxLength),
+            Camera = Trim(ModelJson.Str(answer, "camera") ?? "", DirectionValidator.BeatMaxLength),
         };
         foreach (var placement in ModelJson.Array(answer, "characters"))
         {
@@ -1268,7 +1323,10 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             frame.Placements.Add(new FramePlacementRecord
             {
                 CharacterId = character.Id,
-                Screen = DirectionVocabulary.ScreenSides.FirstOrDefault(s => LibraryNames.Same(s, ModelJson.Str(placement, "screen") ?? "")) ?? "centre",
+                Screen = ScreenDirections.Side(ModelJson.Str(placement, "screen")) is { Length: > 0 } side ? side : "centre",
+                Facing = ScreenDirections.Facing(ModelJson.Str(placement, "facing")),
+                Moving = ScreenDirections.Moving(ModelJson.Str(placement, "moving")),
+                Looking = Trim(ModelJson.Str(placement, "looking") ?? "", DirectionValidator.FieldMaxLength),
                 Pose = Trim(ModelJson.Str(placement, "pose") ?? "", DirectionValidator.FieldMaxLength),
                 Expression = Trim(ModelJson.Str(placement, "expression") ?? "", DirectionValidator.FieldMaxLength),
                 OnScreen = true,
@@ -1285,12 +1343,273 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             }
         }
 
-        var extras = answer.ValueKind == JsonValueKind.Object && answer.TryGetProperty("extras", out var named) && named.ValueKind == JsonValueKind.Array
-            ? ModelJson.Strings(answer, "extras").Select(brief.ExtraNamed).OfType<ExtraRecord>().Where(brief.Extras.Contains).Select(e => e.Id)
-            : sceneExtras;
-        frame.Extras.AddRange(extras.Distinct().Select(id => new FrameExtraRecord { ExtraId = id }));
+        if (answer.ValueKind == JsonValueKind.Object && answer.TryGetProperty("extras", out var named) && named.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in named.EnumerateArray())
+            {
+                var staged = item.ValueKind == JsonValueKind.Object;
+                var extra = brief.ExtraNamed(staged ? ModelJson.Str(item, "name") : item.ValueKind == JsonValueKind.String ? item.GetString() : null);
+                if (extra is null || !brief.Extras.Contains(extra) || frame.Extras.Any(e => e.ExtraId == extra.Id))
+                {
+                    continue;
+                }
+
+                frame.Extras.Add(new FrameExtraRecord
+                {
+                    ExtraId = extra.Id,
+                    OnScreen = true,
+                    Screen = staged ? ScreenDirections.Side(ModelJson.Str(item, "screen")) : "",
+                    Facing = staged ? ScreenDirections.Facing(ModelJson.Str(item, "facing")) : "",
+                    Moving = staged ? ScreenDirections.Moving(ModelJson.Str(item, "moving")) : "",
+                    Looking = staged ? Trim(ModelJson.Str(item, "looking") ?? "", DirectionValidator.FieldMaxLength) : "",
+                    Pose = staged ? Trim(ModelJson.Str(item, "pose") ?? "", DirectionValidator.FieldMaxLength) : "",
+                });
+            }
+        }
+        else
+        {
+            frame.Extras.AddRange(sceneExtras.Select(id => new FrameExtraRecord { ExtraId = id, OnScreen = true }));
+        }
+
         return frame;
     }
+
+    private static bool Staged(FrameExtraRecord extra) =>
+        extra.Screen.Length + extra.Facing.Length + extra.Moving.Length + extra.Looking.Length + extra.Pose.Length > 0;
+
+    // ─── screen direction ──────────────────────────────────────────────────
+
+    /// <summary>"Screen directions in this scene, keep them: MARA left to right." or empty when none is set.</summary>
+    private static string TravelSheet(SceneBrief brief, DirectionDraft draft)
+    {
+        var set = brief.Cast
+            .Select(c => (c.Name, Travel: draft.Appearances.FirstOrDefault(a => a.CharacterId == c.Id)?.Travel ?? ""))
+            .Where(t => t.Travel.Length > 0)
+            .Select(t => $"{t.Name} {t.Travel}")
+            .ToList();
+        return set.Count == 0 ? "" : $"Screen directions in this scene, keep them: {string.Join("; ", set)}.";
+    }
+
+    /// <summary>
+    /// The way each character goes across the screen for the whole scene: kept when set, unless
+    /// replacing; else the answer's, else the way most of their directed frames have them moving.
+    /// </summary>
+    private static void Travels(SceneBrief brief, DirectionDraft draft, JsonElement answer, IReadOnlyList<FrameRecord> directed, bool replaceEdited)
+    {
+        var answered = new Dictionary<Guid, string>();
+        if (answer.ValueKind == JsonValueKind.Object && answer.TryGetProperty("travel", out var travel) && travel.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var entry in travel.EnumerateObject())
+            {
+                if (brief.CharacterNamed(entry.Name) is { } named && entry.Value.ValueKind == JsonValueKind.String
+                    && ScreenDirections.Travel(entry.Value.GetString()) is { Length: > 0 } label)
+                {
+                    answered[named.Id] = label;
+                }
+            }
+        }
+
+        foreach (var character in brief.Cast)
+        {
+            var appearance = draft.Appearances.FirstOrDefault(a => a.CharacterId == character.Id);
+            if (appearance is { Travel.Length: > 0 } && !replaceEdited)
+            {
+                continue;
+            }
+
+            var label = answered.GetValueOrDefault(character.Id)
+                        ?? Commonest(directed
+                            .SelectMany(f => f.Placements)
+                            .Where(p => p.CharacterId == character.Id && p.OnScreen == true)
+                            .Select(p => ScreenDirections.Horizontal(p.Moving)))
+                        ?? "";
+            if (appearance is null)
+            {
+                if (label.Length == 0)
+                {
+                    continue;
+                }
+
+                appearance = new SceneAppearanceRecord { CharacterId = character.Id, OnScreen = true };
+                draft.Appearances.Add(appearance);
+            }
+
+            appearance.Travel = label;
+        }
+    }
+
+    /// <summary>
+    /// The 180° rule, checked in code: a directed frame that moves someone against their travel, or
+    /// swaps two people's sides from the frame next to it, is asked again once. The answer may keep
+    /// it where the script turns them around, so what comes back is taken as it is.
+    /// </summary>
+    /// <param name="ordered">Every frame of the scene in order, the directed ones among them.</param>
+    private async Task ScreenDirectionAsync(
+        SceneBrief brief, DirectionDraft draft, List<FrameRecord> ordered, IReadOnlyList<FrameRecord> directed, CancellationToken ct)
+    {
+        var flagged = directed
+            .Select(frame => (Frame: frame, Issues: DirectionIssues(brief, draft, ordered, directed, frame)))
+            .Where(f => f.Issues.Count > 0)
+            .ToList();
+        if (flagged.Count == 0)
+        {
+            return;
+        }
+
+        var listing = new StringBuilder();
+        for (var i = 0; i < flagged.Count; i++)
+        {
+            var (frame, issues) = flagged[i];
+            var at = ordered.IndexOf(frame);
+            listing.Append('f').Append(i + 1).Append(' ').AppendLine(Staging(brief, draft, frame));
+            if (at > 0)
+            {
+                listing.Append("   frame before: ").AppendLine(Staging(brief, draft, ordered[at - 1]));
+            }
+
+            listing.Append("   breaks: ").AppendLine(string.Join("; ", issues));
+        }
+
+        var prompt = $$"""
+            These frames break screen direction: a cut would reverse someone or swap two people's sides.
+            For each, restage it so the break goes away (change "camera", and each character's "screen",
+            "facing" and "moving"), or, only where the script really turns them around or has one cross
+            the other, keep it and make "visible" show the turn or the cross. Give every on-screen
+            character of the frame, and "visible" in full.
+            {{TravelSheet(brief, draft)}}
+            {{StagingRule}}
+            {{VisibleRule}}
+            Frames:
+            {{listing}}
+            Cast:
+            {{brief.CastSheet()}}
+            Places:
+            {{brief.LocationSheet()}}
+            Scene {{brief.Heading()}}:
+            {{brief.Script()}}
+            Reply: {"frames":[{"frame":"f1","camera":"…","visible":"…","characters":[{"name":"Name","screen":"left","facing":"…","moving":"…","looking":"…"}]}]}
+            """;
+
+        try
+        {
+            using var json = await AskAsync(prompt, ct);
+            foreach (var answer in ModelJson.Array(json.RootElement, "frames"))
+            {
+                var label = ModelJson.Str(answer, "frame")?.Trim().TrimStart('f', 'F');
+                if (!int.TryParse(label, out var number) || number < 1 || number > flagged.Count)
+                {
+                    continue;
+                }
+
+                Restage(brief, flagged[number - 1].Frame, answer);
+            }
+        }
+        catch (ModelOutputException e)
+        {
+            logger.LogWarning("Restaging frames that break screen direction failed ({Reason}); keeping them", e.Message);
+        }
+    }
+
+    private static void Restage(SceneBrief brief, FrameRecord frame, JsonElement answer)
+    {
+        if (ModelJson.Str(answer, "camera") is { } camera && camera.Trim().Length > 0)
+        {
+            frame.Camera = Trim(camera, DirectionValidator.BeatMaxLength);
+        }
+
+        if (Visible(answer) is { } visible && visible.Trim().Length > 0)
+        {
+            frame.Beat = Trim(visible, DirectionValidator.BeatMaxLength);
+        }
+
+        foreach (var staged in ModelJson.Array(answer, "characters"))
+        {
+            var character = brief.CharacterNamed(ModelJson.Str(staged, "name"));
+            var placement = character is null ? null : frame.Placements.FirstOrDefault(p => p.CharacterId == character.Id && p.OnScreen == true);
+            if (placement is null)
+            {
+                continue;
+            }
+
+            placement.Screen = ScreenDirections.Side(ModelJson.Str(staged, "screen")) is { Length: > 0 } side ? side : placement.Screen;
+            placement.Facing = ScreenDirections.Facing(ModelJson.Str(staged, "facing")) is { Length: > 0 } facing ? facing : placement.Facing;
+            placement.Moving = ScreenDirections.Moving(ModelJson.Str(staged, "moving")) is { Length: > 0 } moving ? moving : placement.Moving;
+            if (ModelJson.Str(staged, "looking") is { } looking && looking.Trim().Length > 0)
+            {
+                placement.Looking = Trim(looking, DirectionValidator.FieldMaxLength);
+            }
+        }
+    }
+
+    /// <summary>
+    /// What breaks screen direction in <paramref name="frame"/>: moving against a travel, or two
+    /// people on opposite sides of each other from the frame before (and the frame after, when that
+    /// one is not being directed too, since it will not be checked itself).
+    /// </summary>
+    private static List<string> DirectionIssues(
+        SceneBrief brief, DirectionDraft draft, List<FrameRecord> ordered, IReadOnlyCollection<FrameRecord> directed, FrameRecord frame)
+    {
+        var issues = new List<string>();
+        foreach (var placement in OnScreen(draft, frame))
+        {
+            var travel = draft.Appearances.FirstOrDefault(a => a.CharacterId == placement.CharacterId)?.Travel ?? "";
+            if (ScreenDirections.Horizontal(placement.Moving) is { } going && travel.Length > 0 && going != travel)
+            {
+                issues.Add($"{CharacterName(brief, placement.CharacterId)} moves {going} but travels {travel} in this scene");
+            }
+
+            if (ScreenDirections.Contradiction(placement.Facing, placement.Moving) is { } contradiction)
+            {
+                issues.Add($"{CharacterName(brief, placement.CharacterId)} {contradiction}");
+            }
+        }
+
+        var at = ordered.IndexOf(frame);
+        if (at > 0)
+        {
+            issues.AddRange(Swaps(brief, draft, ordered[at - 1], frame, "the frame before"));
+        }
+
+        if (at >= 0 && at + 1 < ordered.Count && !directed.Contains(ordered[at + 1]))
+        {
+            issues.AddRange(Swaps(brief, draft, frame, ordered[at + 1], "the frame after"));
+        }
+
+        return issues;
+    }
+
+    private static IEnumerable<string> Swaps(SceneBrief brief, DirectionDraft draft, FrameRecord before, FrameRecord after, string which)
+    {
+        var sidesBefore = Sides(draft, before);
+        var sidesAfter = Sides(draft, after);
+        var both = sidesBefore.Keys.Where(sidesAfter.ContainsKey).OrderBy(id => id).ToList();
+        for (var i = 0; i < both.Count; i++)
+        {
+            for (var j = i + 1; j < both.Count; j++)
+            {
+                var (a, b) = (both[i], both[j]);
+                var was = Math.Sign(sidesBefore[a] - sidesBefore[b]);
+                var now = Math.Sign(sidesAfter[a] - sidesAfter[b]);
+                if (was != 0 && now == -was)
+                {
+                    var (left, right) = was < 0 ? (a, b) : (b, a);
+                    yield return $"{CharacterName(brief, left)} and {CharacterName(brief, right)} swap sides from {which}, " +
+                                 $"where {CharacterName(brief, left)} is left of {CharacterName(brief, right)}";
+                }
+            }
+        }
+    }
+
+    private static Dictionary<Guid, int> Sides(DirectionDraft draft, FrameRecord frame) =>
+        OnScreen(draft, frame)
+            .Select(p => (p.CharacterId, Order: ScreenDirections.Order(p.Screen)))
+            .Where(p => p.Order is not null)
+            .ToDictionary(p => p.CharacterId, p => p.Order!.Value);
+
+    /// <summary>Placements of people on screen; a directed frame says so itself, a stored one may follow the scene.</summary>
+    private static IEnumerable<FramePlacementRecord> OnScreen(DirectionDraft draft, FrameRecord frame) =>
+        frame.Placements.Where(p =>
+            p.OnScreen ?? draft.Appearances.FirstOrDefault(a => a.CharacterId == p.CharacterId)?.OnScreen ?? true);
 
     private static IReadOnlySet<Guid> SceneExtras(SceneBrief brief, DirectionDraft draft) =>
         brief.Extras.Where(e => draft.Extras.FirstOrDefault(x => x.ExtraId == e.Id)?.OnScreen ?? true).Select(e => e.Id).ToHashSet();
@@ -1313,7 +1632,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         var listing = new StringBuilder();
         for (var i = 0; i < thin.Count; i++)
         {
-            listing.Append('f').Append(i + 1).Append(' ').AppendLine(Staging(brief, thin[i]));
+            listing.Append('f').Append(i + 1).Append(' ').AppendLine(Staging(brief, draft, thin[i]));
         }
 
         var prompt = $$"""
@@ -1382,23 +1701,42 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
     private static string CharacterName(SceneBrief brief, Guid id) =>
         brief.Context.Story.Characters.FirstOrDefault(c => c.Id == id)?.Name ?? "";
 
-    /// <summary>"Mara is screen left, leaning, tense."</summary>
+    /// <summary>"Mara is screen left, facing screen right, leaning, tense."</summary>
     private static string Placed(SceneBrief brief, FramePlacementRecord placement)
     {
-        var parts = new[] { placement.Screen.Length > 0 ? $"is screen {placement.Screen}" : "is in the picture", placement.Pose, placement.Expression }
+        var parts = new[]
+            {
+                placement.Screen.Length > 0 ? $"is screen {placement.Screen}" : "is in the picture",
+                placement.Facing.Length > 0 ? $"facing {placement.Facing}" : "",
+                placement.Moving.Length > 0 ? $"moving {placement.Moving}" : "",
+                placement.Looking.Length > 0 ? $"looking at {placement.Looking}" : "",
+                placement.Pose,
+                placement.Expression,
+            }
             .Where(p => p.Length > 0);
         return $"{CharacterName(brief, placement.CharacterId)} {string.Join(", ", parts)}.";
     }
 
-    /// <summary>A frame as the rewrite reads it: rows, shot, who is where, props, what it says now.</summary>
-    private static string Staging(SceneBrief brief, FrameRecord frame)
+    /// <summary>"left, facing screen right, moving left to right, looking at the nurse"</summary>
+    private static string Directions(FramePlacementRecord placement) =>
+        string.Join(", ", new[]
+        {
+            placement.Screen,
+            placement.Facing.Length > 0 ? $"facing {placement.Facing}" : "",
+            placement.Moving.Length > 0 ? $"moving {placement.Moving}" : "",
+            placement.Looking.Length > 0 ? $"looking at {placement.Looking}" : "",
+        }.Where(s => s.Length > 0));
+
+    /// <summary>A frame as a rewrite reads it: rows, shot, camera, who is where, props, what it says now.</summary>
+    private static string Staging(SceneBrief brief, DirectionDraft draft, FrameRecord frame)
     {
         var range = Range(brief, frame);
         var rows = range is null ? "?" : $"{brief.Label(brief.Elements[range.Value.First].Id)}–{brief.Label(brief.Elements[range.Value.Last].Id)}";
-        var cast = frame.Placements.Where(p => p.OnScreen == true).Select(p =>
-            $"{CharacterName(brief, p.CharacterId)} ({string.Join(", ", new[] { p.Screen, p.Pose, p.Expression }.Where(s => s.Length > 0))})").ToList();
+        var cast = OnScreen(draft, frame).Select(p =>
+            $"{CharacterName(brief, p.CharacterId)} ({string.Join(", ", new[] { Directions(p), p.Pose, p.Expression }.Where(s => s.Length > 0))})").ToList();
         var props = frame.Props.Where(p => p.InView).Select(p => brief.Context.Story.Props.FirstOrDefault(r => r.Id == p.PropId)?.Name).OfType<string>().ToList();
-        return $"rows {rows}, {frame.Shot ?? "scene"} shot; on screen: {(cast.Count == 0 ? "nobody" : string.Join(", ", cast))}; "
+        var camera = frame.Camera.Length > 0 ? $", camera {frame.Camera}" : "";
+        return $"rows {rows}, {frame.Shot ?? "scene"} shot{camera}; on screen: {(cast.Count == 0 ? "nobody" : string.Join(", ", cast))}; "
                + $"props in view: {(props.Count == 0 ? "none" : string.Join(", ", props))}; has now: \"{frame.Beat}\"";
     }
 
@@ -1413,9 +1751,10 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
     {
         var range = Range(brief, frame);
         var rows = range is null ? "?" : $"{brief.Label(brief.Elements[range.Value.First].Id)}–{brief.Label(brief.Elements[range.Value.Last].Id)}";
-        var placements = string.Join(", ", frame.Placements.Where(p => p.Screen.Length > 0).Select(p =>
-            $"{brief.Context.Story.Characters.FirstOrDefault(c => c.Id == p.CharacterId)?.Name ?? "?"} {p.Screen}"));
-        return $"{rows} {frame.Shot ?? "scene shot"} [{placements}]";
+        var placements = string.Join("; ", frame.Placements.Where(p => p.Screen.Length > 0).Select(p =>
+            $"{brief.Context.Story.Characters.FirstOrDefault(c => c.Id == p.CharacterId)?.Name ?? "?"} {Directions(p)}"));
+        var camera = frame.Camera.Length > 0 ? $", camera {frame.Camera}" : "";
+        return $"{rows} {frame.Shot ?? "scene shot"}{camera} [{placements}]";
     }
 
     // ─── the model ─────────────────────────────────────────────────────────

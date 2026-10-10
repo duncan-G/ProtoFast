@@ -12,7 +12,11 @@ public class ExtraTests(StoryDatabase database)
     public async Task Extras_are_library_entries_with_a_description_and_a_wardrobe()
     {
         var story = await _writer.CreateStoryAsync();
-        var regulars = await _writer.CreateExtraAsync(story.Id, "Pub regulars", "A dozen drinkers in their sixties.", "flat caps");
+        var regulars = await _writer.CreateExtraAsync(story.Id, "Pub regulars", "A dozen drinkers in their sixties.", "flat caps", headcount: 12);
+        Assert.Equal(12, regulars.Headcount);
+
+        var nobody = await Assert.ThrowsAsync<RpcException>(() => _writer.CreateExtraAsync(story.Id, "Ghosts", headcount: 0));
+        Assert.Equal(StatusCode.InvalidArgument, nobody.StatusCode);
 
         var duplicate = await Assert.ThrowsAsync<RpcException>(() => _writer.CreateExtraAsync(story.Id, " pub REGULARS"));
         Assert.Equal(StatusCode.AlreadyExists, duplicate.StatusCode);
@@ -20,7 +24,7 @@ public class ExtraTests(StoryDatabase database)
 
         var updated = (await _writer.Call((s, c) => s.UpdateExtra(
             new UpdateExtraRequest { ExtraId = regulars.Id, Name = "Regulars", Description = "  Old drinkers.  " }, c))).Extra;
-        Assert.Equal(("Regulars", "Old drinkers.", false), (updated.Name, updated.Description, updated.HasWardrobe));
+        Assert.Equal(("Regulars", "Old drinkers.", false, false), (updated.Name, updated.Description, updated.HasWardrobe, updated.HasHeadcount));
 
         var listed = Assert.Single((await _writer.GetStoryAsync(story.Id)).Extras);
         Assert.Equal((regulars.Id, "Regulars"), (listed.Id, listed.Name));
@@ -75,7 +79,7 @@ public class ExtraTests(StoryDatabase database)
         // A cast member's name is never an extra; a name given twice is one extra.
         // Nothing in the library is left for the presence pass to find, so it doesn't ask.
         _writer.ScriptModel(
-            """{"extras":[{"name":"pub regulars"},{"name":"Barman","description":"A heavy-set man in his fifties.","wardrobe":"rolled shirtsleeves, apron"},{"name":"Mara"},{"name":"barman"}]}""",
+            """{"extras":[{"name":"pub regulars"},{"name":"Barman","headcount":1,"description":"A heavy-set man in his fifties.","wardrobe":"rolled shirtsleeves, apron"},{"name":"Mara"},{"name":"barman"}]}""",
             """{"storyDay":1}""",
             """{"looks":[{"name":"Mara"}],"props":[]}""",
             """{"cues":[{"line":"e3","performance":"Whisky."}]}""",
@@ -84,7 +88,7 @@ public class ExtraTests(StoryDatabase database)
         var reply = await _writer.Direct((d, c) => d.Direct(new DirectRequest { SceneId = scene.Id, Scene = true }, c));
 
         var barman = Assert.Single(reply.Extras, e => e.Name == "Barman");
-        Assert.Equal(("A heavy-set man in his fifties.", "rolled shirtsleeves, apron"), (barman.Description, barman.Wardrobe));
+        Assert.Equal(("A heavy-set man in his fifties.", "rolled shirtsleeves, apron", 1), (barman.Description, barman.Wardrobe, barman.Headcount));
         Assert.Equal(["Barman", "Pub regulars"], (await _writer.GetStoryAsync(story.Id)).Extras.Select(e => e.Name));
         var direction = reply.Direction;
         Assert.Equal(new[] { regulars.Id, barman.Id }.Order(), direction.Extras.Select(e => e.ExtraId).Order());
@@ -95,7 +99,7 @@ public class ExtraTests(StoryDatabase database)
 
         var prompts = _writer.ModelPrompts();
         Assert.Contains("Extras in the library:\n- Pub regulars: Old drinkers.", prompts[0]);
-        Assert.Contains("Extras:\n- Pub regulars: Old drinkers.\n- Barman: A heavy-set man in his fifties. Wearing: rolled shirtsleeves, apron", prompts[4]);
+        Assert.Contains("Extras:\n- Pub regulars: Old drinkers.\n- Barman (one person): A heavy-set man in his fifties. Wearing: rolled shirtsleeves, apron", prompts[4]);
 
         // The next scene reuses the barman rather than adding another.
         var next = await _writer.CreateSceneAsync(story.Containers[0].Id, 1, "Closing time", Heading(), Action("The barman wipes the counter."));
@@ -169,11 +173,11 @@ public class ExtraTests(StoryDatabase database)
         var direction = new SceneDirection { SceneId = scene.Id };
         direction.Extras.Add(new SceneExtra { ExtraId = nurses.Id });
         await _writer.SaveDirectionAsync(direction);
-        _writer.ScriptModel("""{"description":"Three tired nurses in their twenties and thirties.","wardrobe":"blue scrubs, lanyards"}""");
+        _writer.ScriptModel("""{"headcount":3,"description":"Three tired nurses in their twenties and thirties.","wardrobe":"blue scrubs, lanyards"}""");
 
         var reply = await _writer.Direct((d, c) => d.Describe(new DescribeRequest { ExtraId = nurses.Id }, c));
 
-        Assert.Equal(("Three tired nurses in their twenties and thirties.", "blue scrubs, lanyards"), (reply.Extra.Description, reply.Extra.Wardrobe));
+        Assert.Equal(("Three tired nurses in their twenties and thirties.", "blue scrubs, lanyards", 3), (reply.Extra.Description, reply.Extra.Wardrobe, reply.Extra.Headcount));
         Assert.Contains("Nurses hurry past in blue scrubs.", _writer.ModelPrompts().Single());
     }
 }

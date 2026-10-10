@@ -56,6 +56,7 @@ public static class DirectionWriter
                           || stored.Angle != next.Angle
                           || stored.Movement != next.Movement
                           || stored.LocationChange != next.LocationChange
+                          || stored.Camera != next.Camera
                           || stored.HoldMs != next.HoldMs
                           || !SamePlacements(stored.Placements, next.Placements)
                           || !SameProps(stored.Props, next.Props)
@@ -70,6 +71,7 @@ public static class DirectionWriter
             stored.Angle = next.Angle;
             stored.Movement = next.Movement;
             stored.LocationChange = next.LocationChange;
+            stored.Camera = next.Camera;
             stored.HoldMs = next.HoldMs;
             if (changed)
             {
@@ -84,6 +86,9 @@ public static class DirectionWriter
                     }
 
                     existing.Screen = placement.Screen;
+                    existing.Facing = placement.Facing;
+                    existing.Moving = placement.Moving;
+                    existing.Looking = placement.Looking;
                     existing.Pose = placement.Pose;
                     existing.Expression = placement.Expression;
                     existing.OnScreen = placement.OnScreen;
@@ -117,6 +122,11 @@ public static class DirectionWriter
                     else
                     {
                         existing.OnScreen = extra.OnScreen;
+                        existing.Screen = extra.Screen;
+                        existing.Facing = extra.Facing;
+                        existing.Moving = extra.Moving;
+                        existing.Looking = extra.Looking;
+                        existing.Pose = extra.Pose;
                     }
                 }
             }
@@ -148,6 +158,8 @@ public static class DirectionWriter
             }
 
             stored.OnScreen = next.OnScreen;
+            // The frames pass sets it, so it is no evidence the author wrote the look.
+            stored.Travel = next.Travel;
             stored.WardrobeChange = next.WardrobeChange;
             stored.AppearanceChange = next.AppearanceChange;
             stored.Holding = next.Holding;
@@ -298,6 +310,9 @@ public static class DirectionWriter
         && stored.All(s => next.Any(n =>
             n.CharacterId == s.CharacterId
             && n.Screen == s.Screen
+            && n.Facing == s.Facing
+            && n.Moving == s.Moving
+            && n.Looking == s.Looking
             && n.Pose == s.Pose
             && n.Expression == s.Expression
             && n.OnScreen == s.OnScreen
@@ -306,7 +321,15 @@ public static class DirectionWriter
             && n.AppearanceChange == s.AppearanceChange));
 
     private static bool SameExtras(List<FrameExtraRecord> stored, List<FrameExtraRecord> next) =>
-        stored.Count == next.Count && stored.All(s => next.Any(n => n.ExtraId == s.ExtraId && n.OnScreen == s.OnScreen));
+        stored.Count == next.Count
+        && stored.All(s => next.Any(n =>
+            n.ExtraId == s.ExtraId
+            && n.OnScreen == s.OnScreen
+            && n.Screen == s.Screen
+            && n.Facing == s.Facing
+            && n.Moving == s.Moving
+            && n.Looking == s.Looking
+            && n.Pose == s.Pose));
 
     private static bool SameProps(List<FramePropRecord> stored, List<FramePropRecord> next) =>
         stored.Count == next.Count && stored.All(s => next.Any(n => n.PropId == s.PropId && n.InView == s.InView));

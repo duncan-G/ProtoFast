@@ -1503,15 +1503,56 @@
     background: var(--dr-dark);
     color: var(--dr-on-dark);
   }
-  .dr-hold {
+  .dr-hold,
+  .dr-count {
     display: flex;
     align-items: center;
     gap: 8px;
     font-size: 12.5px;
     color: var(--se-ink-2);
   }
-  .dr-hold .dr-input {
+  .dr-hold .dr-input,
+  .dr-count .dr-input {
     width: 72px;
+  }
+  .dr-stage {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 0;
+    border-top: 1px solid var(--se-line);
+  }
+  .dr-stage-name {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--se-ink);
+  }
+  .dr-stage-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 0.7fr) minmax(0, 1fr) minmax(0, 1.2fr);
+    gap: 4px;
+  }
+  .dr-stage-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .dr-stage-label {
+    font: 500 10px var(--font-mono);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--se-muted-2);
+  }
+  .dr-stage-travel {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    color: var(--se-ink-2);
+  }
+  .dr-stage-travel .dr-input {
+    width: auto;
   }
   .dr-chain {
     display: flex;

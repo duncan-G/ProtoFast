@@ -225,6 +225,43 @@ public class ImageTests(StoryDatabase database)
     }
 
     [Fact]
+    public async Task A_frame_picture_is_told_the_camera_and_which_way_everyone_faces_moves_and_looks()
+    {
+        var (story, scene, mara, harbour, _) = await FramedSceneAsync();
+        var crowd = await _writer.CreateExtraAsync(story.Id, "Dockhands", "Three dockhands.", "hi-vis vests");
+        await _writer.Call((s, c) => s.UpdateLocationSheet(new UpdateLocationSheetRequest
+        {
+            LocationId = harbour.Id,
+            Appearance = new LocationAppearance { Layout = "A gate at the landward end; the quay runs out to sea, cranes on the left." },
+        }, c));
+        var direction = await _writer.GetDirectionAsync(scene.Id);
+        direction.Extras.Add(new SceneExtra { ExtraId = crowd.Id });
+        direction.Frames[1].Camera = "on the quay, looking back at the gate.";
+        direction.Frames[1].Placements.Add(new Placement
+        {
+            CharacterId = mara.Id,
+            Screen = "left",
+            Facing = "three-quarter right",
+            Moving = "toward camera, left to right",
+            Looking = "the Dockhands",
+            Pose = "a palm on the gate",
+        });
+        direction.Frames[1].Extras.Add(new FrameExtra { ExtraId = crowd.Id, Screen = "right", Facing = "back three-quarter left", Pose = "the nearest one, mid-step" });
+        var saved = await _writer.SaveDirectionAsync(direction);
+
+        await PictureAsync(scene, saved, 1);
+
+        var prompt = Images.Requests[^1].Prompt;
+        Assert.Contains("How the place is laid out (a map of it, not this picture's camera): A gate at the landward end", prompt);
+        Assert.Contains(
+            "Staging: frame left; face toward the camera, body turned three-quarters toward screen right; coming toward the camera, moving from screen left toward screen right; looking at the Dockhands; a palm on the gate.",
+            prompt);
+        Assert.Contains("Wearing: hi-vis vests\nStaging: frame right; back to the camera, body turned three-quarters toward screen left; the nearest one, mid-step.", prompt);
+        Assert.Contains("Camera: medium shot, on the quay, looking back at the gate.", prompt);
+        Assert.Contains("Left and right mean the viewer's left and right in the picture, never a person's own.", prompt);
+    }
+
+    [Fact]
     public async Task A_frame_pictures_its_extras_from_their_library_picture()
     {
         var story = await _writer.CreateStoryAsync();
@@ -255,5 +292,31 @@ public class ImageTests(StoryDatabase database)
         var images = await _writer.Direct((d, c) => d.ListLibraryImages(new ListLibraryImagesRequest { StoryId = story.Id }, c));
         Assert.True(Assert.Single(images.Images).Image.Stale);
         Assert.True((await _writer.GetDirectionAsync(scene.Id)).Frames[0].Image.Stale);
+    }
+
+    [Fact]
+    public async Task One_extra_is_pictured_alone_and_a_big_crowd_as_a_line_up()
+    {
+        var story = await _writer.CreateStoryAsync();
+        var nurse = await _writer.CreateExtraAsync(story.Id, "Trauma nurse", "In her twenties, holding a clipboard.", "scrubs", headcount: 1);
+        var crowd = await _writer.CreateExtraAsync(story.Id, "Commuters", "Office workers.", headcount: 40);
+        var mara = await _writer.CreateCharacterAsync(story.Id, "Mara");
+        const string text = "@Mara waits by the desk.";
+        var scene = await _writer.WriteFirstSceneAsync(story, Heading(), Action(text, Mention(text, "@Mara", mara)));
+        var direction = new SceneDirection { SceneId = scene.Id };
+        direction.Extras.Add(new SceneExtra { ExtraId = nurse.Id });
+        direction.Frames.Add(new Frame { FirstElementId = scene.Elements[0].Id, LastElementId = scene.Elements[1].Id, Beat = "Mara by the desk." });
+        var saved = await _writer.SaveDirectionAsync(direction);
+
+        await _writer.Direct((d, c) => d.GenerateLibraryImage(new GenerateLibraryImageRequest { ExtraId = nurse.Id }, c));
+        var alone = Images.Requests[^1].Prompt;
+        Assert.Contains("one uncast person in the background of this production: that one person alone", alone);
+        Assert.DoesNotContain("side by side", alone);
+
+        await _writer.Direct((d, c) => d.GenerateLibraryImage(new GenerateLibraryImageRequest { ExtraId = crowd.Id }, c));
+        Assert.Contains("a crowd of 40 uncast people in the background of this production: a line-up of 8 of them", Images.Requests[^1].Prompt);
+
+        await _writer.Direct((d, c) => d.GenerateFrameImage(new GenerateFrameImageRequest { SceneId = scene.Id, FrameId = saved.Frames[0].Id }, c));
+        Assert.Contains("Trauma nurse (extras, in the background, one person):", Images.Requests[^1].Prompt);
     }
 }

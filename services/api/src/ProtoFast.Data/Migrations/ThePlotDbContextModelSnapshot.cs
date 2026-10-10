@@ -369,6 +369,10 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("description");
 
+                    b.Property<int?>("Headcount")
+                        .HasColumnType("integer")
+                        .HasColumnName("headcount");
+
                     b.Property<Guid?>("ImageAssetId")
                         .HasColumnType("uuid")
                         .HasColumnName("image_asset_id");
@@ -422,6 +426,11 @@ namespace ProtoFast.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("beat");
+
+                    b.Property<string>("Camera")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("camera");
 
                     b.Property<bool>("Edited")
                         .HasColumnType("boolean")
@@ -511,9 +520,39 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("extra_id");
 
-                    b.Property<bool>("OnScreen")
+                    b.Property<string>("Facing")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("facing");
+
+                    b.Property<string>("Looking")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("looking");
+
+                    b.Property<string>("Moving")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("moving");
+
+                    b.Property<bool?>("OnScreen")
                         .HasColumnType("boolean")
                         .HasColumnName("on_screen");
+
+                    b.Property<string>("Pose")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("pose");
+
+                    b.Property<string>("Screen")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("screen");
 
                     b.HasKey("FrameId", "ExtraId")
                         .HasName("pk_frame_extras");
@@ -544,6 +583,24 @@ namespace ProtoFast.Data.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
                         .HasColumnName("expression");
+
+                    b.Property<string>("Facing")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("facing");
+
+                    b.Property<string>("Looking")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("looking");
+
+                    b.Property<string>("Moving")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("moving");
 
                     b.Property<bool?>("OnScreen")
                         .HasColumnType("boolean")
@@ -969,6 +1026,12 @@ namespace ProtoFast.Data.Migrations
                     b.Property<Guid>("SceneId")
                         .HasColumnType("uuid")
                         .HasColumnName("scene_id");
+
+                    b.Property<string>("Travel")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("travel");
 
                     b.Property<string>("WardrobeChange")
                         .IsRequired()

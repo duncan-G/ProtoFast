@@ -1,5 +1,6 @@
 using System.Text;
 using ProtoFast.Api.Services.Directing;
+using ProtoFast.Api.Services.Screenplays;
 using CharacterRecord = ProtoFast.Data.ThePlot.Entities.Character;
 using LocationRecord = ProtoFast.Data.ThePlot.Entities.Location;
 using LocationSettingRecord = ProtoFast.Data.ThePlot.Entities.LocationSetting;
@@ -16,6 +17,9 @@ namespace ProtoFast.Api.Services.Imaging;
 public static class ImagePrompts
 {
     private const string NoText = "No text, captions, subtitles, labels or watermarks anywhere in the image.";
+
+    /// <summary>A bigger group's reference shows this many of them, standing for the rest.</summary>
+    private const int LineUp = 8;
 
     public static string Character(CharacterRecord character, string style)
     {
@@ -94,9 +98,16 @@ public static class ImagePrompts
     /// <summary>A group is drawn as the group, so the same people stand behind the cast in every scene.</summary>
     public static string Extra(ExtraRecord extra, string style)
     {
+        const string backdrop = "against a plain light-grey studio backdrop, in soft even light";
         var text = new StringBuilder();
         text.AppendLine(style);
-        text.AppendLine($"A reference picture of {extra.Name}, extras who appear in the background of this production: full body, standing in neutral poses side by side against a plain light-grey studio backdrop, in soft even light. Show exactly the people the description says, and nobody else.");
+        text.AppendLine(extra.Headcount switch
+        {
+            1 => $"A reference picture of {extra.Name}, one uncast person in the background of this production: that one person alone, full body, standing in a neutral pose {backdrop}. Nobody else in the image.",
+            <= LineUp and { } count => $"A reference picture of {extra.Name}, a group of {count} uncast people in the background of this production: exactly {count} people, full body, standing in neutral poses side by side {backdrop}. Nobody else in the image.",
+            { } count => $"A reference picture of {extra.Name}, a crowd of {count} uncast people in the background of this production: a line-up of {LineUp} of them that shows the crowd's range of looks, full body, standing in neutral poses side by side {backdrop}. Nobody else in the image.",
+            null => $"A reference picture of {extra.Name}, uncast people in the background of this production: exactly the people the description says and nobody else, and if it describes one person, that one person alone; full body, standing in neutral poses {backdrop}.",
+        });
         AppendLine(text, extra.Description);
         if (!string.IsNullOrWhiteSpace(extra.Wardrobe))
         {
@@ -116,7 +127,7 @@ public static class ImagePrompts
         if (frame.Location is { } location)
         {
             text.AppendLine($"Place: {location.Name}, {Setting(location.Setting)}.");
-            AppendPlace(text, location);
+            AppendPlace(text, location, plan: true);
         }
 
         var timeOfDay = frame.TimeOfDay?.Trim() ?? "";
@@ -157,26 +168,33 @@ public static class ImagePrompts
                 text.AppendLine($"Carrying: {Carried(shown.Holding, frame.InView)}");
             }
 
-            var staging = new[]
-            {
-                shown.Screen is { Length: > 0 } side and not "off" ? $"frame {side}" : "",
-                shown.Pose,
-                shown.Expression.Length > 0 ? $"expression: {shown.Expression}" : "",
-            }.Where(p => p.Length > 0).ToList();
+            var staging = Staging(shown.Screen, shown.Facing, shown.Moving, shown.Looking, shown.Pose)
+                .Append(shown.Expression.Length > 0 ? $"expression: {shown.Expression}" : "")
+                .Where(p => p.Length > 0)
+                .ToList();
             if (staging.Count > 0)
             {
                 text.AppendLine($"Staging: {string.Join("; ", staging)}.");
             }
         }
 
-        foreach (var extra in frame.Extras)
+        foreach (var shown in frame.Extras)
         {
+            var extra = shown.Extra;
             text.AppendLine();
-            text.AppendLine($"{extra.Name} (extras, in the background):");
+            text.AppendLine(extra.Headcount is { } count
+                ? $"{extra.Name} (extras, in the background, {Headcount.Words(count)}):"
+                : $"{extra.Name} (extras, in the background):");
             AppendLine(text, extra.Description);
             if (!string.IsNullOrWhiteSpace(extra.Wardrobe))
             {
                 text.AppendLine($"Wearing: {extra.Wardrobe.Trim()}");
+            }
+
+            var staging = Staging(shown.Screen, shown.Facing, shown.Moving, shown.Looking, shown.Pose).Where(p => p.Length > 0).ToList();
+            if (staging.Count > 0)
+            {
+                text.AppendLine($"Staging: {string.Join("; ", staging)}.");
             }
         }
 
@@ -196,9 +214,19 @@ public static class ImagePrompts
             frame.Shot is null ? "" : $"{frame.Shot} shot",
             frame.Angle is null ? "" : $"{frame.Angle} angle",
         }.Where(p => p.Length > 0).ToList();
+        if (frame.Frame.Camera.Trim().TrimEnd('.') is { Length: > 0 } position)
+        {
+            camera.Add(position);
+        }
+
         if (camera.Count > 0)
         {
             text.AppendLine($"Camera: {string.Join(", ", camera)}.");
+        }
+
+        if (frame.OnScreen.Count + frame.Extras.Count > 0)
+        {
+            text.AppendLine("Left and right mean the viewer's left and right in the picture, never a person's own.");
         }
 
         if (frame.Frame.Beat.Trim() is { Length: > 0 } beat)
@@ -220,6 +248,48 @@ public static class ImagePrompts
         });
         text.Append(NoText);
         return text.ToString();
+    }
+
+    /// <summary>"frame left", "turned three-quarters toward screen right", "coming toward the camera, …"</summary>
+    private static IEnumerable<string> Staging(string screen, string facing, string moving, string looking, string pose)
+    {
+        yield return screen is { Length: > 0 } and not "off" ? $"frame {screen}" : "";
+        yield return facing switch
+        {
+            "" => "",
+            "toward camera" => "body facing the camera",
+            "away from camera" => "back to the camera",
+            "screen left" or "screen right" => $"in profile, facing {facing}",
+            _ when facing.StartsWith("back ", StringComparison.Ordinal) =>
+                $"back to the camera, body turned three-quarters toward screen {facing["back three-quarter ".Length..]}",
+            _ => $"face toward the camera, body turned three-quarters toward screen {facing["three-quarter ".Length..]}",
+        };
+        yield return Moving(moving);
+        yield return looking.Trim() is { Length: > 0 } at ? $"looking at {at}" : "";
+        yield return pose;
+    }
+
+    private static string Moving(string moving)
+    {
+        if (moving.Length == 0)
+        {
+            return "";
+        }
+
+        if (moving == "still")
+        {
+            return "not moving";
+        }
+
+        var parts = moving.Split(", ").Select(part => part switch
+        {
+            "toward camera" => "coming toward the camera",
+            "away from camera" => "going away from the camera",
+            ScreenDirections.LeftToRight => "moving from screen left toward screen right",
+            ScreenDirections.RightToLeft => "moving from screen right toward screen left",
+            _ => part,
+        });
+        return string.Join(", ", parts);
     }
 
     /// <summary>Ahead of the references: what they are for, and that the description wins.</summary>
@@ -269,14 +339,17 @@ public static class ImagePrompts
         text.AppendLine(string.Join(' ', parts));
     }
 
-    private static void AppendPlace(StringBuilder text, LocationRecord location)
+    /// <param name="plan">A frame chooses its own camera, so the layout is offered as a map of the place.</param>
+    private static void AppendPlace(StringBuilder text, LocationRecord location, bool plan = false)
     {
         if (location.Appearance is not { } appearance)
         {
             return;
         }
 
-        AppendLine(text, appearance.Layout);
+        AppendLine(text, plan && appearance.Layout.Trim().Length > 0
+            ? $"How the place is laid out (a map of it, not this picture's camera): {appearance.Layout.Trim()}"
+            : appearance.Layout);
         AppendLine(text, appearance.KeyFeatures);
     }
 

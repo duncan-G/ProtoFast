@@ -23,6 +23,9 @@ public sealed class Extra : IDateStamped
 
     public string? Wardrobe { get; set; }
 
+    /// <summary>How many people: 1 is one person alone; null leaves the number to the description.</summary>
+    public int? Headcount { get; set; }
+
     /// <summary>The library's picture of them, if generated; stale once the sheet changed.</summary>
     public Guid? ImageAssetId { get; set; }
 

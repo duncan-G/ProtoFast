@@ -80,7 +80,7 @@ public sealed class Writer(StoryDatabase database)
             new CreateLocationRequest { StoryId = storyId, Name = name, Setting = LocationSetting.Exterior, Hue = 200 },
             c))).Location;
 
-    public async Task<Extra> CreateExtraAsync(string storyId, string name, string? description = null, string? wardrobe = null)
+    public async Task<Extra> CreateExtraAsync(string storyId, string name, string? description = null, string? wardrobe = null, int? headcount = null)
     {
         var request = new CreateExtraRequest { StoryId = storyId, Name = name };
         if (description is not null)
@@ -91,6 +91,11 @@ public sealed class Writer(StoryDatabase database)
         if (wardrobe is not null)
         {
             request.Wardrobe = wardrobe;
+        }
+
+        if (headcount is not null)
+        {
+            request.Headcount = headcount.Value;
         }
 
         return (await Call((s, c) => s.CreateExtra(request, c))).Extra;

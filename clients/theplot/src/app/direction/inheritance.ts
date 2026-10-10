@@ -1,6 +1,7 @@
 import { Character } from '../stories/model/character';
 import { FrameSpan } from './frames';
 import { Frame } from './model/frame';
+import { blankFrameExtra, FrameExtra, isBlankFrameExtra } from './model/frame-extra';
 import { LookChange } from './model/look-change';
 import { MediaImage } from './model/media-image';
 import { blankPlacement, isBlankPlacement, Placement } from './model/placement';
@@ -176,6 +177,17 @@ export function withPlacement(
   const next = { ...current, ...patch };
   const rest = frame.placements.filter((p) => p.characterId !== characterId);
   return isBlankPlacement(next) ? rest : [...rest, next];
+}
+
+export function withFrameExtra(
+  frame: Frame,
+  extraId: string,
+  patch: Partial<FrameExtra>,
+): FrameExtra[] {
+  const current = frame.extras.find((e) => e.extraId === extraId) ?? blankFrameExtra(extraId);
+  const next = { ...current, ...patch };
+  const rest = frame.extras.filter((e) => e.extraId !== extraId);
+  return isBlankFrameExtra(next) ? rest : [...rest, next];
 }
 
 /** How many of a frame's fields it sets itself, across framing, cast, props and looks. */

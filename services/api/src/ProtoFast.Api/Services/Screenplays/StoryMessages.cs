@@ -327,6 +327,11 @@ public static class StoryMessages
             message.Wardrobe = extra.Wardrobe;
         }
 
+        if (extra.Headcount is { } headcount)
+        {
+            message.Headcount = headcount;
+        }
+
         return message;
     }
 

@@ -3,6 +3,12 @@ export interface Placement {
   characterId: string;
   /** left | centre | right | off, or empty */
   screen: string;
+  /** A `DIRECTION_VOCABULARY.facings` label, or empty: as the viewer sees the picture. */
+  facing: string;
+  /** A `DIRECTION_VOCABULARY.movings` label, or empty. */
+  moving: string;
+  /** Who or what they look at. */
+  looking: string;
   pose: string;
   expression: string;
   /** Null follows the scene's appearance. */
@@ -18,6 +24,9 @@ export function blankPlacement(characterId: string): Placement {
   return {
     characterId,
     screen: '',
+    facing: '',
+    moving: '',
+    looking: '',
     pose: '',
     expression: '',
     onScreen: null,
@@ -31,6 +40,9 @@ export function blankPlacement(characterId: string): Placement {
 export function isBlankPlacement(placement: Placement): boolean {
   return (
     !placement.screen &&
+    !placement.facing &&
+    !placement.moving &&
+    !placement.looking &&
     !placement.pose &&
     !placement.expression &&
     placement.onScreen === null &&

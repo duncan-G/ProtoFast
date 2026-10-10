@@ -6,6 +6,8 @@ export interface SceneAppearance {
   characterId: string;
   /** On screen in every frame unless a frame says otherwise. */
   onScreen: boolean;
+  /** left to right | right to left, or empty: the way they move across the screen all scene. */
+  travel: string;
   /** Null wears the sheet's default, its first wardrobe. */
   wardrobeId: string | null;
   /** "hood up, damp from the drizzle" */
@@ -27,6 +29,7 @@ export function blankAppearance(characterId: string): SceneAppearance {
     id: '',
     characterId,
     onScreen: true,
+    travel: '',
     wardrobeId: null,
     wardrobeChange: '',
     appearanceChange: '',

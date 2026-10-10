@@ -268,13 +268,18 @@ public sealed class SceneBrief
         return text.Length == 0 ? "- (none)\n" : text.ToString();
     }
 
-    /// <summary><c>- Pub regulars: a dozen drinkers in their sixties. Wearing: flat caps, cardigans.</c></summary>
+    /// <summary><c>- Pub regulars (12 people): a dozen drinkers in their sixties. Wearing: flat caps, cardigans.</c></summary>
     public static string ExtraSheet(IEnumerable<ExtraRecord> extras)
     {
         var text = new StringBuilder();
         foreach (var extra in extras)
         {
             text.Append("- ").Append(extra.Name);
+            if (extra.Headcount is { } count)
+            {
+                text.Append(" (").Append(Headcount.Words(count)).Append(')');
+            }
+
             if (!string.IsNullOrWhiteSpace(extra.Description))
             {
                 text.Append(": ").Append(extra.Description.Trim());

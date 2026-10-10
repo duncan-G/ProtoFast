@@ -7,9 +7,11 @@ import {
   onScreenOf,
   overrideCount,
   wardrobeOf,
+  withFrameExtra,
   withPlacement,
 } from './inheritance';
 import { Frame } from './model/frame';
+import { blankFrameExtra } from './model/frame-extra';
 import { blankAppearance } from './model/scene-appearance';
 import { emptyDirection, SceneDirection } from './model/scene-direction';
 import { blankPropState } from './model/scene-prop-state';
@@ -28,6 +30,7 @@ function frame(patch: Partial<Frame> = {}): Frame {
     angle: null,
     movement: null,
     locationChange: '',
+    camera: '',
     holdMs: null,
     placements: [],
     props: [],
@@ -108,7 +111,7 @@ describe('inheritance', () => {
       value: true,
       overridden: false,
     });
-    const off = frame({ extras: [{ extraId: 'crowd', onScreen: false }] });
+    const off = frame({ extras: [{ ...blankFrameExtra('crowd'), onScreen: false }] });
     expect(extraOnScreenOf(direction, off, 'crowd')).toEqual({ value: false, overridden: true });
     const hidden = scene({ extras: [{ ...blankSceneExtra('crowd'), onScreen: false }] });
     expect(extraOnScreenOf(hidden, frame(), 'crowd').value).toBe(false);
@@ -141,6 +144,17 @@ describe('inheritance', () => {
     });
     expect(shown.placements).toHaveLength(1);
     expect(withPlacement(shown, 'mara', { onScreen: null })).toEqual([]);
+  });
+
+  it('keeps an extra staged in a frame while it follows the scene for being on screen', () => {
+    const direction = scene({ extras: [blankSceneExtra('crowd')] });
+    const staged = frame({
+      extras: withFrameExtra(frame(), 'crowd', { screen: 'right', pose: 'the nearest one' }),
+    });
+    expect(staged.extras).toHaveLength(1);
+    expect(extraOnScreenOf(direction, staged, 'crowd')).toEqual({ value: true, overridden: false });
+    const cleared = withFrameExtra(staged, 'crowd', { screen: '', pose: '' });
+    expect(cleared).toEqual([]);
   });
 
   it('adds text changes up in order and counts what a frame overrides', () => {

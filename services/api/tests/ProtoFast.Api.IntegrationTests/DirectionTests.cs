@@ -151,6 +151,8 @@ public class DirectionTests(StoryDatabase database)
     [InlineData("frame ending before it starts")]
     [InlineData("unknown shot")]
     [InlineData("unknown screen side")]
+    [InlineData("unknown facing")]
+    [InlineData("unknown screen direction")]
     [InlineData("another character's wardrobe")]
     [InlineData("row from another scene")]
     [InlineData("story day zero")]
@@ -191,6 +193,12 @@ public class DirectionTests(StoryDatabase database)
                 break;
             case "unknown screen side":
                 direction.Frames[0].Placements[0].Screen = "middle";
+                break;
+            case "unknown facing":
+                direction.Frames[0].Placements[0].Facing = "sideways";
+                break;
+            case "unknown screen direction":
+                direction.Appearances[0].Travel = "toward camera";
                 break;
             case "another character's wardrobe":
                 direction.Appearances[0].CharacterId = bolt.Id;
@@ -388,6 +396,100 @@ public class DirectionTests(StoryDatabase database)
         var frame = Assert.Single(directed.Frames);
         Assert.Equal((scene.Elements[0].Id, scene.Elements[4].Id), (frame.FirstElementId, frame.LastElementId));
         Assert.Equal("They whisper.", frame.Beat);
+    }
+
+    [Fact]
+    public async Task The_camera_and_screen_directions_round_trip()
+    {
+        var (story, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        var crowd = await _writer.CreateExtraAsync(story.Id, "Dockhands", "Three dockhands.", "hi-vis vests");
+        var direction = Direction(scene, mara, bolt, radio, suit);
+        direction.Extras.Add(new SceneExtra { ExtraId = crowd.Id });
+        direction.Appearances[0].Travel = "Left to right";
+        direction.Frames[0].Camera = "on the quay behind the radio, looking back at the gate";
+        var placement = direction.Frames[0].Placements[0];
+        (placement.Facing, placement.Moving, placement.Looking) = ("three-quarter right", "toward camera, left to right", "the gate");
+        direction.Frames[0].Extras.Add(new FrameExtra { ExtraId = crowd.Id, Screen = "right", Pose = "the nearest one, coiling a rope" });
+
+        var saved = await _writer.SaveDirectionAsync(direction);
+
+        Assert.Equal("left to right", saved.Appearances.Single(a => a.CharacterId == mara.Id).Travel);
+        Assert.Equal("on the quay behind the radio, looking back at the gate", saved.Frames[0].Camera);
+        var maraFirst = saved.Frames[0].Placements.Single(p => p.CharacterId == mara.Id);
+        Assert.Equal(("three-quarter right", "toward camera, left to right", "the gate"), (maraFirst.Facing, maraFirst.Moving, maraFirst.Looking));
+        var staged = Assert.Single(saved.Frames[0].Extras);
+        Assert.Equal(("right", "the nearest one, coiling a rope", false), (staged.Screen, staged.Pose, staged.HasOnScreen));
+    }
+
+    [Fact]
+    public async Task Directing_frames_stores_the_camera_each_persons_screen_direction_and_the_scenes_travel()
+    {
+        var (story, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        var crowd = await _writer.CreateExtraAsync(story.Id, "Dockhands", "Three dockhands.", "hi-vis vests");
+        var direction = Direction(scene, mara, bolt, radio, suit);
+        direction.Frames.Clear();
+        direction.Extras.Add(new SceneExtra { ExtraId = crowd.Id });
+        await _writer.SaveDirectionAsync(direction);
+        _writer.ScriptModel("""{"extras":[]}""", """
+            {"travel":{"Mara":"screen left to right"},
+             "frames":[{"from":"e1","to":"e5","shot":"wide","camera":"inside the warehouse, looking back at the gate",
+               "visible":"Mara is half through the gate, a palm on it; Bolt waits screen right.",
+               "characters":[
+                 {"name":"Mara","screen":"left","facing":"three quarter right","moving":"towards the camera and left to right","looking":"Bolt"},
+                 {"name":"Bolt","screen":"right","facing":"rear three-quarter left","moving":"stationary"}],
+               "extras":[{"name":"Dockhands","screen":"right","pose":"the nearest one, coiling a rope"}]}]}
+            """);
+
+        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true });
+
+        var frame = Assert.Single(directed.Frames);
+        Assert.Equal("inside the warehouse, looking back at the gate", frame.Camera);
+        var maraStaged = frame.Placements.Single(p => p.CharacterId == mara.Id);
+        Assert.Equal(("three-quarter right", "toward camera, left to right", "Bolt"), (maraStaged.Facing, maraStaged.Moving, maraStaged.Looking));
+        var boltStaged = frame.Placements.Single(p => p.CharacterId == bolt.Id);
+        Assert.Equal(("back three-quarter left", "still"), (boltStaged.Facing, boltStaged.Moving));
+        // On screen as the scene has them, so the row is kept only for its staging.
+        var staged = Assert.Single(frame.Extras);
+        Assert.Equal(("right", "the nearest one, coiling a rope", false), (staged.Screen, staged.Pose, staged.HasOnScreen));
+        Assert.Equal("left to right", directed.Appearances.Single(a => a.CharacterId == mara.Id).Travel);
+        Assert.All(directed.Appearances.Where(a => a.CharacterId == bolt.Id), a => Assert.Equal("", a.Travel));
+        Assert.Equal(2, _writer.ModelPrompts().Count);
+    }
+
+    [Fact]
+    public async Task Directing_frames_asks_again_when_a_cut_reverses_someone_or_swaps_two_peoples_sides()
+    {
+        var (_, scene, mara, bolt, radio, suit) = await DirectedSceneAsync();
+        var direction = Direction(scene, mara, bolt, radio, suit);
+        direction.Frames.Clear();
+        await _writer.SaveDirectionAsync(direction);
+        _writer.ScriptModel(
+            """{"extras":[]}""",
+            """
+            {"travel":{"Mara":"left to right"},
+             "frames":[
+               {"from":"e1","to":"e2","shot":"wide","visible":"Mara walks toward Bolt.","characters":[{"name":"Mara","screen":"left","moving":"left to right"},{"name":"Bolt","screen":"right"}]},
+               {"from":"e3","to":"e5","shot":"medium","visible":"Mara faces Bolt.","characters":[{"name":"Mara","screen":"right","facing":"three-quarter right","moving":"away from camera, right to left"},{"name":"Bolt","screen":"left"}]}]}
+            """,
+            """{"frames":[{"frame":"f1","camera":"behind Bolt's shoulder","visible":"Mara stops in front of Bolt.","characters":[{"name":"Mara","screen":"left","moving":"still"},{"name":"Bolt","screen":"right","facing":"screen left"}]}]}""");
+
+        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true });
+
+        var asked = _writer.ModelPrompts()[2];
+        Assert.Contains("These frames break screen direction", asked);
+        Assert.Contains("Screen directions in this scene, keep them: Mara left to right.", asked);
+        Assert.Contains("f1 rows e3–e5, medium shot; on screen: Mara (right, facing three-quarter right, moving away from camera, right to left), Bolt (left)", asked);
+        Assert.Contains("Mara faces the camera (three-quarter right) while going away from it", asked);
+        Assert.Contains("frame before: rows e1–e2", asked);
+        Assert.Contains("Mara moves right to left but travels left to right in this scene", asked);
+        Assert.Contains("Mara and Bolt swap sides from the frame before, where Mara is left of Bolt", asked);
+        var second = directed.Frames[1];
+        Assert.Equal(("behind Bolt's shoulder", "Mara stops in front of Bolt."), (second.Camera, second.Beat));
+        var maraSecond = second.Placements.Single(p => p.CharacterId == mara.Id);
+        Assert.Equal(("left", "still"), (maraSecond.Screen, maraSecond.Moving));
+        var boltSecond = second.Placements.Single(p => p.CharacterId == bolt.Id);
+        Assert.Equal(("right", "screen left"), (boltSecond.Screen, boltSecond.Facing));
+        Assert.Equal(3, _writer.ModelPrompts().Count);
     }
 
     [Fact]

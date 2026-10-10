@@ -237,6 +237,7 @@ public sealed class StoryLibrary(
             Name = LibraryNames.Check(extras.Select(e => (e.Id, e.Name)), request.Name, "extra"),
             Description = SheetText.Description(request.HasDescription ? request.Description : null),
             Wardrobe = SheetText.Description(request.HasWardrobe ? request.Wardrobe : null),
+            Headcount = Headcount.Check(request.HasHeadcount, request.Headcount),
         };
 
         await extraRepository.AddAsync(extra, cancellationToken);
@@ -250,6 +251,7 @@ public sealed class StoryLibrary(
         var id = StoryIds.Existing(request.ExtraId, ExtraNotFound);
         var description = SheetText.Description(request.HasDescription ? request.Description : null);
         var wardrobe = SheetText.Description(request.HasWardrobe ? request.Wardrobe : null);
+        var headcount = Headcount.Check(request.HasHeadcount, request.Headcount);
         using var unitOfWork = unitOfWorkFactory.CreateReadWrite(nameof(UpdateExtraAsync));
         var storyId = await extraRepository.GetFirstByQueryAsync(
                           extraQueries.Create().WithId(id), e => (Guid?)e.StoryId, cancellationToken)
@@ -261,6 +263,7 @@ public sealed class StoryLibrary(
         extra.Name = LibraryNames.Check(extras.Select(e => (e.Id, e.Name)), request.Name, "extra", id);
         extra.Description = description;
         extra.Wardrobe = wardrobe;
+        extra.Headcount = headcount;
 
         await unitOfWork.CommitAsync(cancellationToken);
         return StoryMessages.ToMessage(extra);

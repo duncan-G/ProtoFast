@@ -21,6 +21,12 @@ public sealed class SceneAppearance
     /// <summary>On screen in every frame of the scene unless a frame says otherwise.</summary>
     public bool OnScreen { get; set; } = true;
 
+    /// <summary>
+    /// A <see cref="DirectionVocabulary.Travels"/> label, or empty: the way they move across the screen
+    /// in every frame of the scene, so cuts keep them going the same way.
+    /// </summary>
+    public string Travel { get; set; } = "";
+
     /// <summary>Null wears the sheet's first wardrobe, its default.</summary>
     public Guid? WardrobeId { get; set; }
 

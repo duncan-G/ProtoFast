@@ -338,7 +338,7 @@ function isSheet(look: LookAt, character: Character): boolean {
         <span class="dr-kicker">Extras</span>
         <span class="flex-1"></span>
         @if (frame(); as frame) {
-          @if (frame.extras.length > 0) {
+          @if (extrasOverridden()) {
             <span class="dr-override"
               >override ·
               <button
@@ -463,6 +463,9 @@ export class InspectorCastTab {
   protected readonly here = computed<LookSource>(() => (this.frame() ? 'frame' : 'scene'));
   protected readonly hereTag = computed(() =>
     this.frame() ? `Frame ${this.store.selectedFrameNumber()}` : 'Scene',
+  );
+  protected readonly extrasOverridden = computed(
+    () => this.frame()?.extras.some((e) => e.onScreen !== null) ?? false,
   );
   protected readonly castOverridden = computed(
     () => this.frame()?.placements.some((p) => p.onScreen !== null) ?? false,

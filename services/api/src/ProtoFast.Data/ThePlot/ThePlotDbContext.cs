@@ -403,6 +403,7 @@ public sealed class ThePlotDbContext(
         modelBuilder.Entity<SceneAppearance>(entity =>
         {
             entity.HasKey(a => a.Id);
+            entity.Property(a => a.Travel).IsRequired().HasMaxLength(LabelLength);
 
             entity.HasOne(a => a.Scene)
                 .WithMany(s => s.Appearances)
@@ -543,6 +544,7 @@ public sealed class ThePlotDbContext(
             entity.Property(p => p.Angle).HasMaxLength(LabelLength);
             entity.Property(p => p.Movement).HasMaxLength(LabelLength);
             entity.Property(p => p.LocationChange).IsRequired();
+            entity.Property(p => p.Camera).IsRequired();
 
             entity.HasOne(p => p.Scene)
                 .WithMany(s => s.Frames)
@@ -587,6 +589,9 @@ public sealed class ThePlotDbContext(
             entity.ToTable("frame_placements");
             entity.HasKey(p => new { p.FrameId, p.CharacterId });
             entity.Property(p => p.Screen).IsRequired().HasMaxLength(LabelLength);
+            entity.Property(p => p.Facing).IsRequired().HasMaxLength(LabelLength);
+            entity.Property(p => p.Moving).IsRequired().HasMaxLength(LabelLength);
+            entity.Property(p => p.Looking).IsRequired().HasMaxLength(NameLength);
             entity.Property(p => p.Pose).IsRequired().HasMaxLength(NameLength);
             entity.Property(p => p.Expression).IsRequired().HasMaxLength(NameLength);
 
@@ -632,6 +637,11 @@ public sealed class ThePlotDbContext(
         {
             entity.ToTable("frame_extras");
             entity.HasKey(e => new { e.FrameId, e.ExtraId });
+            entity.Property(e => e.Screen).IsRequired().HasMaxLength(LabelLength);
+            entity.Property(e => e.Facing).IsRequired().HasMaxLength(LabelLength);
+            entity.Property(e => e.Moving).IsRequired().HasMaxLength(LabelLength);
+            entity.Property(e => e.Looking).IsRequired().HasMaxLength(NameLength);
+            entity.Property(e => e.Pose).IsRequired().HasMaxLength(NameLength);
 
             entity.HasOne(e => e.Frame)
                 .WithMany(frame => frame.Extras)

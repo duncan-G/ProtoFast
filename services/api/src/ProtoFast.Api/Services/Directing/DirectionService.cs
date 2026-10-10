@@ -452,6 +452,7 @@ public class DirectionService(
                             ?? throw StoryErrors.NotFound(StoryLibrary.ExtraNotFound);
                 extra.Description = subject.Description;
                 extra.Wardrobe = subject.Wardrobe;
+                extra.Headcount = subject.Headcount;
                 await unitOfWork.CommitAsync(cancellationToken);
                 return new DescribeReply { Extra = StoryMessages.ToMessage(extra) };
             }

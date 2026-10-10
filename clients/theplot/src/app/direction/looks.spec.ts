@@ -22,6 +22,7 @@ function frame(first: number, last: number): { frame: Frame; first: number; last
       angle: null,
       movement: null,
       locationChange: '',
+      camera: '',
       holdMs: null,
       placements: [],
       props: [],

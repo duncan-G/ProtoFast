@@ -1,6 +1,6 @@
 namespace ProtoFast.Data.ThePlot.Entities;
 
-/// <summary>An extra a frame shows or hides against the scene. Owned by its <see cref="Frame"/>.</summary>
+/// <summary>An extra a frame shows or hides against the scene, or stages. Owned by its <see cref="Frame"/>.</summary>
 public sealed class FrameExtra
 {
     public Guid FrameId { get; set; }
@@ -11,5 +11,20 @@ public sealed class FrameExtra
 
     public Extra Extra { get; set; } = null!;
 
-    public bool OnScreen { get; set; } = true;
+    /// <summary>Null follows the scene's <see cref="SceneExtra.OnScreen"/>.</summary>
+    public bool? OnScreen { get; set; }
+
+    /// <summary>A <see cref="DirectionVocabulary.ScreenSides"/> label, or empty.</summary>
+    public string Screen { get; set; } = "";
+
+    /// <summary>A <see cref="DirectionVocabulary.Facings"/> label, or empty.</summary>
+    public string Facing { get; set; } = "";
+
+    /// <summary>A <see cref="DirectionVocabulary.Movings"/> label, or empty.</summary>
+    public string Moving { get; set; } = "";
+
+    public string Looking { get; set; } = "";
+
+    /// <summary>For a group, which of them: "the nurse nearest the camera, mid-step, eyes on her clipboard".</summary>
+    public string Pose { get; set; } = "";
 }

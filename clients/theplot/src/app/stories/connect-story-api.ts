@@ -193,6 +193,7 @@ export class ConnectStoryApi implements StoryApi {
       name: extra.name,
       description: extra.description ?? undefined,
       wardrobe: extra.wardrobe ?? undefined,
+      headcount: extra.headcount ?? undefined,
     });
     return toExtra(required(reply.extra));
   }
@@ -203,6 +204,7 @@ export class ConnectStoryApi implements StoryApi {
       name: extra.name,
       description: extra.description ?? undefined,
       wardrobe: extra.wardrobe ?? undefined,
+      headcount: extra.headcount ?? undefined,
     });
     return toExtra(required(reply.extra));
   }
@@ -464,6 +466,7 @@ export function toExtra(message: ExtraMessage): Extra {
     name: message.name,
     description: message.description ?? null,
     wardrobe: message.wardrobe ?? null,
+    headcount: message.headcount ?? null,
   };
 }
 
