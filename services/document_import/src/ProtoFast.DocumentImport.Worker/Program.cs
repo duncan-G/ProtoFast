@@ -35,7 +35,11 @@ builder.Services.AddSqsQueue(
 builder.Services.AddAgentWorkflowEngine();
 builder.Services.AddDurableWorkflowEngineStores();
 builder.Services.AddScreenplayDiscovery(
-    options => builder.Configuration.GetSection("Providers").Bind(options),
+    options =>
+    {
+        builder.Configuration.GetSection("Providers").Bind(options);
+        options.CaptureMessageContent &= builder.Environment.IsDevelopment();
+    },
     agent => builder.Configuration.GetSection("DiscoveryAgent").Bind(agent),
     classifier => builder.Configuration.GetSection("DocumentClassifier").Bind(classifier),
     tagger => builder.Configuration.GetSection("MentionTagger").Bind(tagger));

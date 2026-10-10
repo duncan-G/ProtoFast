@@ -47,7 +47,13 @@ builder.Services.AddScoped<SceneSaver>();
 // Director mode: the language model that directs scenes and writes sheets on request, on the
 // same default provider as the import agent. The keys come from Secrets Manager under
 // Api_Providers__… like the import worker's.
-builder.Services.AddLanguageModels(options => builder.Configuration.GetSection("Providers").Bind(options));
+// Prompts, pictures and audio on GenAI spans carry the user's story, so only dev may record them.
+var captureContent = builder.Environment.IsDevelopment() && builder.Configuration.GetValue<bool>("Providers:CaptureMessageContent");
+builder.Services.AddLanguageModels(options =>
+{
+    builder.Configuration.GetSection("Providers").Bind(options);
+    options.CaptureMessageContent = captureContent;
+});
 builder.Services.AddSingleton(builder.Configuration.GetSection("Director").Get<DirectorOptions>() ?? new DirectorOptions());
 builder.Services.AddSingleton<SceneDirector>();
 builder.Services.AddSingleton<SheetDescriber>();
@@ -59,7 +65,7 @@ builder.Services.AddSpeechSynthesis(options =>
 {
     builder.Configuration.GetSection("Speech").Bind(options);
     options.ElevenLabs.ApiKey = builder.Configuration["Providers:ElevenLabs:ApiKey"];
-    options.CaptureMessageContent = builder.Configuration.GetValue<bool>("Providers:CaptureMessageContent");
+    options.CaptureMessageContent = captureContent;
 });
 
 // Pictures: Muse draws frames and library entries; its key sits with the model providers' (Api_Providers__meta__ApiKey).
@@ -67,7 +73,7 @@ builder.Services.AddImageGeneration(options =>
 {
     builder.Configuration.GetSection("Imaging").Bind(options);
     options.Muse.ApiKey = builder.Configuration["Providers:Meta:ApiKey"];
-    options.CaptureMessageContent = builder.Configuration.GetValue<bool>("Providers:CaptureMessageContent");
+    options.CaptureMessageContent = captureContent;
 });
 
 builder.Services.AddS3ObjectStorage(options => builder.Configuration.GetSection("S3").Bind(options));
