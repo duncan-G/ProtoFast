@@ -32,6 +32,8 @@
             "styles": [
               "src/styles/ember.css",
               "src/styles/scene-editor.css",
+              "src/styles/script-frame.css",
+              "src/styles/story.css",
               "src/styles.scss"
             ],
             "server": "src/main.server.ts",

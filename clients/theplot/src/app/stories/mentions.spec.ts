@@ -2,6 +2,7 @@ import {
   applyTyping,
   editedRange,
   insertReference,
+  joinText,
   linkTypedReferences,
   matchReference,
   mentionTarget,
@@ -9,6 +10,7 @@ import {
   forgetReferences,
   segmentText,
   shiftMentions,
+  sliceText,
   tagReference,
   wordStart,
 } from './mentions';
@@ -261,5 +263,19 @@ describe('forgetReferences', () => {
       ['@Mara', true],
       [' hands over the @Radio.', false],
     ]);
+  });
+});
+
+describe('sliceText and joinText', () => {
+  it('splits at a caret, dropping a mention the cut runs through, and joins back', () => {
+    const value = linked('@Mara waits. @Old Fen nods.');
+    const before = sliceText(value, 0, 12);
+    const after = sliceText(value, 12);
+    expect(spans(before)).toEqual([['@Mara', 'c-mara']]);
+    expect(spans(after)).toEqual([['@Old Fen', 'c-fen']]);
+    expect(spans(sliceText(value, 0, 16))).toEqual([['@Mara', 'c-mara']]);
+    const joined = joinText(before, after);
+    expect(joined.text).toBe(value.text);
+    expect(spans(joined)).toEqual(spans(value));
   });
 });
