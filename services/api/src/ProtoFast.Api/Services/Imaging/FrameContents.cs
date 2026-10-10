@@ -28,12 +28,23 @@ public sealed record FrameContents(
     string? Shot,
     string? Angle)
 {
+    /// <summary>The previous frame, when this one is a variation of it and it has a picture to edit.</summary>
+    public FrameContents? VariationOf { get; init; }
+
     public static IReadOnlyList<FrameContents> ForScene(DirectedScene directed)
     {
         var brief = new SceneBrief(directed);
-        return directed.Scene.Frames.OrderBy(f => f.Position).ThenBy(f => f.Id)
-            .Select((frame, i) => Resolve(brief, frame, i + 1))
-            .ToList();
+        List<FrameContents> frames = [];
+        foreach (var frame in directed.Scene.Frames.OrderBy(f => f.Position).ThenBy(f => f.Id))
+        {
+            var previous = frames.LastOrDefault();
+            frames.Add(Resolve(brief, frame, frames.Count + 1) with
+            {
+                VariationOf = frame.Variation.Trim().Length > 0 && previous?.Frame.Image is not null ? previous : null,
+            });
+        }
+
+        return frames;
     }
 
     public static FrameContents Resolve(SceneBrief brief, FrameRecord frame, int number)

@@ -121,6 +121,9 @@ message Frame {
     string camera = 19;
     // The author is done with it: directing passes keep it as it is and its picture is never redone.
     bool locked = 20;
+    // Set when the frame is the previous frame with one small change: its picture is made by editing
+    // the previous frame's picture with this text alone. Empty pictures it from its full description.
+    string variation = 21;
 }
 
 message MediaImage {

@@ -65,6 +65,7 @@ public sealed class DirectionDraft
             Movement = p.Movement,
             LocationChange = p.LocationChange,
             Camera = p.Camera,
+            Variation = p.Variation,
             HoldMs = p.HoldMs,
             Edited = p.Edited,
             Locked = p.Locked,

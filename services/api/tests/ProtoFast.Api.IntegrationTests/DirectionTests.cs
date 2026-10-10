@@ -326,7 +326,7 @@ public class DirectionTests(StoryDatabase database)
               {"from":"e1","to":"e3","shot":"close","beat":"Mara leans in.","characters":[{"name":"Mara","screen":"Left","pose":"leaning","expression":"tense"}],"props":["Radio","Teapot"]},
               {"from":"e4","to":"e4","shot":"medium","beat":"Bolt replies.","characters":[{"name":"Bolt","screen":"right"},{"name":"Nobody","screen":"left"}]}
             ]}
-            """);
+            """, """{"frames":[]}""");
 
         var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true });
 
@@ -450,6 +450,38 @@ public class DirectionTests(StoryDatabase database)
         Assert.Equal(saved.Frames[0].Placements, kept.Placements);
         // The scene now frames close, so the locked frame keeps the medium it followed.
         Assert.Equal(("close", "medium"), (directed.Shot, directed.Frames[1].Shot));
+    }
+
+    [Fact]
+    public async Task Directing_frames_marks_a_frame_that_only_changes_the_one_before_as_its_variation()
+    {
+        var (_, scene, _, _, _, _) = await DirectedSceneAsync();
+        _writer.ScriptModel("""{"extras":[]}""", """
+            {"frames":[
+              {"from":"e1","to":"e2","shot":"medium","visible":"Mara at the radio."},
+              {"from":"e3","to":"e3","shot":"medium","visible":"Mara at the radio, looking up."},
+              {"from":"e4","to":"e5","shot":"close","visible":"Bolt's face."}
+            ]}
+            """, """
+            {"frames":[
+              {"frame":"f2","change":"Mara has looked up from the radio, toward screen right."},
+              {"frame":"f3","change":"Bolt's face fills the picture."}
+            ]}
+            """);
+
+        var directed = await _writer.DirectAsync(new DirectRequest { SceneId = scene.Id, Frames = true });
+
+        var asked = _writer.ModelPrompts()[^1];
+        Assert.Contains("f2 (decide) rows e3–e3", asked);
+        // Frame 3 changes the shot, so it is pictured in full whatever the model says.
+        Assert.DoesNotContain("f1 (decide)", asked);
+        Assert.DoesNotContain("f3 (decide)", asked);
+        Assert.Equal(["", "Mara has looked up from the radio, toward screen right.", ""], directed.Frames.Select(f => f.Variation));
+
+        var edited = new SceneDirection(directed);
+        edited.Frames[2].Variation = "Bolt has stepped closer.";
+        var saved = await _writer.SaveDirectionAsync(edited);
+        Assert.Equal(("Bolt has stepped closer.", true), (saved.Frames[2].Variation, saved.Frames[2].Edited));
     }
 
     [Fact]

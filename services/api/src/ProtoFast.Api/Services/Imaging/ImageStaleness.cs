@@ -29,7 +29,13 @@ public sealed class ImageStaleness(IImageGenerator generator, ImagingOptions opt
         Differs(asset, options.ExtraSize, ImagePrompts.Extra(extra, options.Style));
 
     public bool Frame(FrameContents frame, MediaAssetRecord asset, StoryRecord story) =>
-        Differs(asset, options.FrameSize, ImagePrompts.Frame(frame, options.Style)) || LibraryMovedOn(asset, story, frame.Scene);
+        FrameHash(frame) != asset.RequestHash || LibraryMovedOn(asset, story, frame.Scene);
+
+    /// <summary>A variation is an edit of the previous frame's picture, so a new render of that picture stales it.</summary>
+    public string FrameHash(FrameContents frame) =>
+        ImageRequests.Hash(generator, options.FrameSize, frame.VariationOf is { } previous
+            ? $"{ImagePrompts.Variation(frame)}\n{previous.Frame.Image!.ContentHash}"
+            : ImagePrompts.Frame(frame, options.Style));
 
     public bool Look(CharacterRecord character, Look look, StoryRecord story, MediaAssetRecord asset) =>
         Differs(asset, options.CharacterSize, LookPrompt(character, look, story)) || LibraryMovedOn(asset, story, null);

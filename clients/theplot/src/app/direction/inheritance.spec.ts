@@ -31,6 +31,7 @@ function frame(patch: Partial<Frame> = {}): Frame {
     movement: null,
     locationChange: '',
     camera: '',
+    variation: '',
     holdMs: null,
     placements: [],
     props: [],

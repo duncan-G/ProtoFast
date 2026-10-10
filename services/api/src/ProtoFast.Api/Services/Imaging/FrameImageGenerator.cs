@@ -12,7 +12,8 @@ namespace ProtoFast.Api.Services.Imaging;
 /// around it (each character's look, library, neighbouring frames, earlier scenes) are offered to
 /// Muse with a caption each, and Muse decides what to take from them. The looks of everyone on screen
 /// are pictured first, so a character carrying something is drawn from one picture in every frame.
-/// The provider is called outside the story lock.
+/// A variation is the previous frame's picture edited by its change alone. The provider is called
+/// outside the story lock.
 /// </summary>
 public sealed class FrameImageGenerator(
     IUnitOfWorkFactory unitOfWorkFactory,
@@ -30,16 +31,23 @@ public sealed class FrameImageGenerator(
     /// <returns>The scene with its direction, as stored after the write; a locked frame is left as it is.</returns>
     public async Task<DirectedScene> GenerateAsync(Guid sceneId, Guid frameId, bool regenerate, CancellationToken ct)
     {
+        bool variation;
         using (unitOfWorkFactory.CreateReadOnly(nameof(GenerateAsync)))
         {
             var directed = await directionScope.LoadAsync(sceneId, withEarlierScenes: false, ct);
-            if (directed.Scene.Frames.FirstOrDefault(f => f.Id == frameId) is { Locked: true })
+            var shown = FrameContents.ForScene(directed).FirstOrDefault(f => f.Frame.Id == frameId);
+            if (shown?.Frame.Locked == true)
             {
                 return directed;
             }
+
+            variation = shown?.VariationOf is not null;
         }
 
-        await lookImages.PictureFrameAsync(sceneId, frameId, ct);
+        if (!variation)
+        {
+            await lookImages.PictureFrameAsync(sceneId, frameId, ct);
+        }
 
         Guid storyId;
         string requestHash;
@@ -53,13 +61,31 @@ public sealed class FrameImageGenerator(
             var (scene, earlier) = ReferenceCollector.Resolve(directed);
             var frame = scene.FirstOrDefault(f => f.Frame.Id == frameId)
                         ?? throw StoryErrors.NotFound(DirectionErrors.FrameNotFound);
-            var prompt = ImagePrompts.Frame(frame, options.Style);
-            requestHash = ImageRequests.Hash(generator, options.FrameSize, prompt);
+            requestHash = staleness.FrameHash(frame);
 
             // The media cache: the same picture was made before, and nothing it was made from has moved on.
             var cached = await assets.FindAsync(storyId, MediaAssetKindRecord.FrameImage, requestHash, ct);
-            if (regenerate || cached is null || staleness.Frame(frame, cached, directed.Story))
+            var redo = regenerate || cached is null || staleness.Frame(frame, cached, directed.Story);
+            if (redo && frame.VariationOf is { } previous)
             {
+                var input = await assets.ReadAsync(previous.Frame.Image!, ImagePrompts.VariationCaption(previous), ct)
+                            ?? throw new ImageException($"Frame {previous.Number}'s picture is missing from storage; picture it again first.");
+                references.Add(new MediaReferenceRecord
+                {
+                    AssetId = previous.Frame.Image!.Id,
+                    ContentHash = previous.Frame.Image.ContentHash,
+                    Source = ReferenceSources.Frame,
+                    SubjectId = previous.Frame.Id,
+                    Label = $"Frame {previous.Number}",
+                });
+                request = ImagePrompts.VariationRequest(options.FrameSize, frame, input);
+                image = await generator.GenerateAsync(request, ct);
+                logger.LogInformation("Pictured frame {Frame} of {Scene} with {Provider}/{Model} as a variation of frame {Previous}",
+                    frameId, sceneId, generator.Provider, generator.Model, previous.Number);
+            }
+            else if (redo)
+            {
+                var prompt = ImagePrompts.Frame(frame, options.Style);
                 List<ImageInput> inputs = [];
                 foreach (var candidate in collector.Collect(directed.Story, frame, scene, earlier).Take(options.MaxReferences))
                 {

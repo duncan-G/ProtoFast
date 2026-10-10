@@ -23,6 +23,7 @@ function frame(first: number, last: number): { frame: Frame; first: number; last
       movement: null,
       locationChange: '',
       camera: '',
+      variation: '',
       holdMs: null,
       placements: [],
       props: [],

@@ -63,6 +63,7 @@ public static class DirectionWriter
                           || stored.Movement != next.Movement
                           || stored.LocationChange != next.LocationChange
                           || stored.Camera != next.Camera
+                          || stored.Variation != next.Variation
                           || stored.HoldMs != next.HoldMs
                           || !SamePlacements(stored.Placements, next.Placements)
                           || !SameProps(stored.Props, next.Props)
@@ -78,6 +79,7 @@ public static class DirectionWriter
             stored.Movement = next.Movement;
             stored.LocationChange = next.LocationChange;
             stored.Camera = next.Camera;
+            stored.Variation = next.Variation;
             stored.HoldMs = next.HoldMs;
             // Locking says the author is done, not that they wrote the frame; only the author does it.
             if (byAuthor)

@@ -223,9 +223,11 @@ const TABS: { tab: InspectorTab; label: string }[] = [
               [class.is-working]="frameImageState() === 'generating'"
               [disabled]="!store.selectedFrame()?.frame?.id || frameImageState() === 'generating'"
               [title]="
-                store.selectedFrame()?.frame?.id
-                  ? 'Composed from the pictures that already exist around it'
-                  : 'Saving…'
+                !store.selectedFrame()?.frame?.id
+                  ? 'Saving…'
+                  : variationOf()
+                    ? 'Edits frame ' + variationOf() + '’s picture with the change alone'
+                    : 'Composed from the pictures that already exist around it'
               "
               (click)="pictureFrame()"
             >
@@ -259,6 +261,51 @@ const TABS: { tab: InspectorTab; label: string }[] = [
             {{ playingFrame() ? '❚❚ Stop' : '▶ Play frame' }}
           </button>
         </div>
+        @if (variationOf() || nextFrame()) {
+          <div class="dr-chain">
+            @if (variationOf(); as previous) {
+              <p class="dr-chain-note">
+                <button type="button" class="dr-link" (click)="store.stepFrame(-1)">
+                  Frame {{ previous }}
+                </button>
+                with one change: {{ store.selectedFrame()?.frame?.variation }}
+              </p>
+            }
+            @if (nextFrame(); as next) {
+              <label
+                class="dr-check"
+                [title]="
+                  next.frame.locked
+                    ? 'Frame ' + (store.selectedFrameNumber() + 1) + ' is locked'
+                    : 'Its picture is made by editing this one, so everything else stays exactly as it is'
+                "
+              >
+                <input
+                  type="checkbox"
+                  [checked]="chained()"
+                  [disabled]="next.frame.locked"
+                  (change)="chain($any($event.target).checked)"
+                />
+                Next frame is this picture with a small change
+              </label>
+              @if (chained()) {
+                <textarea
+                  class="dr-input"
+                  rows="2"
+                  maxlength="2000"
+                  placeholder="What changes, as the viewer sees it. e.g. Mara has looked up from the radio, toward screen right"
+                  [value]="next.frame.variation"
+                  [disabled]="next.frame.locked"
+                  (change)="
+                    store.updateFrame(next.frame.firstElementId, {
+                      variation: $any($event.target).value.trim(),
+                    })
+                  "
+                ></textarea>
+              }
+            }
+          </div>
+        }
       }
 
       <div class="dr-tabs" role="tablist">
@@ -413,6 +460,23 @@ export class DirectorInspector {
     this.store.frameSpans().reduce((n, s) => n + overrideCount(s.frame), 0),
   );
 
+  protected readonly nextFrame = computed(() => {
+    const span = this.store.selectedFrame();
+    return span ? this.store.frameAt(span.last + 1) : null;
+  });
+  /** The number of the frame this one edits, when it is a variation. */
+  protected readonly variationOf = computed(() => {
+    const number = this.store.selectedFrameNumber();
+    return number > 1 && this.store.selectedFrame()?.frame.variation ? number - 1 : null;
+  });
+  /** The frame whose box was ticked before its next frame's change was written. */
+  private readonly chaining = signal<string | null>(null);
+  protected readonly chained = computed(
+    () =>
+      !!this.nextFrame()?.frame.variation ||
+      this.chaining() === this.store.selectedFrame()?.frame.firstElementId,
+  );
+
   protected readonly frameLocked = computed(
     () => this.store.inspectorScope() === 'frame' && !!this.store.selectedFrame()?.frame.locked,
   );
@@ -459,6 +523,14 @@ export class DirectorInspector {
       stale: 'Out of date',
       generating: 'Drawing…',
     }[state];
+  }
+
+  protected chain(on: boolean): void {
+    const next = this.nextFrame();
+    this.chaining.set(on ? (this.store.selectedFrame()?.frame.firstElementId ?? null) : null);
+    if (!on && next?.frame.variation) {
+      this.store.updateFrame(next.frame.firstElementId, { variation: '' });
+    }
   }
 
   protected pictureFrame(): void {

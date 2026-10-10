@@ -488,6 +488,11 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("time_of_day");
 
+                    b.Property<string>("Variation")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("variation");
+
                     b.HasKey("Id")
                         .HasName("pk_frames");
 

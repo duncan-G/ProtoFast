@@ -62,6 +62,7 @@ export function blankFrame(elements: readonly SceneElement[], first: number, las
     movement: null,
     locationChange: '',
     camera: '',
+    variation: '',
     holdMs: null,
     placements: [],
     props: [],

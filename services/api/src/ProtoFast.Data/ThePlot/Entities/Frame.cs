@@ -46,6 +46,12 @@ public sealed class Frame
     /// <summary>What this frame adds to the location's look in the scene: "crane silhouetted".</summary>
     public string LocationChange { get; set; } = "";
 
+    /// <summary>
+    /// Set when the frame is the previous frame with one small change: its picture is that frame's
+    /// picture edited by this text alone. Empty for a frame pictured from its full description.
+    /// </summary>
+    public string Variation { get; set; } = "";
+
     /// <summary>Only for frames with no dialogue to time them.</summary>
     public int? HoldMs { get; set; }
 

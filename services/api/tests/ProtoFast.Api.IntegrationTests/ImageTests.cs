@@ -141,6 +141,41 @@ public class ImageTests(StoryDatabase database)
     }
 
     [Fact]
+    public async Task A_variation_is_the_previous_frames_picture_edited_and_follows_it()
+    {
+        var (_, scene, mara, _, _) = await FramedSceneAsync();
+        await PictureCharacterAsync(mara);
+        var direction = await _writer.GetDirectionAsync(scene.Id);
+        direction.Frames[1].Variation = "Mara lifts the radio to her mouth.";
+        direction = await _writer.SaveDirectionAsync(direction);
+
+        // With nothing to edit yet, it is pictured from its full description.
+        direction = (await PictureAsync(scene, direction, 1)).Direction;
+        Assert.Contains("Place: Harbour", Images.Requests[^1].Prompt);
+
+        direction = (await PictureAsync(scene, direction, 0)).Direction;
+        Assert.True(direction.Frames[1].Image.Stale);
+
+        var before = Images.Requests.Count;
+        direction = (await PictureAsync(scene, direction, 1)).Direction;
+        var request = Images.Requests[^1];
+        Assert.Equal(1, Images.Requests.Count - before);
+        Assert.Equal("", request.Preamble);
+        Assert.Equal("Frame 1 of this scene: the picture to edit.", Assert.Single(request.References).Caption);
+        Assert.StartsWith("Edit this picture: Mara lifts the radio to her mouth.\nChange nothing else.", request.Prompt);
+        Assert.DoesNotContain("Harbour", request.Prompt);
+        Assert.Equal(["Frame 1"], direction.Frames[1].Image.References);
+        Assert.False(direction.Frames[1].Image.Stale);
+
+        // A new picture of the frame it edits stales it, and so does a new change.
+        direction = (await PictureAsync(scene, direction, 0, regenerate: true)).Direction;
+        Assert.True(direction.Frames[1].Image.Stale);
+        direction = (await PictureAsync(scene, direction, 1)).Direction;
+        direction.Frames[1].Variation = "Mara sets the radio down.";
+        Assert.True((await _writer.SaveDirectionAsync(direction)).Frames[1].Image.Stale);
+    }
+
+    [Fact]
     public async Task A_frame_reads_stale_when_what_it_shows_or_a_library_picture_it_used_changes()
     {
         var (_, scene, mara, _, _) = await FramedSceneAsync();

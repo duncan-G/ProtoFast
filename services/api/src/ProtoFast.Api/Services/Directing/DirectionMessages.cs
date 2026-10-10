@@ -106,6 +106,7 @@ public static class DirectionMessages
             Beat = frame.Beat,
             LocationChange = frame.LocationChange,
             Camera = frame.Camera,
+            Variation = frame.Variation,
             Edited = frame.Edited,
             Locked = frame.Locked,
         };

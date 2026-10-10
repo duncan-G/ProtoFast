@@ -1918,7 +1918,9 @@ export class SceneEditorStore implements OnDestroy {
         await this.generateLibraryImages(entries);
       }
       const order = this.frameSpans().map((s) => s.frame.id);
-      for (const id of [...queued].sort((a, b) => order.indexOf(a) - order.indexOf(b))) {
+      const pending = [...queued].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+      for (let at = 0; at < pending.length; at++) {
+        const id = pending[at];
         if (this.scene()?.id !== scene.id) {
           return;
         }
@@ -1927,6 +1929,19 @@ export class SceneEditorStore implements OnDestroy {
           scene.id,
         );
         this.picturing.update((ids) => new Set([...ids].filter((i) => i !== id)));
+        // A scene pass also redraws the variation after a frame it just redrew, which that made stale.
+        const next = this.frameSpans()[order.indexOf(id) + 1]?.frame;
+        if (
+          withLibrary &&
+          next?.variation &&
+          !next.locked &&
+          !pending.includes(next.id) &&
+          imageState(next.image) === 'stale'
+        ) {
+          pending.splice(at + 1, 0, next.id);
+          queued.push(next.id);
+          this.picturing.update((ids) => new Set([...ids, next.id]));
+        }
       }
     } catch (err) {
       this.error.set(describeError(err, 'The frame could not be pictured.'));

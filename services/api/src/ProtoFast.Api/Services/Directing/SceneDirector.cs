@@ -1129,6 +1129,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             draft.Movement = movement;
         }
 
+        await VariationsAsync(brief, draft, frames.Select(p => p.Frame).ToList(), directed, ct);
         foreach (var frame in directed)
         {
             AgainstScene(brief, draft, frame);
@@ -1139,6 +1140,74 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
             p.Frame.Position = index;
             return p.Frame;
         }).ToList();
+    }
+
+    /// <summary>
+    /// The model marks the directed frames that are the frame before them with one small change, and
+    /// says the change; their pictures are then made by editing the previous picture. Only frames
+    /// whose shot, angle, place and time match the previous frame are asked about. Runs once the
+    /// scene's framing is set and before <see cref="AgainstScene"/>, while frames still carry their own.
+    /// </summary>
+    private async Task VariationsAsync(
+        SceneBrief brief, DirectionDraft draft, IReadOnlyList<FrameRecord> ordered, IReadOnlyList<FrameRecord> directed, CancellationToken ct)
+    {
+        bool SameFraming(FrameRecord frame, FrameRecord previous) =>
+            (frame.Shot ?? draft.Shot) == (previous.Shot ?? draft.Shot)
+            && (frame.Angle ?? draft.Angle) == (previous.Angle ?? draft.Angle)
+            && frame.LocationId == previous.LocationId
+            && frame.TimeOfDay == previous.TimeOfDay;
+        var asked = ordered.Skip(1).Where((f, i) => directed.Contains(f) && SameFraming(f, ordered[i])).ToList();
+        if (asked.Count == 0)
+        {
+            return;
+        }
+
+        var listing = new StringBuilder();
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            listing.Append('f').Append(i + 1).Append(asked.Contains(ordered[i]) ? " (decide) " : " ").AppendLine(Staging(brief, draft, ordered[i]));
+        }
+
+        var prompt = $$"""
+            Some frames are just the frame before them with one small change: the same shot, angle and
+            camera, the same place and light, the same people where they were, and only a turn of the
+            head, an expression, a hand, a pose, a door or one object differs. Their pictures are made
+            by editing the previous frame's picture, so they keep everything else exactly.
+            For each frame marked (decide), say whether it is one of these. When it is, "change" is one
+            sentence an image editor could apply to the previous frame's picture alone: who or what
+            changes and how it ends up, in screen terms ("MARA has turned her head toward screen right
+            and looks at TOM; the cup is now on the table"). When the shot, angle, camera or place
+            changes, someone comes into or leaves the picture, or more than a couple of things move,
+            "change" is "".
+            Frames, in order:
+            {{listing}}
+            Scene {{brief.Heading()}}:
+            {{brief.Script()}}
+            Reply: {"frames":[{"frame":"f2","change":"…"}]}
+            """;
+
+        try
+        {
+            using var json = await AskAsync(prompt, ct);
+            foreach (var answer in ModelJson.Array(json.RootElement, "frames"))
+            {
+                var label = ModelJson.Str(answer, "frame")?.Trim().TrimStart('f', 'F');
+                var change = Trim(ModelJson.Str(answer, "change") ?? "", DirectionValidator.BeatMaxLength);
+                if (!int.TryParse(label, out var number) || number < 2 || number > ordered.Count || change.Length == 0)
+                {
+                    continue;
+                }
+
+                if (asked.Contains(ordered[number - 1]))
+                {
+                    ordered[number - 1].Variation = change;
+                }
+            }
+        }
+        catch (ModelOutputException e)
+        {
+            logger.LogWarning("Finding frames that vary the one before failed ({Reason}); every frame is pictured in full", e.Message);
+        }
     }
 
     /// <summary>The answer that overlaps the author's cut most, framed over the cut's own rows.</summary>
@@ -1322,6 +1391,7 @@ public sealed class SceneDirector(ILanguageModelFactory models, DirectorOptions 
         AgainstScene(brief, draft, directed);
         directed.Id = frame.Id;
         directed.Position = frame.Position;
+        directed.Variation = frame.Variation;
         draft.Frames[draft.Frames.IndexOf(frame)] = directed;
     }
 

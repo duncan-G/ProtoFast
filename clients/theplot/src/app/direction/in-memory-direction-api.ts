@@ -108,6 +108,7 @@ export class InMemoryDirectionApi implements DirectionApi {
           movement: null,
           locationChange: '',
           camera: '',
+          variation: '',
           holdMs: null,
           placements: [],
           props: [],

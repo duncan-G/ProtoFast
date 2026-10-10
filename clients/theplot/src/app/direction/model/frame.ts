@@ -20,6 +20,8 @@ export interface Frame {
   movement: string | null;
   /** Where the camera stands in the place and what it looks toward. */
   camera: string;
+  /** Set when the frame is the previous frame with this one change: its picture edits that frame's. */
+  variation: string;
   /** What this frame adds to the location's look in the scene. */
   locationChange: string;
   /** Only for frames with no dialogue to time them. */

@@ -545,6 +545,7 @@ public sealed class ThePlotDbContext(
             entity.Property(p => p.Movement).HasMaxLength(LabelLength);
             entity.Property(p => p.LocationChange).IsRequired();
             entity.Property(p => p.Camera).IsRequired();
+            entity.Property(p => p.Variation).IsRequired();
 
             entity.HasOne(p => p.Scene)
                 .WithMany(s => s.Frames)

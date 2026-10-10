@@ -250,6 +250,22 @@ public static class ImagePrompts
         return text.ToString();
     }
 
+    /// <summary>A variation is the previous frame's picture edited, so it says only what changes.</summary>
+    public static string Variation(FrameContents frame) =>
+        $"""
+        Edit this picture: {frame.Frame.Variation.Trim().TrimEnd('.')}.
+        Change nothing else. Keep the same people with the same faces, clothes and whatever they carry,
+        the same place and light, the same camera, framing and composition, and everyone and everything
+        the change doesn't move exactly where it is.
+        {NoText}
+        """;
+
+    public static ImageRequest VariationRequest(string size, FrameContents frame, ImageInput previous) =>
+        new(size, "", [previous], Variation(frame));
+
+    public static string VariationCaption(FrameContents previous) =>
+        $"Frame {previous.Number} of this scene: the picture to edit.";
+
     /// <summary>"frame left", "turned three-quarters toward screen right", "coming toward the camera, …"</summary>
     private static IEnumerable<string> Staging(string screen, string facing, string moving, string looking, string pose)
     {

@@ -103,6 +103,13 @@ interface FrameCard {
               } @else if (state === 'stale') {
                 <span class="dr-shot-chip is-warn">Out of date</span>
               }
+              @if (card.number > 1 && card.span?.frame?.variation; as change) {
+                <span
+                  class="dr-shot-chip"
+                  [title]="'Frame ' + (card.number - 1) + ' with one change: ' + change"
+                  >Variation</span
+                >
+              }
               <span class="flex-1"></span>
               @if (playable(card)) {
                 <button

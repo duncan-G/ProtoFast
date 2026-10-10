@@ -264,6 +264,7 @@ function toFrame(message: FrameMessage): Frame {
     angle: message.angle ?? null,
     movement: message.movement ?? null,
     camera: message.camera,
+    variation: message.variation,
     locked: message.locked,
     locationChange: message.locationChange,
     holdMs: message.holdMs ?? null,
@@ -389,6 +390,7 @@ export function fromDirection(direction: SceneDirection) {
       movement: p.movement ?? undefined,
       locationChange: p.locationChange,
       camera: p.camera,
+      variation: p.variation,
       holdMs: p.holdMs ?? undefined,
       placements: p.placements.map((pl) => ({
         ...pl,

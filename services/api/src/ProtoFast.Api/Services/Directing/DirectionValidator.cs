@@ -154,6 +154,7 @@ public static class DirectionValidator
                 Movement = OptionalLabel(frame.HasMovement ? frame.Movement : null, DirectionVocabulary.Movements, where, "camera movement"),
                 LocationChange = Text(frame.LocationChange, BeatMaxLength, where, "location change"),
                 Camera = Text(frame.Camera, BeatMaxLength, where, "camera position"),
+                Variation = Text(frame.Variation, BeatMaxLength, where, "change from the previous frame"),
                 HoldMs = frame.HasHoldMs ? frame.HoldMs : null,
                 Locked = frame.Locked,
                 Placements = Placements(frame.Placements, references, where),
