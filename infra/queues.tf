@@ -75,3 +75,31 @@ resource "aws_sqs_queue_redrive_allow_policy" "workflow_outcomes_dlq" {
     sourceQueueArns   = [aws_sqs_queue.workflow_outcomes.arn]
   })
 }
+
+# World model builds, from the api to the document-import worker, one message per request.
+resource "aws_sqs_queue" "world_model_build_dlq" {
+  name                      = "${var.project}-world-model-build-dlq"
+  message_retention_seconds = local.queue_retention_seconds
+  sqs_managed_sse_enabled   = true
+}
+
+resource "aws_sqs_queue" "world_model_build" {
+  name                       = "${var.project}-world-model-build"
+  message_retention_seconds  = local.queue_retention_seconds
+  visibility_timeout_seconds = local.queue_visibility_timeout_seconds
+  receive_wait_time_seconds  = local.queue_receive_wait_seconds
+  sqs_managed_sse_enabled    = true
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.world_model_build_dlq.arn
+    maxReceiveCount     = local.queue_max_receive_count
+  })
+}
+
+resource "aws_sqs_queue_redrive_allow_policy" "world_model_build_dlq" {
+  queue_url = aws_sqs_queue.world_model_build_dlq.id
+  redrive_allow_policy = jsonencode({
+    redrivePermission = "byQueue"
+    sourceQueueArns   = [aws_sqs_queue.world_model_build.arn]
+  })
+}

@@ -17,6 +17,7 @@ import { ConsoleShell } from '../admin-kit';
       <a consoleNav routerLink="/stories" routerLinkActive="text-indigo-600">Stories</a>
       <a consoleNav routerLink="/runs" routerLinkActive="text-indigo-600">Runs</a>
       <a consoleNav routerLink="/families" routerLinkActive="text-indigo-600">Families</a>
+      <a consoleNav routerLink="/world-models" routerLinkActive="text-indigo-600">World models</a>
       <router-outlet />
     </kit-console-shell>
   `,

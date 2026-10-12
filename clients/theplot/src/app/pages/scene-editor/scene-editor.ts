@@ -19,6 +19,7 @@ import { LibraryPanel } from './library-panel';
 import { OverviewPanel } from './overview-panel';
 import { SceneEditorStore } from './scene-editor-store';
 import { StoryView } from './story/story-view';
+import { WorldModelMenu } from './world-model-menu';
 
 const THEME_KEY = 'theplot.editor.theme';
 const OVERVIEW_MIN_WIDTH = 1200;
@@ -29,7 +30,15 @@ const DRAWER_MAX_WIDTH = 767;
 @Component({
   selector: 'app-scene-editor',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ContainerMenu, LibraryPanel, OverviewPanel, RouterLink, StoryView, TheplotLogo],
+  imports: [
+    ContainerMenu,
+    LibraryPanel,
+    OverviewPanel,
+    RouterLink,
+    StoryView,
+    TheplotLogo,
+    WorldModelMenu,
+  ],
   providers: [SceneEditorStore],
   host: { '(window:resize)': 'width.set($any($event.target).innerWidth)' },
   templateUrl: './scene-editor.html',

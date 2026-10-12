@@ -4,6 +4,7 @@ import { GRPC_TRANSPORT } from '../admin-kit';
 import { AdminOverview } from '../lib/gen/Admin/Shared/admin_overview_pb';
 import { TheplotAdmin } from '../lib/gen/Admin/Theplot/theplot_admin_pb';
 import { TheplotFamilies, TheplotRuns } from '../lib/gen/Admin/Theplot/theplot_engine_pb';
+import { TheplotWorldModels } from '../lib/gen/Admin/Theplot/theplot_world_models_pb';
 
 export const APP = 'theplot';
 
@@ -15,6 +16,7 @@ export class TheplotAdminApi {
   readonly theplot = createClient(TheplotAdmin, this.transport);
   readonly runs = createClient(TheplotRuns, this.transport);
   readonly families = createClient(TheplotFamilies, this.transport);
+  readonly worldModels = createClient(TheplotWorldModels, this.transport);
 }
 
 export function errorMessage(err: unknown): string {

@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+option csharp_namespace = "ProtoFast.Api";
+
+package worldmodel;
+
+// A story's location world model: what each location contains, how it changes and how places
+// connect, read from the beats (docs/design/location-world-model.md). Building it is model work
+// that runs in the background; the writer starts it and follows it here. Every call is confined
+// to the caller the internal JWT names; another writer's story reads as not found.
+service WorldModels {
+
+    // Queues a build of the story's world model. FailedPrecondition while one is queued or running.
+    rpc StartBuild (StartBuildRequest) returns (StartBuildReply);
+
+    // The story's most recent build, if it has one.
+    rpc GetLatestBuild (GetLatestBuildRequest) returns (GetLatestBuildReply);
+
+    // Stops a queued or running build at its next step. FailedPrecondition once it has ended.
+    rpc CancelBuild (CancelBuildRequest) returns (CancelBuildReply);
+}
+
+enum WorldModelBuildState {
+    WORLD_MODEL_BUILD_STATE_UNSPECIFIED = 0;
+    // Waiting for the worker to pick it up.
+    WORLD_MODEL_BUILD_STATE_QUEUED = 1;
+    // Reading the scenes; see scenes_done and message.
+    WORLD_MODEL_BUILD_STATE_RUNNING = 2;
+    // An attempt failed and the build will carry on shortly from the first scene not yet read.
+    WORLD_MODEL_BUILD_STATE_RETRYING = 3;
+    WORLD_MODEL_BUILD_STATE_FINISHED = 4;
+    WORLD_MODEL_BUILD_STATE_FAILED = 5;
+    // Its owner stopped it.
+    WORLD_MODEL_BUILD_STATE_CANCELLED = 6;
+}
+
+message WorldModelBuild {
+    string id = 1;
+    string story_id = 2;
+    WorldModelBuildState state = 3;
+    int32 scenes_total = 4;
+    int32 scenes_done = 5;
+    // For the person: what the build is doing, or why it stopped.
+    string message = 6;
+    // US dollars spent on model calls so far, across every attempt, in millionths.
+    int64 cost_usd_micros = 7;
+    // Unix milliseconds; 0 means unset.
+    int64 requested_unix_ms = 8;
+    int64 started_unix_ms = 9;
+    int64 finished_unix_ms = 10;
+    // What the graph holds, set once FINISHED.
+    int32 part_count = 11;
+    int32 object_count = 12;
+    int32 observation_count = 13;
+}
+
+message StartBuildRequest {
+    string story_id = 1;
+}
+
+message StartBuildReply {
+    WorldModelBuild build = 1;
+}
+
+message GetLatestBuildRequest {
+    string story_id = 1;
+}
+
+message GetLatestBuildReply {
+    // Unset when the story has never had a build.
+    WorldModelBuild build = 1;
+}
+
+message CancelBuildRequest {
+    string build_id = 1;
+}
+
+message CancelBuildReply {
+    WorldModelBuild build = 1;
+}

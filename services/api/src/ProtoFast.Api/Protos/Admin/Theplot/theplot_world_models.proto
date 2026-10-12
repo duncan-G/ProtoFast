@@ -1,0 +1,256 @@
+syntax = "proto3";
+
+option csharp_namespace = "ProtoFast.Api.Admin.Theplot";
+
+package admin.theplot;
+
+// Every writer's world model builds, for theplot's console: each build, its steps, and what each
+// step asked the model, got back and cost. Every RPC needs admin-theplot. Timestamps are Unix
+// milliseconds; 0 means unset.
+service TheplotWorldModels {
+
+    // Newest first.
+    rpc ListBuilds (ListWorldModelBuildsRequest) returns (ListWorldModelBuildsReply);
+
+    rpc GetBuild (GetWorldModelBuildRequest) returns (GetWorldModelBuildReply);
+
+    // A story's world as the builds left it: the nodes, every fact folded from the observations
+    // with the stretch of story time it holds over, and the observations that lost.
+    rpc GetWorld (GetWorldRequest) returns (GetWorldReply);
+}
+
+enum WorldModelBuildStatus {
+    WORLD_MODEL_BUILD_STATUS_UNSPECIFIED = 0;
+    WORLD_MODEL_BUILD_STATUS_QUEUED = 1;
+    WORLD_MODEL_BUILD_STATUS_RUNNING = 2;
+    WORLD_MODEL_BUILD_STATUS_RETRYING = 3;
+    WORLD_MODEL_BUILD_STATUS_FINISHED = 4;
+    WORLD_MODEL_BUILD_STATUS_FAILED = 5;
+    WORLD_MODEL_BUILD_STATUS_CANCELLED = 6;
+}
+
+enum WorldModelStepKind {
+    WORLD_MODEL_STEP_KIND_UNSPECIFIED = 0;
+    WORLD_MODEL_STEP_KIND_SEED = 1;
+    WORLD_MODEL_STEP_KIND_READ_SCENE = 2;
+    WORLD_MODEL_STEP_KIND_FINISH = 3;
+}
+
+enum WorldModelStepStatus {
+    WORLD_MODEL_STEP_STATUS_UNSPECIFIED = 0;
+    WORLD_MODEL_STEP_STATUS_RUNNING = 1;
+    WORLD_MODEL_STEP_STATUS_FINISHED = 2;
+    WORLD_MODEL_STEP_STATUS_FAILED = 3;
+    WORLD_MODEL_STEP_STATUS_SKIPPED = 4;
+}
+
+message WorldModelBuildHeader {
+    string id = 1;
+    string story_id = 2;
+    string story_title = 3;
+    string owner_id = 4;
+    WorldModelBuildStatus status = 5;
+    int64 requested_unix_ms = 6;
+    int64 started_unix_ms = 7;
+    int64 finished_unix_ms = 8;
+    int32 scenes_total = 9;
+    int32 scenes_done = 10;
+    int32 steps = 11;
+    int64 cost_usd_micros = 12;
+    // What the writer is shown.
+    string message = 13;
+    // Why it failed, for operators.
+    string failure = 14;
+    // How many times the queue handed the request to a worker.
+    int32 deliveries = 15;
+    string trace_id = 16;
+    int32 part_count = 17;
+    int32 object_count = 18;
+    int32 observation_count = 19;
+}
+
+message WorldModelBuildStep {
+    string id = 1;
+    int32 sequence = 2;
+    WorldModelStepKind kind = 3;
+    string scene_id = 4;
+    string title = 5;
+    WorldModelStepStatus status = 6;
+    int64 started_unix_ms = 7;
+    int64 finished_unix_ms = 8;
+    string model_id = 9;
+    int64 input_tokens = 10;
+    int64 output_tokens = 11;
+    int64 cost_usd_micros = 12;
+    // What the model was asked and answered, for a scene read.
+    string prompt = 13;
+    string reply = 14;
+    string summary = 15;
+    string failure = 16;
+}
+
+message ListWorldModelBuildsRequest {
+    WorldModelBuildStatus status = 1;
+    // At most 100; 0 means 25.
+    int32 page_size = 2;
+    // Zero-based.
+    int32 page = 3;
+}
+
+message ListWorldModelBuildsReply {
+    repeated WorldModelBuildHeader builds = 1;
+    int32 total = 2;
+}
+
+message GetWorldModelBuildRequest {
+    string build_id = 1;
+}
+
+message GetWorldModelBuildReply {
+    WorldModelBuildHeader build = 1;
+    repeated WorldModelBuildStep steps = 2;
+}
+
+enum WorldEdge {
+    WORLD_EDGE_UNSPECIFIED = 0;
+    WORLD_EDGE_AT = 1;
+    WORLD_EDGE_STATE = 2;
+    WORLD_EDGE_CONNECTS = 3;
+    WORLD_EDGE_CHARACTER_AT = 4;
+    WORLD_EDGE_BEAT_AT = 5;
+}
+
+enum WorldBasis {
+    WORLD_BASIS_UNSPECIFIED = 0;
+    WORLD_BASIS_STATED = 1;
+    WORLD_BASIS_IMPLIED = 2;
+}
+
+enum WorldOrigin {
+    WORLD_ORIGIN_UNSPECIFIED = 0;
+    WORLD_ORIGIN_EXTRACTED = 1;
+    WORLD_ORIGIN_RULE = 2;
+    WORLD_ORIGIN_AUTHOR = 3;
+}
+
+enum WorldObjectKind {
+    WORLD_OBJECT_KIND_UNSPECIFIED = 0;
+    WORLD_OBJECT_KIND_FIXTURE = 1;
+    WORLD_OBJECT_KIND_PROP = 2;
+    WORLD_OBJECT_KIND_DRESSING = 3;
+    WORLD_OBJECT_KIND_OCCUPANT = 4;
+}
+
+message WorldBeat {
+    string id = 1;
+    string text = 2;
+    // Set on dialogue.
+    string speaker = 3;
+}
+
+// Each scene takes one moment for its opening, then one per beat, in story order: moments are
+// the indexes facts and conflicts use.
+message WorldScene {
+    string id = 1;
+    string title = 2;
+    // Empty when the scene has no heading location.
+    string location_id = 3;
+    string time_of_day = 4;
+    repeated WorldBeat beats = 5;
+}
+
+message WorldLocation {
+    string id = 1;
+    string name = 2;
+    bool exterior = 3;
+    // OKLCH hue, 0–359.
+    int32 hue = 4;
+    string inside_location_id = 5;
+}
+
+message WorldPart {
+    string id = 1;
+    string location_id = 2;
+    string parent_part_id = 3;
+    // Empty for an unnamed part.
+    string name = 4;
+    string description = 5;
+    // Order among sibling parts of a linear space.
+    optional int32 position = 6;
+}
+
+message WorldObject {
+    string id = 1;
+    string name = 2;
+    repeated string aliases = 3;
+    WorldObjectKind kind = 4;
+    string description = 5;
+}
+
+message WorldCharacter {
+    string id = 1;
+    string name = 2;
+    int32 hue = 3;
+}
+
+// A location, or a part of one when part_id is set.
+message WorldPlace {
+    string location_id = 1;
+    string part_id = 2;
+}
+
+message WorldFact {
+    WorldEdge edge = 1;
+    // Facts with the same key are the same subject and edge, one after another.
+    string key = 2;
+    string object_id = 3;
+    string character_id = 4;
+    WorldPlace place = 5;
+    // The other end of a connection.
+    WorldPlace other = 6;
+    string via_object_id = 7;
+    string property = 8;
+    string value = 9;
+    WorldBasis basis = 10;
+    WorldOrigin origin = 11;
+    // Holds from start up to, not including, end; end is the moment count when nothing ends it.
+    int32 start = 12;
+    int32 end = 13;
+    // The beat that said so; later than start when a fixture reaches back to its place's first scene.
+    int32 said = 14;
+    // Later beats that said it again.
+    repeated int32 confirmed = 15;
+}
+
+// An observation that disagreed with the standing fact and lost.
+message WorldConflict {
+    // Index into facts of the fact that stood.
+    int32 fact = 1;
+    int32 moment = 2;
+    WorldPlace place = 3;
+    WorldPlace other = 4;
+    string value = 5;
+    WorldBasis basis = 6;
+    WorldOrigin origin = 7;
+    // It said the object left, or the way closed.
+    bool ends = 8;
+}
+
+message GetWorldRequest {
+    string story_id = 1;
+}
+
+message GetWorldReply {
+    string story_id = 1;
+    string story_title = 2;
+    string owner_id = 3;
+    // Unset when the story was never built.
+    WorldModelBuildHeader latest_build = 4;
+    repeated WorldScene scenes = 5;
+    repeated WorldLocation locations = 6;
+    repeated WorldPart parts = 7;
+    repeated WorldObject objects = 8;
+    repeated WorldCharacter characters = 9;
+    repeated WorldFact facts = 10;
+    repeated WorldConflict conflicts = 11;
+}

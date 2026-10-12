@@ -46,6 +46,21 @@ public static class ThePlotDataServiceCollectionExtensions
         services.AddQueryFactory<Prop, IPropQuery, PropQuery>();
         services.AddScoped<IPropRepository, PropRepository>();
 
+        services.AddQueryFactory<LocationPart, ILocationPartQuery, LocationPartQuery>();
+        services.AddScoped<ILocationPartRepository, LocationPartRepository>();
+
+        services.AddQueryFactory<LocationObject, ILocationObjectQuery, LocationObjectQuery>();
+        services.AddScoped<ILocationObjectRepository, LocationObjectRepository>();
+
+        services.AddQueryFactory<LocationObservation, ILocationObservationQuery, LocationObservationQuery>();
+        services.AddScoped<ILocationObservationRepository, LocationObservationRepository>();
+
+        services.AddQueryFactory<WorldModelBuild, IWorldModelBuildQuery, WorldModelBuildQuery>();
+        services.AddScoped<IWorldModelBuildRepository, WorldModelBuildRepository>();
+
+        services.AddQueryFactory<WorldModelBuildStep, IWorldModelBuildStepQuery, WorldModelBuildStepQuery>();
+        services.AddScoped<IWorldModelBuildStepRepository, WorldModelBuildStepRepository>();
+
         return services;
     }
 }

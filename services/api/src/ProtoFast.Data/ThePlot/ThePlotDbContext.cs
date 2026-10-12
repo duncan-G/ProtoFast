@@ -50,6 +50,16 @@ public sealed class ThePlotDbContext(
 
     public DbSet<Prop> Props => Set<Prop>();
 
+    public DbSet<LocationPart> LocationParts => Set<LocationPart>();
+
+    public DbSet<LocationObject> LocationObjects => Set<LocationObject>();
+
+    public DbSet<LocationObservation> LocationObservations => Set<LocationObservation>();
+
+    public DbSet<WorldModelBuild> WorldModelBuilds => Set<WorldModelBuild>();
+
+    public DbSet<WorldModelBuildStep> WorldModelBuildSteps => Set<WorldModelBuildStep>();
+
     protected override void ConfigureModel(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(Schema);
@@ -91,6 +101,7 @@ public sealed class ThePlotDbContext(
 
         ConfigureScreenplay(modelBuilder);
         ConfigureStoryLibrary(modelBuilder);
+        ConfigureWorldModel(modelBuilder);
     }
 
     private static void ConfigureScreenplay(ModelBuilder modelBuilder)
@@ -264,7 +275,13 @@ public sealed class ThePlotDbContext(
                 .HasForeignKey(l => l.StoryId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            entity.HasOne(l => l.InsideLocation)
+                .WithMany()
+                .HasForeignKey(l => l.InsideLocationId)
+                .OnDelete(DeleteBehavior.SetNull);
+
             entity.HasIndex(l => new { l.StoryId, l.Name }).IsUnique();
+            entity.HasIndex(l => l.InsideLocationId);
             entity.ToTable(t => t.HasCheckConstraint("ck_locations_hue", "hue BETWEEN 0 AND 359"));
         });
 
@@ -280,6 +297,186 @@ public sealed class ThePlotDbContext(
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(p => new { p.StoryId, p.Name }).IsUnique();
+        });
+    }
+
+    /// <summary>
+    /// The location world model (docs/design/location-world-model.md): parts and objects are
+    /// nodes, the timeless edges are columns, and every edge that changes over story time is an
+    /// observation row tied to its beat. Facts are never stored; code folds them from the rows.
+    /// </summary>
+    private static void ConfigureWorldModel(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<LocationPart>(entity =>
+        {
+            entity.HasKey(p => p.Id);
+            entity.Property(p => p.Name).HasMaxLength(NameLength);
+            entity.Property(p => p.Origin).HasConversion<string>().HasMaxLength(EnumLength);
+
+            entity.HasOne(p => p.Location)
+                .WithMany(l => l.Parts)
+                .HasForeignKey(p => p.LocationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(p => p.ParentPart)
+                .WithMany()
+                .HasForeignKey(p => p.ParentPartId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(p => p.LocationId);
+            entity.HasIndex(p => p.ParentPartId);
+            entity.ToTable(t => t.HasCheckConstraint("ck_location_parts_position_non_negative", "position IS NULL OR position >= 0"));
+        });
+
+        modelBuilder.Entity<LocationObject>(entity =>
+        {
+            entity.HasKey(o => o.Id);
+            entity.Property(o => o.UserId).IsRequired().HasMaxLength(UserIdLength);
+            entity.Property(o => o.Name).IsRequired().HasMaxLength(NameLength);
+            entity.Property(o => o.Kind).HasConversion<string>().HasMaxLength(EnumLength);
+
+            entity.HasOne(o => o.Story)
+                .WithMany()
+                .HasForeignKey(o => o.StoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(o => o.Prop)
+                .WithMany()
+                .HasForeignKey(o => o.PropId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Not unique: names are matched in code, aliases included.
+            entity.HasIndex(o => new { o.StoryId, o.Name });
+            entity.HasIndex(o => o.PropId);
+        });
+
+        modelBuilder.Entity<LocationObservation>(entity =>
+        {
+            entity.HasKey(o => o.Id);
+            entity.Property(o => o.Edge).HasConversion<string>().HasMaxLength(EnumLength);
+            entity.Property(o => o.Basis).HasConversion<string>().HasMaxLength(EnumLength);
+            entity.Property(o => o.Origin).HasConversion<string>().HasMaxLength(EnumLength);
+            entity.Property(o => o.Property).HasMaxLength(NameLength);
+            entity.Property(o => o.Value).HasMaxLength(NameLength);
+
+            entity.HasOne(o => o.SceneElement)
+                .WithMany(e => e.Observations)
+                .HasForeignKey(o => o.SceneElementId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // An observation is about its nodes, so it goes with any of them; only the way through survives.
+            entity.HasOne(o => o.Object)
+                .WithMany()
+                .HasForeignKey(o => o.ObjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(o => o.Character)
+                .WithMany()
+                .HasForeignKey(o => o.CharacterId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(o => o.PlaceLocation)
+                .WithMany()
+                .HasForeignKey(o => o.PlaceLocationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(o => o.PlacePart)
+                .WithMany()
+                .HasForeignKey(o => o.PlacePartId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(o => o.OtherLocation)
+                .WithMany()
+                .HasForeignKey(o => o.OtherLocationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(o => o.OtherPart)
+                .WithMany()
+                .HasForeignKey(o => o.OtherPartId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(o => o.ViaObject)
+                .WithMany()
+                .HasForeignKey(o => o.ViaObjectId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(o => o.SceneElementId);
+            entity.HasIndex(o => o.ObjectId);
+            entity.HasIndex(o => o.CharacterId);
+            entity.HasIndex(o => o.PlaceLocationId);
+
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint(
+                    "ck_location_observations_at_columns",
+                    "edge <> 'At' OR (object_id IS NOT NULL AND character_id IS NULL AND other_location_id IS NULL "
+                    + "AND other_part_id IS NULL AND via_object_id IS NULL AND property IS NULL AND value IS NULL)");
+                t.HasCheckConstraint(
+                    "ck_location_observations_state_columns",
+                    "edge <> 'State' OR (object_id IS NOT NULL AND property IS NOT NULL AND value IS NOT NULL "
+                    + "AND place_location_id IS NULL AND place_part_id IS NULL AND character_id IS NULL "
+                    + "AND other_location_id IS NULL AND other_part_id IS NULL AND via_object_id IS NULL)");
+                t.HasCheckConstraint(
+                    "ck_location_observations_connects_columns",
+                    "edge <> 'Connects' OR (place_location_id IS NOT NULL AND other_location_id IS NOT NULL "
+                    + "AND object_id IS NULL AND character_id IS NULL AND property IS NULL)");
+                t.HasCheckConstraint(
+                    "ck_location_observations_character_at_columns",
+                    "edge <> 'CharacterAt' OR (character_id IS NOT NULL AND place_location_id IS NOT NULL "
+                    + "AND object_id IS NULL AND other_location_id IS NULL AND other_part_id IS NULL "
+                    + "AND via_object_id IS NULL AND property IS NULL AND value IS NULL)");
+                t.HasCheckConstraint(
+                    "ck_location_observations_beat_at_columns",
+                    "edge <> 'BeatAt' OR (place_location_id IS NOT NULL AND object_id IS NULL AND character_id IS NULL "
+                    + "AND other_location_id IS NULL AND other_part_id IS NULL AND via_object_id IS NULL "
+                    + "AND property IS NULL AND value IS NULL)");
+                t.HasCheckConstraint(
+                    "ck_location_observations_parts_have_locations",
+                    "(place_part_id IS NULL OR place_location_id IS NOT NULL) AND (other_part_id IS NULL OR other_location_id IS NOT NULL)");
+            });
+        });
+
+        modelBuilder.Entity<WorldModelBuild>(entity =>
+        {
+            entity.HasKey(b => b.Id);
+            entity.Property(b => b.UserId).IsRequired().HasMaxLength(UserIdLength);
+            entity.Property(b => b.Status).HasConversion<string>().HasMaxLength(EnumLength);
+            entity.Property(b => b.Cost).HasPrecision(18, 6);
+            entity.Property(b => b.TraceId).HasMaxLength(LabelLength);
+
+            entity.HasOne(b => b.Story)
+                .WithMany()
+                .HasForeignKey(b => b.StoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(b => new { b.StoryId, b.DateCreated });
+            entity.HasIndex(b => b.DateCreated);
+            entity.ToTable(t => t.HasCheckConstraint(
+                "ck_world_model_builds_counts_non_negative",
+                "scenes_total >= 0 AND scenes_done >= 0 AND deliveries >= 0 AND part_count >= 0 AND object_count >= 0 AND observation_count >= 0"));
+        });
+
+        modelBuilder.Entity<WorldModelBuildStep>(entity =>
+        {
+            entity.HasKey(s => s.Id);
+            entity.Property(s => s.Kind).HasConversion<string>().HasMaxLength(EnumLength);
+            entity.Property(s => s.Status).HasConversion<string>().HasMaxLength(EnumLength);
+            entity.Property(s => s.Title).IsRequired().HasMaxLength(NameLength);
+            entity.Property(s => s.ModelId).HasMaxLength(NameLength);
+            entity.Property(s => s.Cost).HasPrecision(18, 6);
+
+            entity.HasOne(s => s.Build)
+                .WithMany(b => b.Steps)
+                .HasForeignKey(s => s.BuildId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(s => s.Scene)
+                .WithMany()
+                .HasForeignKey(s => s.SceneId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(s => new { s.BuildId, s.Sequence });
+            entity.HasIndex(s => s.SceneId);
         });
     }
 }

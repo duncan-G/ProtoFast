@@ -19,6 +19,13 @@ public sealed class Location : IDateStamped
     /// <summary>Colour-coding as an OKLCH hue, 0–359.</summary>
     public int Hue { get; set; }
 
+    /// <summary>The location this one is within (HOSPITAL – TRAUMA WING), when a heading or beat says so.</summary>
+    public Guid? InsideLocationId { get; set; }
+
+    public Location? InsideLocation { get; set; }
+
+    public List<LocationPart> Parts { get; set; } = [];
+
     public DateTime DateCreated { get; set; }
 
     public DateTime DateLastModified { get; set; }

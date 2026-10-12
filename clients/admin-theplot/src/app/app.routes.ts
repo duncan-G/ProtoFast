@@ -20,6 +20,10 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/story/story').then((m) => m.Story),
       },
       {
+        path: 'stories/:id/world',
+        loadComponent: () => import('./pages/world/world').then((m) => m.StoryWorld),
+      },
+      {
         path: 'runs',
         loadComponent: () => import('./pages/runs/runs').then((m) => m.Runs),
       },
@@ -34,6 +38,14 @@ export const routes: Routes = [
       {
         path: 'families/:family',
         loadComponent: () => import('./pages/family/family').then((m) => m.Family),
+      },
+      {
+        path: 'world-models',
+        loadComponent: () => import('./pages/world-models/world-models').then((m) => m.WorldModels),
+      },
+      {
+        path: 'world-models/:id',
+        loadComponent: () => import('./pages/world-model/world-model').then((m) => m.WorldModel),
       },
       {
         path: 'executors/:id/:version',

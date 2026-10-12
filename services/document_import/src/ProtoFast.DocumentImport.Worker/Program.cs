@@ -7,6 +7,7 @@ using ProtoFast.DocumentImport.Screenplay;
 using ProtoFast.DocumentImport.Worker;
 using ProtoFast.DocumentImport.Worker.Briefing;
 using ProtoFast.DocumentImport.Worker.Import;
+using ProtoFast.DocumentImport.Worker.WorldModel;
 using ProtoFast.ServiceDefaults;
 using ProtoFast.ServiceDefaults.Secrets;
 using ProtoFast.Storage;
@@ -31,6 +32,8 @@ builder.Services.AddSqsQueue(
     DocumentImportQueues.ImportQueueKey, options => builder.Configuration.GetSection("Sqs:DocumentImport").Bind(options));
 builder.Services.AddSqsQueue(
     SqsOutcomeQueue.QueueKey, options => builder.Configuration.GetSection("Sqs:WorkflowOutcomes").Bind(options));
+builder.Services.AddSqsQueue(
+    WorldModelQueues.BuildQueueKey, options => builder.Configuration.GetSection("Sqs:WorldModelBuild").Bind(options));
 
 builder.Services.AddAgentWorkflowEngine();
 builder.Services.AddDurableWorkflowEngineStores();
@@ -54,5 +57,8 @@ builder.Services.AddHostedService<DocumentImportConsumer>();
 
 builder.Services.AddRunBriefing(options => builder.Configuration.GetSection("RunBriefing").Bind(options));
 builder.Services.AddHostedService<RunBriefingService>();
+
+// World model builds a writer asks for, read scene by scene with the same models.
+builder.Services.AddWorldModelBuilding(options => builder.Configuration.GetSection("WorldModel").Bind(options));
 
 builder.Build().Run();
