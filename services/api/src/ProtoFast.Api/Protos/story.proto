@@ -61,6 +61,17 @@ service Stories {
 
 }
 
+// A whole story as one .theplot file: JSON whose rows map straight onto the story's tables, so an
+// import is one write with nothing read into it or guessed.
+service StoryFiles {
+
+    rpc ExportStory (ExportStoryRequest) returns (ExportStoryReply);
+
+    // Always creates a new story with fresh ids, so a file can be imported any number of times.
+    rpc ImportStory (ImportStoryRequest) returns (ImportStoryReply);
+
+}
+
 enum SceneElementType {
     SCENE_ELEMENT_TYPE_UNSPECIFIED = 0;
     SCENE_ELEMENT_TYPE_HEADING = 1;
@@ -373,3 +384,22 @@ message SaveVocabularyRequest {
 }
 
 message SaveVocabularyReply {}
+
+message ExportStoryRequest {
+    string story_id = 1;
+}
+
+message ExportStoryReply {
+    // The story's title made safe for a file system, ending in .theplot.
+    string file_name = 1;
+    // UTF-8 JSON.
+    bytes content = 2;
+}
+
+message ImportStoryRequest {
+    bytes content = 1;
+}
+
+message ImportStoryReply {
+    StorySummary story = 1;
+}

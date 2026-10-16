@@ -1,6 +1,7 @@
 using ProtoFast.Api.Services;
 using ProtoFast.Api.Services.Admin;
 using ProtoFast.Api.Services.Screenplays;
+using ProtoFast.Api.Services.Screenplays.Files;
 using ProtoFast.Data.ThePlot;
 using ProtoFast.DocumentImport.Core;
 using ProtoFast.DocumentImport.Data;
@@ -25,10 +26,12 @@ builder.Services.AddInternalJwtAuth(builder.Configuration);
 // so the backend is the real authorization gate. The user-context interceptor then confines every
 // query and write for the call to the subject that token names.
 builder.Services.AddGrpc(options =>
-{
-    options.Interceptors.Add<InternalJwtAuthInterceptor>();
-    options.Interceptors.Add<UserContextInterceptor>();
-});
+    {
+        options.Interceptors.Add<InternalJwtAuthInterceptor>();
+        options.Interceptors.Add<UserContextInterceptor>();
+    })
+    // A whole .theplot file arrives in one message; 1 KiB covers its framing.
+    .AddServiceOptions<StoryFileService>(options => options.MaxReceiveMessageSize = TheplotJson.MaxBytes + 1024);
 
 builder.AddNpgsqlDataSource("protofast"); // NpgsqlDataSource for the ThePlotDbContext
 builder.Services.AddThePlotData();
@@ -54,6 +57,7 @@ app.MapDefaultEndpoints();
 app.MapGrpcService<DocumentUploadService>();
 app.MapGrpcService<DocumentService>();
 app.MapGrpcService<StoryService>();
+app.MapGrpcService<StoryFileService>();
 app.MapGrpcService<AdminOverviewService>();
 app.MapGrpcService<TheplotAdminService>();
 app.MapGrpcService<TheplotRunsService>();

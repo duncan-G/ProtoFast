@@ -207,7 +207,7 @@ function nameOf<K extends string, V>(values: Record<K, V>, value: V, noun: strin
   return name;
 }
 
-function toStorySummary(message: StorySummaryMessage): StorySummary {
+export function toStorySummary(message: StorySummaryMessage): StorySummary {
   return {
     id: message.id,
     title: message.title,
