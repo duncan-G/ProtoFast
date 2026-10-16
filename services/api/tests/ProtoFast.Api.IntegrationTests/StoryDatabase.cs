@@ -37,6 +37,7 @@ public sealed class StoryDatabase : IAsyncLifetime
         services.AddScoped<StoryScope>();
         services.AddScoped<StoryLibrary>();
         services.AddScoped<StoryService>();
+        services.AddScoped<StoryFileService>();
         // The real engine tables, so the console's reads see what the ledger writes; artifacts and
         // registry content would need an object store, so those two stay in memory.
         services.AddSingleton<IArtifactStore, InMemoryArtifactStore>();
