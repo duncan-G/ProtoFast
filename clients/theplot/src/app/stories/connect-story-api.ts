@@ -14,6 +14,7 @@ import {
   type SceneSummary as SceneSummaryMessage,
   Stories,
   type Story as StoryMessage,
+  type StorySpot as StorySpotMessage,
   type StorySummary as StorySummaryMessage,
   type StoryVocabulary as StoryVocabularyMessage,
 } from '../../lib/gen/story_pb';
@@ -31,6 +32,7 @@ import { SceneElementMention } from './model/scene-element-mention';
 import { SceneElementType } from './model/scene-element-type';
 import { SceneSummary } from './model/scene-summary';
 import { Story } from './model/story';
+import { StorySpot } from './model/story-spot';
 import { StorySummary } from './model/story-summary';
 import { StoryVocabulary } from './model/story-vocabulary';
 
@@ -88,6 +90,13 @@ export class ConnectStoryApi implements StoryApi {
 
   async updateStory(storyId: string, title: string): Promise<void> {
     await this.client.updateStory({ storyId, title });
+  }
+
+  async saveSpot(storyId: string, spot: StorySpot): Promise<void> {
+    await this.client.saveSpot({
+      storyId,
+      spot: { sceneId: spot.sceneId, elementId: spot.elementId ?? undefined },
+    });
   }
 
   async deleteStory(storyId: string): Promise<void> {
@@ -225,7 +234,12 @@ function toStory(message: StoryMessage): Story {
     characters: message.characters.map(toCharacter),
     locations: message.locations.map(toLocation),
     props: message.props.map(toProp),
+    spot: message.spot ? toSpot(message.spot) : null,
   };
+}
+
+function toSpot(message: StorySpotMessage): StorySpot {
+  return { sceneId: message.sceneId, elementId: message.elementId ?? null };
 }
 
 function toVocabulary(message: StoryVocabularyMessage | undefined): StoryVocabulary {

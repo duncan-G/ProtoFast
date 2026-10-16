@@ -31,6 +31,17 @@ public sealed class Writer(StoryDatabase database)
     public async Task<Story> GetStoryAsync(string storyId) =>
         (await Call((s, c) => s.GetStory(new GetStoryRequest { StoryId = storyId }, c))).Story;
 
+    public Task<SaveSpotReply> SaveSpotAsync(string storyId, string sceneId, string? elementId = null)
+    {
+        var spot = new StorySpot { SceneId = sceneId };
+        if (elementId is not null)
+        {
+            spot.ElementId = elementId;
+        }
+
+        return Call((s, c) => s.SaveSpot(new SaveSpotRequest { StoryId = storyId, Spot = spot }, c));
+    }
+
     public async Task<Scene> GetSceneAsync(string sceneId) =>
         (await Call((s, c) => s.GetScene(new GetSceneRequest { SceneId = sceneId }, c))).Scene;
 

@@ -1,11 +1,14 @@
 import {
+  afterNextRender,
   afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
   ElementRef,
   inject,
+  Injector,
   signal,
   untracked,
   viewChild,
@@ -31,6 +34,7 @@ const MORE: { type: SceneElementType; label: string }[] = [
 ];
 
 const MENU_WIDTH = 296;
+const SPOT_SETTLE_MS = 300;
 
 /**
  * The scene as one editable page: blocks in the director view's columns, a gap between any two
@@ -270,6 +274,7 @@ export class StoryScript {
   protected readonly store = inject(SceneEditorStore);
   protected readonly editor = inject(StoryEditor);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
 
   private readonly page = viewChild.required<ElementRef<HTMLElement>>('page');
   private readonly rail = viewChild.required<ElementRef<HTMLElement>>('rail');
@@ -281,6 +286,7 @@ export class StoryScript {
   protected readonly dropAt = signal<number | null>(null);
   private applied: FocusRequest | null = null;
   private shownSceneId: string | null = null;
+  private spotTimer: ReturnType<typeof setTimeout> | undefined;
 
   protected readonly sceneNumber = computed(() => (this.store.place()?.index ?? 0) + 1);
 
@@ -331,9 +337,24 @@ export class StoryScript {
       const id = this.store.scene()?.id ?? null;
       if (id !== this.shownSceneId) {
         this.shownSceneId = id;
-        untracked(() => this.editor.reset());
-        this.host.nativeElement.scrollTo({ top: 0 });
+        untracked(() => {
+          this.editor.reset();
+          const resumeAt = id ? this.store.resumeAt(id) : null;
+          afterNextRender(() => this.arrive(resumeAt), { injector: this.injector });
+        });
       }
+    });
+
+    // A native listener: a template one would run change detection on every scroll event.
+    const scroller = this.host.nativeElement;
+    const onScroll = () => {
+      clearTimeout(this.spotTimer);
+      this.spotTimer = setTimeout(() => this.noteSpot(), SPOT_SETTLE_MS);
+    };
+    scroller.addEventListener('scroll', onScroll, { passive: true });
+    inject(DestroyRef).onDestroy(() => {
+      scroller.removeEventListener('scroll', onScroll);
+      clearTimeout(this.spotTimer);
     });
 
     // Blocks opened from outside the page, such as the library's "+ Line", take the cursor.
@@ -396,6 +417,27 @@ export class StoryScript {
     } else {
       this.append('Action');
     }
+  }
+
+  /** A scene that just opened shows its top, or puts the block it was left at on top. */
+  private arrive(elementId: string | null): void {
+    const scroller = this.host.nativeElement;
+    const row = elementId
+      ? this.page().nativeElement.querySelector<HTMLElement>(`[data-row="${elementId}"]`)
+      : null;
+    scroller.scrollTop = row
+      ? scroller.scrollTop + row.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+      : 0;
+    this.noteSpot();
+  }
+
+  /** The first block not scrolled past; `arrive` puts it back on top. */
+  private noteSpot(): void {
+    const top = this.host.nativeElement.getBoundingClientRect().top;
+    const rows = [...this.page().nativeElement.querySelectorAll<HTMLElement>('[data-row]')];
+    const index = rows.findIndex((row) => row.getBoundingClientRect().bottom > top);
+    const at = index === -1 ? rows.length - 1 : index;
+    this.store.keepSpot(at > 0 ? rows[at].dataset['row']! : null);
   }
 
   private applyFocus(): void {

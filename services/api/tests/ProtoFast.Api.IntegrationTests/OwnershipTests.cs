@@ -31,6 +31,7 @@ public class OwnershipTests(StoryDatabase database)
             _stranger.Call((s, c) => s.RenameContainer(new RenameContainerRequest { ContainerId = container.Id, Label = "Mine" }, c)),
             _stranger.Call((s, c) => s.SaveVocabulary(new SaveVocabularyRequest { StoryId = story.Id, Vocabulary = new() }, c)),
             _stranger.Call((s, c) => s.UpdateStory(new UpdateStoryRequest { StoryId = story.Id, Title = "Mine" }, c)),
+            _stranger.SaveSpotAsync(story.Id, scene.Id),
             _stranger.Call((s, c) => s.DeleteStory(new DeleteStoryRequest { StoryId = story.Id }, c)),
         ];
 

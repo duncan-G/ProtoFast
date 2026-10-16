@@ -20,6 +20,12 @@ public sealed class Story : IDateStamped
 
     public StoryVocabulary Vocabulary { get; set; } = new();
 
+    /// <summary>Where the writer left the story. Plain ids, not keys: a spot can name a block not yet saved.</summary>
+    public Guid? SpotSceneId { get; set; }
+
+    /// <summary>The block at the top of the view; null at the scene's top.</summary>
+    public Guid? SpotElementId { get; set; }
+
     public DateTime DateCreated { get; set; }
 
     public DateTime DateLastModified { get; set; }

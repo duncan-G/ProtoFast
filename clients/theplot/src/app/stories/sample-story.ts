@@ -356,6 +356,7 @@ export function sampleStory(): Story {
     characters,
     locations,
     props,
+    spot: null,
   });
 }
 
