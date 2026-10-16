@@ -19,6 +19,10 @@ service Stories {
 
     rpc UpdateStory (UpdateStoryRequest) returns (UpdateStoryReply);
 
+    // Remembers where the writer is, for the next time the story opens. Not an edit: the story
+    // keeps its last-modified time.
+    rpc SaveSpot (SaveSpotRequest) returns (SaveSpotReply);
+
     rpc DeleteStory (DeleteStoryRequest) returns (DeleteStoryReply);
 
     rpc GetScene (GetSceneRequest) returns (GetSceneReply);
@@ -121,6 +125,16 @@ message Story {
     repeated Character characters = 5;
     repeated Location locations = 6;
     repeated Prop props = 7;
+    // Unset until the story is first opened, or once its scene is deleted.
+    StorySpot spot = 8;
+}
+
+// A place in the story: a scene, scrolled to one of its blocks.
+message StorySpot {
+    string scene_id = 1;
+    // The block at the top of the view; unset at the scene's top. It may name a block that is no
+    // longer in the scene.
+    optional string element_id = 2;
 }
 
 message StoryVocabulary {
@@ -251,6 +265,13 @@ message UpdateStoryRequest {
 }
 
 message UpdateStoryReply {}
+
+message SaveSpotRequest {
+    string story_id = 1;
+    StorySpot spot = 2;
+}
+
+message SaveSpotReply {}
 
 message DeleteStoryRequest {
     string story_id = 1;

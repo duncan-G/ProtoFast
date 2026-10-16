@@ -6,6 +6,7 @@ import {
   SceneElementType,
   Stories,
   type SaveSceneRequest,
+  type SaveSpotRequest,
   type SaveVocabularyRequest,
   type UpdateLocationRequest,
 } from '../../lib/gen/story_pb';
@@ -59,6 +60,7 @@ describe('ConnectStoryApi', () => {
             { id: 'docks', storyId, name: 'Docks', setting: LocationSetting.EXTERIOR, hue: 200 },
           ],
           props: [{ id: 'radio', storyId, name: 'Radio' }],
+          spot: { sceneId: 'scene' },
         },
       }),
     });
@@ -93,7 +95,26 @@ describe('ConnectStoryApi', () => {
       characters: [{ id: 'mara', storyId: 'story', name: 'Mara', kind: 'Human', hue: 25 }],
       locations: [{ id: 'docks', storyId: 'story', name: 'Docks', setting: 'Exterior', hue: 200 }],
       props: [{ id: 'radio', storyId: 'story', name: 'Radio' }],
+      spot: { sceneId: 'scene', elementId: null },
     });
+  });
+
+  it('saves the spot, with no block at a scene’s top', async () => {
+    const requests: SaveSpotRequest[] = [];
+    const api = apiWith({
+      saveSpot: (request) => {
+        requests.push(request);
+        return {};
+      },
+    });
+
+    await api.saveSpot('story', { sceneId: 'scene', elementId: 'row' });
+    await api.saveSpot('story', { sceneId: 'scene', elementId: null });
+
+    expect(requests.map((r) => [r.storyId, r.spot?.sceneId, r.spot?.elementId])).toEqual([
+      ['story', 'scene', 'row'],
+      ['story', 'scene', undefined],
+    ]);
   });
 
   it('maps a scene’s rows and turns each mention’s target into its id field', async () => {

@@ -103,6 +103,31 @@ public class StoryService(
         return new UpdateStoryReply();
     }
 
+    /// <summary>Skips the story lock, which would mark the story modified.</summary>
+    public override async Task<SaveSpotReply> SaveSpot(SaveSpotRequest request, ServerCallContext context)
+    {
+        var storyId = StoryIds.Existing(request.StoryId, StoryErrors.StoryNotFound);
+        var spot = request.Spot ?? throw StoryErrors.Invalid("There’s no spot to save.");
+        var sceneId = StoryIds.Existing(spot.SceneId, StoryErrors.SceneNotFound);
+        Guid? elementId = spot.HasElementId ? StoryIds.New(spot.ElementId, "The block has no valid id.") : null;
+        var cancellationToken = context.CancellationToken;
+
+        using var unitOfWork = unitOfWorkFactory.CreateReadWrite(nameof(SaveSpot));
+        var sceneStoryId = await sceneRepository.GetFirstByQueryAsync(
+            sceneQueries.Create().WithId(sceneId), s => (Guid?)s.Container.StoryId, cancellationToken);
+        if (sceneStoryId != storyId)
+        {
+            throw StoryErrors.NotFound(StoryErrors.SceneNotFound);
+        }
+
+        await storyRepository.UpdateByQueryAsync(
+            storyQueries.Create().WithId(storyId),
+            s => s.SetProperty(story => story.SpotSceneId, sceneId).SetProperty(story => story.SpotElementId, elementId),
+            cancellationToken);
+        await unitOfWork.CommitAsync(cancellationToken);
+        return new SaveSpotReply();
+    }
+
     public override async Task<DeleteStoryReply> DeleteStory(DeleteStoryRequest request, ServerCallContext context)
     {
         var storyId = StoryIds.Existing(request.StoryId, StoryErrors.StoryNotFound);
