@@ -6,6 +6,7 @@ using WorldModelBuildStatusRecord = ProtoFast.Data.ThePlot.Entities.WorldModelBu
 using WorldModelBuildStepRecord = ProtoFast.Data.ThePlot.Entities.WorldModelBuildStep;
 using WorldModelStepKindRecord = ProtoFast.Data.ThePlot.Entities.WorldModelStepKind;
 using WorldModelStepStatusRecord = ProtoFast.Data.ThePlot.Entities.WorldModelStepStatus;
+using ViewPictureRecord = ProtoFast.Data.ThePlot.Entities.ViewPicture;
 
 namespace ProtoFast.Api.Services.Admin;
 
@@ -35,6 +36,16 @@ internal static class WorldModelAdminMessages
         ObservationCount = b.ObservationCount,
     };
 
+    public static WorldViewPicture Picture(ViewPictureRecord picture) => new()
+    {
+        Id = picture.Id.ToString(),
+        ContentType = picture.ContentType,
+        Prompt = picture.Prompt,
+        Notes = picture.Notes ?? "",
+        CostUsdMicros = picture.CostUsdMicros,
+        CreatedUnixMs = WorldModelMessages.Millis(picture.DateLastModified),
+    };
+
     public static WorldModelBuildStep From(WorldModelBuildStepRecord step) => new()
     {
         Id = step.Id.ToString(),
@@ -44,6 +55,7 @@ internal static class WorldModelAdminMessages
             WorldModelStepKindRecord.Seed => WorldModelStepKind.Seed,
             WorldModelStepKindRecord.ReadScene => WorldModelStepKind.ReadScene,
             WorldModelStepKindRecord.Finish => WorldModelStepKind.Finish,
+            WorldModelStepKindRecord.DescribeLocation => WorldModelStepKind.DescribeLocation,
             _ => WorldModelStepKind.Unspecified,
         },
         SceneId = step.SceneId?.ToString() ?? "",

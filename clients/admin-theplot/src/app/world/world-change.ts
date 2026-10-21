@@ -82,6 +82,14 @@ const MARK = {
             <span class="text-gray-500">The action is at</span>
             <app-world-place [place]="fact.place" />
           }
+          @case (edge.CAMERA) {
+            <span class="text-gray-500">The camera is at</span>
+            <app-world-place [place]="fact.place" />
+            @if (fact.other) {
+              <span class="text-gray-500">looking toward</span>
+              <app-world-place [place]="fact.other" />
+            }
+          }
         }
         <span class="ml-1 text-[11px] text-gray-400">{{ note() }}</span>
       </div>

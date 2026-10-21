@@ -9,12 +9,15 @@ import {
 } from '@angular/core';
 import { WorldEdge } from '../../lib/gen/Admin/Theplot/theplot_world_models_pb';
 import { heading, hue } from './labels';
+import { isPhysical } from './world';
+import { WorldBeatSpeech } from './world-beat-speech';
 import { WorldChange } from './world-change';
 import { WorldSession } from './world-session';
+import { WorldViews } from './world-views';
 
 @Component({
   selector: 'app-world-now',
-  imports: [WorldChange],
+  imports: [WorldBeatSpeech, WorldChange, WorldViews],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (session.world(); as world) {
@@ -30,6 +33,8 @@ import { WorldSession } from './world-session';
           <h2 class="mt-0.5 font-semibold text-gray-900">{{ scene?.title }}</h2>
           <p class="font-mono text-xs text-gray-500">{{ heading(world, session.scene()) }}</p>
         </header>
+
+        <app-world-views class="block border-b border-gray-100 px-4 py-3" />
 
         <div class="px-4 py-3">
           <h3 class="text-xs font-semibold tracking-wide text-gray-500 uppercase">
@@ -50,21 +55,35 @@ import { WorldSession } from './world-session';
               }
               {{ beat()?.text }}
             </blockquote>
+            <app-world-beat-speech class="mt-2 block" />
           }
 
           <h3 class="mt-4 text-xs font-semibold tracking-wide text-gray-500 uppercase">
-            What changed
+            Changes to the place
             <span class="ml-1 font-normal text-gray-400 normal-case">{{
-              visibleChanges().length
+              placeChanges().length
             }}</span>
           </h3>
           <div class="mt-1.5 space-y-1.5">
-            @for (change of visibleChanges(); track $index) {
+            @for (change of placeChanges(); track $index) {
               <app-world-change [change]="change" />
             } @empty {
-              <p class="text-sm text-gray-500">Nothing. Everything carries on as it was.</p>
+              <p class="text-sm text-gray-500">None. The place stands as it was.</p>
             }
           </div>
+          @if (action().length) {
+            <h3 class="mt-4 text-xs font-semibold tracking-wide text-gray-500 uppercase">
+              Action
+              <span class="ml-1 font-normal text-gray-400 normal-case"
+                >who and what moved; not a change to the place</span
+              >
+            </h3>
+            <div class="mt-1.5 space-y-1.5 opacity-75">
+              @for (change of action(); track $index) {
+                <app-world-change [change]="change" />
+              }
+            </div>
+          }
         </div>
 
         <div class="border-t border-gray-100">
@@ -132,11 +151,26 @@ export class WorldNow {
     return hue(world?.locations.get(this.session.sceneLocation() ?? '')?.hue ?? 0);
   });
 
-  /** The stage marks where the action is, so that change is listed only when it is the only one. */
-  protected readonly visibleChanges = computed(() => {
-    const changes = this.session.changes();
-    const rest = changes.filter((c) => c.edge !== WorldEdge.BEAT_AT);
-    return rest.length ? rest : changes;
+  protected readonly placeChanges = computed(() => {
+    const world = this.session.world();
+    return world
+      ? this.session.changes().filter((c) => isPhysical(world, c.after ?? c.before!))
+      : [];
+  });
+
+  /** Where the beat and the camera are show on the stage, so they are left out. */
+  protected readonly action = computed(() => {
+    const world = this.session.world();
+    return world
+      ? this.session
+          .changes()
+          .filter(
+            (c) =>
+              c.edge !== WorldEdge.BEAT_AT &&
+              c.edge !== WorldEdge.CAMERA &&
+              !isPhysical(world, c.after ?? c.before!),
+          )
+      : [];
   });
 
   protected readonly lines = computed(() => {

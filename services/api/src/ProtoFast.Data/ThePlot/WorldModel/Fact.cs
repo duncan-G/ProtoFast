@@ -5,7 +5,8 @@ namespace ProtoFast.Data.ThePlot.WorldModel;
 /// <summary>
 /// One edge holding over a stretch of story time, folded from the observations that say so.
 /// <see cref="Place"/> is where the subject is; for a connection it is one end and
-/// <see cref="Other"/> the other, in canonical order.
+/// <see cref="Other"/> the other, in canonical order. An <see cref="ObservationEdge.At"/> fact with
+/// a <see cref="CharacterId"/> is an object that character holds.
 /// </summary>
 public sealed record Fact(
     ObservationEdge Edge,

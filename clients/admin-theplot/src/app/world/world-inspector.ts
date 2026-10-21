@@ -75,6 +75,10 @@ interface Lane {
           @if (view.description) {
             <p class="mt-2 text-sm text-gray-700">{{ view.description }}</p>
           }
+          @if (view.contents) {
+            <p class="mt-2 text-xs font-medium text-gray-500">What is in it</p>
+            <p class="mt-0.5 text-sm whitespace-pre-line text-gray-700">{{ view.contents }}</p>
+          }
           @if (view.aliases.length) {
             <p class="mt-2 text-xs text-gray-500">Also called: {{ view.aliases.join(', ') }}</p>
           }
@@ -253,6 +257,7 @@ function describe(world: World, ref: WorldRef) {
   const base = {
     aliases: [] as string[],
     description: '',
+    contents: '',
     chip: '',
     kindLabel: '',
     hint: '',
@@ -286,6 +291,8 @@ function describe(world: World, ref: WorldRef) {
         ...base,
         kind: location?.exterior ? 'Place · exterior' : 'Place · interior',
         name: location?.name ?? 'Unknown place',
+        description: location?.description ?? '',
+        contents: location?.contents ?? '',
         subtitle: [
           inside ? `Inside ${inside.name}` : '',
           `${scenes} ${scenes === 1 ? 'scene' : 'scenes'} here`,
@@ -361,6 +368,9 @@ function lanesOf(world: World, ref: WorldRef, facts: readonly WorldFact[]): Lane
             `${name} at ${placeName(world, fact.place)}`,
           ),
         );
+      } else if (fact.edge === WorldEdge.STATE) {
+        const name = `${world.objects.get(fact.objectId)?.name ?? 'object'}: ${fact.property}`;
+        add(`s:${fact.key}`, name, bar(fact, valueColor(fact.value), `${name} ${fact.value}`));
       } else if (fact.edge === WorldEdge.CONNECTS) {
         const label = `⇄ ${placeName(world, fact.place?.locationId === ref.id || fact.place?.partId === ref.id ? fact.other : fact.place)}`;
         add(`w:${fact.key}`, label, bar(fact, '#9ca3af', label));

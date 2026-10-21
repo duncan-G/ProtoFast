@@ -11,4 +11,7 @@ public sealed class ReadObject
     public string? Kind { get; set; }
 
     public string? Description { get; set; }
+
+    /// <summary>The name of the story prop it is, when it is one.</summary>
+    public string? Prop { get; set; }
 }

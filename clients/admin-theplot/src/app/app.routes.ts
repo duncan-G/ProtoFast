@@ -1,3 +1,4 @@
+import { isDevMode } from '@angular/core';
 import { Routes } from '@angular/router';
 import { consoleGuard, FORBIDDEN_ROUTE } from '../admin-kit';
 
@@ -46,6 +47,16 @@ export const routes: Routes = [
       {
         path: 'world-models/:id',
         loadComponent: () => import('./pages/world-model/world-model').then((m) => m.WorldModel),
+      },
+      {
+        path: 'history',
+        canMatch: [() => isDevMode()],
+        loadComponent: () => import('./pages/history/history').then((m) => m.History),
+      },
+      {
+        path: 'history/:id',
+        canMatch: [() => isDevMode()],
+        loadComponent: () => import('./pages/history-run/history-run').then((m) => m.HistoryRun),
       },
       {
         path: 'executors/:id/:version',

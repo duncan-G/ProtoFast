@@ -248,6 +248,10 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("Contents")
+                        .HasColumnType("text")
+                        .HasColumnName("contents");
+
                     b.Property<DateTime>("DateCreated")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("date_created");
@@ -255,6 +259,10 @@ namespace ProtoFast.Data.Migrations
                     b.Property<DateTime>("DateLastModified")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("date_last_modified");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
 
                     b.Property<int>("Hue")
                         .HasColumnType("integer")
@@ -460,9 +468,11 @@ namespace ProtoFast.Data.Migrations
 
                     b.ToTable("location_observations", "plot", t =>
                         {
-                            t.HasCheckConstraint("ck_location_observations_at_columns", "edge <> 'At' OR (object_id IS NOT NULL AND character_id IS NULL AND other_location_id IS NULL AND other_part_id IS NULL AND via_object_id IS NULL AND property IS NULL AND value IS NULL)");
+                            t.HasCheckConstraint("ck_location_observations_at_columns", "edge <> 'At' OR (object_id IS NOT NULL AND other_location_id IS NULL AND other_part_id IS NULL AND via_object_id IS NULL AND property IS NULL AND value IS NULL AND (character_id IS NULL OR place_location_id IS NOT NULL))");
 
                             t.HasCheckConstraint("ck_location_observations_beat_at_columns", "edge <> 'BeatAt' OR (place_location_id IS NOT NULL AND object_id IS NULL AND character_id IS NULL AND other_location_id IS NULL AND other_part_id IS NULL AND via_object_id IS NULL AND property IS NULL AND value IS NULL)");
+
+                            t.HasCheckConstraint("ck_location_observations_camera_columns", "edge <> 'Camera' OR (place_location_id IS NOT NULL AND object_id IS NULL AND character_id IS NULL AND via_object_id IS NULL AND property IS NULL AND value IS NULL)");
 
                             t.HasCheckConstraint("ck_location_observations_character_at_columns", "edge <> 'CharacterAt' OR (character_id IS NOT NULL AND place_location_id IS NOT NULL AND object_id IS NULL AND other_location_id IS NULL AND other_part_id IS NULL AND via_object_id IS NULL AND property IS NULL AND value IS NULL)");
 
@@ -777,6 +787,10 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("date_last_modified");
 
+                    b.Property<Guid?>("SourceStoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_story_id");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -795,7 +809,114 @@ namespace ProtoFast.Data.Migrations
                     b.HasIndex("UserId", "DateLastModified")
                         .HasDatabaseName("ix_stories_user_id_date_last_modified");
 
+                    b.HasIndex("UserId", "SourceStoryId")
+                        .HasDatabaseName("ix_stories_user_id_source_story_id");
+
                     b.ToTable("stories", "plot");
+                });
+
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.ViewPicture", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<long>("ByteSize")
+                        .HasColumnType("bigint")
+                        .HasColumnName("byte_size");
+
+                    b.Property<Guid>("CameraLocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("camera_location_id");
+
+                    b.Property<string>("CameraPart")
+                        .HasColumnType("text")
+                        .HasColumnName("camera_part");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("content_type");
+
+                    b.Property<long>("CostUsdMicros")
+                        .HasColumnType("bigint")
+                        .HasColumnName("cost_usd_micros");
+
+                    b.Property<DateTime>("DateCreated")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("date_created");
+
+                    b.Property<DateTime>("DateLastModified")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("date_last_modified");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("Prompt")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("prompt");
+
+                    b.Property<Guid>("SceneId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("scene_id");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer")
+                        .HasColumnName("state");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("storage_key");
+
+                    b.Property<Guid>("StoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("story_id");
+
+                    b.Property<Guid?>("TowardLocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("toward_location_id");
+
+                    b.Property<string>("TowardPart")
+                        .HasColumnType("text")
+                        .HasColumnName("toward_part");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_view_pictures");
+
+                    b.HasIndex("CameraLocationId")
+                        .HasDatabaseName("ix_view_pictures_camera_location_id");
+
+                    b.HasIndex("StoryId")
+                        .HasDatabaseName("ix_view_pictures_story_id");
+
+                    b.HasIndex("TowardLocationId")
+                        .HasDatabaseName("ix_view_pictures_toward_location_id");
+
+                    b.HasIndex("SceneId", "CameraLocationId", "CameraPart", "TowardLocationId", "TowardPart", "State")
+                        .IsUnique()
+                        .HasDatabaseName("ix_view_pictures_view");
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("SceneId", "CameraLocationId", "CameraPart", "TowardLocationId", "TowardPart", "State"), false);
+
+                    b.ToTable("view_pictures", "plot", t =>
+                        {
+                            t.HasCheckConstraint("ck_view_pictures_state_non_negative", "state >= 0");
+
+                            t.HasCheckConstraint("ck_view_pictures_toward_part_has_location", "toward_part IS NULL OR toward_location_id IS NOT NULL");
+                        });
                 });
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.WorldModelBuild", b =>
@@ -1290,6 +1411,44 @@ namespace ProtoFast.Data.Migrations
 
                     b.Navigation("Vocabulary")
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.ViewPicture", b =>
+                {
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Location", "CameraLocation")
+                        .WithMany()
+                        .HasForeignKey("CameraLocationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_view_pictures_locations_camera_location_id");
+
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Scene", "Scene")
+                        .WithMany()
+                        .HasForeignKey("SceneId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_view_pictures_scenes_scene_id");
+
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Story", "Story")
+                        .WithMany()
+                        .HasForeignKey("StoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_view_pictures_stories_story_id");
+
+                    b.HasOne("ProtoFast.Data.ThePlot.Entities.Location", "TowardLocation")
+                        .WithMany()
+                        .HasForeignKey("TowardLocationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_view_pictures_locations_toward_location_id");
+
+                    b.Navigation("CameraLocation");
+
+                    b.Navigation("Scene");
+
+                    b.Navigation("Story");
+
+                    b.Navigation("TowardLocation");
                 });
 
             modelBuilder.Entity("ProtoFast.Data.ThePlot.Entities.WorldModelBuild", b =>

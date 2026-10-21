@@ -19,6 +19,7 @@ namespace ProtoFast.DocumentImport.IntegrationTests.WorldModel;
 /// A whole build against the real tables, with the model scripted: the doc's trauma-wing example
 /// read scene by scene, in two locations side by side, and what the ledger says afterwards.
 /// </summary>
+[Collection(PlotSchemaCollection.Name)]
 public sealed class WorldModelBuildRunnerTests(PostgresFixture postgres) : IAsyncLifetime
 {
     private static readonly CancellationToken Ct = TestContext.Current.CancellationToken;
@@ -55,7 +56,9 @@ public sealed class WorldModelBuildRunnerTests(PostgresFixture postgres) : IAsyn
             {"parts": [], "objects": [], "aliases": [],
              "edges": [{"beatId": "{{s1.Beats[0]}}", "edge": "character_at", "characterId": "{{bryan}}", "locationId": "{{lot}}", "basis": "stated"}]}
             """);
-        _models.Script(s2.Id, _ => $$"""
+        _models.Script(s2.Id, prompt => !prompt.Contains("<seen character=\"BRYAN\" at=\"PARKING LOT\"/>")
+            ? throw new InvalidOperationException("The wing was read before the lot scene that last saw Bryan.")
+            : $$"""
             {"parts": [{"ref": "p1", "name": "hallway: start", "position": 0}, {"ref": "p2", "name": "hallway: end"}],
              "objects": [{"ref": "o1", "name": "double doors", "aliases": ["the doors"], "kind": "Fixture"},
                          {"ref": "o2", "name": "gurney", "kind": "Prop"},
@@ -65,6 +68,7 @@ public sealed class WorldModelBuildRunnerTests(PostgresFixture postgres) : IAsyn
                {"beatId": "{{s2.Beats[0]}}", "edge": "at", "objectId": "o1", "partId": "p1", "basis": "stated"},
                {"beatId": "{{s2.Beats[0]}}", "edge": "character_at", "characterId": "{{bryan}}", "partId": "p1", "basis": "stated"},
                {"beatId": "{{s2.Beats[0]}}", "edge": "beat_at", "partId": "p1", "basis": "implied"},
+               {"beatId": "{{s2.Beats[0]}}", "edge": "camera", "partId": "p2", "towardPartId": "p1", "basis": "implied"},
                {"beatId": "{{s2.Beats[1]}}", "edge": "at", "objectId": "o2", "partId": "p2", "basis": "stated"},
                {"beatId": "{{s2.Beats[1]}}", "edge": "at", "objectId": "o3", "partId": "p2", "basis": "stated"},
                {"beatId": "{{s2.Beats[1]}}", "edge": "state", "objectId": "o3", "property": "lit", "value": "flickering", "basis": "stated"},
@@ -89,15 +93,19 @@ public sealed class WorldModelBuildRunnerTests(PostgresFixture postgres) : IAsyn
         await using var check = _services.CreateAsyncScope();
         var db = check.ServiceProvider.GetRequiredService<ThePlotDbContext>();
         var ledger = await db.WorldModelBuilds.IgnoreQueryFilters().Include(b => b.Steps.OrderBy(s => s.Sequence)).SingleAsync(b => b.Id == build, Ct);
-        Assert.Equal((WorldModelBuildStatus.Finished, 3, 3, 0.03m, 1), (ledger.Status, ledger.ScenesTotal, ledger.ScenesDone, ledger.Cost, ledger.Deliveries));
+        Assert.Equal((WorldModelBuildStatus.Finished, 3, 3, 0.032m, 1), (ledger.Status, ledger.ScenesTotal, ledger.ScenesDone, ledger.Cost, ledger.Deliveries));
         Assert.Equal(
-            [WorldModelStepKind.Seed, WorldModelStepKind.ReadScene, WorldModelStepKind.ReadScene, WorldModelStepKind.ReadScene, WorldModelStepKind.Finish],
+            [
+                WorldModelStepKind.Seed, WorldModelStepKind.ReadScene, WorldModelStepKind.ReadScene, WorldModelStepKind.ReadScene,
+                WorldModelStepKind.Finish, WorldModelStepKind.DescribeLocation, WorldModelStepKind.DescribeLocation,
+            ],
             ledger.Steps.OrderBy(s => s.Sequence).Select(s => s.Kind));
         Assert.All(ledger.Steps, s => Assert.Equal(WorldModelStepStatus.Finished, s.Status));
         var second = ledger.Steps.Single(s => s.SceneId == s2.Id);
         Assert.Equal(("scripted-medium", 1000L, 0.01m), (second.ModelId, second.InputTokens, second.Cost));
         Assert.Contains("2 new parts, 3 new objects", second.Summary);
         Assert.Contains("unknown object nobody", second.Summary);
+        Assert.Contains("1 beat with no camera", second.Summary);
         Assert.Contains("<beat id=\"" + s2.Beats[0] + "\"", second.Prompt);
 
         var parts = await db.LocationParts.IgnoreQueryFilters().Where(p => p.LocationId == wing).OrderBy(p => p.Position).ToListAsync(Ct);
@@ -109,11 +117,24 @@ public sealed class WorldModelBuildRunnerTests(PostgresFixture postgres) : IAsyn
 
         var observations = await db.LocationObservations.IgnoreQueryFilters()
             .Where(o => o.SceneElement.Scene.Container.StoryId == story.Id).ToListAsync(Ct);
-        Assert.Equal(8, observations.Count(o => o.Origin == ObservationOrigin.Extracted));
+        Assert.Equal(9, observations.Count(o => o.Origin == ObservationOrigin.Extracted));
+        var camera = Assert.Single(observations, o => o.Edge == ObservationEdge.Camera);
+        Assert.Equal((wing, parts[1].Id, wing, parts[0].Id), (camera.PlaceLocationId, camera.PlacePartId, camera.OtherLocationId, camera.OtherPartId));
         var ruled = Assert.Single(observations, o => o.Origin == ObservationOrigin.Rule);
         Assert.Equal((ObservationEdge.Connects, lot, wing, parts[0].Id), (ruled.Edge, ruled.PlaceLocationId, ruled.OtherLocationId, ruled.OtherPartId));
-        Assert.Equal((2, 3, 9), (ledger.PartCount, ledger.ObjectCount, ledger.ObservationCount));
-        Assert.Contains("1 connection between scenes", ledger.Steps.Last().Summary);
+        Assert.Equal((2, 3, 10), (ledger.PartCount, ledger.ObjectCount, ledger.ObservationCount));
+        Assert.Contains("1 connection between scenes", ledger.Steps.Single(s => s.Kind == WorldModelStepKind.Finish).Summary);
+
+        var described = await db.Locations.IgnoreQueryFilters().Where(l => l.StoryId == story.Id).OrderBy(l => l.Name).ToListAsync(Ct);
+        Assert.Equal(
+            [("PARKING LOT", "The PARKING LOT as built.", "What is in the PARKING LOT."), ("TRAUMA WING", "The TRAUMA WING as built.", "What is in the TRAUMA WING.")],
+            described.Select(l => (l.Name, l.Description, l.Contents)));
+        var wingStep = ledger.Steps.Single(s => s is { Kind: WorldModelStepKind.DescribeLocation, Title: "TRAUMA WING" });
+        Assert.Equal(("scripted-medium", 0.001m, "5 words of description, 6 of contents"), (wingStep.ModelId, wingStep.Cost, wingStep.Summary));
+        var wingPrompt = _models.Descriptions.Single(d => d.Location == "TRAUMA WING").Prompt;
+        Assert.Contains("<object name=\"light\" kind=\"Fixture\" at=\"TRAUMA WING / hallway: end\" states=\"lit=flickering\"/>", wingPrompt);
+        var wingBlock = wingPrompt[wingPrompt.IndexOf("<location name=", StringComparison.Ordinal)..wingPrompt.IndexOf("</location>", StringComparison.Ordinal)];
+        Assert.DoesNotContain("gurney", wingBlock);
 
         // Each scene was read once, and the wing's scenes in story order.
         Assert.Equal(3, _models.Calls.Count);
@@ -168,6 +189,97 @@ public sealed class WorldModelBuildRunnerTests(PostgresFixture postgres) : IAsyn
     }
 
     [Fact]
+    public async Task A_part_named_like_a_location_is_that_location_and_old_readings_are_cleared()
+    {
+        var story = await SeedStoryAsync(
+            ["HOSPITAL", "LOBBY"],
+            [("Delivery", "HOSPITAL", "DUSK", ["The automatic lobby doors slide open and in strides Bryan."])]);
+        var (hospital, lobby, bryan, delivery) = (story.Locations["HOSPITAL"], story.Locations["LOBBY"], story.Characters["BRYAN"], story.Scenes[0]);
+        await using (var earlier = _services.CreateAsyncScope())
+        {
+            using var user = earlier.ServiceProvider.GetRequiredService<UserContext>().SetCurrentUser(_userId);
+            var context = earlier.ServiceProvider.GetRequiredService<ThePlotDbContext>();
+            context.LocationParts.Add(new LocationPart { Id = Guid.NewGuid(), LocationId = hospital, Name = "the Lobby", Origin = NodeOrigin.Extracted });
+            (await context.Locations.IgnoreQueryFilters().SingleAsync(l => l.Id == hospital, Ct)).InsideLocationId = lobby;
+            await context.SaveChangesAsync(Ct);
+        }
+
+        _models.Script(delivery.Id, prompt => prompt.Contains("the Lobby")
+            ? throw new InvalidOperationException("The scene was shown the part an earlier build read for the lobby.")
+            : $$"""
+              {"parts": [{"ref": "p1", "name": "lobby"}],
+               "objects": [{"ref": "o1", "name": "lobby doors", "kind": "Fixture"}],
+               "aliases": [],
+               "edges": [
+                 {"beatId": "{{delivery.Beats[0]}}", "edge": "at", "objectId": "o1", "locationId": "{{hospital}}", "partId": "p1", "basis": "stated"},
+                 {"beatId": "{{delivery.Beats[0]}}", "edge": "character_at", "characterId": "{{bryan}}", "partId": "p1", "basis": "stated"},
+                 {"beatId": "{{delivery.Beats[0]}}", "edge": "beat_at", "partId": "p1", "basis": "implied"},
+                 {"beatId": "{{delivery.Beats[0]}}", "edge": "inside", "locationId": "p1", "insideLocationId": "{{hospital}}"}
+               ]}
+              """);
+
+        await using var scope = _services.CreateAsyncScope();
+        var build = await StartBuildAsync(story.Id);
+        Assert.True(await scope.ServiceProvider.GetRequiredService<WorldModelBuildRunner>()
+            .RunAsync(new WorldModelBuildRequested(build, story.Id, _userId), Ct));
+
+        await using var check = _services.CreateAsyncScope();
+        var db = check.ServiceProvider.GetRequiredService<ThePlotDbContext>();
+        Assert.False(await db.LocationParts.IgnoreQueryFilters().AnyAsync(p => p.LocationId == hospital || p.LocationId == lobby, Ct));
+        var nesting = await db.Locations.IgnoreQueryFilters().Where(l => l.Id == hospital || l.Id == lobby).ToDictionaryAsync(l => l.Id, l => l.InsideLocationId, Ct);
+        Assert.Equal((null, hospital), (nesting[hospital], nesting[lobby]));
+        var observations = await db.LocationObservations.IgnoreQueryFilters().Where(o => o.SceneElement.SceneId == delivery.Id).ToListAsync(Ct);
+        Assert.Equal(3, observations.Count);
+        Assert.All(observations, o => Assert.Equal((lobby, (Guid?)null), (o.PlaceLocationId, o.PlacePartId)));
+        var seed = await db.WorldModelBuildSteps.IgnoreQueryFilters().SingleAsync(s => s.BuildId == build && s.Kind == WorldModelStepKind.Seed, Ct);
+        Assert.Contains("cleared the last build's 1 part and 0 objects", seed.Summary);
+    }
+
+    [Fact]
+    public async Task Fixtures_stay_in_their_place_a_location_named_in_a_part_takes_it_and_no_alias_is_shared()
+    {
+        var story = await SeedStoryAsync(
+            ["HOSPITAL", "LOBBY", "TRAUMA WING"],
+            [
+                ("Delivery", "HOSPITAL", "DUSK", ["Bryan strides through the doors to the lobby counter and flashes his tag."]),
+                ("The wing", "TRAUMA WING", "NIGHT", ["Bryan shoves through swinging double doors. A nurse's tag dangles."]),
+            ]);
+        var (lobby, wing) = (story.Locations["LOBBY"], story.Locations["TRAUMA WING"]);
+        var (delivery, ward) = (story.Scenes[0], story.Scenes[1]);
+        _models.Script(delivery.Id, _ => $$"""
+            {"parts": [{"ref": "p1", "name": "lobby: counter", "position": 1}],
+             "objects": [{"ref": "o1", "name": "double doors", "aliases": ["the doors"], "kind": "Fixture"},
+                         {"ref": "o2", "name": "laminated tag", "aliases": ["the tag"], "kind": "Prop"}],
+             "beats": [{"beatId": "{{delivery.Beats[0]}}", "camera": {"partId": "p1"},
+                        "edges": [{"edge": "at", "objectId": "o1", "partId": "p1", "basis": "stated"},
+                                  {"edge": "at", "objectId": "o2", "partId": "p1", "basis": "stated"}]}]}
+            """);
+        _models.Script(ward.Id, _ => $$"""
+            {"parts": [],
+             "objects": [{"ref": "o1", "name": "double doors", "aliases": ["the doors"], "kind": "Fixture"},
+                         {"ref": "o2", "name": "name tag", "aliases": ["the tag", "it"], "kind": "Prop"}],
+             "beats": [{"beatId": "{{ward.Beats[0]}}", "camera": {"locationId": "{{wing}}"},
+                        "edges": [{"edge": "at", "objectId": "o1", "basis": "stated"},
+                                  {"edge": "at", "objectId": "o2", "basis": "stated"}]}]}
+            """);
+
+        await using var scope = _services.CreateAsyncScope();
+        var build = await StartBuildAsync(story.Id);
+        Assert.True(await scope.ServiceProvider.GetRequiredService<WorldModelBuildRunner>()
+            .RunAsync(new WorldModelBuildRequested(build, story.Id, _userId), Ct));
+
+        await using var check = _services.CreateAsyncScope();
+        var db = check.ServiceProvider.GetRequiredService<ThePlotDbContext>();
+        var part = await db.LocationParts.IgnoreQueryFilters().SingleAsync(p => p.Location.StoryId == story.Id, Ct);
+        Assert.Equal((lobby, "counter", (int?)null), (part.LocationId, part.Name, part.Position));
+        var objects = await db.LocationObjects.IgnoreQueryFilters().Where(o => o.StoryId == story.Id).ToListAsync(Ct);
+        Assert.Equal(2, objects.Count(o => o.Name == "double doors"));
+        Assert.Single(objects, o => o.Aliases.Contains("the tag"));
+        Assert.Single(objects, o => o.Aliases.Contains("the doors"));
+        Assert.DoesNotContain(objects, o => o.Aliases.Contains("it"));
+    }
+
+    [Fact]
     public async Task A_build_its_owner_cancelled_is_not_claimed()
     {
         var story = await SeedStoryAsync();
@@ -185,29 +297,38 @@ public sealed class WorldModelBuildRunnerTests(PostgresFixture postgres) : IAsyn
 
     private sealed record SeededScene(Guid Id, List<Guid> Beats);
 
-    private async Task<SeededStory> SeedStoryAsync()
+    private Task<SeededStory> SeedStoryAsync() => SeedStoryAsync(
+        ["PARKING LOT", "TRAUMA WING"],
+        [
+            ("Arrival", "PARKING LOT", "NIGHT", ["Bryan slams the car door and runs."]),
+            ("The wing", "TRAUMA WING", "CONTINUOUS", ["Bryan shoves through the double doors.", "A gurney blocks the hallway; at the far end a light flickers."]),
+            ("Morning", "TRAUMA WING", "DAY", ["An orderly wheels the gurney away."]),
+        ]);
+
+    private async Task<SeededStory> SeedStoryAsync(string[] locationNames, (string Title, string Location, string Time, string[] Beats)[] sceneSpecs)
     {
         await using var scope = _services.CreateAsyncScope();
         using var user = scope.ServiceProvider.GetRequiredService<UserContext>().SetCurrentUser(_userId);
         using var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWorkFactory>().CreateReadWrite("seed");
-        var lot = new Location { Id = Guid.NewGuid(), Name = "PARKING LOT", Setting = LocationSetting.Exterior, Hue = 200 };
-        var wing = new Location { Id = Guid.NewGuid(), Name = "TRAUMA WING", Setting = LocationSetting.Interior, Hue = 20 };
+        var locations = locationNames
+            .Select((name, i) => new Location { Id = Guid.NewGuid(), Name = name, Setting = LocationSetting.Interior, Hue = i * 90 })
+            .ToDictionary(l => l.Name);
         var bryan = new Character { Id = Guid.NewGuid(), Name = "BRYAN", Kind = "Human", Hue = 10 };
         var scenes = new List<SeededScene>();
         var container = new Container { Id = Guid.NewGuid(), Label = "Act I", Position = 0 };
-        foreach (var (title, location, beats) in new[]
-                 {
-                     ("Arrival", lot, new[] { "Bryan slams the car door and runs." }),
-                     ("The wing", wing, new[] { "Bryan shoves through the double doors.", "A gurney blocks the hallway; at the far end a light flickers." }),
-                     ("Morning", wing, new[] { "An orderly wheels the gurney away." }),
-                 })
+        foreach (var (title, location, time, beats) in sceneSpecs)
         {
             var scene = new Scene { Id = Guid.NewGuid(), Title = title, Position = scenes.Count };
-            scene.Elements.Add(new SceneElement { Id = Guid.NewGuid(), Position = 0, Type = SceneElementType.Heading, Location = location, TimeOfDay = "NIGHT" });
+            scene.Elements.Add(new SceneElement { Id = Guid.NewGuid(), Position = 0, Type = SceneElementType.Heading, Location = locations[location], TimeOfDay = time });
             var beatIds = new List<Guid>();
             foreach (var text in beats)
             {
                 var beat = new SceneElement { Id = Guid.NewGuid(), Position = scene.Elements.Count, Type = SceneElementType.Action, Text = text };
+                if (text.IndexOf("Bryan", StringComparison.Ordinal) is >= 0 and var at)
+                {
+                    beat.Mentions.Add(new SceneElementMention { Id = Guid.NewGuid(), Character = bryan, Offset = at, Length = "Bryan".Length });
+                }
+
                 scene.Elements.Add(beat);
                 beatIds.Add(beat.Id);
             }
@@ -216,12 +337,12 @@ public sealed class WorldModelBuildRunnerTests(PostgresFixture postgres) : IAsyn
             scenes.Add(new SeededScene(scene.Id, beatIds));
         }
 
-        var story = new Story { Id = Guid.NewGuid(), Title = "Trauma", Containers = [container], Characters = [bryan], Locations = [lot, wing] };
+        var story = new Story { Id = Guid.NewGuid(), Title = "Trauma", Containers = [container], Characters = [bryan], Locations = [.. locations.Values] };
         await scope.ServiceProvider.GetRequiredService<IStoryRepository>().AddAsync(story, Ct);
         await unitOfWork.CommitAsync(Ct);
         return new SeededStory(
             story.Id,
-            new Dictionary<string, Guid> { [lot.Name] = lot.Id, [wing.Name] = wing.Id },
+            locations.ToDictionary(l => l.Key, l => l.Value.Id),
             new Dictionary<string, Guid> { [bryan.Name] = bryan.Id },
             scenes);
     }

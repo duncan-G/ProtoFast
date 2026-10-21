@@ -5,4 +5,5 @@ public enum WorldModelStepKind
     Seed,
     ReadScene,
     Finish,
+    DescribeLocation,
 }

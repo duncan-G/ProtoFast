@@ -56,6 +56,20 @@ import { WorldSession } from './world-session';
           }
         </header>
 
+        @if (stage.location.description) {
+          <div class="mt-2 max-w-3xl text-sm leading-6 text-gray-700">
+            <p>{{ stage.location.description }}</p>
+            @if (stage.location.contents) {
+              <details class="mt-1">
+                <summary class="cursor-pointer text-xs text-indigo-600">What is in it</summary>
+                <p class="mt-1 whitespace-pre-line">{{ stage.location.contents }}</p>
+              </details>
+            }
+          </div>
+        } @else {
+          <p class="mt-2 text-xs text-gray-400">Not described yet; the next build describes it.</p>
+        }
+
         @if (stage.whole.action || !isEmpty(stage.whole)) {
           <div class="mt-3">
             <ng-container
@@ -128,6 +142,12 @@ import { WorldSession } from './world-session';
           <span class="h-2.5 w-4 rounded-sm ring-2 ring-indigo-500"></span>
           where the beat happens
         </span>
+        <span class="inline-flex items-center gap-1">
+          <span class="rounded-full bg-gray-800 px-1.5 text-[10px] font-medium text-white"
+            >camera</span
+          >
+          where the camera stands
+        </span>
       </div>
     } @else {
       <p
@@ -163,13 +183,29 @@ import { WorldSession } from './world-session';
               {{ partName(tile.part) }}
             </button>
           }
-          @if (tile.action) {
-            <span
-              class="ml-auto rounded-full bg-indigo-600 px-1.5 text-[10px] font-medium text-white"
-              >beat</span
-            >
+          @if (tile.action || tile.camera) {
+            <span class="ml-auto flex gap-1">
+              @if (tile.camera) {
+                <span
+                  class="rounded-full bg-gray-800 px-1.5 text-[10px] font-medium text-white"
+                  title="The camera stands here"
+                  >camera</span
+                >
+              }
+              @if (tile.action) {
+                <span class="rounded-full bg-indigo-600 px-1.5 text-[10px] font-medium text-white"
+                  >beat</span
+                >
+              }
+            </span>
           }
         </div>
+        @if (tile.camera?.other; as toward) {
+          <p class="mt-1 text-[11px] text-gray-600">
+            <span class="text-gray-400">camera looks toward</span>
+            <app-world-place [place]="toward" />
+          </p>
+        }
 
         @if (tile.objects.length) {
           <div class="mt-1.5 flex flex-wrap gap-1">
@@ -235,7 +271,7 @@ export class WorldStage {
   protected readonly kindSwatch = KIND_SWATCH;
 
   protected readonly here = computed(
-    () => this.session.stage()?.location.id === this.session.sceneLocation(),
+    () => this.session.stage()?.location.id === this.session.actionLocation(),
   );
 
   protected readonly visited = computed(() => {
@@ -255,7 +291,11 @@ export class WorldStage {
 
   protected isEmpty(tile: StageTile): boolean {
     return (
-      !tile.objects.length && !tile.characters.length && !tile.ways.length && !tile.children.length
+      !tile.objects.length &&
+      !tile.characters.length &&
+      !tile.ways.length &&
+      !tile.children.length &&
+      !tile.camera
     );
   }
 

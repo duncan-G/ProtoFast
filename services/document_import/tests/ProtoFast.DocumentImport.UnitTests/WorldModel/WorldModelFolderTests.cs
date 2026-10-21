@@ -54,19 +54,44 @@ public sealed class WorldModelFolderTests
     }
 
     [Fact]
-    public void A_stated_observation_beats_an_implied_one_and_an_authors_beats_both()
+    public void A_later_beat_moves_a_prop_whatever_said_where_it_was()
     {
         var graph = WorldModelFolder.Fold(
         [
             At(S2, 1, Gurney, Wing, Middle, ObservationBasis.Stated),
             At(S2, 3, Gurney, Wing, End, ObservationBasis.Implied),
-            At(S2, 5, Gurney, Wing, Start, ObservationBasis.Implied, ObservationOrigin.Author),
-            At(S2, 7, Gurney, Wing, Bay, ObservationBasis.Stated),
         ], [S1, S2, S5], Kinds);
 
-        var place = Assert.Single(graph.ObjectsIn(Wing, S5.Start), f => f.ObjectId == Gurney).Place;
-        Assert.Equal(new PlaceRef(Wing, Start), place);
+        Assert.Equal(new PlaceRef(Wing, End), Assert.Single(graph.ObjectsIn(Wing, S5.Start), f => f.ObjectId == Gurney).Place);
+        Assert.Empty(graph.Conflicts);
+    }
+
+    [Fact]
+    public void A_fixture_moves_only_on_a_word_that_outranks_where_it_was_said_to_be()
+    {
+        var graph = WorldModelFolder.Fold(
+        [
+            At(S2, 1, Doors, Wing, Start, ObservationBasis.Stated),
+            At(S2, 3, Doors, Wing, End, ObservationBasis.Implied),
+            At(S2, 5, Doors, Wing, Middle, ObservationBasis.Implied, ObservationOrigin.Author),
+            At(S2, 7, Doors, Wing, Bay, ObservationBasis.Stated),
+        ], [S1, S2, S5], Kinds);
+
+        Assert.Equal(new PlaceRef(Wing, Middle), Assert.Single(graph.ObjectsIn(Wing, S5.Start), f => f.ObjectId == Doors).Place);
         Assert.Equal(2, graph.Conflicts.Count);
+    }
+
+    [Fact]
+    public void Two_words_on_the_same_beat_keep_the_higher_ranked()
+    {
+        var graph = WorldModelFolder.Fold(
+        [
+            CharacterAt(S2, 2, Bryan, Wing, Middle) with { Basis = ObservationBasis.Stated },
+            CharacterAt(S2, 2, Bryan, Wing, End),
+        ], [S1, S2, S5], Kinds);
+
+        Assert.Equal(new PlaceRef(Wing, Middle), graph.CharactersAt(S5.Start)[Bryan].Place);
+        Assert.Single(graph.Conflicts);
     }
 
     [Fact]
@@ -115,6 +140,61 @@ public sealed class WorldModelFolderTests
         Assert.Equal(new PlaceRef(Wing, Start), graph.CharactersAt(S5.Start)[Bryan].Place);
     }
 
+    [Fact]
+    public void The_camera_follows_each_beat_and_spans_only_its_scene()
+    {
+        var graph = WorldModelFolder.Fold(
+        [
+            Camera(S2, 1, Wing, End, toward: Start),
+            Camera(S2, 2, Wing, End, toward: Start),
+            Camera(S2, 4, Wing, Middle, toward: End, ObservationBasis.Stated),
+            Camera(S2, 6, Wing, End, toward: null),
+        ], [S1, S2, S5], Kinds);
+
+        var opening = graph.CameraAt(S2.SceneId, S2.Start);
+        Assert.Equal(new PlaceRef(Wing, End), opening?.Place);
+        Assert.Equal(new PlaceRef(Wing, Start), opening?.Other);
+        Assert.Equal(new PlaceRef(Wing, Middle), graph.CameraAt(S2.SceneId, new StoryTime(0, 1, 5))?.Place);
+
+        var last = graph.CameraAt(S2.SceneId, new StoryTime(0, 1, 6));
+        Assert.Equal(new PlaceRef(Wing, End), last?.Place);
+        Assert.Null(last?.Other);
+        Assert.Equal(S2.End, last?.End);
+        Assert.Null(graph.CameraAt(S2.SceneId, S5.Start));
+        Assert.Equal(3, graph.Facts.Count(f => f.Edge == ObservationEdge.Camera));
+        Assert.Empty(graph.Conflicts);
+    }
+
+    [Fact]
+    public void A_held_object_is_put_down_where_its_holder_ends_the_scene()
+    {
+        var graph = WorldModelFolder.Fold(
+        [
+            At(S2, 1, Gurney, Wing, Start) with { CharacterId = Bryan },
+            At(S2, 3, Gurney, Wing, End) with { CharacterId = Bryan },
+        ], [S1, S2, S5], Kinds);
+
+        Assert.Equal(Bryan, Assert.Single(graph.ObjectsIn(Wing, new StoryTime(0, 1, 4))).CharacterId);
+        var putDown = Assert.Single(graph.ObjectsIn(Wing, S5.Start));
+        Assert.Null(putDown.CharacterId);
+        Assert.Equal(new PlaceRef(Wing, End), putDown.Place);
+        Assert.Equal(Gurney, Assert.Single(graph.PutDownBy(Bryan, S2.SceneId, S5.Start)).ObjectId);
+        Assert.Empty(graph.PutDownBy(Bryan, S5.SceneId, S5.End));
+    }
+
+    [Fact]
+    public void Putting_a_held_object_down_where_it_is_changes_the_fact()
+    {
+        var graph = WorldModelFolder.Fold(
+        [
+            At(S2, 1, Gurney, Wing, Start) with { CharacterId = Bryan },
+            At(S2, 3, Gurney, Wing, Start),
+        ], [S1, S2, S5], Kinds);
+
+        Assert.Null(Assert.Single(graph.ObjectsIn(Wing, new StoryTime(0, 1, 4))).CharacterId);
+        Assert.Empty(graph.PutDownBy(Bryan, S2.SceneId, S5.Start));
+    }
+
     private static ObservationRow At(
         SceneSlot scene, int beat, Guid objectId, Guid? location, Guid? part,
         ObservationBasis basis = ObservationBasis.Stated, ObservationOrigin origin = ObservationOrigin.Extracted) =>
@@ -142,6 +222,13 @@ public sealed class WorldModelFolderTests
         Row(scene, beat, ObservationEdge.BeatAt, ObservationBasis.Implied, ObservationOrigin.Extracted) with
         {
             PlaceLocationId = location, PlacePartId = part,
+        };
+
+    private static ObservationRow Camera(
+        SceneSlot scene, int beat, Guid location, Guid? part, Guid? toward, ObservationBasis basis = ObservationBasis.Implied) =>
+        Row(scene, beat, ObservationEdge.Camera, basis, ObservationOrigin.Extracted) with
+        {
+            PlaceLocationId = location, PlacePartId = part, OtherLocationId = toward is null ? null : location, OtherPartId = toward,
         };
 
     private static ObservationRow Row(SceneSlot scene, int beat, ObservationEdge edge, ObservationBasis basis, ObservationOrigin origin) =>

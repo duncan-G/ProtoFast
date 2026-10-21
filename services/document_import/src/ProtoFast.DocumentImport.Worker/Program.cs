@@ -3,9 +3,11 @@ using ProtoFast.DocumentImport.Core;
 using ProtoFast.DocumentImport.Data;
 using ProtoFast.DocumentImport.Data.Sqs;
 using ProtoFast.DocumentImport.Engine;
+using ProtoFast.DocumentImport.History;
 using ProtoFast.DocumentImport.Screenplay;
 using ProtoFast.DocumentImport.Worker;
 using ProtoFast.DocumentImport.Worker.Briefing;
+using ProtoFast.DocumentImport.Worker.HistoricalStories;
 using ProtoFast.DocumentImport.Worker.Import;
 using ProtoFast.DocumentImport.Worker.WorldModel;
 using ProtoFast.ServiceDefaults;
@@ -60,5 +62,12 @@ builder.Services.AddHostedService<RunBriefingService>();
 
 // World model builds a writer asks for, read scene by scene with the same models.
 builder.Services.AddWorldModelBuilding(options => builder.Configuration.GetSection("WorldModel").Bind(options));
+
+// Stories written from the history corpus: development only, and only with its database attached.
+if (builder.Environment.IsDevelopment() && builder.Configuration.GetConnectionString(HistoryDatabase.ConnectionName) is { Length: > 0 })
+{
+    builder.AddKeyedNpgsqlDataSource(HistoryDatabase.ConnectionName);
+    builder.Services.AddHistoricalStories(options => builder.Configuration.GetSection("HistoricalStories").Bind(options));
+}
 
 builder.Build().Run();

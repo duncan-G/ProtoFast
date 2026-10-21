@@ -45,10 +45,10 @@ public sealed class StoryWorldTests(StoryDatabase database)
             foreach (var observation in new[]
                      {
                          At(s1b1, gurney.Id, wingId, middle.Id, ObservationBasis.Stated),
-                         At(s1b2, gurney.Id, wingId, null, ObservationBasis.Implied),
-                         At(s1b2, light.Id, wingId, null, ObservationBasis.Implied),
+                         At(s1b2, light.Id, wingId, null, ObservationBasis.Stated),
                          State(s1b2, light.Id, "lit", "flickering"),
                          At(s2b1, gurney.Id, null, null, ObservationBasis.Stated),
+                         At(s2b1, light.Id, wingId, middle.Id, ObservationBasis.Implied),
                          At(s2b2, light.Id, wingId, null, ObservationBasis.Stated),
                          State(s2b2, light.Id, "lit", "steady"),
                      })
@@ -73,7 +73,7 @@ public sealed class StoryWorldTests(StoryDatabase database)
         Assert.Equal([(2, 5, "flickering"), (5, 6, "steady")],
             world.Facts.Where(f => f.Edge == WorldEdge.State).OrderBy(f => f.Start).Select(f => (f.Start, f.End, f.Value)));
         var lost = Assert.Single(world.Conflicts);
-        Assert.Equal((world.Facts.IndexOf(gurneyAt), 2, WorldBasis.Implied), (lost.Fact, lost.Moment, lost.Basis));
+        Assert.Equal((world.Facts.IndexOf(lightAt), 4, WorldBasis.Implied), (lost.Fact, lost.Moment, lost.Basis));
         Assert.Equal(WorldObjectKind.Fixture, Assert.Single(world.Objects, o => o.Name == "light").Kind);
     }
 

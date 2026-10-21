@@ -15,6 +15,7 @@ public static class WorldModelServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<WorldModelLedger>();
         services.AddSingleton<SceneReader>();
+        services.AddSingleton<LocationDescriber>();
         services.AddScoped<StoryLoader>();
         services.AddScoped<ObservationApplier>();
         services.AddScoped<WorldModelBuildRunner>();

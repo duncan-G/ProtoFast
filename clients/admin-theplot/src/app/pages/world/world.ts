@@ -3,21 +3,24 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
   inject,
   input,
   signal,
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
-import { WorldModelBuildStatus } from '../../../lib/gen/Admin/Theplot/theplot_world_models_pb';
+import type { WorldModelBuildHeader } from '../../../lib/gen/Admin/Theplot/theplot_world_models_pb';
+import { usd } from '../../engine/format';
 import { errorMessage, TheplotAdminApi } from '../../theplot-admin';
-import { BUILD_STATUS_CLASS, BUILD_STATUS_LABEL } from '../../world-models/format';
+import { BUILD_STATUS_CLASS, BUILD_STATUS_LABEL, isBuildActive } from '../../world-models/format';
 import { worldOf } from '../../world/world';
 import { WorldCast } from '../../world/world-cast';
 import { WorldConflicts } from '../../world/world-conflicts';
 import { WorldInspector } from '../../world/world-inspector';
 import { WorldMap } from '../../world/world-map';
 import { WorldNow } from '../../world/world-now';
+import { WorldPictures } from '../../world/world-pictures';
 import { WorldSession, type WorldTab } from '../../world/world-session';
 import { WorldStage } from '../../world/world-stage';
 import { WorldTimeline } from '../../world/world-timeline';
@@ -28,6 +31,8 @@ const TABS: { id: WorldTab; label: string }[] = [
   { id: 'cast', label: 'Cast' },
   { id: 'conflicts', label: 'Conflicts' },
 ];
+
+const POLL_MS = 10_000;
 
 /** The moment, tab and pinned place live in the query string, so a view can be shared. */
 @Component({
@@ -42,7 +47,7 @@ const TABS: { id: WorldTab; label: string }[] = [
     WorldStage,
     WorldTimeline,
   ],
-  providers: [WorldSession],
+  providers: [WorldSession, WorldPictures],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '(document:keydown)': 'key($event)' },
   template: `
@@ -64,7 +69,7 @@ const TABS: { id: WorldTab; label: string }[] = [
       }
 
       @if (session.world(); as world) {
-        @let build = world.reply.latestBuild;
+        @let build = latest();
         <header class="mt-3 flex flex-wrap items-end gap-x-4 gap-y-2">
           <div class="min-w-0">
             <h1 class="text-2xl font-bold text-gray-900">
@@ -79,18 +84,41 @@ const TABS: { id: WorldTab; label: string }[] = [
               {{ world.facts.length }} facts
             </p>
           </div>
-          @if (build) {
-            <div class="ml-auto flex items-center gap-2 text-sm">
+          <div class="ml-auto flex items-center gap-2 text-sm">
+            @if (build) {
               <span [class]="statusClass[build.status]">{{ statusLabel[build.status] }}</span>
               <span class="text-gray-500"
-                >{{ build.scenesDone }} of {{ build.scenesTotal }} scenes read</span
+                >{{ build.scenesDone }} of {{ build.scenesTotal }} scenes read ·
+                {{ usd(build.costUsdMicros) }}</span
               >
               <a [routerLink]="['/world-models', build.id]" class="text-indigo-600 hover:underline"
-                >Build</a
+                >Steps</a
               >
-            </div>
-          }
+            }
+            @if (active()) {
+              <button
+                type="button"
+                class="rounded-lg border border-red-300 px-3 py-1.5 font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                [disabled]="busy()"
+                (click)="stop()"
+              >
+                Stop
+              </button>
+            } @else {
+              <button
+                type="button"
+                class="rounded-lg bg-indigo-600 px-3 py-1.5 font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+                [disabled]="busy()"
+                (click)="start()"
+              >
+                {{ build ? 'Build again' : 'Build world' }}
+              </button>
+            }
+          </div>
         </header>
+        @if (problem()) {
+          <p class="mt-2 text-sm text-red-700">{{ problem() }}</p>
+        }
 
         @if (!world.facts.length) {
           <div
@@ -99,10 +127,9 @@ const TABS: { id: WorldTab; label: string }[] = [
             <p class="font-medium text-gray-900">No world yet</p>
             <p class="mt-1 text-sm text-gray-600">
               @if (!build) {
-                The writer has not built this story's world model. They start one with the World
-                button in the scene editor.
+                This story's world model has never been built.
               } @else if (active()) {
-                A build is still going. Reload when it finishes.
+                A build is still going; the world appears when it finishes.
               } @else {
                 The last build left no facts.
                 @if (build.failure) {
@@ -177,6 +204,7 @@ export class StoryWorld {
   protected readonly session = inject(WorldSession);
   private readonly api = inject(TheplotAdminApi);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly id = input.required<string>();
   readonly m = input<string>();
@@ -186,19 +214,22 @@ export class StoryWorld {
   protected readonly tabs = TABS;
   protected readonly statusLabel = BUILD_STATUS_LABEL;
   protected readonly statusClass = BUILD_STATUS_CLASS;
+  protected readonly usd = usd;
   protected readonly error = signal('');
+  protected readonly problem = signal('');
+  protected readonly busy = signal(false);
+  protected readonly latest = signal<WorldModelBuildHeader | null>(null);
   protected readonly title = computed(() => this.session.world()?.reply.storyTitle ?? '');
   protected readonly active = computed(() => {
-    const status = this.session.world()?.reply.latestBuild?.status;
-    return (
-      status === WorldModelBuildStatus.QUEUED ||
-      status === WorldModelBuildStatus.RUNNING ||
-      status === WorldModelBuildStatus.RETRYING
-    );
+    const build = this.latest();
+    return build !== null && isBuildActive(build.status);
   });
+
+  private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     afterNextRender(() => void this.load());
+    this.destroyRef.onDestroy(() => this.stopPolling());
     effect(() => {
       if (!this.session.world()) {
         return;
@@ -241,11 +272,66 @@ export class StoryWorld {
     }
   }
 
+  protected async start(): Promise<void> {
+    await this.act(() => this.api.worldModels.startBuild({ storyId: this.id() }));
+  }
+
+  protected async stop(): Promise<void> {
+    const build = this.latest();
+    if (build) {
+      await this.act(() => this.api.worldModels.cancelBuild({ buildId: build.id }));
+    }
+  }
+
+  private async act(call: () => Promise<{ build?: WorldModelBuildHeader }>): Promise<void> {
+    this.busy.set(true);
+    this.problem.set('');
+    try {
+      this.follow((await call()).build ?? null);
+    } catch (err) {
+      this.problem.set(errorMessage(err));
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  private follow(build: WorldModelBuildHeader | null): void {
+    this.latest.set(build);
+    this.stopPolling();
+    if (build && isBuildActive(build.status)) {
+      this.timer = setTimeout(() => void this.poll(), POLL_MS);
+    }
+  }
+
+  /** The world is read again once the build ends; a failed poll is tried again on the next tick. */
+  private async poll(): Promise<void> {
+    this.timer = null;
+    try {
+      const reply = await this.api.worldModels.listBuilds({ storyId: this.id(), pageSize: 1 });
+      const build = reply.builds[0] ?? null;
+      if (build && isBuildActive(build.status)) {
+        this.follow(build);
+      } else {
+        await this.load();
+      }
+    } catch {
+      this.timer = setTimeout(() => void this.poll(), POLL_MS);
+    }
+  }
+
+  private stopPolling(): void {
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+  }
+
   private async load(): Promise<void> {
     try {
       const reply = await this.api.worldModels.getWorld({ storyId: this.id() });
       const world = worldOf(reply);
       this.session.world.set(world);
+      this.follow(reply.latestBuild ?? null);
       this.session.go(Number(this.m()) || 0);
       const tab = TABS.find((t) => t.id === this.tab());
       if (tab) {

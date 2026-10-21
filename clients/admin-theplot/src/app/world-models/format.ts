@@ -33,6 +33,7 @@ export const STEP_KIND_LABEL: Record<WorldModelStepKind, string> = {
   [WorldModelStepKind.SEED]: 'Seed',
   [WorldModelStepKind.READ_SCENE]: 'Read scene',
   [WorldModelStepKind.FINISH]: 'Finish',
+  [WorldModelStepKind.DESCRIBE_LOCATION]: 'Describe location',
 };
 
 export const STEP_STATUS_LABEL: Record<WorldModelStepStatus, string> = {

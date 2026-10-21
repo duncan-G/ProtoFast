@@ -14,7 +14,7 @@ public sealed class CrossSceneConnectionsTests
     private static readonly SceneSlot S2 = new(Guid.NewGuid(), Wing, 0, 1);
 
     [Fact]
-    public void A_character_who_leaves_one_place_and_arrives_at_another_connects_them_through_the_way_out()
+    public void A_character_who_leaves_one_place_and_turns_up_at_another_in_the_next_scene_connects_them()
     {
         var arrival = Guid.NewGuid();
         List<ObservationRow> observations =
@@ -25,10 +25,32 @@ public sealed class CrossSceneConnectionsTests
         ];
         var graph = WorldModelFolder.Fold(observations, [S1, S2], new Dictionary<Guid, ObjectKind>());
 
-        var connection = Assert.Single(CrossSceneConnections.Find(observations, [S1, S2], graph));
+        var connection = Assert.Single(CrossSceneConnections.Find(observations, [S1, S2], graph, new HashSet<Guid> { S2.SceneId }));
 
-        Assert.Equal((arrival, new PlaceRef(Lot, null), new PlaceRef(Wing, null), Gate), (connection.SceneElementId, connection.From, connection.To, connection.ViaObjectId));
+        Assert.Equal((arrival, new PlaceRef(Lot, null), new PlaceRef(Wing, null)), (connection.SceneElementId, connection.From, connection.To));
     }
+
+    [Fact]
+    public void A_scene_that_does_not_follow_on_gives_no_way_through()
+    {
+        List<ObservationRow> observations =
+        [
+            Row(S1, 0, ObservationEdge.CharacterAt) with { CharacterId = Bryan, PlaceLocationId = Lot },
+            Row(S2, 0, ObservationEdge.CharacterAt) with { CharacterId = Bryan, PlaceLocationId = Wing },
+        ];
+        var graph = WorldModelFolder.Fold(observations, [S1, S2], new Dictionary<Guid, ObjectKind>());
+
+        Assert.Empty(CrossSceneConnections.Find(observations, [S1, S2], graph, new HashSet<Guid>()));
+    }
+
+    [Theory]
+    [InlineData("CONTINUOUS", true)]
+    [InlineData("moments later", true)]
+    [InlineData("NIGHT", false)]
+    [InlineData("LATER", false)]
+    [InlineData(null, false)]
+    public void A_heading_time_says_whether_a_scene_follows_on(string? time, bool followsOn) =>
+        Assert.Equal(followsOn, SceneContinuity.FollowsOn(time));
 
     [Fact]
     public void A_way_the_story_already_knows_is_not_added_again()
@@ -41,7 +63,21 @@ public sealed class CrossSceneConnectionsTests
         ];
         var graph = WorldModelFolder.Fold(observations, [S1, S2], new Dictionary<Guid, ObjectKind>());
 
-        Assert.Empty(CrossSceneConnections.Find(observations, [S1, S2], graph));
+        Assert.Empty(CrossSceneConnections.Find(observations, [S1, S2], graph, new HashSet<Guid> { S2.SceneId }));
+    }
+
+    [Fact]
+    public void A_way_between_other_parts_of_the_two_locations_is_enough()
+    {
+        List<ObservationRow> observations =
+        [
+            Row(S1, 0, ObservationEdge.CharacterAt) with { CharacterId = Bryan, PlaceLocationId = Lot, PlacePartId = Guid.NewGuid() },
+            Row(S1, 1, ObservationEdge.Connects) with { PlaceLocationId = Lot, PlacePartId = Guid.NewGuid(), OtherLocationId = Wing },
+            Row(S2, 0, ObservationEdge.CharacterAt) with { CharacterId = Bryan, PlaceLocationId = Wing, PlacePartId = Guid.NewGuid() },
+        ];
+        var graph = WorldModelFolder.Fold(observations, [S1, S2], new Dictionary<Guid, ObjectKind>());
+
+        Assert.Empty(CrossSceneConnections.Find(observations, [S1, S2], graph, new HashSet<Guid> { S2.SceneId }));
     }
 
     private static ObservationRow Row(SceneSlot scene, int beat, ObservationEdge edge, Guid? elementId = null) =>

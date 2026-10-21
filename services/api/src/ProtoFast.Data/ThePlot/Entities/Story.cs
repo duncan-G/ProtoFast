@@ -10,6 +10,9 @@ public sealed class Story : IDateStamped
 
     public required string Title { get; set; }
 
+    /// <summary>The open story this one was copied from; it may since have been withdrawn.</summary>
+    public Guid? SourceStoryId { get; set; }
+
     public List<Container> Containers { get; set; } = [];
 
     public List<Character> Characters { get; set; } = [];

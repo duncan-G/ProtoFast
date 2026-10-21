@@ -41,6 +41,20 @@ var protofastDb = postgres
     .AddDatabase("protofast-db", databaseName: "protofast")
     .WithSchemaMigrations<Projects.ProtoFast_SchemaMigrations>(builder);
 
+// Development only: Project Gutenberg's American history books, which the theplot console's
+// History page writes stories from. Empty until the history-loader resource is started by hand;
+// its tables are created by whichever of the api, worker and loader starts first.
+IResourceBuilder<PostgresDatabaseResource>? historyDb = null;
+if (!builder.ExecutionContext.IsPublishMode)
+{
+    historyDb = postgres.AddDatabase("history-db", databaseName: "history");
+    builder.AddProject<Projects.ProtoFast_DocumentImport_HistoryLoader>("history-loader")
+        .WithReference(historyDb, connectionName: "history")
+        .WaitFor(historyDb)
+        .WithOtlpCollectorReference(otel)
+        .WithExplicitStart();
+}
+
 var redis = builder.AddRedis("redis");
 
 const string documentUploadBucket = "protofast-document-upload";
@@ -223,6 +237,11 @@ var api = builder.AddProject<Projects.ProtoFast_Api>("api")
     .WithOtlpCollectorReference(otel)
     .WithSsoProfile();
 
+if (historyDb is not null)
+{
+    api.WithReference(historyDb, connectionName: "history").WaitFor(historyDb);
+}
+
 // Document → Markdown conversion. Reads uploads from and writes Markdown to the same bucket.
 var conversion = builder
     .AddConversionService("conversion", documentUploadBucket)
@@ -232,7 +251,7 @@ var conversion = builder
 // Document import: drains the upload queue, runs the agent workflow engine over each document and
 // saves the resulting story; also drains the world-model queue, reading a story's scenes into its
 // location graph. Shares the api's bucket, database and model API keys.
-builder.AddProject<Projects.ProtoFast_DocumentImport_Worker>("document-import")
+var documentImport = builder.AddProject<Projects.ProtoFast_DocumentImport_Worker>("document-import")
     .WithReference(protofastDb, connectionName: "protofast")
     .WaitFor(protofastDb)
     .WithLocalStackS3(localstack, envPrefix: "DocumentImport_", bucket: documentUploadBucket)
@@ -242,6 +261,11 @@ builder.AddProject<Projects.ProtoFast_DocumentImport_Worker>("document-import")
     .WithEnvironment("DocumentImport_Conversion__BaseUrl", conversion.GetEndpoint("http"))
     .WithOtlpCollectorReference(otel)
     .WithSsoProfile();
+
+if (historyDb is not null)
+{
+    documentImport.WithReference(historyDb, connectionName: "history").WaitFor(historyDb);
+}
 
 // Envoy Proxy
 var proxy = builder.AddEnvoyProxy("envoy", useSsrHost)

@@ -50,7 +50,11 @@ public sealed class StoryLoader(
                     e.LocationId,
                     e.TimeOfDay,
                     Speaker = e.Speaker != null ? e.Speaker.Name : null,
+                    e.SpeakerId,
                     e.Parenthetical,
+                    e.Extension,
+                    e.Transition,
+                    Mentioned = e.Mentions.Where(m => m.CharacterId != null).Select(m => m.CharacterId!.Value).ToList(),
                 }).ToList(),
             },
             ct);
@@ -58,17 +62,31 @@ public sealed class StoryLoader(
         var sceneInfos = rows.Select(s =>
         {
             var heading = s.Elements.FirstOrDefault(e => e.Type == SceneElementType.Heading);
-            var beats = s.Elements
-                .Where(e => BeatTypes.Contains(e.Type) && !string.IsNullOrWhiteSpace(e.Text))
-                .Select(e => new BeatInfo(e.Id, e.Type, e.Text!, e.Speaker, e.Parenthetical))
-                .ToList();
-            return new SceneInfo(s.Id, s.Title, s.Container, s.Position, heading?.LocationId, heading?.TimeOfDay, beats);
+            var beats = new List<BeatInfo>();
+            string? cut = null;
+            foreach (var e in s.Elements)
+            {
+                if (e.Type == SceneElementType.Transition && beats.Count > 0)
+                {
+                    cut = e.Transition;
+                }
+                else if (BeatTypes.Contains(e.Type) && !string.IsNullOrWhiteSpace(e.Text))
+                {
+                    beats.Add(new BeatInfo(e.Id, e.Type, e.Text!, e.Speaker, e.Parenthetical, e.SpeakerId, e.Extension, cut));
+                    cut = null;
+                }
+            }
+
+            // A voice over the scene puts no one in it, neither its speaker nor whom it names.
+            var present = s.Elements.Where(e => !beats.Any(b => b.Id == e.Id && b.IsVoiceOver)).ToList();
+            var cast = present.SelectMany(e => e.Mentioned).Concat(present.Where(e => e.SpeakerId != null).Select(e => e.SpeakerId!.Value)).ToHashSet();
+            return new SceneInfo(s.Id, s.Title, s.Container, s.Position, heading?.LocationId, heading?.TimeOfDay, beats, cast);
         }).ToList();
 
         return new StorySnapshot(
             story.Id,
             story.Title,
-            story.Locations.Select(l => new LocationInfo(l.Id, l.Name, l.InsideLocationId)).ToList(),
+            story.Locations.Select(l => new LocationInfo(l.Id, l.Name, l.InsideLocationId, l.Setting)).ToList(),
             story.Characters.Select(c => new CharacterInfo(c.Id, c.Name)).ToList(),
             story.Props.Select(p => new PropInfo(p.Id, p.Name)).ToList(),
             sceneInfos);
@@ -78,14 +96,14 @@ public sealed class StoryLoader(
     {
         using var unitOfWork = unitOfWorkFactory.CreateReadOnly(nameof(LoadGraphAsync));
         var locationRows = await locations.GetByQueryAsync(
-            locationQueries.Create().InStory(storyId).ByName(), l => new { l.Id, l.Name, l.InsideLocationId }, ct);
+            locationQueries.Create().InStory(storyId).ByName(), l => new { l.Id, l.Name, l.InsideLocationId, l.Setting }, ct);
         var partRows = await parts.GetByQueryAsync(
             partQueries.Create().InStory(storyId).InOrder(),
             p => new { p.Id, p.LocationId, p.ParentPartId, p.Name, p.Description, p.Position },
             ct);
         var objectRows = await objects.GetByQueryAsync(
             objectQueries.Create().InStory(storyId).ByName(),
-            o => new { o.Id, o.Name, o.Aliases, o.Kind, o.Description },
+            o => new { o.Id, o.Name, o.Aliases, o.Kind, o.Description, o.PropId },
             ct);
         var observationRows = await observations.GetByQueryAsync(
             observationQueries.Create().InStory(storyId).InStoryOrder(),
@@ -113,9 +131,9 @@ public sealed class StoryLoader(
             ct);
 
         return new GraphSnapshot(
-            locationRows.Select(l => new LocationInfo(l.Id, l.Name, l.InsideLocationId)).ToList(),
+            locationRows.Select(l => new LocationInfo(l.Id, l.Name, l.InsideLocationId, l.Setting)).ToList(),
             partRows.Select(p => new PartInfo(p.Id, p.LocationId, p.ParentPartId, p.Name, p.Description, p.Position)).ToList(),
-            objectRows.Select(o => new ObjectInfo(o.Id, o.Name, o.Aliases, o.Kind, o.Description)).ToList(),
+            objectRows.Select(o => new ObjectInfo(o.Id, o.Name, o.Aliases, o.Kind, o.Description, o.PropId)).ToList(),
             observationRows.Select(o => new ObservationRow(
                 o.Id, o.SceneElementId, o.SceneId, new StoryTime(o.Container, o.Scene, o.Beat), o.Edge,
                 o.ObjectId, o.CharacterId, o.PlaceLocationId, o.PlacePartId, o.OtherLocationId, o.OtherPartId,

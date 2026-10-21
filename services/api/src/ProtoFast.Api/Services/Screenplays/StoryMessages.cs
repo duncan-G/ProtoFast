@@ -244,5 +244,5 @@ public static class StoryMessages
             ? (AvatarShapeRecord)((int)shape - 1)
             : throw StoryErrors.Invalid("Pick an avatar shape.");
 
-    private static long UnixSeconds(DateTime utc) => new DateTimeOffset(utc, TimeSpan.Zero).ToUnixTimeSeconds();
+    internal static long UnixSeconds(DateTime utc) => new DateTimeOffset(utc, TimeSpan.Zero).ToUnixTimeSeconds();
 }

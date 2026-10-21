@@ -4,9 +4,21 @@ import {
   WorldEdge,
   WorldFactSchema,
   WorldObjectKind,
+  WorldViewSchema,
 } from '../../lib/gen/Admin/Theplot/theplot_world_models_pb';
+import { beatRuns, viewLabel } from './labels';
 import { layoutMap } from './map-layout';
-import { castAt, changeCounts, changesAt, holdingAt, stageOf, worldOf } from './world';
+import {
+  actionAt,
+  castAt,
+  changeCounts,
+  changesAt,
+  historyOf,
+  holdingAt,
+  isPhysical,
+  stageOf,
+  worldOf,
+} from './world';
 
 // Moments: 0 opens scene 1 in the wing, 1–2 are its beats; 3 opens scene 2 in the lot, 4 is its beat.
 const reply = create(GetWorldReplySchema, {
@@ -106,7 +118,21 @@ describe('world', () => {
       WorldEdge.CONNECTS,
       WorldEdge.BEAT_AT,
     ]);
-    expect(changeCounts(world)[2]).toBe(3);
+    expect(changeCounts(world)[2]).toBe(2);
+  });
+
+  it('counts only fixtures, dressing, their states and ways as changes to a place', () => {
+    const at = (key: string) => world.facts.find((f) => f.key === key)!;
+    expect(
+      ['at:gurney', 'at:doors', 'state:doors:open', 'connects:end|lot', 'character:bryan'].map(
+        (key) => isPhysical(world, at(key)),
+      ),
+    ).toEqual([false, true, true, true, false]);
+    expect(historyOf(world, { kind: 'location', id: 'wing' }).map((f) => f.key)).toEqual([
+      'at:doors',
+      'state:doors:open',
+      'connects:end|lot',
+    ]);
   });
 
   it('lays a location out by its parts, marking what changed, what carried over and where the beat is', () => {
@@ -136,6 +162,87 @@ describe('world', () => {
 
     const lot = stageOf(world, 'lot', 3, holdingAt(world, 3))!;
     expect(lot.whole.ways.map((w) => w.to.partId)).toEqual(['end']);
+  });
+
+  it('follows the beat to another place until the next scene opens at its heading’s', () => {
+    const lobby = worldOf(
+      create(GetWorldReplySchema, {
+        scenes: reply.scenes,
+        locations: reply.locations,
+        facts: [
+          fact(WorldEdge.BEAT_AT, 'beat:lot', 1, 5, { place: { locationId: 'lot' } }),
+          fact(WorldEdge.BEAT_AT, 'beat:wing', 2, 5, { place: { locationId: 'wing' } }),
+        ],
+      }),
+    );
+    expect([0, 1, 2, 3].map((m) => actionAt(lobby, m, holdingAt(lobby, m)))).toEqual([
+      'wing',
+      'lot',
+      'wing',
+      'lot',
+    ]);
+  });
+
+  it('marks where the camera stands and looks, without counting it as a change', () => {
+    const filmed = worldOf(
+      create(GetWorldReplySchema, {
+        scenes: reply.scenes,
+        locations: reply.locations,
+        parts: reply.parts,
+        facts: [
+          fact(WorldEdge.CAMERA, 'camera:s1', 0, 2, {
+            place: { locationId: 'wing', partId: 'end' },
+            other: { locationId: 'wing', partId: 'middle' },
+            said: 1,
+          }),
+          fact(WorldEdge.CAMERA, 'camera:s1', 2, 3, {
+            place: { locationId: 'wing', partId: 'middle' },
+          }),
+        ],
+      }),
+    );
+    const [middle, end] = stageOf(filmed, 'wing', 1, holdingAt(filmed, 1))!.tiles;
+    expect([middle.camera, end.camera?.other?.partId]).toEqual([undefined, 'middle']);
+    expect(stageOf(filmed, 'wing', 2, holdingAt(filmed, 2))!.tiles[0].camera).toBeDefined();
+    expect(changesAt(filmed, 2).map((c) => [c.edge, c.kind])).toEqual([
+      [WorldEdge.CAMERA, 'changed'],
+    ]);
+    expect(changeCounts(filmed)[2]).toBe(0);
+  });
+
+  it('films each moment from its view, an opening from its scene’s first', () => {
+    const end = { locationId: 'wing', partId: 'end' };
+    const middle = { locationId: 'wing', partId: 'middle' };
+    const filmed = worldOf(
+      create(GetWorldReplySchema, {
+        scenes: reply.scenes,
+        locations: reply.locations,
+        parts: reply.parts,
+        views: [
+          { scene: 0, camera: end, toward: middle, moments: [1] },
+          { scene: 0, camera: middle, toward: end, moments: [2] },
+          { scene: 1, camera: { locationId: 'lot' }, moments: [4] },
+        ],
+      }),
+    );
+    expect(filmed.viewAt).toEqual([0, 0, 1, 2, 2]);
+    expect(filmed.sceneViews).toEqual([[0, 1], [2]]);
+    expect(filmed.reply.views.map((v) => viewLabel(filmed, v))).toEqual([
+      'hallway: end → hallway: middle',
+      'hallway: middle → hallway: end',
+      'PARKING LOT',
+    ]);
+    const later = create(WorldViewSchema, { scene: 0, camera: end, toward: middle, state: 1 });
+    expect(viewLabel(filmed, later)).toBe('hallway: end → hallway: middle (2)');
+  });
+
+  it('numbers a view’s beats in runs', () => {
+    const long = worldOf(
+      create(GetWorldReplySchema, {
+        scenes: [{ id: 's', beats: ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, text: id })) }],
+      }),
+    );
+    expect(beatRuns(long, [1, 2, 3, 5])).toBe('1–3, 5');
   });
 
   it('puts the scene’s cast first and the unplaced last', () => {

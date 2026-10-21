@@ -1,5 +1,6 @@
 import { computed, Injectable, type OnDestroy, signal } from '@angular/core';
 import {
+  actionAt,
   castAt,
   changeCounts,
   changesAt,
@@ -32,11 +33,15 @@ export class WorldSession implements OnDestroy {
   readonly sceneLocation = computed(
     () => this.world()?.reply.scenes[this.scene()]?.locationId || null,
   );
-  readonly placeId = computed(() => this.pinned() ?? this.sceneLocation());
   readonly holding = computed(() => {
     const world = this.world();
     return world ? holdingAt(world, this.moment()) : [];
   });
+  readonly actionLocation = computed(() => {
+    const world = this.world();
+    return world ? actionAt(world, this.moment(), this.holding()) : null;
+  });
+  readonly placeId = computed(() => this.pinned() ?? this.actionLocation());
   readonly changes = computed(() => {
     const world = this.world();
     return world ? changesAt(world, this.moment()) : [];
@@ -49,6 +54,15 @@ export class WorldSession implements OnDestroy {
     const world = this.world();
     const place = this.placeId();
     return world && place ? stageOf(world, place, this.moment(), this.holding()) : null;
+  });
+  readonly views = computed(() => {
+    const world = this.world();
+    return world ? (world.sceneViews[this.scene()] ?? []).map((i) => world.reply.views[i]) : [];
+  });
+  readonly view = computed(() => {
+    const world = this.world();
+    const index = world?.viewAt[this.moment()] ?? -1;
+    return world && index >= 0 ? world.reply.views[index] : null;
   });
   readonly cast = computed(() => {
     const world = this.world();
@@ -75,7 +89,7 @@ export class WorldSession implements OnDestroy {
   }
 
   focus(locationId: string | null): void {
-    this.pinned.set(locationId === this.sceneLocation() ? null : locationId);
+    this.pinned.set(locationId === this.actionLocation() ? null : locationId);
     this.tab.set('place');
   }
 

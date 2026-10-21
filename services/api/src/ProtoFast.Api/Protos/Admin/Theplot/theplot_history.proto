@@ -1,0 +1,134 @@
+syntax = "proto3";
+
+option csharp_namespace = "ProtoFast.Api.Admin.Theplot";
+
+package admin.theplot;
+
+// Development only: the api maps this service only in Development with the history database
+// attached, so elsewhere every RPC answers UNIMPLEMENTED. Stories written from a corpus of
+// historical documents (Project Gutenberg's American history books): a model researches a moment,
+// random or asked for, and writes it as a screenplay into a writer's library. Every RPC needs
+// admin-theplot. Timestamps are Unix milliseconds; 0 means unset.
+service TheplotHistory {
+
+    rpc GetCorpus (GetHistoryCorpusRequest) returns (GetHistoryCorpusReply);
+
+    // The writers who own at least one story, most recently active first, to pick an owner from;
+    // the open library is not among them.
+    rpc ListWriters (ListHistoryWritersRequest) returns (ListHistoryWritersReply);
+
+    rpc StartStory (StartHistoryStoryRequest) returns (StartHistoryStoryReply);
+
+    // Newest first.
+    rpc ListStoryRuns (ListHistoryStoryRunsRequest) returns (ListHistoryStoryRunsReply);
+
+    rpc GetStoryRun (GetHistoryStoryRunRequest) returns (GetHistoryStoryRunReply);
+
+    // FAILED_PRECONDITION when the run is no longer active.
+    rpc CancelStoryRun (CancelHistoryStoryRunRequest) returns (CancelHistoryStoryRunReply);
+}
+
+enum HistoryStoryRunStatus {
+    HISTORY_STORY_RUN_STATUS_UNSPECIFIED = 0;
+    HISTORY_STORY_RUN_STATUS_QUEUED = 1;
+    HISTORY_STORY_RUN_STATUS_RESEARCHING = 2;
+    HISTORY_STORY_RUN_STATUS_WRITING = 3;
+    HISTORY_STORY_RUN_STATUS_SAVING = 4;
+    HISTORY_STORY_RUN_STATUS_FINISHED = 5;
+    HISTORY_STORY_RUN_STATUS_FAILED = 6;
+    HISTORY_STORY_RUN_STATUS_CANCELLED = 7;
+}
+
+message GetHistoryCorpusRequest {}
+
+message GetHistoryCorpusReply {
+    int64 books = 1;
+    int64 passages = 2;
+}
+
+message HistoryWriter {
+    // The writer's subject in the theplot realm.
+    string id = 1;
+    int32 story_count = 2;
+    string latest_story_title = 3;
+}
+
+message ListHistoryWritersRequest {}
+
+message ListHistoryWritersReply {
+    repeated HistoryWriter writers = 1;
+    // The owner id that makes a story open: every writer may copy it onto their desk.
+    string open_library_id = 2;
+}
+
+message StartHistoryStoryRequest {
+    // Who owns the story: a writer, or the open library.
+    string writer_id = 1;
+    // What to write about; empty picks a random moment.
+    string request = 2;
+    // 1 to 20; 0 means 6.
+    int32 scenes = 3;
+}
+
+message StartHistoryStoryReply {
+    string run_id = 1;
+}
+
+message HistoryStoryRun {
+    string id = 1;
+    string writer_id = 2;
+    string operator_id = 3;
+    // Empty for a random moment.
+    string request = 4;
+    int32 scenes = 5;
+    HistoryStoryRunStatus status = 6;
+    string message = 7;
+    string title = 8;
+    // Set once the story is saved.
+    string story_id = 9;
+    string failure = 10;
+    int64 cost_usd_micros = 11;
+    int32 attempts = 12;
+    int64 created_unix_ms = 13;
+    int64 started_unix_ms = 14;
+    int64 finished_unix_ms = 15;
+}
+
+message HistoryStoryRunEvent {
+    int32 seq = 1;
+    int64 at_unix_ms = 2;
+    // random_passages, search, read, note, brief, draft, repair, saved or error.
+    string kind = 3;
+    string summary = 4;
+    string detail = 5;
+    int64 cost_usd_micros = 6;
+}
+
+message ListHistoryStoryRunsRequest {
+    // At most 100; 0 means 25.
+    int32 page_size = 1;
+    // Zero-based.
+    int32 page = 2;
+}
+
+message ListHistoryStoryRunsReply {
+    repeated HistoryStoryRun runs = 1;
+    int32 total = 2;
+}
+
+message GetHistoryStoryRunRequest {
+    string run_id = 1;
+}
+
+message GetHistoryStoryRunReply {
+    HistoryStoryRun run = 1;
+    // The research brief as JSON, once research is done.
+    string brief_json = 2;
+    repeated HistoryStoryRunEvent events = 3;
+}
+
+message CancelHistoryStoryRunRequest {
+    string run_id = 1;
+}
+
+message CancelHistoryStoryRunReply {}

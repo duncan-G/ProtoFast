@@ -30,12 +30,15 @@ import {
   isImportActive,
 } from '../../documents/import-progress';
 import { AccountMenu } from '../../shared/account-menu';
+import { OpenStory } from '../../stories/model/open-story';
 import { StorySummary } from '../../stories/model/story-summary';
+import { OpenStoryApi } from '../../stories/open-story-api';
 import { StoryApi } from '../../stories/story-api';
 import { TheplotLogo } from '../../shared/theplot-logo';
 import { DESK_MODES, DeskMode, MODES, parseMode } from './dashboard.data';
 import { ImportDialog, ImportDraft } from './import-dialog';
 import { ImportTray } from './import-tray';
+import { OpenStoriesDialog } from './open-stories-dialog';
 
 /** A row on the desk that is still uploading. */
 interface PendingRow {
@@ -96,13 +99,14 @@ const TOAST_MS = 7000;
 @Component({
   selector: 'app-dashboard',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AccountMenu, ImportDialog, ImportTray, RouterLink, TheplotLogo],
+  imports: [AccountMenu, ImportDialog, ImportTray, OpenStoriesDialog, RouterLink, TheplotLogo],
   templateUrl: './dashboard.html',
 })
 export class Dashboard {
   protected readonly auth = inject(AuthIdentityService);
   private readonly api = inject(DocumentApi);
   private readonly storyApi = inject(StoryApi);
+  private readonly openStoryApi = inject(OpenStoryApi);
   private readonly imports = inject(DocumentImportService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -152,6 +156,12 @@ export class Dashboard {
     const id = this.dialogJobId();
     return id === null ? null : (this.jobs().find((job) => job.id === id) ?? null);
   });
+
+  /** Open stories offered to every writer; Open stories shows only when there are some. */
+  protected readonly openStories = signal<OpenStory[]>([]);
+  protected readonly openStoriesOpen = signal(false);
+  protected readonly importingOpenId = signal<string | null>(null);
+  protected readonly openStoriesError = signal('');
 
   protected readonly trayOpen = signal(false);
   protected readonly toast = signal<Toast | null>(null);
@@ -281,10 +291,15 @@ export class Dashboard {
   protected async loadDesk(): Promise<void> {
     this.deskLoading.set(true);
     this.deskError.set('');
-    const [documents, stories] = await Promise.allSettled([
+    const [documents, stories, openStories] = await Promise.allSettled([
       this.api.listDocuments(),
       this.storyApi.listStories(),
+      this.openStoryApi.listOpenStories(),
     ]);
+    // Open stories are an extra, so failing to list them only hides the button.
+    if (openStories.status === 'fulfilled') {
+      this.openStories.set(openStories.value);
+    }
     if (documents.status === 'fulfilled') {
       this.documents.set(documents.value);
       this.imports.track(documents.value.map((d) => d.import));
@@ -358,6 +373,57 @@ export class Dashboard {
       await this.loadDesk();
       this.deskError.set(describeError(err, 'The import could not be cancelled.'));
     }
+  }
+
+  // ─── open stories ────────────────────────────────────────────────────────
+
+  protected openOpenStories(): void {
+    this.openStoriesError.set('');
+    this.openStoriesOpen.set(true);
+  }
+
+  protected closeOpenStories(): void {
+    if (this.importingOpenId() === null) {
+      this.openStoriesOpen.set(false);
+    }
+  }
+
+  /** Copies the open story onto the desk, closes the dialog and announces the copy. */
+  protected async importOpenStory(openStoryId: string): Promise<void> {
+    const open = this.openStories().find((s) => s.id === openStoryId);
+    this.importingOpenId.set(openStoryId);
+    this.openStoriesError.set('');
+    try {
+      const { story, created } = await this.openStoryApi.importOpenStory(openStoryId);
+      this.openStories.update((stories) =>
+        stories.map((s) => (s.id === openStoryId ? { ...s, importedStoryId: story.id } : s)),
+      );
+      this.newStoryIds.update((ids) => new Set([...ids, story.id]));
+      this.stories.update((stories) =>
+        stories.some((s) => s.id === story.id) ? stories : [story, ...stories],
+      );
+      this.openStoriesOpen.set(false);
+      this.clearToast();
+      this.toast.set({
+        title: created
+          ? `“${story.title}” is on your desk`
+          : `“${story.title}” was already on your desk`,
+        sub: open
+          ? `Imported from Open stories · ${open.sceneCount} scenes`
+          : 'Imported from Open stories',
+        storyId: story.id,
+      });
+      this.toastTimer = setTimeout(() => this.toast.set(null), TOAST_MS);
+    } catch (err) {
+      this.openStoriesError.set(describeError(err, 'The story could not be imported.'));
+    } finally {
+      this.importingOpenId.set(null);
+    }
+  }
+
+  protected openImportedStory(storyId: string): void {
+    this.openStoriesOpen.set(false);
+    this.openStory(storyId);
   }
 
   // ─── import dialog ───────────────────────────────────────────────────────

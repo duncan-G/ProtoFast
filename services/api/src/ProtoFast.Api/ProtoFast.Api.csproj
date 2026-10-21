@@ -13,11 +13,12 @@
     <Protobuf Include="Protos\document.proto" ProtoRoot="Protos" GrpcServices="Server" />
     <Protobuf Include="Protos\document_upload.proto" ProtoRoot="Protos" GrpcServices="Server" />
     <Protobuf Include="Protos\story.proto" ProtoRoot="Protos" GrpcServices="Server" />
-    <Protobuf Include="Protos\world_model.proto" ProtoRoot="Protos" GrpcServices="Server" />
+    <Protobuf Include="Protos\open_story.proto" ProtoRoot="Protos" GrpcServices="Server" />
     <Protobuf Include="Protos\Admin\Shared\admin_overview.proto" ProtoRoot="Protos" GrpcServices="Server" />
     <Protobuf Include="Protos\Admin\Theplot\theplot_admin.proto" ProtoRoot="Protos" GrpcServices="Server" />
     <Protobuf Include="Protos\Admin\Theplot\theplot_engine.proto" ProtoRoot="Protos" GrpcServices="Server" />
     <Protobuf Include="Protos\Admin\Theplot\theplot_world_models.proto" ProtoRoot="Protos" GrpcServices="Server" />
+    <Protobuf Include="Protos\Admin\Theplot\theplot_history.proto" ProtoRoot="Protos" GrpcServices="Server" />
   </ItemGroup>
 
   <ItemGroup>
@@ -29,6 +30,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\document_import\src\ProtoFast.DocumentImport.Core\ProtoFast.DocumentImport.Core.csproj" />
     <ProjectReference Include="..\..\..\document_import\src\ProtoFast.DocumentImport.Data\ProtoFast.DocumentImport.Data.csproj" />
+    <ProjectReference Include="..\..\..\document_import\src\ProtoFast.DocumentImport.History\ProtoFast.DocumentImport.History.csproj" />
     <ProjectReference Include="..\..\..\document_import\src\ProtoFast.DocumentImport.Storage\ProtoFast.DocumentImport.Storage.csproj" />
     <ProjectReference Include="..\..\..\shared\Grpc\Grpc.csproj" />
     <ProjectReference Include="..\..\..\shared\ServiceDefaults\ServiceDefaults.csproj" />

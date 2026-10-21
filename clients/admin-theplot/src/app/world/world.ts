@@ -8,6 +8,7 @@ import {
   type WorldObject,
   type WorldPart,
   type WorldPlace,
+  type WorldView,
 } from '../../lib/gen/Admin/Theplot/theplot_world_models_pb';
 
 export interface Moment {
@@ -29,6 +30,10 @@ export interface World {
   readonly endsAt: readonly (readonly number[])[];
   /** The opening of the first scene set in each location. */
   readonly firstVisit: ReadonlyMap<string, number>;
+  /** Each scene's views, as indexes into reply.views. */
+  readonly sceneViews: readonly (readonly number[])[];
+  /** The view each moment is filmed from, -1 for none; an opening shows its scene's first view. */
+  readonly viewAt: readonly number[];
 }
 
 export type WorldRef =
@@ -60,6 +65,18 @@ export function worldOf(reply: GetWorldReply): World {
     endsAt[fact.end]?.push(index);
   });
 
+  const sceneViews: number[][] = reply.scenes.map(() => []);
+  const viewAt = moments.map(() => -1);
+  reply.views.forEach((view, index) => {
+    sceneViews[view.scene]?.push(index);
+    for (const moment of view.moments) {
+      viewAt[moment] = index;
+    }
+  });
+  sceneStarts.forEach((start, scene) => {
+    viewAt[start] = sceneViews[scene][0] ?? -1;
+  });
+
   return {
     reply,
     moments,
@@ -72,7 +89,32 @@ export function worldOf(reply: GetWorldReply): World {
     startsAt,
     endsAt,
     firstVisit,
+    sceneViews,
+    viewAt,
   };
+}
+
+/** Matches a view across world reads while its parts keep their ids. */
+export function viewKey(view: WorldView): string {
+  const place = (p: WorldPlace | undefined) => (p ? `${p.locationId}/${p.partId}` : '');
+  return `${view.scene}|${place(view.camera)}|${place(view.toward)}|${view.state}`;
+}
+
+/** A fact about a place itself: its fixtures and dressing, their states, its ways. Characters, props and occupants are action. */
+export function isPhysical(world: World, fact: WorldFact): boolean {
+  switch (fact.edge) {
+    case WorldEdge.AT:
+    case WorldEdge.STATE: {
+      const kind = world.objects.get(fact.objectId)?.kind;
+      return (
+        !fact.characterId && (kind === WorldObjectKind.FIXTURE || kind === WorldObjectKind.DRESSING)
+      );
+    }
+    case WorldEdge.CONNECTS:
+      return true;
+    default:
+      return false;
+  }
 }
 
 export function holdingAt(world: World, moment: number): WorldFact[] {
@@ -105,7 +147,8 @@ const EDGE_ORDER: Record<WorldEdge, number> = {
   [WorldEdge.STATE]: 2,
   [WorldEdge.CONNECTS]: 3,
   [WorldEdge.BEAT_AT]: 4,
-  [WorldEdge.UNSPECIFIED]: 5,
+  [WorldEdge.CAMERA]: 5,
+  [WorldEdge.UNSPECIFIED]: 6,
 };
 
 /** What the moment changed: facts that start or end there, paired up by subject and edge. */
@@ -132,13 +175,13 @@ export function changesAt(world: World, moment: number): Change[] {
   return changes.sort((a, b) => EDGE_ORDER[a.edge] - EDGE_ORDER[b.edge]);
 }
 
-/** Counted as changesAt pairs them; where the action is doesn't count. */
+/** Counted as changesAt pairs them; only changes to a place count, not the action in it. */
 export function changeCounts(world: World): number[] {
   return world.moments.map((_, moment) => {
     const keys = new Set<string>();
     for (const index of [...world.startsAt[moment], ...world.endsAt[moment]]) {
       const fact = world.facts[index];
-      if (fact.edge !== WorldEdge.BEAT_AT) {
+      if (isPhysical(world, fact)) {
         keys.add(fact.key);
       }
     }
@@ -175,6 +218,8 @@ export interface StageTile {
   ways: StageWay[];
   /** The beat at this moment happens here. */
   action: boolean;
+  /** The camera stands here at this moment; its other place is where it looks. */
+  camera?: WorldFact;
 }
 
 export interface Departure {
@@ -293,6 +338,11 @@ export function stageOf(
           action = fact;
         }
         break;
+      case WorldEdge.CAMERA:
+        if (here) {
+          tileAt(fact.place).camera = fact;
+        }
+        break;
     }
   }
   if (action) {
@@ -338,6 +388,26 @@ export function stageOf(
   };
 }
 
+/** Where the scene's beats last said they are, else its heading's place: a HOSPITAL scene's beats can be in its LOBBY. */
+export function actionAt(
+  world: World,
+  moment: number,
+  holding: readonly WorldFact[],
+): string | null {
+  const scene = world.moments[moment]?.scene ?? 0;
+  const start = world.sceneStarts[scene] ?? 0;
+  let at = -1;
+  let location = world.reply.scenes[scene]?.locationId || null;
+  for (const fact of holding) {
+    const said = lastMention(fact, moment);
+    if (fact.edge === WorldEdge.BEAT_AT && fact.place && said >= start && said > at) {
+      at = said;
+      location = fact.place.locationId;
+    }
+  }
+  return location;
+}
+
 export interface CastMember {
   character: WorldCharacter;
   fact?: WorldFact;
@@ -371,8 +441,18 @@ export function castAt(world: World, moment: number, holding: readonly WorldFact
     );
 }
 
-/** Every fact about one subject, in story order. */
+/** Every fact about one subject, in story order; a place's are only the physical ones. */
 export function historyOf(world: World, ref: WorldRef): WorldFact[] {
+  const at = (p: WorldPlace | undefined) =>
+    ref.kind === 'location' ? p?.locationId === ref.id : p?.partId === ref.id;
+  const things =
+    ref.kind === 'location' || ref.kind === 'part'
+      ? new Set(
+          world.facts
+            .filter((f) => f.edge === WorldEdge.AT && isPhysical(world, f) && at(f.place))
+            .map((f) => f.objectId),
+        )
+      : new Set<string>();
   const about = (f: WorldFact): boolean => {
     switch (ref.kind) {
       case 'object':
@@ -380,13 +460,10 @@ export function historyOf(world: World, ref: WorldRef): WorldFact[] {
       case 'character':
         return f.characterId === ref.id;
       case 'location':
-        return (
-          f.edge !== WorldEdge.BEAT_AT &&
-          (f.place?.locationId === ref.id || f.other?.locationId === ref.id)
-        );
       case 'part':
         return (
-          f.edge !== WorldEdge.BEAT_AT && (f.place?.partId === ref.id || f.other?.partId === ref.id)
+          isPhysical(world, f) &&
+          (at(f.place) || at(f.other) || (f.edge === WorldEdge.STATE && things.has(f.objectId)))
         );
     }
   };

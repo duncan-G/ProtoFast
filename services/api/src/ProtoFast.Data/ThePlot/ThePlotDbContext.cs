@@ -27,6 +27,8 @@ public sealed class ThePlotDbContext(
 
     private const int LabelLength = 64;
 
+    private const int StorageKeyLength = 512;
+
     /// <summary>Enums are stored by name, so renaming a member needs a data migration.</summary>
     private const int EnumLength = 32;
 
@@ -59,6 +61,8 @@ public sealed class ThePlotDbContext(
     public DbSet<WorldModelBuild> WorldModelBuilds => Set<WorldModelBuild>();
 
     public DbSet<WorldModelBuildStep> WorldModelBuildSteps => Set<WorldModelBuildStep>();
+
+    public DbSet<ViewPicture> ViewPictures => Set<ViewPicture>();
 
     protected override void ConfigureModel(ModelBuilder modelBuilder)
     {
@@ -121,6 +125,7 @@ public sealed class ThePlotDbContext(
             entity.Navigation(s => s.Vocabulary).IsRequired();
 
             entity.HasIndex(s => new { s.UserId, s.DateLastModified });
+            entity.HasIndex(s => new { s.UserId, s.SourceStoryId });
         });
 
         modelBuilder.Entity<Container>(entity =>
@@ -409,8 +414,9 @@ public sealed class ThePlotDbContext(
             {
                 t.HasCheckConstraint(
                     "ck_location_observations_at_columns",
-                    "edge <> 'At' OR (object_id IS NOT NULL AND character_id IS NULL AND other_location_id IS NULL "
-                    + "AND other_part_id IS NULL AND via_object_id IS NULL AND property IS NULL AND value IS NULL)");
+                    "edge <> 'At' OR (object_id IS NOT NULL AND other_location_id IS NULL "
+                    + "AND other_part_id IS NULL AND via_object_id IS NULL AND property IS NULL AND value IS NULL "
+                    + "AND (character_id IS NULL OR place_location_id IS NOT NULL))");
                 t.HasCheckConstraint(
                     "ck_location_observations_state_columns",
                     "edge <> 'State' OR (object_id IS NOT NULL AND property IS NOT NULL AND value IS NOT NULL "
@@ -430,6 +436,10 @@ public sealed class ThePlotDbContext(
                     "edge <> 'BeatAt' OR (place_location_id IS NOT NULL AND object_id IS NULL AND character_id IS NULL "
                     + "AND other_location_id IS NULL AND other_part_id IS NULL AND via_object_id IS NULL "
                     + "AND property IS NULL AND value IS NULL)");
+                t.HasCheckConstraint(
+                    "ck_location_observations_camera_columns",
+                    "edge <> 'Camera' OR (place_location_id IS NOT NULL AND object_id IS NULL AND character_id IS NULL "
+                    + "AND via_object_id IS NULL AND property IS NULL AND value IS NULL)");
                 t.HasCheckConstraint(
                     "ck_location_observations_parts_have_locations",
                     "(place_part_id IS NULL OR place_location_id IS NOT NULL) AND (other_part_id IS NULL OR other_location_id IS NOT NULL)");
@@ -477,6 +487,49 @@ public sealed class ThePlotDbContext(
 
             entity.HasIndex(s => new { s.BuildId, s.Sequence });
             entity.HasIndex(s => s.SceneId);
+        });
+
+        modelBuilder.Entity<ViewPicture>(entity =>
+        {
+            entity.HasKey(p => p.Id);
+            entity.Property(p => p.UserId).IsRequired().HasMaxLength(UserIdLength);
+            entity.Property(p => p.StorageKey).IsRequired().HasMaxLength(StorageKeyLength);
+            entity.Property(p => p.ContentType).IsRequired().HasMaxLength(LabelLength);
+            entity.Property(p => p.Prompt).IsRequired();
+
+            entity.HasOne(p => p.Story)
+                .WithMany()
+                .HasForeignKey(p => p.StoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(p => p.Scene)
+                .WithMany()
+                .HasForeignKey(p => p.SceneId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(p => p.CameraLocation)
+                .WithMany()
+                .HasForeignKey(p => p.CameraLocationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(p => p.TowardLocation)
+                .WithMany()
+                .HasForeignKey(p => p.TowardLocationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // One picture per view; a view without a part or a place it looks toward still matches itself.
+            entity.HasIndex(p => new { p.SceneId, p.CameraLocationId, p.CameraPart, p.TowardLocationId, p.TowardPart, p.State })
+                .IsUnique()
+                .AreNullsDistinct(false)
+                .HasDatabaseName("ix_view_pictures_view");
+            entity.HasIndex(p => p.StoryId);
+            entity.HasIndex(p => p.CameraLocationId);
+            entity.HasIndex(p => p.TowardLocationId);
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint("ck_view_pictures_toward_part_has_location", "toward_part IS NULL OR toward_location_id IS NOT NULL");
+                t.HasCheckConstraint("ck_view_pictures_state_non_negative", "state >= 0");
+            });
         });
     }
 }

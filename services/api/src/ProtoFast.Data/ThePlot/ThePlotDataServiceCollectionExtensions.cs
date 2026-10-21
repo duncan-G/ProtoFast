@@ -61,6 +61,9 @@ public static class ThePlotDataServiceCollectionExtensions
         services.AddQueryFactory<WorldModelBuildStep, IWorldModelBuildStepQuery, WorldModelBuildStepQuery>();
         services.AddScoped<IWorldModelBuildStepRepository, WorldModelBuildStepRepository>();
 
+        services.AddQueryFactory<ViewPicture, IViewPictureQuery, ViewPictureQuery>();
+        services.AddScoped<IViewPictureRepository, ViewPictureRepository>();
+
         return services;
     }
 }

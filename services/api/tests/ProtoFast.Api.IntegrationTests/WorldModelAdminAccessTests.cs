@@ -2,11 +2,9 @@ using Grpc.Core;
 using Microsoft.Extensions.DependencyInjection;
 using ProtoFast.Api.Admin.Theplot;
 using ProtoFast.Api.Services.Admin;
-using ProtoFast.Api.Services.WorldModels;
 using ProtoFast.Data.ThePlot.Repositories;
 using ProtoFast.Database.Abstractions;
 using Xunit;
-using WorldModelBuildMessage = ProtoFast.Api.WorldModelBuild;
 using WorldModelBuildStepRecord = ProtoFast.Data.ThePlot.Entities.WorldModelBuildStep;
 using WorldModelStepKindRecord = ProtoFast.Data.ThePlot.Entities.WorldModelStepKind;
 using WorldModelStepStatusRecord = ProtoFast.Data.ThePlot.Entities.WorldModelStepStatus;
@@ -29,9 +27,15 @@ public sealed class WorldModelAdminAccessTests(StoryDatabase database)
             (s, c) => s.ListBuilds(new ListWorldModelBuildsRequest(), c)));
         var get = await Assert.ThrowsAsync<RpcException>(() => outsider.Call<TheplotWorldModelsService, GetWorldModelBuildReply>(
             (s, c) => s.GetBuild(new GetWorldModelBuildRequest { BuildId = build.Id }, c)));
+        var start = await Assert.ThrowsAsync<RpcException>(() => outsider.Call<TheplotWorldModelsService, StartWorldModelBuildReply>(
+            (s, c) => s.StartBuild(new StartWorldModelBuildRequest { StoryId = build.StoryId }, c)));
+        var cancel = await Assert.ThrowsAsync<RpcException>(() => outsider.Call<TheplotWorldModelsService, CancelWorldModelBuildReply>(
+            (s, c) => s.CancelBuild(new CancelWorldModelBuildRequest { BuildId = build.Id }, c)));
 
         Assert.Equal(StatusCode.PermissionDenied, list.StatusCode);
         Assert.Equal(StatusCode.NotFound, get.StatusCode);
+        Assert.Equal(StatusCode.NotFound, start.StatusCode);
+        Assert.Equal(StatusCode.NotFound, cancel.StatusCode);
     }
 
     [Fact]
@@ -72,9 +76,10 @@ public sealed class WorldModelAdminAccessTests(StoryDatabase database)
             (read.Kind, read.ModelId, read.InputTokens, read.CostUsdMicros, read.Prompt, read.Summary));
     }
 
-    private async Task<WorldModelBuildMessage> StartAsync()
+    private async Task<WorldModelBuildHeader> StartAsync()
     {
         var story = await _writer.CreateStoryAsync();
-        return (await _writer.Call<WorldModelService, StartBuildReply>((s, c) => s.StartBuild(new StartBuildRequest { StoryId = story.Id }, c))).Build;
+        return (await _theplot.Call<TheplotWorldModelsService, StartWorldModelBuildReply>(
+            (s, c) => s.StartBuild(new StartWorldModelBuildRequest { StoryId = story.Id }, c))).Build;
     }
 }

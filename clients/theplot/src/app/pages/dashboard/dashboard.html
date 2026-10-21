@@ -50,6 +50,11 @@
       </label>
 
       @if (mode() === 'write') {
+        @if (openStories().length > 0) {
+          <button type="button" class="btn btn-secondary" (click)="openOpenStories()">
+            <span class="text-[var(--color-accent-bright)]" aria-hidden="true">◇</span>Open stories
+          </button>
+        }
         <button type="button" class="btn btn-secondary" (click)="openImport()">
           <span class="text-[var(--color-accent-bright)]" aria-hidden="true">↑</span>Import
         </button>
@@ -292,6 +297,11 @@
                 <button type="button" class="btn btn-secondary" (click)="openImport()">
                   <span aria-hidden="true">↑</span>Import a file
                 </button>
+                @if (openStories().length > 0) {
+                  <button type="button" class="btn btn-secondary" (click)="openOpenStories()">
+                    <span aria-hidden="true">◇</span>Start from an open story
+                  </button>
+                }
               </div>
             }
           </div>
@@ -331,6 +341,18 @@
       (cancelImport)="cancelDocumentImport($event)"
       (dismiss)="dismissJob($event)"
       (clearAll)="clearFinishedJobs()"
+    />
+  }
+
+  <!-- ───────────────────────── open stories ───────────────────────── -->
+  @if (openStoriesOpen()) {
+    <app-open-stories-dialog
+      [stories]="openStories()"
+      [importingId]="importingOpenId()"
+      [error]="openStoriesError()"
+      (import)="importOpenStory($event)"
+      (open)="openImportedStory($event)"
+      (close)="closeOpenStories()"
     />
   }
 

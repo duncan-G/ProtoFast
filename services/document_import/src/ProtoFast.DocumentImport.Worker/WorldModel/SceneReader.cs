@@ -10,9 +10,10 @@ namespace ProtoFast.DocumentImport.Worker.WorldModel;
 /// <summary>One model call per scene. A reply that is not the JSON asked for is asked for once more.</summary>
 public sealed class SceneReader(ILanguageModelFactory models, IOptions<WorldModelBuildOptions> options, ILogger<SceneReader> logger)
 {
-    public async Task<SceneRead> ReadAsync(StorySnapshot story, SceneInfo scene, GraphSnapshot graph, FoldedGraph facts, CancellationToken ct)
+    public async Task<SceneRead> ReadAsync(
+        StorySnapshot story, SceneInfo scene, GraphSnapshot graph, FoldedGraph facts, IReadOnlySet<Guid> flashbacks, CancellationToken ct)
     {
-        var prompt = WorldModelPrompt.Build(story, scene, graph, facts);
+        var prompt = WorldModelPrompt.Build(story, scene, graph, facts, flashbacks);
         var model = options.Value.Provider is { Length: > 0 } provider
             ? models.For(options.Value.ModelClass, provider)
             : models.For(options.Value.ModelClass);

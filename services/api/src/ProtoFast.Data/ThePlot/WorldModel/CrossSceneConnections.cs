@@ -3,17 +3,17 @@ using ProtoFast.Data.ThePlot.Entities;
 namespace ProtoFast.Data.ThePlot.WorldModel;
 
 /// <summary>
-/// The rule the story's close applies (design doc §7): a character last seen at one place in a
-/// scene and first seen at another in the next scene, with no known way between them, gives a
-/// <see cref="ObservationEdge.Connects"/> between the two, through whatever way out the first
-/// scene showed at that place.
+/// The rule the story's close applies (design doc §7): when a scene follows straight on from the
+/// one before (<see cref="SceneContinuity"/>) and a character last seen at one place there is first
+/// seen at another, with no known way between the two locations, the two places connect. A cut in time or a
+/// drive between them is no way through, and which door was used is not known, so none is given.
 /// </summary>
 public static class CrossSceneConnections
 {
-    public sealed record Connection(Guid SceneElementId, PlaceRef From, PlaceRef To, Guid? ViaObjectId);
+    public sealed record Connection(Guid SceneElementId, PlaceRef From, PlaceRef To);
 
     public static IReadOnlyList<Connection> Find(
-        IReadOnlyList<ObservationRow> observations, IReadOnlyList<SceneSlot> scenes, FoldedGraph graph)
+        IReadOnlyList<ObservationRow> observations, IReadOnlyList<SceneSlot> scenes, FoldedGraph graph, IReadOnlySet<Guid> followOn)
     {
         var ordered = scenes.OrderBy(s => s.Start).ToList();
         var byScene = observations.ToLookup(o => o.SceneId);
@@ -23,7 +23,8 @@ public static class CrossSceneConnections
         {
             var previous = ordered[i - 1];
             var next = ordered[i];
-            if (previous.LocationId is null || next.LocationId is null || previous.LocationId == next.LocationId)
+            if (!followOn.Contains(next.SceneId)
+                || previous.LocationId is null || next.LocationId is null || previous.LocationId == next.LocationId)
             {
                 continue;
             }
@@ -41,17 +42,13 @@ public static class CrossSceneConnections
             {
                 if (!lastSeen.TryGetValue(character, out var departure)
                     || departure.Place is not { } from || arrival.Place is not { } to
-                    || !seen.Add((from, to)) || graph.Connected(from, to, next.Start))
+                    || from.LocationId == to.LocationId
+                    || !seen.Add((from, to)) || graph.LocationsConnected(from.LocationId, to.LocationId, next.Start))
                 {
                     continue;
                 }
 
-                var wayOut = byScene[previous.SceneId]
-                    .Where(o => o.Edge == ObservationEdge.Connects && o.ViaObjectId is not null
-                                && (o.Place == from || o.Other == from))
-                    .OrderBy(o => o.Time)
-                    .LastOrDefault();
-                found.Add(new Connection(arrival.SceneElementId, from, to, wayOut?.ViaObjectId));
+                found.Add(new Connection(arrival.SceneElementId, from, to));
             }
         }
 

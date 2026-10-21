@@ -35,6 +35,10 @@ public interface IObjectStore
     Task<ObjectRef> WriteFrozenBytesAsync(
         string key, byte[] content, string contentType, string idempotencyKey, CancellationToken ct = default);
 
+    /// <summary>Writes bytes with no retention: media that must stay deletable with what it belongs to.</summary>
+    Task<ObjectRef> WriteBytesAsync(
+        string key, byte[] content, string contentType, string idempotencyKey, CancellationToken ct = default);
+
     Task CopyAsync(string sourceKey, string destinationKey, CancellationToken ct = default);
 
     Task DeleteAsync(string key, CancellationToken ct = default);

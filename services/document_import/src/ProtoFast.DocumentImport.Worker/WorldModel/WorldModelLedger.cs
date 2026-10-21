@@ -39,13 +39,17 @@ public sealed class WorldModelLedger(IServiceScopeFactory scopes, TimeProvider t
     {
         await using var ledger = Scope.Open(scopes, userId, nameof(ResumeAsync), readOnly: true);
         var steps = await ledger.Steps.GetByQueryAsync(
-            ledger.StepQueries.Create().InBuild(buildId), s => new { s.Sequence, s.Kind, s.Status, s.SceneId }, ct);
+            ledger.StepQueries.Create().InBuild(buildId), s => new { s.Sequence, s.Kind, s.Status, s.SceneId, s.Reply }, ct);
         var handled = steps
             .Where(s => s.Kind == WorldModelStepKind.ReadScene && s.Status is WorldModelStepStatus.Finished or WorldModelStepStatus.Skipped && s.SceneId is not null)
             .Select(s => s.SceneId!.Value)
             .ToHashSet();
         var seeded = steps.Any(s => s.Kind == WorldModelStepKind.Seed && s.Status == WorldModelStepStatus.Finished);
-        return new BuildResume(handled, steps.Count == 0 ? 1 : steps.Max(s => s.Sequence) + 1, seeded);
+        var flashbacks = steps
+            .Where(s => s.Kind == WorldModelStepKind.ReadScene && s.Status == WorldModelStepStatus.Finished && s.SceneId is not null && ReadAsFlashback(s.Reply))
+            .Select(s => s.SceneId!.Value)
+            .ToHashSet();
+        return new BuildResume(handled, steps.Count == 0 ? 1 : steps.Max(s => s.Sequence) + 1, seeded, flashbacks);
     }
 
     public async Task SetTotalAsync(Guid buildId, string userId, int scenesTotal, CancellationToken ct)
@@ -75,10 +79,10 @@ public sealed class WorldModelLedger(IServiceScopeFactory scopes, TimeProvider t
             StartedAt = Now,
         };
         await ledger.Steps.AddAsync(step, ct);
-        if (kind == WorldModelStepKind.ReadScene)
+        if (kind is WorldModelStepKind.ReadScene or WorldModelStepKind.DescribeLocation)
         {
             var now = Now;
-            var message = $"Reading {title}";
+            var message = kind == WorldModelStepKind.ReadScene ? $"Reading {title}" : $"Describing {title}";
             await ledger.Builds.UpdateByQueryAsync(
                 ledger.BuildQueries.Create().WithId(buildId),
                 set => set.SetProperty(b => b.Message, message).SetProperty(b => b.DateLastModified, now),
@@ -229,6 +233,18 @@ public sealed class WorldModelLedger(IServiceScopeFactory scopes, TimeProvider t
             unitOfWork.Dispose();
             user.Dispose();
             await scope.DisposeAsync();
+        }
+    }
+
+    private static bool ReadAsFlashback(string? reply)
+    {
+        try
+        {
+            return reply is not null && SceneReader.Parse(reply).Flashback == true;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
         }
     }
 }

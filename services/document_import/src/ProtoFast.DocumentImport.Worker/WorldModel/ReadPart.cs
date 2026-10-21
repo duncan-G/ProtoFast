@@ -7,6 +7,9 @@ public sealed class ReadPart
 
     public string? Name { get; set; }
 
+    /// <summary>The location it is a part of, when not the scene's.</summary>
+    public string? LocationId { get; set; }
+
     /// <summary>A part id, or the ref of another new part.</summary>
     public string? ParentPartId { get; set; }
 

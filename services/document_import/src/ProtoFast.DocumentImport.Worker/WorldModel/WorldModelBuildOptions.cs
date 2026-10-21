@@ -7,7 +7,7 @@ public sealed class WorldModelBuildOptions
     /// <summary>A build is a model call per scene, so one worker runs few at once.</summary>
     public int MaxConcurrentBuilds { get; set; } = 1;
 
-    /// <summary>Scenes in different locations are read side by side, up to this many at once.</summary>
+    /// <summary>Scenes that share no location or character are read side by side, up to this many at once.</summary>
     public int LocationConcurrency { get; set; } = 3;
 
     /// <summary>How often a running build checks whether its owner cancelled it.</summary>

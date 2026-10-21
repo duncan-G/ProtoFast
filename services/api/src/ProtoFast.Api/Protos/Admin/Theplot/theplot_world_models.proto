@@ -14,9 +14,27 @@ service TheplotWorldModels {
 
     rpc GetBuild (GetWorldModelBuildRequest) returns (GetWorldModelBuildReply);
 
+    // Queues a build of the story's world model on its writer's behalf. FailedPrecondition while
+    // one is queued or running.
+    rpc StartBuild (StartWorldModelBuildRequest) returns (StartWorldModelBuildReply);
+
+    // Stops a queued or running build at its next step. FailedPrecondition once it has ended.
+    rpc CancelBuild (CancelWorldModelBuildRequest) returns (CancelWorldModelBuildReply);
+
     // A story's world as the builds left it: the nodes, every fact folded from the observations
     // with the stretch of story time it holds over, and the observations that lost.
     rpc GetWorld (GetWorldRequest) returns (GetWorldReply);
+
+    // Muse pictures one of a scene's views: the place as its camera sees it, with no one in it and
+    // nothing anyone carries, drawn from the pictures already made of that place. The picture is
+    // kept, in place of the view's last one.
+    rpc PictureView (PictureViewRequest) returns (PictureViewReply);
+
+    rpc GetViewPicture (GetViewPictureRequest) returns (GetViewPictureReply);
+
+    // ElevenLabs speaks one beat: dialogue in a voice kept for its speaker, the rest in the
+    // narrator's. Nothing is stored.
+    rpc SpeakBeat (SpeakBeatRequest) returns (SpeakBeatReply);
 }
 
 enum WorldModelBuildStatus {
@@ -34,6 +52,7 @@ enum WorldModelStepKind {
     WORLD_MODEL_STEP_KIND_SEED = 1;
     WORLD_MODEL_STEP_KIND_READ_SCENE = 2;
     WORLD_MODEL_STEP_KIND_FINISH = 3;
+    WORLD_MODEL_STEP_KIND_DESCRIBE_LOCATION = 4;
 }
 
 enum WorldModelStepStatus {
@@ -95,6 +114,8 @@ message ListWorldModelBuildsRequest {
     int32 page_size = 2;
     // Zero-based.
     int32 page = 3;
+    // Only this story's builds, when set.
+    string story_id = 4;
 }
 
 message ListWorldModelBuildsReply {
@@ -111,6 +132,22 @@ message GetWorldModelBuildReply {
     repeated WorldModelBuildStep steps = 2;
 }
 
+message StartWorldModelBuildRequest {
+    string story_id = 1;
+}
+
+message StartWorldModelBuildReply {
+    WorldModelBuildHeader build = 1;
+}
+
+message CancelWorldModelBuildRequest {
+    string build_id = 1;
+}
+
+message CancelWorldModelBuildReply {
+    WorldModelBuildHeader build = 1;
+}
+
 enum WorldEdge {
     WORLD_EDGE_UNSPECIFIED = 0;
     WORLD_EDGE_AT = 1;
@@ -118,6 +155,8 @@ enum WorldEdge {
     WORLD_EDGE_CONNECTS = 3;
     WORLD_EDGE_CHARACTER_AT = 4;
     WORLD_EDGE_BEAT_AT = 5;
+    // Where the camera stands for the scene's beats; other is the place it looks toward.
+    WORLD_EDGE_CAMERA = 6;
 }
 
 enum WorldBasis {
@@ -166,6 +205,10 @@ message WorldLocation {
     // OKLCH hue, 0–359.
     int32 hue = 4;
     string inside_location_id = 5;
+    // What the place is and how it looks as the story first finds it; empty until a build describes it.
+    string description = 6;
+    // What is built into it and dressed on it, part by part, as the story first finds it.
+    string contents = 7;
 }
 
 message WorldPart {
@@ -206,7 +249,7 @@ message WorldFact {
     string object_id = 3;
     string character_id = 4;
     WorldPlace place = 5;
-    // The other end of a connection.
+    // The other end of a connection; for a camera, the place it looks toward.
     WorldPlace other = 6;
     string via_object_id = 7;
     string property = 8;
@@ -253,4 +296,69 @@ message GetWorldReply {
     repeated WorldCharacter characters = 9;
     repeated WorldFact facts = 10;
     repeated WorldConflict conflicts = 11;
+    // Each scene's views in the order the scene first films from them.
+    repeated WorldView views = 12;
+}
+
+// Where a scene's camera stands and what it looks toward, and the beats filmed from there while
+// the place looks the same: a physical change to it between two of those beats starts a new view.
+message WorldView {
+    // Index into scenes.
+    int32 scene = 1;
+    WorldPlace camera = 2;
+    // Unset when the camera looks toward nothing in particular.
+    WorldPlace toward = 3;
+    // The moments of the beats filmed from here.
+    repeated int32 moments = 4;
+    // Unset until the view is pictured. It stays through later builds while the view's places
+    // keep their names.
+    WorldViewPicture picture = 5;
+    // How many times the place changed between this camera's earlier beats in the scene and these.
+    int32 state = 6;
+}
+
+message WorldViewPicture {
+    string id = 1;
+    string content_type = 2;
+    // What Muse was asked, after the captions of the pictures it drew from.
+    string prompt = 3;
+    // Muse's summary of its reasoning, when it gave one.
+    string notes = 4;
+    int64 cost_usd_micros = 5;
+    int64 created_unix_ms = 6;
+}
+
+message PictureViewRequest {
+    string story_id = 1;
+    string scene_id = 2;
+    WorldPlace camera = 3;
+    WorldPlace toward = 4;
+    int32 state = 5;
+}
+
+message PictureViewReply {
+    WorldViewPicture picture = 1;
+    bytes image = 2;
+}
+
+message GetViewPictureRequest {
+    string story_id = 1;
+    string picture_id = 2;
+}
+
+message GetViewPictureReply {
+    bytes image = 1;
+    string content_type = 2;
+}
+
+message SpeakBeatRequest {
+    string story_id = 1;
+    string beat_id = 2;
+}
+
+message SpeakBeatReply {
+    bytes audio = 1;
+    string content_type = 2;
+    string voice_name = 3;
+    int64 cost_usd_micros = 4;
 }

@@ -8,4 +8,5 @@ public enum ObservationEdge
     Connects,
     CharacterAt,
     BeatAt,
+    Camera,
 }

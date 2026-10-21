@@ -4,6 +4,7 @@ import {
   WorldOrigin,
   type WorldPart,
   type WorldPlace,
+  type WorldView,
 } from '../../lib/gen/Admin/Theplot/theplot_world_models_pb';
 import type { World } from './world';
 
@@ -23,6 +24,36 @@ export function placeName(
   }
   const location = world.locations.get(place.locationId)?.name ?? 'an unknown place';
   return place.partId ? `${location} › ${partName(world.parts.get(place.partId))}` : location;
+}
+
+/** A place seen from somewhere in `here`: a part of it by its name alone. */
+export function placeFrom(world: World, place: WorldPlace, here: string): string {
+  return place.partId && place.locationId === here
+    ? partName(world.parts.get(place.partId))
+    : placeName(world, place);
+}
+
+/** A later look of the same camera, after the place changed, is numbered: counter → door (2). */
+export function viewLabel(world: World, view: WorldView): string {
+  const here = view.camera?.locationId ?? '';
+  const from = view.camera ? placeFrom(world, view.camera, here) : 'somewhere';
+  const label = view.toward ? `${from} → ${placeFrom(world, view.toward, here)}` : from;
+  return view.state ? `${label} (${view.state + 1})` : label;
+}
+
+/** The beats filmed at the moments, numbered in their scene, with runs shortened: 1–3, 7. */
+export function beatRuns(world: World, moments: readonly number[]): string {
+  const beats = moments.map((m) => (world.moments[m]?.beat ?? -1) + 1).filter((b) => b > 0);
+  const runs: string[] = [];
+  for (let i = 0; i < beats.length; i++) {
+    let j = i;
+    while (j + 1 < beats.length && beats[j + 1] === beats[j] + 1) {
+      j++;
+    }
+    runs.push(j > i ? `${beats[i]}–${beats[j]}` : `${beats[i]}`);
+    i = j;
+  }
+  return runs.join(', ');
 }
 
 export function heading(world: World, scene: number): string {

@@ -266,7 +266,7 @@ export class WorldMap {
     }
     const at = this.layout();
     const moment = this.session.moment();
-    const current = this.session.sceneLocation();
+    const current = this.session.actionLocation();
     const pinned = this.session.pinned();
     const touched = new Set<string>();
     const objects = new Map<string, number>();

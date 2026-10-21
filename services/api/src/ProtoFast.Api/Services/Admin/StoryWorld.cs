@@ -10,8 +10,9 @@ using LocationSetting = ProtoFast.Data.ThePlot.Entities.LocationSetting;
 using SceneElementType = ProtoFast.Data.ThePlot.Entities.SceneElementType;
 
 /// <summary>
-/// Story time as moments (each scene's opening, then its beats) and every fact over them. Reads
-/// every writer's rows, so the per-user query filters are ignored.
+/// Story time as moments (each scene's opening, then its beats), every fact over them, and the
+/// views the scenes film from with the pictures kept of them. Reads every writer's rows, so the
+/// per-user query filters are ignored.
 /// </summary>
 internal static class StoryWorld
 {
@@ -142,6 +143,8 @@ internal static class StoryWorld
             Exterior = l.Setting == LocationSetting.Exterior,
             Hue = l.Hue,
             InsideLocationId = l.InsideLocationId?.ToString() ?? "",
+            Description = l.Description ?? "",
+            Contents = l.Contents ?? "",
         }));
         reply.Characters.AddRange(characters.Select(c => new WorldCharacter { Id = c.Id.ToString(), Name = c.Name, Hue = c.Hue }));
         reply.Parts.AddRange(parts.Select(p =>
@@ -226,6 +229,22 @@ internal static class StoryWorld
                 Origin = ToOrigin(c.Observation.Origin),
                 Ends = c.Observation.Ends,
             }));
+
+        var pictures = (await theplot.ViewPictures.IgnoreQueryFilters().AsNoTracking()
+                .Where(p => p.StoryId == storyId)
+                .ToListAsync(ct))
+            .ToDictionary(p => new ViewKey(p.SceneId, p.CameraLocationId, p.CameraPart, p.TowardLocationId, p.TowardPart, p.State));
+        var partsById = reply.Parts.ToDictionary(p => p.Id);
+        foreach (var view in SceneViews.Of(reply))
+        {
+            if (pictures.TryGetValue(SceneViews.KeyOf(reply, view, partsById), out var picture))
+            {
+                view.Picture = WorldModelAdminMessages.Picture(picture);
+            }
+
+            reply.Views.Add(view);
+        }
+
         return reply;
     }
 
@@ -268,6 +287,7 @@ internal static class StoryWorld
         ObservationEdge.Connects => WorldEdge.Connects,
         ObservationEdge.CharacterAt => WorldEdge.CharacterAt,
         ObservationEdge.BeatAt => WorldEdge.BeatAt,
+        ObservationEdge.Camera => WorldEdge.Camera,
         _ => WorldEdge.Unspecified,
     };
 

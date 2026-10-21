@@ -30,4 +30,9 @@ public sealed class ReadEdge
     public string? NextPartId { get; set; }
 
     public string? InsideLocationId { get; set; }
+
+    /// <summary>For a camera: the place it looks toward.</summary>
+    public string? TowardLocationId { get; set; }
+
+    public string? TowardPartId { get; set; }
 }
