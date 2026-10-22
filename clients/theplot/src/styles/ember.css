@@ -835,7 +835,7 @@
   .desk-head,
   .desk-row {
     display: grid;
-    grid-template-columns: minmax(0, 2.2fr) 80px 100px minmax(0, 1.5fr) 110px;
+    grid-template-columns: minmax(0, 2.2fr) 80px 100px minmax(0, 1.5fr) 140px;
     gap: 16px;
     align-items: center;
     border-bottom: 1px solid var(--color-divider);

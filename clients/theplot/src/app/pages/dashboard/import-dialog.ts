@@ -12,11 +12,22 @@ import {
 import { AcceptedFormats } from '../../documents/document-api';
 import { ImportJob, ImportRejection } from '../../documents/document-import';
 import { extensionLabel, formatBytes, formatLimit } from '../../documents/format';
+import {
+  isStoryFile,
+  STORY_FILE_EXTENSION,
+  STORY_FILE_MAX_BYTES,
+} from '../../stories/story-file-api';
 
 /** A file that has been picked and checked locally, but not yet sent anywhere. */
 export interface ImportDraft {
   file: File;
   rejection: ImportRejection | null;
+}
+
+/** A `.theplot` file going straight in as a story, with no upload or job behind it. */
+export interface StoryFileImport {
+  phase: 'importing' | 'failed';
+  error: string | null;
 }
 
 /**
@@ -25,7 +36,16 @@ export interface ImportDraft {
  * finished state: the page closes the dialog once the upload is handed off, and the tray and the
  * desk follow the import from there.
  */
-type DialogState = 'empty' | 'ready' | 'rejected' | 'presign' | 'uploading' | 'saving' | 'failed';
+type DialogState =
+  | 'empty'
+  | 'ready'
+  | 'rejected'
+  | 'presign'
+  | 'uploading'
+  | 'saving'
+  | 'failed'
+  | 'importing'
+  | 'refused';
 
 const STEPS = [
   ['Prepare', 'Secure upload link'],
@@ -41,6 +61,8 @@ const STEP_INDEX: Record<DialogState, number> = {
   uploading: 2,
   saving: 3,
   failed: 0,
+  importing: 0,
+  refused: 0,
 };
 
 /**
@@ -72,8 +94,13 @@ const STEP_INDEX: Record<DialogState, number> = {
               Import a file
             </h2>
             <p class="m-0 text-muted text-[14px] leading-[1.5] [text-wrap:pretty]">
-              Once it’s uploaded, ThePlot reads it into a story on your desk. That takes a few
-              minutes; you can follow it from the Imports tray.
+              @if (storyFile()) {
+                A .theplot file is a story exported from ThePlot. It opens exactly as it was saved,
+                straight away.
+              } @else {
+                Once it’s uploaded, ThePlot reads it into a story on your desk. That takes a few
+                minutes; you can follow it from the Imports tray.
+              }
             </p>
           </div>
           <button type="button" class="icon-btn h-8 w-8 flex-none border border-[var(--color-divider)]" aria-label="Close" (click)="close.emit()">
@@ -81,24 +108,26 @@ const STEP_INDEX: Record<DialogState, number> = {
           </button>
         </div>
 
-        <ol class="mx-6 mt-[22px] mb-0 grid list-none grid-cols-3 gap-2.5 p-0">
-          @for (step of steps(); track step.label) {
-            <li class="step" [class.is-active]="step.active" [class.is-done]="step.done">
-              <div class="step-bar"></div>
-              <div class="flex items-center gap-1.5 font-[family-name:var(--font-mono)] text-[12px] font-medium">
-                <span>{{ step.done ? '✓' : step.number }}</span><span>{{ step.label }}</span>
-              </div>
-              <div class="text-[12px] text-[var(--color-neutral-600)]">{{ step.sub }}</div>
-            </li>
-          }
-        </ol>
+        @if (!storyFile()) {
+          <ol class="mx-6 mt-[22px] mb-0 grid list-none grid-cols-3 gap-2.5 p-0">
+            @for (step of steps(); track step.label) {
+              <li class="step" [class.is-active]="step.active" [class.is-done]="step.done">
+                <div class="step-bar"></div>
+                <div class="flex items-center gap-1.5 font-[family-name:var(--font-mono)] text-[12px] font-medium">
+                  <span>{{ step.done ? '✓' : step.number }}</span><span>{{ step.label }}</span>
+                </div>
+                <div class="text-[12px] text-[var(--color-neutral-600)]">{{ step.sub }}</div>
+              </li>
+            }
+          </ol>
+        }
 
         <div class="flex flex-col gap-3.5 px-6 pt-5 pb-6">
           <input
             #picker
             type="file"
             class="hidden"
-            [accept]="formats()?.accept ?? ''"
+            [accept]="accept()"
             (change)="onPicked(picker)"
           />
 
@@ -130,6 +159,7 @@ const STEP_INDEX: Record<DialogState, number> = {
                   @for (label of f.labels; track label) {
                     <span class="chip">{{ label }}</span>
                   }
+                  <span class="chip">ThePlot</span>
                 </div>
                 <div class="meta text-[var(--color-neutral-600)]">Up to {{ limit() }} · one file at a time</div>
               } @else if (formatsError()) {
@@ -143,7 +173,10 @@ const STEP_INDEX: Record<DialogState, number> = {
           }
 
           @if (state() !== 'empty') {
-            <div class="file-card" [class.is-error]="state() === 'rejected' || state() === 'failed'">
+            <div
+              class="file-card"
+              [class.is-error]="state() === 'rejected' || state() === 'failed' || state() === 'refused'"
+            >
               <div class="file-ext">{{ extension() }}</div>
               <div class="min-w-0 flex-1">
                 <div class="truncate text-[14px] font-medium">{{ fileName() }}</div>
@@ -183,7 +216,11 @@ const STEP_INDEX: Record<DialogState, number> = {
 
               @switch (state()) {
                 @case ('ready') {
-                  @if (formats()) {
+                  @if (storyFile()) {
+                    <div class="flex flex-wrap gap-[18px] text-[13px] text-[var(--color-success)]">
+                      <span>✓ ThePlot story</span><span>✓ Under {{ limit() }}</span>
+                    </div>
+                  } @else if (formats()) {
                     <div class="flex flex-wrap gap-[18px] text-[13px] text-[var(--color-success)]">
                       <span>✓ Supported format</span><span>✓ Under {{ limit() }}</span>
                     </div>
@@ -198,6 +235,14 @@ const STEP_INDEX: Record<DialogState, number> = {
                     <div class="text-[14px] font-medium text-[var(--color-danger-200)]">The import didn’t finish</div>
                     <div class="mt-1 text-[13px] leading-[1.5] text-[var(--color-neutral-300)] [text-wrap:pretty]">
                       {{ job()?.error }}
+                    </div>
+                  </div>
+                }
+                @case ('refused') {
+                  <div class="panel-danger" role="alert">
+                    <div class="text-[14px] font-medium text-[var(--color-danger-200)]">The story couldn’t be imported</div>
+                    <div class="mt-1 text-[13px] leading-[1.5] text-[var(--color-neutral-300)] [text-wrap:pretty]">
+                      {{ storyImport()?.error }}
                     </div>
                   </div>
                 }
@@ -225,9 +270,11 @@ const STEP_INDEX: Record<DialogState, number> = {
             <div class="meta flex justify-between gap-3">
               <span>{{ progressText() }}</span><span class="flex-none">{{ progressAside() }}</span>
             </div>
-            <div class="text-[12px] text-[var(--color-neutral-600)]">
-              Keep this tab open until the upload finishes. You can close this window.
-            </div>
+            @if (!storyFile()) {
+              <div class="text-[12px] text-[var(--color-neutral-600)]">
+                Keep this tab open until the upload finishes. You can close this window.
+              </div>
+            }
           </div>
         </ng-template>
 
@@ -246,6 +293,16 @@ const STEP_INDEX: Record<DialogState, number> = {
             @case ('rejected') {
               <button type="button" class="btn btn-secondary" (click)="close.emit()">Cancel</button>
               <button type="button" class="btn btn-primary" (click)="browse(picker)">Choose another file</button>
+            }
+            @case ('refused') {
+              <button type="button" class="btn btn-secondary" (click)="close.emit()">Cancel</button>
+              <button type="button" class="btn btn-primary" (click)="browse(picker)">Choose another file</button>
+            }
+            @case ('importing') {
+              <button type="button" class="btn btn-secondary" (click)="close.emit()">Close</button>
+              <button type="button" class="btn btn-primary" disabled>
+                <span class="spinner" aria-hidden="true"></span>Importing…
+              </button>
             }
             @case ('failed') {
               <button type="button" class="btn btn-secondary" (click)="cancel.emit()">Discard</button>
@@ -266,6 +323,7 @@ export class ImportDialog {
   readonly job = input<ImportJob | null>(null);
   readonly formats = input<AcceptedFormats | null>(null);
   readonly formatsError = input<string | null>(null);
+  readonly storyImport = input<StoryFileImport | null>(null);
 
   /** A file was chosen or dropped; the page checks it and sets the draft. */
   readonly pick = output<File>();
@@ -285,6 +343,10 @@ export class ImportDialog {
   protected readonly dragging = signal(false);
 
   protected readonly state = computed<DialogState>(() => {
+    const storyImport = this.storyImport();
+    if (storyImport) {
+      return storyImport.phase === 'importing' ? 'importing' : 'refused';
+    }
     const job = this.job();
     if (job) {
       // The page closes the dialog on hand-off; until it does, the last step stays up.
@@ -300,7 +362,17 @@ export class ImportDialog {
   protected readonly fileName = computed(() => this.job()?.fileName ?? this.draft()?.file.name ?? '');
   protected readonly fileSize = computed(() => this.job()?.sizeBytes ?? this.draft()?.file.size ?? 0);
   protected readonly extension = computed(() => extensionLabel(this.fileName()));
-  protected readonly limit = computed(() => formatLimit(this.formats()?.maxBytes ?? 10 * 1024 * 1024));
+  protected readonly storyFile = computed(() => isStoryFile(this.fileName()));
+  protected readonly limit = computed(() =>
+    formatLimit(
+      this.storyFile() ? STORY_FILE_MAX_BYTES : (this.formats()?.maxBytes ?? 10 * 1024 * 1024),
+    ),
+  );
+  /** Everything when the table hasn't loaded: the API is then the one that says no. */
+  protected readonly accept = computed(() => {
+    const accept = this.formats()?.accept;
+    return accept ? `${accept},${STORY_FILE_EXTENSION}` : '';
+  });
 
   protected readonly steps = computed(() => {
     const current = STEP_INDEX[this.state()];
@@ -332,6 +404,8 @@ export class ImportDialog {
     switch (this.state()) {
       case 'presign':
         return 'Requesting a secure upload link…';
+      case 'importing':
+        return 'Creating the story…';
       case 'uploading':
         return job ? `${formatBytes(job.loadedBytes)} of ${formatBytes(job.sizeBytes)}` : 'Uploading…';
       default:
@@ -341,6 +415,8 @@ export class ImportDialog {
 
   protected readonly progressAside = computed(() => {
     switch (this.state()) {
+      case 'importing':
+        return '';
       case 'presign':
         return 'Step 1 of 3';
       case 'uploading':
@@ -365,7 +441,8 @@ export class ImportDialog {
       return `“${draft.file.name}” is ${formatBytes(draft.file.size)}. Reduce the file size or split it into smaller files, then import each.`;
     }
     const ext = this.extension().toLowerCase();
-    const accepted = this.formats()?.labels.join(', ') ?? 'the listed types';
+    const labels = this.formats()?.labels;
+    const accepted = labels ? [...labels, 'ThePlot'].join(', ') : 'the listed types';
     return `.${ext} files can’t be imported. Export as one of the accepted types and try again — accepted: ${accepted}.`;
   });
 

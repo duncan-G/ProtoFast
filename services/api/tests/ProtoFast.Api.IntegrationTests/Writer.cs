@@ -1,3 +1,5 @@
+using System.Text;
+using Google.Protobuf;
 using Grpc.Core;
 using Microsoft.Extensions.DependencyInjection;
 using ProtoFast.Api.Services.Screenplays;
@@ -19,11 +21,33 @@ public sealed class Writer(StoryDatabase database)
         return await call(scope.ServiceProvider.GetRequiredService<TService>(), new TestServerCallContext());
     }
 
+    public Task<TReply> CallFiles<TReply>(Func<StoryFileService, ServerCallContext, Task<TReply>> call) => CallAs(call);
+
+    public Task<ExportStoryReply> ExportStoryAsync(string storyId) =>
+        CallFiles((s, c) => s.ExportStory(new ExportStoryRequest { StoryId = storyId }, c));
+
+    public async Task<StorySummary> ImportStoryAsync(byte[] content) =>
+        (await CallFiles((s, c) => s.ImportStory(
+            new ImportStoryRequest { Content = ByteString.CopyFrom(content) }, c))).Story;
+
+    public Task<StorySummary> ImportStoryAsync(string json) => ImportStoryAsync(Encoding.UTF8.GetBytes(json));
+
     public async Task<Story> CreateStoryAsync(string title = "The Signal in the Scrap") =>
         (await Call((s, c) => s.CreateStory(new CreateStoryRequest { Title = title }, c))).Story;
 
     public async Task<Story> GetStoryAsync(string storyId) =>
         (await Call((s, c) => s.GetStory(new GetStoryRequest { StoryId = storyId }, c))).Story;
+
+    public Task<SaveSpotReply> SaveSpotAsync(string storyId, string sceneId, string? elementId = null)
+    {
+        var spot = new StorySpot { SceneId = sceneId };
+        if (elementId is not null)
+        {
+            spot.ElementId = elementId;
+        }
+
+        return Call((s, c) => s.SaveSpot(new SaveSpotRequest { StoryId = storyId, Spot = spot }, c));
+    }
 
     public async Task<Scene> GetSceneAsync(string sceneId) =>
         (await Call((s, c) => s.GetScene(new GetSceneRequest { SceneId = sceneId }, c))).Scene;
@@ -59,4 +83,12 @@ public sealed class Writer(StoryDatabase database)
 
     public async Task<Prop> CreatePropAsync(string storyId, string name) =>
         (await Call((s, c) => s.CreateProp(new CreatePropRequest { StoryId = storyId, Name = name }, c))).Prop;
+
+    private async Task<TReply> CallAs<TService, TReply>(Func<TService, ServerCallContext, Task<TReply>> call)
+        where TService : notnull
+    {
+        await using var scope = database.Services.CreateAsyncScope();
+        using var user = scope.ServiceProvider.GetRequiredService<UserContext>().SetCurrentUser(UserId);
+        return await call(scope.ServiceProvider.GetRequiredService<TService>(), new TestServerCallContext());
+    }
 }

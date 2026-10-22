@@ -6,6 +6,7 @@ import { Location } from './model/location';
 import { Prop } from './model/prop';
 import { Scene } from './model/scene';
 import { Story } from './model/story';
+import { StorySpot } from './model/story-spot';
 import { StorySummary } from './model/story-summary';
 import { StoryVocabulary } from './model/story-vocabulary';
 
@@ -19,6 +20,9 @@ export abstract class StoryApi {
   abstract createStory(title: string): Promise<Story>;
 
   abstract updateStory(storyId: string, title: string): Promise<void>;
+
+  /** Not an edit: the story keeps its last-modified time. */
+  abstract saveSpot(storyId: string, spot: StorySpot): Promise<void>;
 
   abstract deleteStory(storyId: string): Promise<void>;
 

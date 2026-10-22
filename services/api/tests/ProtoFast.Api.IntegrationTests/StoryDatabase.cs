@@ -58,6 +58,7 @@ public sealed class StoryDatabase : IAsyncLifetime
         services.AddScoped<StoryScope>();
         services.AddScoped<StoryLibrary>();
         services.AddScoped<StoryService>();
+        services.AddScoped<StoryFileService>();
         services.AddKeyedSingleton<IMessageQueue>(WorldModelQueues.BuildQueueKey, WorldModelQueue);
         services.AddScoped<WorldModelBuilds>();
         services.AddScoped<OpenStoryService>();

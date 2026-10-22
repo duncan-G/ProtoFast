@@ -115,6 +115,25 @@ describe('InMemoryStoryApi', () => {
     await expect(api.getScene(sceneId)).rejects.toThrow('That scene could not be found.');
   });
 
+  it('keeps the spot until its scene is deleted, and only in the story’s own scenes', async () => {
+    const story = await api.getStory(SAMPLE_STORY_ID);
+    const scenes = story.containers[0].scenes;
+    const other = await api.createStory('The Far Shore');
+    expect(story.spot).toBeNull();
+
+    await api.saveSpot(SAMPLE_STORY_ID, { sceneId: scenes[1].id, elementId: 'row' });
+    expect((await api.getStory(SAMPLE_STORY_ID)).spot).toEqual({
+      sceneId: scenes[1].id,
+      elementId: 'row',
+    });
+    await expect(
+      api.saveSpot(SAMPLE_STORY_ID, { sceneId: other.containers[0].scenes[0].id, elementId: null }),
+    ).rejects.toThrow('That scene could not be found.');
+
+    await api.deleteScene(scenes[1].id);
+    expect((await api.getStory(SAMPLE_STORY_ID)).spot).toBeNull();
+  });
+
   it('deletes a scene and moves the later scenes in its container up one', async () => {
     const before = (await api.getStory(SAMPLE_STORY_ID)).containers[0].scenes;
     await api.deleteScene(before[1].id);

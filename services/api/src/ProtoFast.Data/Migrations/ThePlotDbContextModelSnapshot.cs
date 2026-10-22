@@ -787,6 +787,14 @@ namespace ProtoFast.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("date_last_modified");
 
+                    b.Property<Guid?>("SpotElementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("spot_element_id");
+
+                    b.Property<Guid?>("SpotSceneId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("spot_scene_id");
+
                     b.Property<Guid?>("SourceStoryId")
                         .HasColumnType("uuid")
                         .HasColumnName("source_story_id");

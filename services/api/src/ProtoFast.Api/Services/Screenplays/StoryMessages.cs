@@ -31,6 +31,7 @@ public static class StoryMessages
             Id = story.Id.ToString(),
             Title = story.Title,
             Vocabulary = ToMessage(story.Vocabulary),
+            Spot = ToSpot(story),
         };
         message.Containers.AddRange(story.Containers.Select(c => ToMessage(c, openings)));
         message.Characters.AddRange(story.Characters.Select(ToMessage));
@@ -243,6 +244,24 @@ public static class StoryMessages
         shape is > AvatarShape.Unspecified and <= AvatarShape.Shield
             ? (AvatarShapeRecord)((int)shape - 1)
             : throw StoryErrors.Invalid("Pick an avatar shape.");
+
+    /// <summary>Needs the outline, to drop a spot whose scene was deleted.</summary>
+    private static StorySpot? ToSpot(StoryRecord story)
+    {
+        if (story.SpotSceneId is not { } sceneId
+            || !story.Containers.Any(c => c.Scenes.Any(s => s.Id == sceneId)))
+        {
+            return null;
+        }
+
+        var spot = new StorySpot { SceneId = sceneId.ToString() };
+        if (story.SpotElementId is { } elementId)
+        {
+            spot.ElementId = elementId.ToString();
+        }
+
+        return spot;
+    }
 
     internal static long UnixSeconds(DateTime utc) => new DateTimeOffset(utc, TimeSpan.Zero).ToUnixTimeSeconds();
 }

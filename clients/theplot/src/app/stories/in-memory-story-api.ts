@@ -11,6 +11,7 @@ import { Scene } from './model/scene';
 import { SceneElement } from './model/scene-element';
 import { SceneSummary } from './model/scene-summary';
 import { Story } from './model/story';
+import { StorySpot } from './model/story-spot';
 import { StorySummary } from './model/story-summary';
 import { StoryVocabulary } from './model/story-vocabulary';
 import { sampleScenes, sampleStory } from './sample-story';
@@ -54,6 +55,7 @@ export class InMemoryStoryApi implements StoryApi {
       characters: [],
       locations: [],
       props: [],
+      spot: null,
     });
     this.dates.set(id, { createdAt: new Date(), lastModifiedAt: new Date() });
     const sceneId = crypto.randomUUID();
@@ -87,6 +89,14 @@ export class InMemoryStoryApi implements StoryApi {
     this.touch(storyId);
   }
 
+  async saveSpot(storyId: string, spot: StorySpot): Promise<void> {
+    const story = this.story(storyId);
+    if (this.container(this.scene(spot.sceneId).containerId).storyId !== storyId) {
+      throw new Error('That scene could not be found.');
+    }
+    story.spot = { ...spot };
+  }
+
   async deleteStory(storyId: string): Promise<void> {
     const containerIds = new Set(this.story(storyId).containers.map((c) => c.id));
     for (const scene of [...this.scenes.values()]) {
@@ -102,6 +112,7 @@ export class InMemoryStoryApi implements StoryApi {
     const story = this.story(storyId);
     return structuredClone({
       ...story,
+      spot: story.spot && this.scenes.has(story.spot.sceneId) ? story.spot : null,
       containers: story.containers.map((c) => ({
         ...c,
         scenes: this.summaries(c.id),

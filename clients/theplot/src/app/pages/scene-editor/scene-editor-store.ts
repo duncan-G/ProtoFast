@@ -17,6 +17,7 @@ import { Scene } from '../../stories/model/scene';
 import { SceneElement } from '../../stories/model/scene-element';
 import { SceneElementType } from '../../stories/model/scene-element-type';
 import { Story } from '../../stories/model/story';
+import { StorySpot } from '../../stories/model/story-spot';
 import { StoryVocabulary } from '../../stories/model/story-vocabulary';
 import { isBeat, moveBlock, swapElement } from '../../stories/scene-blocks';
 import { StoryApi } from '../../stories/story-api';
@@ -53,6 +54,9 @@ export class SceneEditorStore implements OnDestroy {
 
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private saving: Promise<void> = Promise.resolve();
+  private spot: StorySpot | null = null;
+  private resume: StorySpot | null = null;
+  private spotSaving: Promise<void> = Promise.resolve();
 
   readonly characters = computed(() => this.story()?.characters ?? []);
   readonly locations = computed(() => this.story()?.locations ?? []);
@@ -161,9 +165,12 @@ export class SceneEditorStore implements OnDestroy {
     try {
       if (this.story()?.id !== storyId) {
         this.loading.set(true);
-        this.story.set(await this.api.getStory(storyId));
+        const story = await this.api.getStory(storyId);
+        this.story.set(story);
+        this.spot = story.spot;
+        this.resume = story.spot;
       }
-      const target = sceneId ?? this.places()[0]?.summary.id;
+      const target = sceneId ?? this.spotScene() ?? this.places()[0]?.summary.id;
       if (!target) {
         this.error.set('This story has no scenes yet.');
         return;
@@ -190,6 +197,35 @@ export class SceneEditorStore implements OnDestroy {
     if (storyId) {
       void this.router.navigate(['/app/stories', storyId, 'scenes', sceneId], { replaceUrl });
     }
+  }
+
+  private spotScene(): string | undefined {
+    return this.places().find((p) => p.summary.id === this.spot?.sceneId)?.summary.id;
+  }
+
+  /** The block to scroll to as a scene shows: the spot's, the first time its scene shows. */
+  resumeAt(sceneId: string): string | null {
+    const resume = this.resume;
+    this.resume = null;
+    return resume?.sceneId === sceneId ? resume.elementId : null;
+  }
+
+  /** `elementId` is the block at the top of the view, or `null` at the scene's top. */
+  keepSpot(elementId: string | null): void {
+    const story = this.story();
+    const scene = this.scene();
+    if (!story || !scene) {
+      return;
+    }
+    if (this.spot?.sceneId === scene.id && this.spot.elementId === elementId) {
+      return;
+    }
+    const spot = { sceneId: scene.id, elementId };
+    this.spot = spot;
+    // Best effort: a lost spot only opens the story a little off.
+    this.spotSaving = this.spotSaving.then(() =>
+      this.api.saveSpot(story.id, spot).catch(() => undefined),
+    );
   }
 
   private async refreshOutline(): Promise<void> {

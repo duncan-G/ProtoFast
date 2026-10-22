@@ -31,12 +31,14 @@ import {
 } from '../../documents/import-progress';
 import { AccountMenu } from '../../shared/account-menu';
 import { OpenStory } from '../../stories/model/open-story';
+import { saveFile } from '../../shared/save-file';
 import { StorySummary } from '../../stories/model/story-summary';
 import { OpenStoryApi } from '../../stories/open-story-api';
 import { StoryApi } from '../../stories/story-api';
+import { isStoryFile, STORY_FILE_MAX_BYTES, StoryFileApi } from '../../stories/story-file-api';
 import { TheplotLogo } from '../../shared/theplot-logo';
 import { DESK_MODES, DeskMode, MODES, parseMode } from './dashboard.data';
-import { ImportDialog, ImportDraft } from './import-dialog';
+import { ImportDialog, ImportDraft, StoryFileImport } from './import-dialog';
 import { ImportTray } from './import-tray';
 import { OpenStoriesDialog } from './open-stories-dialog';
 
@@ -107,6 +109,7 @@ export class Dashboard {
   private readonly api = inject(DocumentApi);
   private readonly storyApi = inject(StoryApi);
   private readonly openStoryApi = inject(OpenStoryApi);
+  private readonly storyFiles = inject(StoryFileApi);
   private readonly imports = inject(DocumentImportService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -142,6 +145,7 @@ export class Dashboard {
   protected readonly confirmingDeleteId = signal<string | null>(null);
   /** Stories imports produced this session, so their rows carry the Imported tag. */
   private readonly newStoryIds = signal<ReadonlySet<string>>(new Set());
+  protected readonly exportingId = signal<string | null>(null);
 
   protected readonly jobs = this.imports.jobs;
   protected readonly importProgress = this.imports.progress;
@@ -150,6 +154,9 @@ export class Dashboard {
 
   protected readonly dialogOpen = signal(false);
   protected readonly draft = signal<ImportDraft | null>(null);
+  protected readonly storyImport = signal<StoryFileImport | null>(null);
+  /** Bumped per `.theplot` import, so one the dialog has moved on from cannot write into it. */
+  private storyImportAttempt = 0;
   /** The job the open dialog is following, if it started one. */
   private readonly dialogJobId = signal<number | null>(null);
   protected readonly dialogJob = computed(() => {
@@ -362,6 +369,17 @@ export class Dashboard {
     }
   }
 
+  protected async exportStory(storyId: string): Promise<void> {
+    this.exportingId.set(storyId);
+    try {
+      saveFile(await this.storyFiles.exportStory(storyId));
+    } catch (err) {
+      this.deskError.set(describeError(err, 'The story could not be exported.'));
+    } finally {
+      this.exportingId.set(null);
+    }
+  }
+
   /** A running import is stopped, a failed one cleared; either way the document leaves the desk. */
   protected async cancelDocumentImport(uploadId: string): Promise<void> {
     this.confirmingDeleteId.set(null);
@@ -429,26 +447,33 @@ export class Dashboard {
   // ─── import dialog ───────────────────────────────────────────────────────
 
   protected openImport(): void {
-    this.draft.set(null);
-    this.dialogJobId.set(null);
+    this.resetDialog();
     this.dialogOpen.set(true);
     void this.imports.ensureFormats().catch(() => undefined);
   }
 
   /** Checks the file locally; nothing is sent until Start. */
   protected pickFile(file: File): void {
-    this.dialogJobId.set(null);
-    this.draft.set({ file, rejection: this.imports.validate(file) });
+    this.resetDialog();
+    const rejection = isStoryFile(file.name)
+      ? file.size > STORY_FILE_MAX_BYTES
+        ? 'size'
+        : null
+      : this.imports.validate(file);
+    this.draft.set({ file, rejection });
   }
 
   protected removeDraft(): void {
-    this.draft.set(null);
-    this.dialogJobId.set(null);
+    this.resetDialog();
   }
 
   protected startImport(): void {
     const draft = this.draft();
     if (!draft || draft.rejection) {
+      return;
+    }
+    if (isStoryFile(draft.file.name)) {
+      void this.importStoryFile(draft.file);
       return;
     }
     const job = this.imports.start(draft.file);
@@ -460,8 +485,7 @@ export class Dashboard {
   protected closeImport(): void {
     const job = this.dialogJob();
     this.dialogOpen.set(false);
-    this.draft.set(null);
-    this.dialogJobId.set(null);
+    this.resetDialog();
     if (job && LIVE_PHASES.has(job.phase)) {
       this.trayOpen.set(true);
     }
@@ -474,8 +498,45 @@ export class Dashboard {
       this.imports.cancel(job.id);
     }
     this.dialogOpen.set(false);
+    this.resetDialog();
+  }
+
+  /**
+   * A `.theplot` file is the story itself, so it lands in one call and the dialog closes on it;
+   * there is no upload for the tray to follow. A story that lands after the dialog closed still
+   * joins the desk.
+   */
+  private async importStoryFile(file: File): Promise<void> {
+    const attempt = ++this.storyImportAttempt;
+    this.storyImport.set({ phase: 'importing', error: null });
+    try {
+      const story = await this.storyFiles.importStory(file);
+      this.stories.update((stories) => [story, ...stories.filter((s) => s.id !== story.id)]);
+      this.newStoryIds.update((ids) => new Set([...ids, story.id]));
+      if (attempt === this.storyImportAttempt) {
+        this.dialogOpen.set(false);
+        this.resetDialog();
+      }
+      this.showToast({
+        title: `“${story.title}” is ready`,
+        sub: `Imported into Write · ${file.name}`,
+        storyId: story.id,
+      });
+    } catch (err) {
+      const error = describeError(err, 'The story could not be imported.');
+      if (attempt === this.storyImportAttempt) {
+        this.storyImport.set({ phase: 'failed', error });
+      } else {
+        this.deskError.set(error);
+      }
+    }
+  }
+
+  private resetDialog(): void {
     this.draft.set(null);
     this.dialogJobId.set(null);
+    this.storyImport.set(null);
+    this.storyImportAttempt++;
   }
 
   protected retryImport(): void {
@@ -545,8 +606,7 @@ export class Dashboard {
     );
     if (this.dialogJobId() === job.id) {
       this.dialogOpen.set(false);
-      this.draft.set(null);
-      this.dialogJobId.set(null);
+      this.resetDialog();
     }
     this.trayOpen.set(true);
   }
@@ -561,12 +621,16 @@ export class Dashboard {
     this.newStoryIds.update((ids) => new Set([...ids, storyId]));
     void this.loadDesk();
 
-    this.clearToast();
-    this.toast.set({
+    this.showToast({
       title: document ? `“${document.name}” is ready` : 'Your import is ready',
       sub: document ? `Imported into Write · ${document.fileName}` : 'Imported into Write',
       storyId,
     });
+  }
+
+  private showToast(toast: Toast): void {
+    this.clearToast();
+    this.toast.set(toast);
     this.toastTimer = setTimeout(() => this.toast.set(null), TOAST_MS);
   }
 

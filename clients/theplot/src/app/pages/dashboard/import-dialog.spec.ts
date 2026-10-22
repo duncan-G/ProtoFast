@@ -110,4 +110,55 @@ describe('ImportDialog', () => {
     expect(text()).toContain('Storage refused the upload (HTTP 403).');
     expect(text()).toContain('Try again');
   });
+
+  describe('with a .theplot file', () => {
+    const draft = { file: new File(['{}'], 'night-shift.theplot'), rejection: null };
+
+    it('lists it among the accepted types', async () => {
+      fixture.componentRef.setInput('formats', FORMATS);
+      await fixture.whenStable();
+      expect(text()).toContain('ThePlot');
+      const picker = fixture.nativeElement.querySelector('input[type=file]') as HTMLInputElement;
+      expect(picker.accept).toBe(`${FORMATS.accept},.theplot`);
+    });
+
+    it('skips the upload steps and offers to start', async () => {
+      fixture.componentRef.setInput('formats', FORMATS);
+      fixture.componentRef.setInput('draft', draft);
+      await fixture.whenStable();
+      expect(text()).toContain('It opens exactly as it was saved');
+      expect(text()).toContain('ThePlot story');
+      expect(text()).toContain('Under 4 MB');
+      expect(text()).toContain('Start import');
+      expect(fixture.nativeElement.querySelectorAll('.step').length).toBe(0);
+    });
+
+    it('turns down a file over its own limit', async () => {
+      fixture.componentRef.setInput('formats', FORMATS);
+      fixture.componentRef.setInput('draft', { ...draft, rejection: 'size' });
+      await fixture.whenStable();
+      expect(text()).toContain('This file is over 4 MB');
+    });
+
+    it('creates the story without an upload', async () => {
+      fixture.componentRef.setInput('draft', draft);
+      fixture.componentRef.setInput('storyImport', { phase: 'importing', error: null });
+      await fixture.whenStable();
+      expect(text()).toContain('Creating the story…');
+      expect(text()).toContain('Importing…');
+      expect(text()).not.toContain('Keep this tab open');
+    });
+
+    it('says why the API refused it and offers another file', async () => {
+      fixture.componentRef.setInput('draft', draft);
+      fixture.componentRef.setInput('storyImport', {
+        phase: 'failed',
+        error: '“Act I”, scene 1 — Row 3: dialogue lines can’t have a location.',
+      });
+      await fixture.whenStable();
+      expect(text()).toContain('The story couldn’t be imported');
+      expect(text()).toContain('Row 3: dialogue lines can’t have a location.');
+      expect(text()).toContain('Choose another file');
+    });
+  });
 });

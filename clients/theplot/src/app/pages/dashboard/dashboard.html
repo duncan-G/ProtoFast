@@ -232,14 +232,30 @@
             </span>
             <span class="flex items-center justify-between gap-2">
               <span class="meta">{{ row.updated }}</span>
-              <button
-                type="button"
-                class="btn btn-ghost btn-danger px-2 py-1 text-[13px]"
-                [attr.aria-label]="'Delete “' + row.title + '”'"
-                (click)="confirmingDeleteId.set(row.id)"
-              >
-                ×
-              </button>
+              <span class="flex items-center">
+                <button
+                  type="button"
+                  class="btn btn-ghost px-2 py-1 text-[13px] text-[var(--color-neutral-400)]"
+                  title="Export as a .theplot file"
+                  [attr.aria-label]="'Export “' + row.title + '” as a .theplot file'"
+                  [disabled]="exportingId() === row.id"
+                  (click)="exportStory(row.id)"
+                >
+                  @if (exportingId() === row.id) {
+                    <span class="spinner" aria-hidden="true"></span>
+                  } @else {
+                    ↓
+                  }
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-danger px-2 py-1 text-[13px]"
+                  [attr.aria-label]="'Delete “' + row.title + '”'"
+                  (click)="confirmingDeleteId.set(row.id)"
+                >
+                  ×
+                </button>
+              </span>
             </span>
           </div>
           }
@@ -363,6 +379,7 @@
       [job]="dialogJob()"
       [formats]="formats()"
       [formatsError]="formatsError()"
+      [storyImport]="storyImport()"
       (pick)="pickFile($event)"
       (start)="startImport()"
       (remove)="removeDraft()"
