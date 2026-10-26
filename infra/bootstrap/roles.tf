@@ -98,8 +98,8 @@ data "aws_iam_policy_document" "infra" {
   }
 
   # Same for the user-documents bucket (infra/documents.tf), which also carries CORS
-  # and a bucket policy. Terraform does not set force_destroy on it, so the object
-  # actions are never exercised in practice; s3:* is kept for parity with the above.
+  # and a bucket policy. force_destroy empties it on destroy, which needs the object
+  # actions plus s3:BypassGovernanceRetention for the locked run artifacts.
   statement {
     sid       = "DocumentsBucket"
     effect    = "Allow"
