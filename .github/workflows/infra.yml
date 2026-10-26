@@ -89,7 +89,12 @@ jobs:
 
       - name: Terraform destroy
         if: ${{ inputs.action == 'destroy' }}
-        run: terraform destroy -input=false -auto-approve
+        # Destroy reads force_destroy from state, not config, so record the documents bucket's first.
+        run: |
+          if terraform state list | grep -qx 'aws_s3_bucket.documents'; then
+            terraform apply -input=false -auto-approve -target=aws_s3_bucket.documents
+          fi
+          terraform destroy -input=false -auto-approve
 
       - name: Outputs
         if: ${{ inputs.action == 'apply' }}
