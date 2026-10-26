@@ -7,9 +7,8 @@
 
 resource "aws_s3_bucket" "documents" {
   bucket = var.documents_bucket
-  # Unlike the assets bucket this holds user data that CI cannot re-upload, so a
-  # destroy must fail on a non-empty bucket rather than silently empty it.
-  force_destroy = false
+  # Empties the bucket on destroy, governance-locked versions included.
+  force_destroy = true
 }
 
 resource "aws_s3_bucket_public_access_block" "documents" {

@@ -55,7 +55,7 @@ domains, `ASSETS_BUCKET` — and then pulls the published manifest, compose file
 `deploy.sh` from S3 and bootstraps the stack.
 
 **Storage** —
-`ebs.tf`: a separate encrypted gp3 volume for Postgres, `prevent_destroy = true`,
+`ebs.tf`: a separate encrypted gp3 volume for Postgres,
 attached to Host B and pinned to the subnet's AZ so instance replacement only
 detaches and reattaches it.
 `assets.tf`: the S3 bucket holding built client bundles (`clients/<name>/<tag>/`)
@@ -103,7 +103,8 @@ never created. Terraform owns:
 
 ## Safety rails worth remembering
 
-- The pgdata volume has `prevent_destroy`; deleting it is a deliberate manual act.
+- `terraform destroy` deletes everything, including the pgdata volume (Keycloak and
+  auth databases) and the documents bucket's contents.
 - Host B's AMI is pinned so an unrelated apply cannot silently replace the box that
   holds the database. Rebuild it deliberately with
   `terraform apply -replace=aws_instance.host_b`, after `deploy.sh drain`.
