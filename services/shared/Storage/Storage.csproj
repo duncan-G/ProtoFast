@@ -15,6 +15,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\ProtoStrap\ProtoStrap.csproj" />
       <ProjectReference Include="..\Storage.Abstractions\Storage.Abstractions.csproj" />
     </ItemGroup>
 </Project>

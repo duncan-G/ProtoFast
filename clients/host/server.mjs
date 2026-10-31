@@ -1,63 +1,81 @@
-/**
- * Unified SSR host: serves every client's Angular SSR bundle from a single
- * Node process. Envoy tags each request with an `x-client` header (derived
- * from the subdomain in publish mode, or the per-client listener in dev-host
- * mode); unknown or missing values fall back to DEFAULT_CLIENT.
- *
- * Clients are NOT baked into this image. The entrypoint (entrypoint.sh) pulls
- * each pinned client's built assets from S3 into ASSETS_DIR/<name>/ before this
- * process starts, so the set of clients is discovered at runtime from the
- * `CLIENTS` env var (comma-separated) rather than a hard-coded loader map. Each
- * client's built server bundle exports `reqHandler` and only calls listen()
- * when run as the main module, so importing them here is safe.
- */
-import express from 'express';
-import { pathToFileURL } from 'node:url';
+// The clients component: one Node server for the Angular SSR apps named in CLIENTS. A request
+// goes to the client named for its host (HOST_<NAME>), any other to DEFAULT_CLIENT; GET
+// /healthz is answered here. The image runs it as `node host/server.mjs`; from clients/, after
+// each app's `npm run build`, so can you.
+import os from 'node:os';
 
-const assetsDir = process.env['ASSETS_DIR'] || '/assets';
+// Telemetry starts first, before the apps load. ProtoStrap and `aspire run` set the endpoint;
+// without it nothing is exported.
+const telemetry = process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+  ? await import('./telemetry.mjs')
+  : undefined;
 
-const clientNames = (process.env['CLIENTS'] || '')
-  .split(',')
-  .map((name) => name.trim())
-  .filter(Boolean);
+const { allowedHosts, createHost, createLogger, loadConfig, routeConsole } =
+  await import('./host.mjs');
 
-if (clientNames.length === 0) {
-  throw new Error('CLIENTS env var is empty; no clients to serve');
-}
-
-const defaultClient = process.env['DEFAULT_CLIENT'] || clientNames[0];
-
-const handlers = new Map();
-for (const name of clientNames) {
-  // Each client's assets were synced to <assetsDir>/<name>/{server,browser}/
-  // by the entrypoint; import its self-contained server bundle by absolute path.
-  const entry = pathToFileURL(`${assetsDir}/${name}/server/server.mjs`).href;
-  const { reqHandler } = await import(entry);
-  handlers.set(name, reqHandler);
-}
-
-if (!handlers.has(defaultClient)) {
-  throw new Error(`DEFAULT_CLIENT "${defaultClient}" is not in CLIENTS`);
-}
-
-const app = express();
-
-app.use((req, res, next) => {
-  const requested = req.headers['x-client'];
-  const handler =
-    (typeof requested === 'string' && handlers.get(requested)) ||
-    handlers.get(defaultClient);
-  handler(req, res, next);
+const log = createLogger({
+  component: process.env.PROTOSTRAP_COMPONENT || 'clients',
+  replica: process.env.PROTOSTRAP_REPLICA || os.hostname(),
+  release: process.env.PROTOSTRAP_RELEASE || 'local',
 });
+routeConsole(log);
 
-const port = process.env['PORT'] || 4000;
-app.listen(port, (error) => {
-  if (error) {
-    throw error;
+function numberFromEnv(name, fallback) {
+  const raw = process.env[name];
+  const value = raw === undefined || raw === '' ? fallback : Number(raw);
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${name} must be a number, not "${raw}"`);
   }
+  return value;
+}
 
-  console.log(
-    `Unified SSR host listening on http://localhost:${port} ` +
-      `(clients: ${[...handlers.keys()].join(', ')}; default: ${defaultClient})`,
-  );
+let port, drainSeconds, config;
+try {
+  port = numberFromEnv('PORT', 4000);
+  drainSeconds = numberFromEnv('DRAIN_SECONDS', process.env.PROTOSTRAP_REPLICA ? 10 : 0);
+  config = loadConfig(process.env);
+} catch (error) {
+  log('error', error.message);
+  process.exit(1);
+}
+
+// Angular reads NG_ALLOWED_HOSTS when a bundle is imported, and renders for no other host.
+process.env.NG_ALLOWED_HOSTS = allowedHosts(process.env).join(',');
+
+// The host owns OpenTelemetry: it starts the SDK above and flushes it on the way out. Each
+// app's own server instrumentation starts one only when this flag is unset, as under `ng serve`.
+globalThis.__nodeOtelSdkStarted = true;
+
+// Each app's server bundle exports reqHandler and listens only when run on its own. The bundles
+// sit where each app's `npm run build` leaves them, in the image as in clients/.
+const clients = new Map(
+  await Promise.all(
+    config.clients.map(async (name) => {
+      const bundle = new URL(`../${name}/dist/${name}/server/server.mjs`, import.meta.url);
+      const { reqHandler } = await import(bundle.href);
+      return [name, reqHandler];
+    }),
+  ),
+);
+
+const host = createHost({
+  clients,
+  defaultClient: config.defaultClient,
+  hosts: config.hosts,
+  component: process.env.PROTOSTRAP_COMPONENT,
+  drainSeconds,
+  log,
+  onStop: () => telemetry?.sdk.shutdown(),
 });
+
+host.server.listen(port, () => {
+  log('info', 'listening', {
+    port,
+    clients: config.clients,
+    defaultClient: config.defaultClient,
+    hosts: Object.fromEntries(config.hosts),
+  });
+});
+
+process.on('SIGTERM', () => host.shutdown('SIGTERM'));
+process.on('SIGINT', () => host.shutdown('SIGINT'));

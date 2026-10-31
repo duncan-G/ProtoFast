@@ -10,10 +10,9 @@
         "ASPNETCORE_ENVIRONMENT": "Development",
         "DOTNET_ENVIRONMENT": "Development",
         "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "https://0.0.0.0:21251",
+        "ASPIRE_DASHBOARD_OTLP_HTTP_ENDPOINT_URL": "https://0.0.0.0:21252",
         "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "https://localhost:22011",
-        "ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS": "true",
-        "AWS_PROFILE": "developer",
-        "AWS_REGION": "us-west-2"
+        "ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS": "true"
       }
     },
     "https-ssr-host": {
@@ -25,11 +24,10 @@
         "ASPNETCORE_ENVIRONMENT": "Development",
         "DOTNET_ENVIRONMENT": "Development",
         "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "https://0.0.0.0:21251",
+        "ASPIRE_DASHBOARD_OTLP_HTTP_ENDPOINT_URL": "https://0.0.0.0:21252",
         "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "https://localhost:22011",
         "ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS": "true",
-        "SsrHost__Dev": "true",
-        "AWS_PROFILE": "developer",
-        "AWS_REGION": "us-west-2"
+        "SsrHost__Dev": "true"
       }
     },
     "http": {
@@ -41,10 +39,9 @@
         "ASPNETCORE_ENVIRONMENT": "Development",
         "DOTNET_ENVIRONMENT": "Development",
         "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "http://localhost:19130",
+        "ASPIRE_DASHBOARD_OTLP_HTTP_ENDPOINT_URL": "http://localhost:19131",
         "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "http://localhost:20084",
-        "ASPIRE_ALLOW_UNSECURED_TRANSPORT": "true",
-        "AWS_PROFILE": "developer",
-        "AWS_REGION": "us-west-2"
+        "ASPIRE_ALLOW_UNSECURED_TRANSPORT": "true"
       }
     }
   }

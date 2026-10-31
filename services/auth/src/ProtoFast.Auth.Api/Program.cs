@@ -6,28 +6,18 @@ using ProtoFast.Auth.Api.Endpoints;
 using ProtoFast.Auth.Api.Identity;
 using ProtoFast.Auth.Api.Keycloak;
 using ProtoFast.Auth.Api.Security;
-using ProtoFast.Auth.Api.Services;
 using ProtoFast.Auth.Api.Sessions;
 using ProtoFast.Auth.Api.Tenancy;
 using ProtoFast.Auth.Data;
+using Amazon.SimpleEmailV2;
+using ProtoFast.ProtoStrap;
 using ProtoFast.ServiceDefaults;
-using ProtoFast.ServiceDefaults.Secrets;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.AddServiceDefaults();
-
-builder.Configuration
-    .AddEnvironmentVariables("Shared_")
-    .AddEnvironmentVariables("Auth_");
-// Integration tests boot this host via WebApplicationFactory with environment
-// "Testing" (TestAuthWebApplicationFactory). Skip SM there — no AWS, hermetic.
-if (!builder.Environment.IsEnvironment("Testing"))
-{
-    builder.Configuration.AddSecretsManager(options => builder.Configuration.Bind("Secrets", options));
-}
-
-builder.Services.AddGrpc();
+// Its keys come from the environment's secret under ProtoStrap, and from the AppHost's
+// environment variables under `aspire run`.
+builder.AddServiceDefaults(stop: TimeSpan.FromSeconds(18)); // Inside the spec's stop.
 
 builder.Services.Configure<TenantOptions>(builder.Configuration.GetSection("Tenants"));
 builder.Services.Configure<KeycloakOptions>(builder.Configuration.GetSection("Keycloak"));
@@ -48,7 +38,16 @@ builder.Services.AddSingleton<ICorrelationStore, RedisCorrelationStore>();
 builder.Services.AddSingleton<IEmailChangeStore, RedisEmailChangeStore>();
 builder.Services.AddSingleton<IKeycloakGateway, KeycloakGateway>();
 builder.Services.AddSingleton<IKeycloakAdmin, KeycloakAdmin>();
-builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
+// SES with auth's own role in an account; SMTP to smtp4dev under `aspire run`.
+if (Replica.UnderProtoStrap)
+{
+    builder.Services.AddSingleton<IAmazonSimpleEmailServiceV2>(_ => new AmazonSimpleEmailServiceV2Client());
+    builder.Services.AddSingleton<IEmailSender, SesEmailSender>();
+}
+else
+{
+    builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
+}
 builder.Services.AddSingleton<IInternalJwtFactory, InternalJwtFactory>();
 builder.Services.AddSingleton<IReplayGuard, RedisReplayGuard>();
 builder.Services.AddSingleton<SessionResolver>();
@@ -58,10 +57,10 @@ builder.Services.AddScoped<AccountFlow>();
 
 var app = builder.Build();
 
-app.MapDefaultEndpoints();
-app.MapAuthEndpoints();                  // /signin /signup /signin-oidc /signout /reset /add-passkey (HTTP)
-app.MapAccountEndpoints();               // /account/me /account/email(/confirm) /account/passkeys /account/delete (HTTP)
-app.MapGrpcService<AuthorizationService>(); // ext_authz Check (gRPC)
+app.MapDefaultEndpoints();                // /healthz, the spec's ready
+app.MapAuthEndpoints();                   // /signin /signup /signin-oidc /signout /reset /add-passkey
+app.MapAccountEndpoints();                // /account/me /account/email(/confirm) /account/passkeys /account/delete
+app.MapExtAuthz();                        // /ext-authz/{**path}: the edge's authorizer, never routed
 
 app.Run();
 

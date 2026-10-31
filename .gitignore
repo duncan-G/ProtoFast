@@ -86,9 +86,6 @@ App_Data/Secrets/
 .idea/
 *.sln.iml
 
-# --- Proto codegen (buf + Connect) ---
-clients/*/src/lib/gen/
-
 # --- Terraform ---
 # Provider plugins / modules, crash logs, and CLI var files.
 **/.terraform/*
@@ -104,19 +101,23 @@ override.tf.json
 *_override.tf.json
 .terraformrc
 terraform.rc
-# Bootstrap (and any other local-state) configs keep state on disk — never commit it.
-infra/bootstrap/*.tfstate
-infra/bootstrap/*.tfstate.*
-infra/bootstrap/.terraform.lock.hcl
+# Bootstrap and people roots keep their state on the Org Admin's disk: never commit it.
+*.tfstate
+*.tfstate.*
+
+# --- ProtoStrap ---
+# ProtoStrap's source, which CI checks out here at its version, for the AppHost's
+# ProtoStrap.Hosting reference (apphost/ProtoFast.AppHost.csproj).
+/.protostrap/
+# Claude Code's per-person settings, such as ProtoStrap's skills from a local checkout.
+.claude/settings.local.json
 
 # --- OS ---
 .DS_Store
 Thumbs.db
 
-# --- Keycloak provider build (Maven) ---
-# The JAR is committed under deploy/keycloak/providers/ (see
-# infra/keycloak/providers/build.sh); the build tree that produced it is not.
-infra/keycloak/providers/*/target/
+# --- Keycloak provider builds (Maven, inside services/keycloak's image build) ---
+services/keycloak/providers/*/target/
 
 # Local Node pin for nvm/fnm; not shared (see scripts/dev-client.sh).
 .nvmrc

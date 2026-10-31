@@ -3,6 +3,8 @@ namespace ProtoFast.Auth.Api.Configuration;
 /// <summary>
 /// Host → realm/client map. Config now, a DB row later (architecture doc). Adding a tenant is
 /// one entry, no code change; a <c>Host</c> not in the map is never guessed — it routes public.
+/// A key is one of the spec's host names (protofast, admin, theplot), whose hostname in this
+/// account arrives as HOST_&lt;NAME&gt;, or else a hostname itself.
 /// </summary>
 public sealed class TenantOptions
 {
@@ -36,6 +38,26 @@ public sealed class TenantConfig
     /// admits any account in the realm.
     /// </summary>
     public string[] RequiredRoles { get; init; } = [];
+
+    /// <summary>
+    /// App consoles mounted on this host, by the first segment of their path, each with the realm
+    /// role that reaches it: <c>theplot</c> → <c>admin-theplot</c> serves /theplot/ only to
+    /// holders of that role (docs/design/admin-consoles.md). The edge's authorizer enforces it.
+    /// </summary>
+    public Dictionary<string, string> Consoles { get; init; } = new(StringComparer.Ordinal);
+
+    /// <summary>The role a path's console needs, or null for a path no console holds.</summary>
+    public string? ConsoleRole(string path)
+    {
+        var segment = path.TrimStart('/');
+        var slash = segment.IndexOf('/');
+        if (slash >= 0)
+        {
+            segment = segment[..slash];
+        }
+
+        return segment.Length > 0 && Consoles.TryGetValue(segment, out var role) ? role : null;
+    }
 
     public bool Admits(IReadOnlyList<string> roles) =>
         RequiredRoles.Length == 0 || RequiredRoles.Any(r => roles.Contains(r, StringComparer.Ordinal));

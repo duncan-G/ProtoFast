@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- What ProtoStrap tells every replica, and its environment's secret. No ASP.NET, so the
+       tasks (migrations, postgres-config) use it as the services do. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>ProtoFast.ProtoStrap</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AWSSDK.SecretsManager" Version="4.0.100.2" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

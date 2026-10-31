@@ -12,5 +12,6 @@ package: each console links `src/admin-kit -> ../../admin-kit/src` and builds wi
   `provideAdminConsoleServer`, `startServerTelemetry`.
 - `styles.css`: import it after Tailwind so the kit's classes are generated.
 
-The roles a console admits come from `ADMIN_CONSOLE_ROLES`, which the AppHost and compose set.
+The roles a console admits come from `ADMIN_CONSOLE_ROLES`, which the AppHost sets (and, through
+it, the spec's `env`).
 Changes here reach every console: they are ours to review, never an app agent's.

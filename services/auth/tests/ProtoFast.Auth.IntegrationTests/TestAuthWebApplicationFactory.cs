@@ -54,6 +54,9 @@ public sealed class TestAuthWebApplicationFactory : WebApplicationFactory<Progra
                 ["InternalJwt:KeyId"] = "test-1",
                 ["Tenants:ByHost:protofast.dev:Realm"] = "protofast",
                 ["Tenants:ByHost:protofast.dev:ClientId"] = "protofast-web",
+                ["Tenants:ByHost:admin.protofast.dev:Realm"] = "operators",
+                ["Tenants:ByHost:admin.protofast.dev:ClientId"] = "admin",
+                ["Tenants:ByHost:admin.protofast.dev:Consoles:theplot"] = "admin-theplot",
             }));
 
         // Swap the Redis-backed stores for in-memory stubs so the tests need no running Redis.

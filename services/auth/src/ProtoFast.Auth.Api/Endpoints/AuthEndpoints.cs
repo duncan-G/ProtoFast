@@ -4,7 +4,8 @@ namespace ProtoFast.Auth.Api.Endpoints;
 
 /// <summary>
 /// The browser-facing OIDC endpoints (guide §3.6). Plain HTTP — they 302 and Set-Cookie, they are
-/// not gRPC. Envoy routes these to the auth cluster with ext_authz OFF (they <em>are</em> the flow).
+/// not gRPC. ProtoStrap's edge routes these paths straight to auth, unauthorized: they <em>are</em>
+/// the flow (the spec's routes for auth).
 /// </summary>
 public static class AuthEndpoints
 {
@@ -49,7 +50,7 @@ public static class AuthEndpoints
 
         // Back-channel logout — Keycloak POSTs a signed logout token when a realm SSO session
         // ends, which is what carries a sign-out on one host across to the other. Called
-        // server-to-server on the internal network; the Envoy vhost never routes it from the edge.
+        // server-to-server on ProtoStrap's overlay; the edge never routes it.
         app.MapPost("/backchannel-logout", (HttpContext ctx, BackchannelLogout logout, CancellationToken ct) =>
             logout.HandleAsync(ctx, ct));
 

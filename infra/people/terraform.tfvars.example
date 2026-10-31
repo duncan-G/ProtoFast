@@ -1,0 +1,5 @@
+region = "us-east-1"
+accounts = {
+  dev  = "111111111111"
+  prod = "222222222222"
+}

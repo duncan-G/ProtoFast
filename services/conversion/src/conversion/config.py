@@ -16,6 +16,16 @@ def _int(name: str, default: int) -> int:
         return default
 
 
+def _float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
 def _list(name: str, default: list[str]) -> list[str]:
     raw = os.environ.get(name, "")
     values = [item.strip() for item in raw.split(",") if item.strip()]
@@ -24,16 +34,22 @@ def _list(name: str, default: list[str]) -> list[str]:
 
 @dataclass(frozen=True, slots=True)
 class Settings:
-    bucket: str = field(default_factory=lambda: os.environ.get("CONVERSION_BUCKET", ""))
+    # The documents bucket, from the spec's `uses: [documents]` (or the AppHost's reference).
+    bucket: str = field(default_factory=lambda: os.environ.get("BUCKET_DOCUMENTS", ""))
 
-    # LocalStack in development; unset in production so boto3 resolves real S3.
+    # LocalStack under `aspire run`; unset in an account, where boto3 resolves real S3 and
+    # gets the role's credentials from AWS_CONTAINER_CREDENTIALS_RELATIVE_URI. boto3 reads
+    # the endpoint itself; it is read here only to choose path-style addressing.
     s3_endpoint: str | None = field(
-        default_factory=lambda: os.environ.get("CONVERSION_S3_ENDPOINT") or None
+        default_factory=lambda: (
+            os.environ.get("AWS_ENDPOINT_URL_S3") or os.environ.get("AWS_ENDPOINT_URL") or None
+        )
     )
 
-    region: str = field(
+    # botocore reads AWS_DEFAULT_REGION, not AWS_REGION, which is what ProtoStrap sets.
+    region: str | None = field(
         default_factory=lambda: (
-            os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-west-2"
+            os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or None
         )
     )
 
@@ -64,6 +80,24 @@ class Settings:
 
     port: int = field(default_factory=lambda: _int("CONVERSION_PORT", 8090))
 
+    # After SIGTERM, how long readiness fails while requests are still taken, so the callers
+    # notice. ProtoStrap sets DRAIN_SECONDS (10 by default); a local run stops at once.
+    drain_seconds: float = field(
+        default_factory=lambda: max(
+            0.0, _float("DRAIN_SECONDS", 10.0 if os.environ.get("PROTOSTRAP_REPLICA") else 0.0)
+        )
+    )
+
+
+class SettingsError(Exception):
+    """A setting the service can't start without is missing."""
+
 
 def load() -> Settings:
     return Settings()
+
+
+def check(settings: Settings) -> None:
+    """Raises SettingsError, naming the variable, for one the service can't work without."""
+    if not settings.bucket:
+        raise SettingsError("BUCKET_DOCUMENTS is not set")

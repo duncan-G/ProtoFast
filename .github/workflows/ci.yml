@@ -1,0 +1,138 @@
+# Checks every pull request, and every push to main, before anything deploys: each component's
+# tests, that the spec is what the AppHost writes and passes protostrap check, every image's
+# own checks, and the Terraform roots. No AWS: nothing here holds a role. main's ruleset
+# requires this workflow, so a change merges only once it passes; deploy.yml runs no tests.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dotnet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # ProtoStrap at the spec's version: the AppHost builds ProtoStrap.Hosting from it until
+      # the package is on NuGet, and its action builds the protostrap CLI, which checks the spec.
+      - uses: actions/checkout@v5
+        with:
+          repository: duncan-G/protostrap
+          ref: v0.1.0
+          path: .protostrap
+
+      - uses: ./.protostrap/.github/actions/protostrap
+        with:
+          source: .protostrap
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      # The integration tests start PostgreSQL and LocalStack in Docker, which the runner has.
+      - run: dotnet test ProtoFast.slnx
+
+      - name: The spec is what the AppHost writes
+        run: |
+          set -euo pipefail
+          dotnet run --project apphost -- --operation publish --step protostrap-spec
+          if [ -n "$(git status --porcelain -- protostrap.yaml)" ]; then
+            git diff -- protostrap.yaml || true
+            echo "::error::protostrap.yaml isn't what the AppHost writes: run aspire do protostrap-spec and commit it"
+            exit 1
+          fi
+          protostrap check --spec protostrap.yaml
+
+  clients:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        client: [admin, admin-theplot, protofast, theplot]
+    defaults:
+      run:
+        working-directory: clients/${{ matrix.client }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: clients/${{ matrix.client }}/package-lock.json
+      - run: npm ci
+      # The generated gRPC-Web code is committed, so the image builds from clients/ alone: it
+      # must be what the protos make.
+      - run: npm run generate:grpc && git diff --exit-code -- .
+      - run: npm test -- --watch=false
+      - run: npx ng build
+      - if: startsWith(matrix.client, 'admin')
+        name: Admin console isolation checks
+        working-directory: .
+        run: python3 scripts/check-admin-console.py clients/${{ matrix.client }}
+
+  clients-host:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/host
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: node --test
+
+  conversion:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/conversion
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --quiet -e '.[dev]'
+      - run: python -m pytest -q
+
+  images:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [clients, services/conversion, services/keycloak, services/keycloak-config, services/otel-collector]
+    steps:
+      - uses: actions/checkout@v5
+      - if: matrix.image == 'services/keycloak' || matrix.image == 'services/keycloak-config'
+        run: bash ${{ matrix.image }}/test/entrypoint_test.sh
+      # Each image builds as the deploy workflow builds it; Keycloak's build runs its providers'
+      # Maven tests. The deploy workflow builds linux/arm64; amd64 is enough to check here.
+      - run: docker build -t protofast-ci ${{ matrix.image }}
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+      - run: terraform fmt -check -recursive infra
+      - name: Validate
+        run: |
+          set -euo pipefail
+          for dir in infra/bootstrap/prod infra/prod infra/people; do
+            echo "::group::$dir"
+            terraform -chdir="$dir" init -backend=false -input=false
+            terraform -chdir="$dir" validate
+            echo "::endgroup::"
+          done

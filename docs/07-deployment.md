@@ -1,125 +1,141 @@
 # 07 · Deployment
 
-*How code and configuration reach production, what the box does with them, and how
-to roll back. Self-contained.*
+*How a commit reaches prod, what rolls it out, and how to roll back. Self-contained.*
 
-## The model: one component at a time
+## The model: a release is the whole application at one commit
 
-A **component** is the atomic unit of deployment. Deploying one rewrites a single
-line of the version manifest and recreates a single container. Mixed versions
-across components are normal and expected.
+ProtoFast deploys with ProtoStrap's reusable workflows. Each deploy writes a **release**: the
+spec and every component's image tag at one commit. ProtoStrap's scheduler, on data-1, rolls
+the account to it.
 
-Every component's artefact is tagged with a **content hash of its own sources**
-(`c-<16 hex>`, from `git ls-files -s` over that component's paths). Identical
-source ⇒ identical tag ⇒ the build is skipped and the existing artefact is
-reused. That is also what makes rollback trivial: an old tag is still there.
+Every built image is tagged from its own sources, so identical sources give an identical tag,
+the build is skipped, and the component's replicas aren't touched. Mixed ages across
+components are normal. Rolling back is deploying an earlier commit's release: its images are
+still in ECR.
 
-| Component | Host | Artefact | Sources hashed |
-|---|---|---|---|
-| `auth` (+ `auth-migrations`) | B | ECR image | `services/auth services/shared` |
-| `payments` | B | ECR image | `services/payments services/shared` |
-| `api` (+ `api-migrations`) | B | ECR image | `services/api services/document_import services/shared` |
-| `conversion` | B | ECR image | `services/conversion` |
-| `envoy` | A | ECR image | `proxy` |
-| `otel-collector` | A | ECR image | `otel-collector` |
-| `clients-host` | A | ECR image | `clients/host` |
-| `client-admin` / `client-protofast` | A | S3 prefix `clients/<name>/<tag>/` | that client + all `Protos` |
-| `keycloak`, `postgres`, `redis`, `cloudflared`, `aspire-dashboard` | pinned upstream images | — | compose/config paths |
+| Component                                     | Image                                     | Tagged from                                             |
+| --------------------------------------------- | ----------------------------------------- | ------------------------------------------------------- |
+| auth, api, payments, document-import, auth-migrations, protofast-migrations, postgres-config | the .NET SDK's container publish of the `project`, with the SDK `global.json` pins, on the base image `Directory.Build.targets` pins (ASP.NET's chiseled runtime) | the project's directory, `global.json` and the spec's `sources`: the projects it references, `Directory.Build.targets`, `nuget.config` |
+| clients, clients-admin-theplot                | `clients/Dockerfile` (one image)          | `clients/`, minus what `.dockerignore` leaves out       |
+| conversion, keycloak, keycloak-config, otel-collector | their own `Dockerfile`            | their directory, minus the files the image doesn't use (the exclusions in the spec's `sources`: README, tests, build output) |
+| postgres, redis                               | upstream `postgres:18.3`, `redis:8.6`, copied into ECR | the tag itself                               |
 
-The first group runs through the reusable workflow
-[`_component-deploy.yml`](../.github/workflows/_component-deploy.yml); the pinned
-upstream tiers have their own small workflows because there is nothing to build.
+Every image is built for `linux/arm64` (Graviton). Base images are pinned by their
+multi-platform index digest; a patched base image is a commit.
 
 ## The pipeline
 
-Each `deploy-<component>.yml` triggers on pushes to `main` that touch its paths,
-or on manual dispatch with an explicit tag. It then runs three jobs:
+**[`ci.yml`](../.github/workflows/ci.yml)** runs on every pull request and every push to
+`main`, with no AWS access. main's ruleset should require it, since the deploy runs no tests:
 
-1. **test** — `dotnet build` + every discovered test project, or `npm ci && npm test`
-   for a client, or nothing for a pure Dockerfile component.
-2. **build** — resolve the content tag; if the artefact already exists, reuse it;
-   otherwise build and push (dotnet SDK container publish → ECR, buildx cross-build
-   for arm64 → ECR, or `ng build` → `aws s3 sync`).
-3. **deploy** — resolve the target instance by tags (`protofast:role=app-server`
-   plus `Role=edge|services`), gzip the host's compose file and `deploy.sh`, ship
-   them over **SSM Run Command** and run
-   `deploy.sh apply <component>=<tag>`. No SSH; no inbound ports. Full output goes
-   to the CloudWatch log group `/protofast/deploy`.
+| Job            | Checks                                                                          |
+| -------------- | ------------------------------------------------------------------------------- |
+| `dotnet`       | `dotnet test ProtoFast.slnx` (integration tests start PostgreSQL and LocalStack in Docker); the spec is what the AppHost writes; `protostrap check` on it |
+| `clients`      | per client: `npm ci`, the generated gRPC code matches the protos, `npm test`, `ng build`; the admin consoles' isolation checks (`scripts/check-admin-console.py`) |
+| `clients-host` | `node --test` in `clients/host`                                                  |
+| `conversion`   | `python -m pytest`                                                              |
+| `images`       | each Dockerfile builds (amd64 here); Keycloak's and keycloak-config's entrypoint tests; Keycloak's build runs its providers' Maven tests |
+| `terraform`    | `terraform fmt -check` and `validate` on every root, without a backend          |
 
-Authentication to AWS is GitHub OIDC — `protofast-deploy` for deploys (trust scoped
-to `refs/heads/main`), `protofast-infra` for Terraform (trust scoped to the `infra`
-GitHub Environment).
+CI checks ProtoStrap out at `v0.1.0` into `.protostrap`, where the AppHost finds
+ProtoStrap.Hosting and the `protostrap` action builds the CLI.
 
-## What the box holds
+**[`deploy.yml`](../.github/workflows/deploy.yml)** runs on every push to `main` (and by hand),
+after CI passed on the pull request, and deploys to prod. One run at a time
+(`concurrency: deploy`, never cancelled):
 
-```
-/opt/protofast/
-  docker-compose.yml    ← synced by each deploy (host A or host B variant)
-  deploy.sh             ← synced by each deploy
-  .env                  ← STABLE: ECR, AWS_REGION, HOST_ROLE, peer IP, CLIENTS,
-                          domains, ASSETS_BUCKET + secret-derived values
-  versions.env          ← MANIFEST: one *_TAG per component (what should run)
-  versions.env.prev     ← pre-apply snapshot, for per-component rollback
-  versions.env.lock     ← flock target; serialises manifest writes
-  kc-db-password, auth-db-password, internal-jwt-pub, tunnel-token
+```mermaid
+graph LR
+    Approve["approve<br/>prod-approval"] --> Plan["plan"] --> Infra["infra<br/>only if changed"] --> Deploy["deploy"]
 ```
 
-Compose reads **both** env files: `.env` for shape and `versions.env` for every
-image tag. `.env` is seeded by cloud-init and then only ever re-asserted (ECR,
-region, peer IP, secret-derived values) — deploys never rewrite the rest of it.
+| Job       | ProtoStrap workflow | Does                                                              |
+| --------- | ------------------- | ----------------------------------------------------------------- |
+| `approve` | (none)              | waits in the `prod-approval` GitHub environment: one approval per release |
+| `plan`    | `plan.yml`          | regenerates `protostrap.yaml` from the AppHost, fails if it differs from the commit, checks it, and works out which image tags are missing and whether the infrastructure changed |
+| `infra`   | `infra.yml`         | applies `infra/prod`, only when the plan says the infrastructure changed |
+| `deploy`  | `deploy.yml`        | builds and pushes the missing images, copies ProtoStrap's binary, edge and telemetry images and the upstream images, writes the release, and sends `protostrap-deploy` to prod's data-1 through SSM |
 
-## What `deploy.sh apply` does
+The reusable workflows sign in to AWS with GitHub's OIDC token, as the Deploy role in the
+`prod` GitHub environment and the Infra role in `prod-infra`.
 
-For each `component=tag` pair, under a lock:
+**[`infra.yml`](../.github/workflows/infra.yml)** plans, applies or destroys prod's platform by
+hand, and applies it when its root (`infra/prod/**`) changes on `main`
+([layer 08](08-infrastructure.md)).
 
-1. **Decide whether there is work.** A no-op requires all four of: same tag, a
-   running container, the same resolved compose config, and a passing health check.
-   Stale config, a stopped container or an unhealthy one all trigger a recreate.
-2. **Snapshot** `versions.env` and write the new tag.
-3. **Apply**, by kind:
-   - *service / envoy / otel / edge*: `compose pull` then `up -d --no-deps`.
-     For `auth`, the schema-migrations job runs first and **fails closed** — if it
-     fails, `auth` is not recreated and the old version keeps serving.
-   - *host / client*: force-recreate the clients host so its entrypoint re-syncs
-     every pinned client from S3.
-   - *stateful* (`postgres`, `redis`, `keycloak`): plain `up -d --no-deps`, never a
-     blind force-recreate. A Postgres **major** bump is refused unless
-     `ALLOW_PG_MAJOR=1` — that is a migration, not a deploy.
-4. **Health-check** just that component (gRPC health probe, Envoy admin `/ready`,
-   collector `:13133`, Keycloak `/health/ready`, an SSR render, `redis-cli PING`,
-   `pg_isready`).
-5. **On failure, roll back that component** to the previous tag and re-apply it —
-   except Postgres, which is never auto-rolled-back, because a downgrade after a
-   catalog upgrade corrupts data.
-6. **Publish the manifest to S3** so a replaced instance can self-heal to it.
+## Rolling out in the account
 
-Keycloak gets extra care: a config-only deploy (new realm JSON or themes at an
-unchanged image tag) restarts it, re-imports the realm if it is missing, and runs
-the allow-listed realm/client reconcile. Flows are never reconciled automatically
-(see [layer 05](05-identity.md)).
+The scheduler rolls out every changed component together, a quarter of its replicas at a
+time: start new ones, wait until they're ready, stop as many old ones
+([deploy a release](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/protostrap.md#deploy-a-release)).
+For ProtoFast that means:
 
-Two other modes exist: `deploy.sh bootstrap` (bring the whole stack up from the
-persisted manifest — what cloud-init runs on a fresh box) and `deploy.sh drain`
-(graceful Host B teardown, unmounting the data volume).
+- **Migrations run first, as tasks.** `auth-migrations` is auth's `migrate`, and
+  `protofast-migrations` is both the api's and document-import's, run once. A task runs in a
+  release in which its tag is new, before the first new replica of what waits for it, and the
+  rollout carries on only if it exits 0. Migrations must stay compatible with the previous
+  release, which keeps running during the rollout and after a rollback.
+- **Configure tasks run after.** `postgres-config` runs once PostgreSQL is ready and makes each
+  database's user and database from the connection strings; `keycloak-config` runs once
+  Keycloak is ready and applies the realms. Each runs again when its image, its keys or its
+  component changes, and what depends on the component waits for it.
+- **`depends_on` orders the first deploy** into an empty environment: postgres and redis, then
+  postgres-config, keycloak, keycloak-config, then auth and the api.
+- **Stateful components stop before they start,** so a new PostgreSQL or Redis image is a brief
+  outage.
+- **A failure rolls back the whole release.** If a task fails, or a new replica isn't ready
+  within 5 minutes, the scheduler returns to the last good release, applies its configure
+  tasks again, and the workflow's job fails with the reason.
+- **A newer release wins.** One that arrives mid-rollout becomes the target.
+
+Secrets aren't part of a release: ProtoStrap applies a new value when it is written
+([layer 06](06-secrets.md#changing-a-value)). Set an environment's secret before its first
+deploy, since components with secret files fail without their keys.
+
+## Rolling back
+
+A release that rolled out but is wrong is replaced by deploying an earlier commit
+([rolling back](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/production.md#rolling-back)):
+
+- **`git revert`** the change and merge. It goes through approval like any release.
+- **Faster:** re-run the deploy workflow's run for the last good commit. Its images are still
+  in ECR, so nothing is built; prod still waits for approval.
+
+  ```bash
+  gh run list --workflow deploy.yml --commit <last good commit>
+  gh run rerun <run id>
+  ```
+
+Migrations aren't undone, and a secret is never rolled back: write the right value.
 
 ## Everyday operations
 
-| I want to… | Do this |
-|---|---|
-| Ship a change | merge to `main`; the matching workflow fires on its paths |
-| Roll back | run that component's workflow with `workflow_dispatch` and the previous tag; it must already exist as an artefact |
-| Redeploy without changes | same, with the current tag — the apply still recreates if config drifted |
-| Change only config (compose/env) | touch the compose file and deploy any component on that host; the resolved-config check catches it |
-| Update Keycloak / Postgres / Redis | run `deploy-keycloak` / `deploy-postgres` / `deploy-redis` with the new upstream tag, and keep the compose default in sync |
-| Read a failed deploy's full output | CloudWatch log group `/protofast/deploy` (the SSM inline view is truncated) |
-| Recover a replaced instance | nothing — cloud-init pulls `versions.env`, the compose file and `deploy.sh` from S3 and bootstraps |
+| I want to…                         | Do this                                                                 |
+| ---------------------------------- | ----------------------------------------------------------------------- |
+| Ship a change                      | merge to `main`; prod deploys once approved                             |
+| Roll back                          | revert, or re-run the last good commit's deploy run                     |
+| Change a component's settings, routes or size | edit the AppHost, write the spec, merge                  |
+| Change a secret                    | `scripts/set-secrets.sh prod --rotate <group>` or ProtoStrap's `set-secret.sh`; no deploy |
+| See what is running, or why a deploy failed | the workflow's log (`gh run view <id> --log-failed`), `protostrap status`, the operator UI and Grafana through SSM ([ProtoStrap's protostrap-operate skill](https://github.com/duncan-G/protostrap/blob/v0.1.0/plugins/protostrap/skills/protostrap-operate/SKILL.md)) |
+| Upgrade Keycloak                   | the base image's digest in `services/keycloak/Dockerfile`, and each provider's `keycloak.version` to match; check keycloak-config's client library knows the new realm fields |
+| Upgrade PostgreSQL or Redis        | their tags come from Aspire's PostgreSQL and Redis integrations (13.6.2); `WithImageTag` in the AppHost pins another. Nothing here upgrades PostgreSQL's data across a major version |
+| Upgrade ProtoStrap                 | in one pull request: `WithVersion` in the AppHost (then the spec), every workflow's `@v…` and `protostrap-ref`, `ci.yml`'s checkout, every root's `?ref=`, and `.claude/settings.json`'s `ref` |
 
-## Rules that keep this safe
+## GitHub settings
 
-- Concurrency groups mean two deploys of the *same* component never race; a flock
-  serialises manifest writes across different components.
-- The deploy job deliberately declares **no** GitHub Environment: adding one would
-  change the OIDC subject and break the deploy role's trust. Release control is
-  branch protection on `main` plus who may dispatch workflows.
-- A dispatch rollback never rebuilds from current source under an old tag — if the
-  artefact is missing, the job fails.
+`infra/bootstrap/prod` creates the `prod` and `prod-infra` environments and their variables. The rest is by hand, per ProtoStrap's
+[production checklist](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/production.md):
+
+| Setting                                         | Why                                                         |
+| ----------------------------------------------- | ----------------------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN` in `prod-infra`          | the infra workflow's Cloudflare access                      |
+| `prod-approval`, with required reviewers        | the one approval per release in `deploy.yml`                |
+| Required reviewers on `prod-infra`              | otherwise `infra.yml` applies a change to `infra/prod` on push to `main` with no approval |
+| Deployment branches `main` only, on `prod` and `prod-infra` | the AWS roles trust these environments, so this decides what code can take them on |
+| A ruleset on `main` requiring review and `ci`   | the deploy runs no tests                                    |
+
+## Known gaps
+
+- **Nothing has deployed yet.** The pipeline, the first deploy into an empty account and the
+  rollback path are unverified until prod's first release, which goes out before prod serves
+  anyone, so these checks run there.

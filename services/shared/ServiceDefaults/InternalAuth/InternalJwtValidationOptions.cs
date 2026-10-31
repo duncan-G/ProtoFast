@@ -11,7 +11,8 @@ public sealed class InternalJwtValidationOptions
     public string PublicKeyPem { get; init; } = "";
 
     /// <summary>Path to a file holding the PEM. Takes precedence over <see cref="PublicKeyPem"/>
-    /// when set — prod mounts the key as a file to avoid newline-in-env-var issues.</summary>
+    /// when set. Nothing sets it today: the key arrives as <c>Shared_InternalJwt__PublicKeyPem</c>
+    /// from the environment's secret, or from the AppHost locally.</summary>
     public string PublicKeyPemFile { get; init; } = "";
 
     public string KeyId { get; init; } = "";

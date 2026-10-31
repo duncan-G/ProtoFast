@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from typing import Any
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 from .config import Settings
+
+logger = logging.getLogger("conversion")
 
 # Stamped on every output; a re-conversion of the same source finds it and skips the work.
 SOURCE_HASH_METADATA = "pf-source-hash"
@@ -23,6 +26,21 @@ class Storage:
     @property
     def bucket(self) -> str:
         return self._settings.bucket
+
+    def bucket_answers(self) -> bool:
+        """Whether the bucket can be reached with this replica's credentials, for readiness."""
+        try:
+            self._s3.head_bucket(Bucket=self.bucket)
+        except (BotoCoreError, ClientError) as error:
+            # The error's code, never its message: S3's messages can name objects.
+            code = (
+                error.response.get("Error", {}).get("Code", "error")
+                if isinstance(error, ClientError)
+                else type(error).__name__
+            )
+            logger.warning("the documents bucket doesn't answer error=%s", code)
+            return False
+        return True
 
     def content_length(self, key: str) -> int | None:
         head = self.head(key)
@@ -58,6 +76,10 @@ class Storage:
             Key=key,
             Body=body,
             ContentType=content_type,
+            # The documents bucket has object lock, and S3 refuses a write to it without a
+            # checksum. botocore adds CRC32 by default; this keeps it if that is turned off
+            # (AWS_REQUEST_CHECKSUM_CALCULATION=when_required).
+            ChecksumAlgorithm="CRC32",
             Metadata={
                 SOURCE_HASH_METADATA: source_hash,
                 IDEMPOTENCY_METADATA: idempotency_key,
@@ -82,13 +104,15 @@ class Storage:
 
 
 def _client(settings: Settings) -> Any:
+    """The default credential chain: the role's credentials from the agent in an account,
+    LocalStack's test pair under `aspire run`. boto3 reads AWS_ENDPOINT_URL_S3 itself."""
     return boto3.client(
         "s3",
-        endpoint_url=settings.s3_endpoint,
         region_name=settings.region,
         config=Config(
             # LocalStack serves every bucket from one host, so virtual-host addressing fails there.
             s3={"addressing_style": "path" if settings.s3_endpoint else "auto"},
+            connect_timeout=5,
             retries={"max_attempts": 3, "mode": "standard"},
         ),
     )

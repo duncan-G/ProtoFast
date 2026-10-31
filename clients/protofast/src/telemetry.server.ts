@@ -1,63 +1,36 @@
 /**
- * OpenTelemetry Node instrumentation — must load before any other modules.
- * Instruments HTTP, Express, and exports traces and logs to the OTel collector's HTTP endpoint.
+ * OpenTelemetry for this app's server when it runs on its own (`ng serve`, under `aspire run`).
+ * Must load before any other module.
+ *
+ * Configured from the OTEL_ variables alone: the SDK picks the OTLP exporter for
+ * OTEL_EXPORTER_OTLP_PROTOCOL and reads the endpoint, headers, service name and resource itself.
+ * In the clients host (clients/host/server.mjs) every app's bundle shares one process, and the
+ * host starts the SDK and sets the flag below before loading them, so this starts nothing there.
  */
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
-import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 
-const otelEndpoint = (process.env['SERVER_OTEL_ENDPOINT'] || '').replace(
-  /\/$/,
-  '',
-);
-delete process.env['OTEL_SERVICE_NAME'];
-
-const isDev = process.env['NODE_ENV'] === 'development';
-
-// Default delay to send logs to telemetry server is 5 seconds.
-// Increase the speed in development.
-const batchConfig = isDev ? { scheduledDelayMillis: 1000 } : undefined;
-
-// In the unified SSR host every client bundle runs in one process; only the
-// first bundle to load may start the Node SDK (a second start would clobber
-// the global providers and double-patch auto-instrumentations).
+// A second start would clobber the global providers and double-patch the instrumentations.
 const otelGlobal = globalThis as { __nodeOtelSdkStarted?: boolean };
 
-if (otelEndpoint && !otelGlobal.__nodeOtelSdkStarted) {
+if (process.env['OTEL_EXPORTER_OTLP_ENDPOINT'] && !otelGlobal.__nodeOtelSdkStarted) {
   otelGlobal.__nodeOtelSdkStarted = true;
-  const traceExporter = new OTLPTraceExporter({
-    url: `${otelEndpoint}/v1/traces`,
-  });
-  const logExporter = new OTLPLogExporter({
-    url: `${otelEndpoint}/v1/logs`,
-  });
 
-  const sdk = new NodeSDK({
-    resource: resourceFromAttributes({
-      'service.name': 'protofast-client-server',
-      'service.version': 'node',
-    }),
-    spanProcessors: [new BatchSpanProcessor(traceExporter, batchConfig)],
-    logRecordProcessors: [
-      new BatchLogRecordProcessor(logExporter, batchConfig),
-    ],
+  new NodeSDK({
+    // OTEL_SERVICE_NAME, when it is set, wins over this name.
+    resource: resourceFromAttributes({ 'service.name': 'protofast-client-server' }),
+    // Logs stay on the console, which the dev server already shows: sending them over OTLP too
+    // would show every line twice.
+    logRecordProcessors: [],
     instrumentations: [
       getNodeAutoInstrumentations({
         '@opentelemetry/instrumentation-fs': { enabled: false },
         '@opentelemetry/instrumentation-dns': { enabled: false },
         '@opentelemetry/instrumentation-net': { enabled: false },
-        '@opentelemetry/instrumentation-http': {
-          enabled: false,
-          ignoreIncomingRequestHook: (req) =>
-            req.url?.startsWith('/otlp') ?? false,
-        },
+        // Each render is a span of its own (lib/telemetry.ssr.ts).
+        '@opentelemetry/instrumentation-http': { enabled: false },
       }),
     ],
-  });
-
-  sdk.start();
+  }).start();
 }

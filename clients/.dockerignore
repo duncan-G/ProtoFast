@@ -1,0 +1,13 @@
+# The clients image's context is clients/. ProtoStrap tags the image from the context's
+# git-tracked files minus these, so what's excluded here doesn't rebuild it (and a `!`
+# re-include wouldn't be followed).
+**/node_modules
+**/dist
+**/.angular
+**/coverage
+**/.vscode
+**/.cursor
+**/*.md
+# Tests: `ng build` leaves out *.spec.ts, and the image runs no tests.
+**/*.spec.ts
+host/*.test.mjs

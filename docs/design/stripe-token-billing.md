@@ -55,10 +55,11 @@ graph LR
   JWT to present when a run finishes minutes later, and a debit that can fail
   separately from the run would leak tokens.
 
-Consequences: `payments` gains `ConnectionStrings__protofast` (Aspire reference in
-dev, compose env in prod); the `billing` schema is added to the existing
-`ProtoFast.SchemaMigrations` runner (`api-migrations`), so there is no new
-migrations job; `deploy.sh`'s build context for `api` gains `services/payments`.
+Consequences: `payments` gains `ConnectionStrings__protofast` (an Aspire reference
+locally, `Shared_ConnectionStrings__protofast` in its spec `secrets` in an account); the
+`billing` schema is added to the existing `ProtoFast.SchemaMigrations` runner
+(`protofast-migrations`), so there is no new migrations task; the spec's `sources` of
+every component that references the billing project follow from its project references.
 
 `auth` never touches the schema. It asks `payments` over gRPC, signing the call
 with an internal JWT it mints for the subject in question — auth is the one
@@ -174,7 +175,8 @@ sessions. It becomes:
 
 While `DeletedAt` is set:
 
-- ext_authz `Check` finds no session, so every protected request is anonymous.
+- auth's answer to the edge (`/ext-authz`) finds no session, so every protected request is
+  anonymous.
 - The sign-in callback, after `ProvisionAsync`, sees `DeletedAt` and does not issue
   a session. Instead it redirects to `/restore`, an auth-served page that says when
   the account will be deleted for good and offers **Restore my account** (`POST
@@ -217,8 +219,8 @@ the client can show a "Test mode — no real charges" banner.
 
 `POST /stripe/webhook` — Stripe signature verified with `Stripe:WebhookSecret`,
 5-minute tolerance, raw body read before model binding. Returns 200 on duplicate
-events and 400 on bad signatures. Registered on the same Kestrel h2c endpoint;
-Envoy translates the inbound HTTP/1.1 request.
+events and 400 on bad signatures. Registered on the same Kestrel h2c endpoint; the
+edge speaks HTTP/2 to payments whatever Stripe sends.
 
 ### Auth endpoints
 
@@ -227,29 +229,31 @@ Envoy translates the inbound HTTP/1.1 request.
 
 ## 6. Edge, config and secrets
 
-**Envoy** (`proxy/envoy.vhost.yaml.tmpl`): one new route ahead of the `/payments/`
-prefix — `path: "/payments/stripe/webhook"` → cluster `payments`,
-`prefix_rewrite: "/stripe/webhook"`, ext_authz disabled. Exact `path`, not
-another regex: the vhost regex program budget is already near its limit.
+**Edge** (to decide against ProtoStrap's edge, which routes a host and a path
+prefix, never rewrites a path, and asks the authorizer about every route of a service
+that names one): either a `<host>/stripe/webhook` route on payments, served at that
+path, which auth's annotate-only answer lets through at the cost of an auth call (and a
+503 for Stripe to retry while auth is down), or the webhook in a component of its own
+without `authorize`.
 
 **Config** (env names identical in dev and prod, per the naming convention):
 
 | Key | Where | Purpose |
 |---|---|---|
-| `Payments_Stripe__SecretKey` | Secrets Manager | `sk_test_…` first, `sk_live_…` after cutover |
-| `Payments_Stripe__WebhookSecret` | Secrets Manager | `whsec_…` for the endpoint registered in that mode |
-| `Payments_Billing__Packs__n__PriceId` / `__Tokens` / `__DisplayUsd` | env | packs offered; price ids differ between test and live |
-| `Payments_Billing__CentsPerToken` | env | list rate, default 1 |
-| `Payments_ConnectionStrings__protofast` | Aspire / compose | the shared database |
-| `Api_Billing__UsageMultiplier` | env | markup applied when converting run cost to tokens |
-| `Auth_Account__HoldDays` | env | default 30 |
-| `Auth_Account__SoftDeleteThresholdCents` | env | default 1000 |
+| `Payments_Stripe__SecretKey` | the environment's secret | `sk_test_…` first, `sk_live_…` after cutover |
+| `Payments_Stripe__WebhookSecret` | the environment's secret | `whsec_…` for the endpoint registered in that mode |
+| `Billing__Packs__n__PriceId` / `__Tokens` / `__DisplayUsd` (payments) | spec `env` | packs offered; price ids differ between test and live |
+| `Billing__CentsPerToken` (payments) | spec `env` | list rate, default 1 |
+| `Shared_ConnectionStrings__protofast` | the environment's secret | the shared database, listed in payments' `secrets` |
+| `Billing__UsageMultiplier` (api, document-import) | spec `env` | markup applied when converting run cost to tokens |
+| `Account__HoldDays` (auth) | spec `env` | default 30 |
+| `Account__SoftDeleteThresholdCents` (auth) | spec `env` | default 1000 |
 
-`Payments_StripeKey` already listed in `docs/06-secrets.md` is renamed to the
-sectioned key above so it binds to `StripeOptions`.
+Locally the AppHost sets each, the secrets from user-secret parameters.
 
-**Dev**: `stripe listen --forward-to https://localhost:<envoy-port>/payments/stripe/webhook`
-from the Stripe CLI; its printed `whsec_` goes into `protofast/dev`.
+**Dev**: `stripe listen --forward-to http://protofast.dev.localhost:20000/stripe/webhook`
+from the Stripe CLI (or wherever the edge decision above puts it); its printed `whsec_`
+goes into the AppHost's user secrets.
 
 ## 7. Clients
 
@@ -271,15 +275,16 @@ all) with confirmation; `/billing/tenants` — per-tenant totals, **Close sales*
 ## 8. Test mode in production, then live
 
 1. Register a **test-mode** webhook endpoint at
-   `https://<app host>/payments/stripe/webhook` in the Stripe dashboard; populate
-   `protofast/app` with the test secret key, that endpoint's signing secret and the
-   test price ids. Deploy.
+   the webhook's URL on the app host in the Stripe dashboard; set the test secret key and
+   that endpoint's signing secret in `protofast/prod`, and the test price ids in the
+   AppHost. Deploy.
 2. Buy with card `4242 4242 4242 4242`, spend on a real generation, refund from the
    admin console, delete an account above and below the threshold, restore one.
    Watch the `StripeEvent` table and traces.
-3. **Cutover**, in one deploy: register the live webhook endpoint; write the live
-   secret key, its signing secret and live price ids with
-   `scripts/populate-secrets.sh --prod`; restart `payments`.
+3. **Cutover**, in one release: register the live webhook endpoint; write the live
+   secret key and its signing secret with ProtoStrap's `scripts/set-secret.sh
+   protofast/prod` (ProtoStrap replaces payments when its keys change), and the live
+   price ids in the AppHost.
 4. Immediately after: run `AdminBilling.ClearTestBalances`, which forfeits every
    wallet whose entire credit history is `Livemode=false` and writes a `Forfeit`
    entry with note `test-mode cutover`. Test purchases stay in the table for the
@@ -294,8 +299,8 @@ Each step is deployable on its own and leaves the previous behaviour intact.
 
 | # | Step | Touches |
 |---|---|---|
-| 1 | `ProtoFast.Payments.Data`: entities, `BillingDbContext`, `IWalletLedger`, migration in the `api-migrations` runner; unit tests for the ledger invariants (idempotency, no negative balance, valuation) | payments, api |
-| 2 | `payments`: `Billing` RPCs, Stripe Checkout, webhook, Envoy route, secrets, `StripeOptions` startup check | payments, proxy, apphost, deploy |
+| 1 | `ProtoFast.Payments.Data`: entities, `BillingDbContext`, `IWalletLedger`, migration in the `protofast-migrations` runner; unit tests for the ledger invariants (idempotency, no negative balance, valuation) | payments, api |
+| 2 | `payments`: `Billing` RPCs, Stripe Checkout, webhook, its route, secrets, `StripeOptions` startup check | payments, apphost |
 | 3 | App client `/app/tokens` and the confirming flow | theplot |
 | 4 | Worker hold/settle on runs; `InsufficientTokens` in the client | api, document_import, theplot |
 | 5 | `AdminBilling`: find, adjust, refund, de-list; admin `/billing` pages | payments, admin |

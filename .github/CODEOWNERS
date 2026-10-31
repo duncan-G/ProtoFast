@@ -3,5 +3,10 @@
 # the kit symlink inside that folder stays ours.
 *                                     @duncan-G
 
+# What an account runs and may do: the spec the AppHost writes, and the Terraform roots.
+/protostrap.yaml                      @duncan-G
+/apphost/                             @duncan-G
+/infra/                               @duncan-G
+
 /clients/admin-theplot/               @duncan-G
 /clients/admin-theplot/src/admin-kit  @duncan-G

@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Options;
 using ProtoFast.Auth.Api.Configuration;
+using ProtoFast.ProtoStrap;
 
 namespace ProtoFast.Auth.Api.Tenancy;
 
@@ -11,6 +12,15 @@ public sealed class TenantResolver : ITenantResolver
     private readonly IReadOnlySet<string> _realms;
 
     public TenantResolver(IOptions<TenantOptions> options)
+        : this(options, Replica.Hostname)
+    {
+    }
+
+    /// <summary>
+    /// <paramref name="hostname"/> gives a host name's hostname in this account (HOST_&lt;NAME&gt;),
+    /// or null for a key that names no host, which is then a hostname itself.
+    /// </summary>
+    public TenantResolver(IOptions<TenantOptions> options, Func<string, string?> hostname)
     {
         // Host comparison is case-insensitive; a stray port or trailing dot shouldn't matter.
         //
@@ -19,8 +29,9 @@ public sealed class TenantResolver : ITenantResolver
         // separator, so "localhost:20002" silently flattens into nested keys and never binds.
         // '+' can never appear in a real host, so the translation is unambiguous.
         var byHost = new Dictionary<string, TenantConfig>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (host, tenant) in options.Value.ByHost)
+        foreach (var (key, tenant) in options.Value.ByHost)
         {
+            var host = hostname(key) ?? key;
             byHost[host.Replace('+', ':')] = tenant;
         }
 

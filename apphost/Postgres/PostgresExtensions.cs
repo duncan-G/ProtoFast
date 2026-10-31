@@ -5,19 +5,26 @@ namespace ProtoFast.AppHost.Postgres;
 
 public static class PostgresExtensions
 {
-    public static IResourceBuilder<PostgresDatabaseResource> WithSchemaMigrations<TProject>(
-        this IResourceBuilder<PostgresDatabaseResource> database,
-        IDistributedApplicationBuilder builder)
+    /// <summary>
+    /// AddSchemaMigrations adds a database's migrations runner, <paramref name="name"/>, which
+    /// reads only its connection string. The caller makes it a ProtoStrap task and has the
+    /// components that use the database wait for its completion (their spec's <c>migrate</c>).
+    /// Under <c>aspire run</c> it gets a Rebuild command that drops the schema and migrates again.
+    /// </summary>
+    public static IResourceBuilder<ProjectResource> AddSchemaMigrations<TProject>(
+        this IDistributedApplicationBuilder builder,
+        string name,
+        IResourceBuilder<PostgresDatabaseResource> database,
+        ReferenceEnvironmentInjectionFlags flags)
         where TProject : IProjectMetadata, new()
     {
-        var dbName = database.Resource.Name;
         var connectionName = database.Resource.DatabaseName;
-        var migrations = builder.AddProject<TProject>($"{dbName}-migrations")
+        var migrations = builder.AddProject<TProject>(name)
+            .WithReferenceEnvironment(flags)
             .WithReference(database, connectionName)
             .WaitFor(database);
 
-        // Prod images are built/shipped by CI pipeline, not Aspire publish.
-        if (!builder.ExecutionContext.IsPublishMode)
+        if (builder.ExecutionContext.IsRunMode)
         {
             var projectDir = Path.GetDirectoryName(new TProject().ProjectPath)!;
             migrations.WithCommand(
@@ -33,7 +40,7 @@ public static class PostgresExtensions
                 });
         }
 
-        return database;
+        return migrations;
     }
 
     private static async Task<ExecuteCommandResult> ExecuteRebuildSchemaAsync(
@@ -47,7 +54,7 @@ public static class PostgresExtensions
         var connectionString = await database.Resource.GetConnectionStringAsync(ct).ConfigureAwait(false);
         if (string.IsNullOrEmpty(connectionString))
         {
-            return CommandResults.Failure("Could not resolve the 'auth' connection string.");
+            return CommandResults.Failure($"Could not resolve the '{connectionName}' connection string.");
         }
 
         // Build once so the destructive run is --no-build (fast, deterministic).

@@ -1,133 +1,234 @@
 # 03 · Services & clients
 
-*How each application process reads its own settings — the .NET services, the
-Angular clients, the unified SSR host and the OTel collector. Self-contained.*
+*How each process reads its own settings: the .NET services and tasks, the conversion
+service, the Angular clients, the clients host and the browsers' collector. Self-contained.*
 
-## The naming convention
+## Where a setting comes from
 
-Every configurable value is an **environment variable whose name is the same in
-dev and in production**. Only the injector changes (Aspire AppHost vs. compose).
+A component reads four kinds of setting, by the same names locally and in an account:
+
+| Kind                    | In an account                                                      | Locally                                       |
+| ----------------------- | ------------------------------------------------------------------ | --------------------------------------------- |
+| ProtoStrap's variables  | set by ProtoStrap in every replica: `HOST_<NAME>`, `ORIGIN_<NAME>`, `BUCKET_<NAME>`, `QUEUE_<NAME>_URL`, `OTEL_*`, `PROTOSTRAP_*`, `SECRET_ID`, `SECRET_PREFIX`, `AWS_REGION`, the role's credentials | set by the AppHost and ProtoStrap.Hosting: hosts and origins, LocalStack's bucket and queues, Aspire's `OTEL_*` |
+| Plain settings          | the spec's `env`, from the AppHost's `WithEnvironment`             | the same `WithEnvironment` call               |
+| Secrets                 | the environment's secret, read at startup or as secret files      | environment variables the AppHost sets        |
+| Defaults                | `appsettings.json` in the image                                    | the same, plus `appsettings.Development.json` |
+
+Secrets are named like .NET configuration keys:
 
 ```
-Auth_Keycloak__Authority
-└─┬─┘ └───┬──┘  └───┬───┘
-  │       │         └── property
-  │       └── config section
-  └── audience prefix: which service may read this value
+Shared_ConnectionStrings__auth
+└──┬──┘ └───────┬───────┘ └┬─┘
+   │            │          └── key
+   │            └── section
+   └── who reads it: Shared_ (any component that lists it) or a component's own prefix
 ```
 
-- `__` maps to `:` in .NET configuration (`Keycloak:Authority`).
-- The prefix (`Auth_`, `Shared_`, and in Secrets Manager also `Infra_`,
-  `Payments_`, `Api_`) says *who the value is for*. It is stripped on read, so
-  the service sees plain `Keycloak:Authority`.
-- `Shared_` is for values every backend needs — today, the internal-JWT public key.
+- `__` maps to `:` in .NET configuration (`ConnectionStrings:auth`).
+- The prefix is dropped when read, so the component sees the same name locally and in an
+  account. The spec lists each component's keys without it (`secrets:`).
+- [Layer 06](06-secrets.md) has every key and who reads it.
+
+ProtoStrap's [application contract](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/protostrap.md#application-contract)
+lists everything it sets. What ProtoFast reads of it:
+
+| Variable                                  | Read by                                                        |
+| ----------------------------------------- | -------------------------------------------------------------- |
+| `HOST_<NAME>`                             | auth (tenants, the SES sender's From), the clients host (which app answers a host, Angular's allowed hosts), keycloak-config |
+| `ORIGIN_<NAME>`                           | auth (`ORIGIN_AUTH`, Keycloak's public URL), keycloak (`KC_HOSTNAME`), keycloak-config (redirect URIs) |
+| `BUCKET_DOCUMENTS`                        | api, document-import, conversion                               |
+| `QUEUE_DOCUMENT_UPLOAD_URL`               | api (sends), document-import (receives)                        |
+| `QUEUE_WORKFLOW_OUTCOMES_URL`             | document-import (FIFO, the URL ends in `.fifo`)                |
+| `SECRET_ID`, `SECRET_PREFIX`              | every .NET component                                           |
+| `PROTOSTRAP_COMPONENT`                    | readiness: a check passes only for its own name                |
+| `PROTOSTRAP_REPLICA`                      | "running under ProtoStrap": logs by OTLP only, SES instead of SMTP, a 10 s drain |
+| `DRAIN_SECONDS`                           | how long to keep serving after SIGTERM (10 under ProtoStrap, 0 locally; the clients host defaults to 10 either way) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` | every component's OpenTelemetry SDK; `http://telemetry:4318`, `http/protobuf` in an account |
 
 ## .NET services
 
-All three services call `builder.AddServiceDefaults()`
-([`services/shared/ServiceDefaults`](../services/shared/ServiceDefaults)), which
-sets up OpenTelemetry (traces, metrics, logs — exported only when
-`OTEL_EXPORTER_OTLP_ENDPOINT` is set), health checks over both HTTP and the gRPC
-Health protocol, and service discovery.
+auth, the api, payments and document-import call `builder.AddServiceDefaults()`
+([`services/shared/ServiceDefaults`](../services/shared/ServiceDefaults)), which gives each
+what ProtoStrap's contract asks:
+
+- **Its keys from the environment's secret.** `AddProtoStrapSecret`
+  ([`services/shared/ProtoStrap`](../services/shared/ProtoStrap/ProtoStrapSecret.cs)) reads
+  `SECRET_ID` once, at startup, with the component's role. It keeps the `Shared_` keys and
+  those starting with `SECRET_PREFIX`, drops the prefixes (its own keys win over `Shared_`
+  ones), drops empty values, and adds them last, so they win over `appsettings` and the
+  environment. Without `SECRET_ID`, as locally, it adds nothing.
+- **Telemetry from the `OTEL_` variables.** Traces, metrics and logs go to
+  `OTEL_EXPORTER_OTLP_ENDPOINT` when it is set. Under ProtoStrap the console logger is
+  removed, so each log line leaves once, by OTLP. Health checks, the OIDC callback's auto span
+  and SQS long polls aren't traced.
+- **Readiness.** `GET /healthz` answers 200 only when the request's Host is the component's
+  name (skipped locally), the replica isn't draining, and the health checks pass (PostgreSQL
+  and Redis, through the Aspire integrations). A gRPC service (`MapDefaultEndpoints(grpc:
+  true)`) also maps gRPC's health service for its component's name and for `""`.
+- **A drain.** On SIGTERM, readiness fails at once and the service keeps serving for
+  `DRAIN_SECONDS`, then stops. Kestrel's own keep-alive (130 s) is longer than the edge's 60 s.
 
 Configuration sources, in increasing precedence:
 
-1. `appsettings.json` — logging levels, `AllowedHosts`, Kestrel `Protocols: Http2`,
-   and for `auth` the Secrets Manager coordinates (`Secrets:SecretId`,
-   `Secrets:Prefix`).
-2. `appsettings.Development.json` — dev-only values (see [layer 02](02-local-development.md)).
-3. Environment variables, including the prefixed ones each service opts into:
-   - `auth`: `builder.Configuration.AddEnvironmentVariables("Shared_")` then `("Auth_")`
-   - `payments`: `("Shared_")` then `("Payments_")`
-   - `api`: `("Shared_")` then `("Api_")`
-4. **Secrets Manager**, in both Development and Production:
-   `auth` / `payments` / `api` each pull `protofast/app` (prod) or `protofast/dev`
-   (dev) and keep the keys matching their prefix plus `Shared_`. See
-   [layer 06](06-secrets.md). The AppHost only logs into SSO profile `developer`
-   so the services can resolve that profile. Auth integration tests boot the real
-   host as `Testing` and skip this provider.
+1. `appsettings.json`: logging, `AllowedHosts`, Kestrel `Protocols: Http2` for the api and
+   payments (cleartext HTTP/2, which the edge speaks to a `grpc` service), auth's tenants, the
+   api's S3 URL lifetimes, document-import's providers and concurrency.
+2. `appsettings.Development.json`, locally only (`ASPNETCORE_ENVIRONMENT=Development` comes
+   from the AppHost; in an account nothing sets it, so it is Production).
+3. Environment variables: the spec's `env` (`HTTP_PORTS=8080`,
+   `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true`, `Keycloak__Authority`, `Conversion__BaseUrl`,
+   ...) or the AppHost's.
+4. The environment's secret, in an account.
 
-Connection strings arrive the standard way — `ConnectionStrings__redis`,
-`ConnectionStrings__auth` — injected by Aspire references in dev and written into
-compose in prod.
+### auth's option classes
 
-### Option classes worth knowing
+| Section          | Class                  | What it controls                                                    |
+| ---------------- | ---------------------- | ------------------------------------------------------------------- |
+| `Keycloak`       | `KeycloakOptions`      | back-channel `Authority`, browser-facing `PublicAuthority` (default `ORIGIN_AUTH`), the three web clients' secrets, the `account-admin` client |
+| `Tenants:ByHost` | `TenantOptions`        | host name → realm and client, plus `MaxAge`, `AcrValues`, `RequiredRoles` and `Consoles` on the admin host |
+| `Session`        | `SessionPolicyOptions` | cookie name (`pf_session`), 8 h idle, 7 d absolute, id rotation on refresh |
+| `InternalJwt`    | `InternalJwtOptions` (auth), `InternalJwtValidationOptions` (api, payments) | ES256 key material, `kid`, issuer `protofast-auth`, audience `protofast-internal`, 5 min lifetime |
+| `Smtp`           | `SmtpOptions`          | locally, the SMTP host auth sends through; in an account only `From` and `FromDisplayName` count |
+| `Subscriptions`  | `SubscriptionOptions`  | whether an account must be subscribed before reaching the app (off until billing exists) |
 
-| Section | Class | What it controls |
-|---|---|---|
-| `Keycloak` | `KeycloakOptions` | back-channel `Authority`, browser-facing `PublicAuthority`, the three client secrets, the `account-admin` service client |
-| `Tenants:ByHost` | `TenantOptions` | host → realm/client map, plus `MaxAge`/`AcrValues` for step-up and `RequiredRoles` (the console roles) on the admin host |
-| `Session` | `SessionPolicyOptions` | cookie name (`pf_session`), 8 h idle TTL, 7 d absolute TTL, id rotation on refresh |
-| `InternalJwt` | `InternalJwtOptions` (auth) / `InternalJwtValidationOptions` (backends) | ES256 key material, `kid`, issuer/audience, 5 min lifetime |
-| `Smtp` | `SmtpOptions` | the relay `auth` sends its own mail through; unset host disables mail rather than failing startup |
-| `Subscriptions` | `SubscriptionOptions` | whether an account must be subscribed before reaching the app (off until billing exists) |
-
-Details of what these mean for sign-in are in [layer 05](05-identity.md).
+[Layer 05](05-identity.md) says what these mean for sign-in.
 
 ### The internal JWT, in one paragraph
 
-`auth` holds an EC P-256 **private** key and signs a short-lived JWT for each
-authenticated call; `payments` and `api` hold only the matching **public** key and
-reject anything unsigned via a gRPC interceptor. So a compromised backend can read
-identity but cannot mint it. Both environments read the pair from Secrets Manager
-(`protofast/dev` or `protofast/app`); local values come from
-`scripts/generate-dev-secrets.sh`.
-In prod the public key is also written to `/opt/protofast/internal-jwt-pub` and
-mounted into the other two as a file (`Shared_InternalJwt__PublicKeyPemFile`).
+auth holds an EC P-256 **private** key and signs a short-lived JWT for each authenticated
+request, which it hands the edge in `x-internal-jwt`; the api and payments hold only the
+matching **public** key and reject any call without a valid one, in a gRPC interceptor. So a
+compromised backend can read identity but can't mint it. In an account the pair is in the
+environment's secret (`Auth_InternalJwt__PrivateKeyPem`, `Shared_InternalJwt__PublicKeyPem`,
+`Auth_InternalJwt__KeyId`); locally the AppHost makes a fresh pair on every run.
+
+### The bucket and the queues
+
+[`services/shared/Storage`](../services/shared/Storage) registers the S3 client and each SQS
+queue:
+
+- `AddS3ObjectStorage(..., bucket: "documents")` takes the bucket's name from `S3:Bucket`, or
+  else `BUCKET_DOCUMENTS`, and fails at startup without either.
+- `AddSqsQueue(..., queue: "document-upload")` takes the queue's URL from the options, or else
+  `QUEUE_DOCUMENT_UPLOAD_URL`, so a queue is never looked up by name. A URL ending in `.fifo`
+  is a FIFO queue.
+- `AWS_ENDPOINT_URL_S3` and `AWS_ENDPOINT_URL_SQS`, set only locally, point both at LocalStack,
+  with path-style addressing and LocalStack's credentials. In an account they are unset and
+  the SDK finds the real endpoints and the component's role itself.
+- The api's presigned upload and download URLs live five minutes (`S3:UploadUrlTtl`,
+  `S3:DownloadUrlTtl`).
+
+### document-import
+
+| Setting                                  | From                                               |
+| ---------------------------------------- | -------------------------------------------------- |
+| `Providers:<name>:ApiKey` (deepseek, gemini, anthropic) | the secret, `DocumentImport_Providers__<name>__ApiKey`; locally user secrets |
+| `Providers:Default`, `Providers:Fallback` | `appsettings.json`: deepseek, then gemini         |
+| `Conversion:BaseUrl`                     | the spec's `env`, `http://conversion:8090`; locally conversion's endpoint |
+| `Consumer:MaxConcurrentImports`          | 2 (`appsettings.json`), 8 locally                  |
+
+It stops within 30 s of SIGTERM, inside the spec's 45 s: imports in progress are cancelled
+and their messages come back once their lease lapses. It scales from zero on the
+`document-upload` queue.
+
+### The tasks
+
+`auth-migrations`, `protofast-migrations` and `postgres-config` don't use ServiceDefaults.
+Each calls `AddProtoStrapSecret` itself for its connection strings and exits when done:
+
+- **The migrations** take a PostgreSQL advisory lock, apply EF Core's migrations and exit 0.
+  `--rebuild-schema` drops the schema first, and is refused in Production.
+- **postgres-config** logs in with `ConnectionStrings__postgres` (the superuser) and, for each
+  database in `Databases__Names` (`keycloak,auth,protofast`), makes the user its connection
+  string names, gives it the password there, and makes the database owned by it. It applies
+  everything every run, and logs JSON lines on stdout.
+
+## conversion
+
+The Python service is configured by environment variables alone; its
+[README](../services/conversion/README.md) has every one. In short: `BUCKET_DOCUMENTS` (required),
+`AWS_REGION`, the role's credentials, `AWS_ENDPOINT_URL_S3` locally, the `OTEL_` variables,
+and `CONVERSION_*` limits with defaults. It reads no keys from the secret, has no routes, and
+listens on 8090. Readiness also needs the bucket to have answered once.
 
 ## Angular clients
 
-The clients are built once and configured at **runtime**, not at build time —
-there is no `environment.prod.ts` fork.
+The clients are built once and configured at **runtime**; there is no `environment.prod.ts`
+fork.
 
-| Variable | Consumed by | Purpose |
-|---|---|---|
-| `SERVER_URL` | SSR bootstrap | the origin the browser will use; passed to the browser via Angular `TransferState`, and used as the base for the gRPC-Web transport (`${SERVER_URL}/api`) |
-| `NG_ALLOWED_HOSTS` | `src/server.ts` | comma-separated hostnames SSR will answer for. Angular's SSRF guard 400s anything else — an empty list rejects *everything* |
-| `NG_TRUST_PROXY_HEADERS` | `src/server.ts` | which `x-forwarded-*` headers to trust (Envoy is the only caller) |
-| `SERVER_OTEL_ENDPOINT` | `src/instrumentation.ts` | OTLP HTTP endpoint for the Node side |
-| `BROWSER_OTEL_ENDPOINT` | browser telemetry | where the browser posts spans — `/otlp` in prod, routed by Envoy |
-| `PORT`, `SSL_CERT`, `SSL_KEY` | `ng serve` (dev only) | Aspire-assigned port and dev certificate |
+| Variable                 | Consumed by                     | Purpose                                                       |
+| ------------------------ | ------------------------------- | ------------------------------------------------------------- |
+| `SERVER_URL`             | SSR, handed to the browser through `TransferState` | the base of the gRPC-Web transport and of browser telemetry. Set only for the dev servers (the host's local origin); the clients image leaves it empty, and the browser uses its own origin |
+| `NG_ALLOWED_HOSTS`       | `src/server.ts`, admin-kit's server | the hosts Angular's SSRF guard renders for. The clients host sets it to every `HOST_<NAME>` before loading the apps |
+| `ADMIN_CONSOLE_ROLES`    | admin-kit's SSR gate            | the roles that open a console (`*` for the platform console, `admin-theplot` for theplot's). Set by the AppHost, never by a console |
+| `OTEL_*`                 | `src/telemetry.server.ts`       | the Node SDK, configured from the variables alone; under the clients host, the host starts it once for every app |
+| `PORT`                   | `ng serve`                      | the port Aspire assigns                                       |
 
-Three behaviours live in the SSR server itself rather than in config:
+Behaviour that lives in the SSR server rather than in config:
 
-- **The protected-area gate.** `/app` and `/subscribe` require an `x-user-id`
-  header (set by Envoy's ext_authz); without it SSR issues a server-side redirect
-  to `/signin?returnUrl=…`, and those responses are marked `private, no-store`.
-- **Static assets** are served with `max-age=1y` because Angular hashes their
-  filenames.
-- **Page-load tracing.** Each render runs inside a server span
-  (`src/lib/telemetry.ssr.ts`) and the page carries that span's traceparent in
-  `<meta name="traceparent">`, so the browser's `documentLoad` span, the render and
-  any backend calls it makes share one trace. Requests the app makes after the page
-  has loaded each start their own trace.
+- **Proxy headers.** Of the `x-forwarded-*` headers, Angular trusts `x-forwarded-for` and
+  `x-forwarded-proto`.
+- **The protected-area gate.** protofast's `/app` and `/subscribe`, and theplot's `/app`,
+  need an `x-user-id` header (from auth's answer to the edge); without it SSR redirects to
+  `/signin?returnUrl=…`, and those responses are `private, no-store`. admin-kit's gate does
+  the same for a console, and sends an operator without its roles to `/forbidden`.
+- **Static assets** are served with `max-age=1y`, since Angular hashes their names.
+- **Page-load tracing.** Each render runs inside a server span (`src/lib/telemetry.ssr.ts`)
+  and the page carries its traceparent in `<meta name="traceparent">`, so the browser's
+  `documentLoad` span, the render and its backend calls share one trace. Browsers send their
+  spans and logs to `/otlp/v1/traces` and `/otlp/v1/logs` on their own origin, as
+  `protofast-client`, `theplot-client`, `admin-client` or `admin-theplot-client`.
 
-gRPC service stubs are generated from the services' `.proto` files by `buf`
-(`buf.gen.yaml` → `src/lib/gen`) as part of `npm start` / `npm run build`. `auth`
-is deliberately *not* an input: browsers talk to it over plain HTTP.
+gRPC stubs are generated from the services' `.proto` files by `buf` (`buf.gen.yaml` →
+`src/lib/gen`) and committed, so the image builds from `clients/` alone. `npm start` and
+`npm run generate:grpc` regenerate them; CI fails if they differ from what the protos make.
+auth is deliberately not an input: browsers talk to it over plain HTTP.
 
-## The unified SSR host
+## The clients host
 
-One Node process serves every client (`clients/host/server.mjs`). No client assets
-are baked into the image; the entrypoint pulls them from S3 on every start.
+One Node process serves several clients' SSR bundles ([`clients/host`](../clients/host)). The
+image ([`clients/Dockerfile`](../clients/Dockerfile)) holds all four apps; `CLIENTS` says
+which this replica loads.
 
-| Variable | Purpose |
-|---|---|
-| `CLIENTS` | comma-separated client names to load (e.g. `admin,protofast`) |
-| `DEFAULT_CLIENT` | which client answers when `x-client` is missing or unknown |
-| `ASSETS_BUCKET`, `CLIENT_<NAME>_TAG` | the pinned S3 prefix `clients/<name>/<tag>/` to sync |
-| `ASSETS_DIR` | where assets are materialised (default `/assets`) |
-| `PORT` | listen port (4000) |
-| `NG_ALLOWED_HOSTS`, `NG_TRUST_PROXY_HEADERS`, `*_OTEL_ENDPOINT` | passed through to each client bundle |
+| Variable          | Purpose                                                               |
+| ----------------- | --------------------------------------------------------------------- |
+| `CLIENTS`         | the clients to load: `admin,protofast,theplot` for `clients`, `admin-theplot` for `clients-admin-theplot` |
+| `DEFAULT_CLIENT`  | the client for a host no client is named for: `protofast`, or `admin-theplot` |
+| `HOST_<NAME>`     | a client is served on the host of its name (client `protofast` on `HOST_PROTOFAST`) |
+| `PORT`            | 4000                                                                  |
+| `DRAIN_SECONDS`   | default 10                                                            |
+| `ADMIN_CONSOLE_ROLES`, `OTEL_*` | passed on to the apps                                   |
 
-Dispatch is by the `x-client` request header, which Envoy sets on every route that
-can reach this host. Only the first client bundle to load starts the Node OTel
-SDK — the rest share it.
+What it does itself:
 
-## OTel collector
+- **Picks the app by Host.** There is no `x-client` header: the Host decides.
+- **Keeps app consoles apart.** An app console (`admin-<app>`) must be alone in `CLIENTS`; the
+  host refuses to start otherwise.
+- **Sets the admin consoles' Content-Security-Policy** on every response from a console
+  (`admin` and `admin-*`): scripts and styles only from the host, `connect-src 'self'`,
+  `frame-ancestors 'none'`. The admin dev servers set the same header in `angular.json`.
+- **Redirects `/theplot`** to `/theplot/` on the admin host, since only `/theplot/` reaches
+  the console's process.
+- **Answers `GET /healthz`** for its component's name only, and not while draining.
+- **Drains** on SIGTERM: fails readiness, serves `DRAIN_SECONDS`, then closes and flushes
+  telemetry. Idle connections are kept 65 s, longer than the edge's 60 s.
+- **Logs JSON lines** on stdout, Angular's and Express's console output included.
 
-`otel-collector/config.yaml` is a plain collector config parameterised by
-`OTLP_GRPC_PORT`, `OTLP_HTTP_PORT` and `OTEL_EXPORTER_OTLP_ENDPOINT` (the Aspire
-dashboard). It exposes a health endpoint on `:13133`, which the production deploy
-script uses as that component's readiness gate. Envoy's metrics are relabelled to
-`service.name = envoy-proxy` on the way through.
+## The browsers' collector
+
+[`services/otel-collector`](../services/otel-collector) is an OpenTelemetry collector for
+browsers only; its README has the details. The edge routes `/otlp/` on the protofast, theplot
+and admin hosts to it at 20 requests a second. It takes traces and logs on
+`/otlp/v1/traces` and `/otlp/v1/logs`, up to 512 KiB a request, drops anything whose
+`service.name` isn't one of the four browser clients, and passes the rest to
+`OTEL_EXPORTER_OTLP_ENDPOINT`: ProtoStrap's collector in an account, the dashboard locally. Its
+config is in the image. Its readiness (`13133/`) doesn't test the Host, and it doesn't drain on
+SIGTERM, so a browser's batch sent during a deploy may be lost.
+
+## Known gaps
+
+- **Unverified in an account.** The components' AWS calls with their roles (S3, SQS, SES,
+  Secrets Manager), readiness behind the edge and the drain on a real rollout haven't run yet.
+- **Stop times.** conversion's README says its `stop` must cover the drain plus
+  `CONVERSION_TIMEOUT_SECONDS` + 120 s, 610 s with the defaults, but the AppHost gives it 9
+  minutes (540 s), so a conversion near its budget can be cut off at a deploy.

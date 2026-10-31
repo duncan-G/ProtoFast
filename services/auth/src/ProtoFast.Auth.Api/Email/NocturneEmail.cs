@@ -7,7 +7,7 @@ namespace ProtoFast.Auth.Api.Email;
 /// Nocturne, rendered for the mail auth-svc sends on its own account.
 ///
 /// <para>The HTML side of an <see cref="EmailMessage"/>. Deliberately a near-transcription of
-/// <c>infra/keycloak/themes/protofast/email/html/template.ftl</c>: the two senders write into the
+/// <c>services/keycloak/themes/protofast/email/html/template.ftl</c>: the two senders write into the
 /// same inboxes, and a sign-in code from Keycloak sitting next to an email-change code from here
 /// should look like the same product wrote both. Change one, change the other — the token values,
 /// the card geometry and the brand lockup are the parts that have to stay in step.</para>

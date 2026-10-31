@@ -9,12 +9,16 @@ Run in the console's pipeline after `npm run generate:grpc`. Fails when:
 * its src/admin-kit is anything but the symlink to the platform's kit;
 * its sources import a package outside the allowed set, or its package.json adds a
   dependency the platform console (clients/admin) does not have and that is not approved;
-* the shared clients host is configured to load an app console;
-* the admin vhost's CSP no longer pins connect-src to the console's own origin.
+* the clients host (clients/host) would load an app console in one process with another client;
+* the clients host would serve the console without a CSP that pins connect-src to its own origin.
+
+The two host checks ask clients/host/host.mjs itself, with node.
 """
 
 import json
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -78,20 +82,55 @@ def check_dependencies(project):
             fail(f"{project.name} adds {section} the platform console lacks: {', '.join(extra)}")
 
 
-def check_shared_host():
-    compose = (ROOT / "deploy" / "docker-compose.host-edge.yml").read_text()
-    seeds = (ROOT / "infra" / "compute.tf").read_text()
-    for text, where in ((compose, "deploy/docker-compose.host-edge.yml"), (seeds, "infra/compute.tf")):
-        for clients in re.findall(r'CLIENTS:\s*\$\{CLIENTS:-([^}]*)\}|clients\s*=\s*"([^"]*)"', text):
-            for name in ",".join(clients).split(","):
-                if name.strip().startswith("admin-"):
-                    fail(f"{where}: the shared clients host must not load the app console {name.strip()}")
+HOST = ROOT / "clients" / "host" / "host.mjs"
 
 
-def check_csp():
-    csp = (ROOT / "proxy" / "envoy.admin-csp.yaml.tmpl").read_text()
-    if "connect-src 'self'" not in csp:
-        fail("proxy/envoy.admin-csp.yaml.tmpl no longer pins connect-src to 'self'")
+def ask_host(script):
+    """Runs an ES module script against the clients host's host.mjs (as `host`); its stdout."""
+    node = shutil.which("node")
+    if node is None:
+        fail("node is not on PATH; the clients host checks need it")
+        return None
+    program = f"const host = await import({json.dumps(HOST.as_uri())});\n{script}"
+    result = subprocess.run(
+        [node, "--input-type=module", "-e", program], capture_output=True, text=True, cwd=ROOT
+    )
+    if result.returncode != 0:
+        fail(f"asking {HOST.relative_to(ROOT)} failed: {result.stderr.strip()}")
+        return None
+    return result.stdout
+
+
+def check_shared_host(name):
+    """The host refuses to load an app console beside the platform console or another app's."""
+    if name == PLATFORM:
+        return
+    refused = ask_host(
+        "const refused = [];\n"
+        f"for (const clients of [{json.dumps(f'{PLATFORM},{name}')}, {json.dumps(f'{name},protofast')}]) {{\n"
+        "  try { host.loadConfig({ CLIENTS: clients }); } catch { refused.push(clients); }\n"
+        "}\n"
+        "console.log(JSON.stringify(refused));"
+    )
+    if refused is None:
+        return
+    for clients in (f"{PLATFORM},{name}", f"{name},protofast"):
+        if clients not in json.loads(refused):
+            fail(f"clients/host would load the app console {name} in one process: CLIENTS={clients}")
+
+
+def check_csp(name):
+    """The host sets the admin CSP on the console's responses, and it pins connect-src."""
+    answer = ask_host(
+        f"console.log(JSON.stringify({{ csp: host.ADMIN_CSP, applies: host.isConsole({json.dumps(name)}) }}));"
+    )
+    if answer is None:
+        return
+    answer = json.loads(answer)
+    if not answer["applies"]:
+        fail(f"clients/host does not set the admin CSP on {name}'s responses")
+    if not re.search(r"(^|;\s*)connect-src 'self'\s*(;|$)", answer["csp"]):
+        fail("clients/host's ADMIN_CSP no longer pins connect-src to 'self'")
 
 
 def main():
@@ -107,8 +146,8 @@ def main():
     check_kit_link(project)
     check_imports(project)
     check_dependencies(project)
-    check_shared_host()
-    check_csp()
+    check_shared_host(name)
+    check_csp(name)
 
     for message in failures:
         print(f"FAIL: {message}")

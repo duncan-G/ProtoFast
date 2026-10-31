@@ -1,0 +1,74 @@
+# The browsers' collector. Anyone can send to /otlp/ on the protofast, theplot and admin
+# hosts, so this takes traces and logs only, of a size a page sends, and keeps only what
+# ProtoFast's browser code sets. It passes them to OTEL_EXPORTER_OTLP_ENDPOINT: ProtoStrap's
+# collector in an account, Aspire's dashboard under `aspire run`.
+extensions:
+  # ProtoStrap's readiness check, ready: 13133/.
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        # A page's batch: document-load resource spans, fetch spans and log records.
+        max_request_body_size: 524288
+        # Longer than the edge's 60 s idle timeout; the collector's default is 60 s.
+        keepalive:
+          idle_timeout: 75s
+        # Browsers post to /otlp/v1/traces and /otlp/v1/logs on their own origin, and the
+        # edge passes the path as it is. Metrics have no pipeline, so their path answers 404.
+        traces_url_path: /otlp/v1/traces
+        logs_url_path: /otlp/v1/logs
+
+processors:
+  # Relative to the replica's memory, its spec request, which is a hard limit.
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+  # A browser can claim to be any service: it must be one of ProtoFast's browser clients
+  # (the service.name each sets in its telemetry.browser.ts, or admin-kit's caller's).
+  filter/clients:
+    error_mode: ignore
+    traces:
+      span:
+        - >-
+          resource.attributes["service.name"] != "protofast-client" and
+          resource.attributes["service.name"] != "theplot-client" and
+          resource.attributes["service.name"] != "admin-client" and
+          resource.attributes["service.name"] != "admin-theplot-client"
+    logs:
+      log_record:
+        - >-
+          resource.attributes["service.name"] != "protofast-client" and
+          resource.attributes["service.name"] != "theplot-client" and
+          resource.attributes["service.name"] != "admin-client" and
+          resource.attributes["service.name"] != "admin-theplot-client"
+  batch:
+
+exporters:
+  otlp_http:
+    endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT}
+    headers:
+      # The dashboard's key under `aspire run`; ProtoStrap's collector takes none.
+      x-otlp-api-key: ${env:ASPIRE_OTLP_API_KEY:-none}
+    tls:
+      # The dashboard's development certificate under `aspire run`; plain HTTP in an account.
+      insecure_skip_verify: true
+
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      encoding: json
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, filter/clients, batch]
+      exporters: [otlp_http]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, filter/clients, batch]
+      exporters: [otlp_http]

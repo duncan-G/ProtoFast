@@ -1,151 +1,190 @@
 # 01 · Topology
 
-*What runs, where it runs, and the path a request takes.*
+*What runs, where it runs, and the path a request takes. Self-contained.*
 
 ## The pieces
 
+Each row is one component of the spec, by its name there. The AppHost declares all of them
+([`apphost/Program.cs`](../apphost/Program.cs)).
 
-| Piece              | What it is                                               | Source                              |
-| ------------------ | -------------------------------------------------------- | ----------------------------------- |
-| `protofast` client | Angular SSR app — the product site                       | `clients/protofast`                 |
-| `admin` client     | Angular SSR app — the admin console                      | `clients/admin`                     |
-| clients host       | One Node process that serves *every* client's SSR bundle | `clients/host`                      |
-| `envoy`            | The edge proxy: TLS, routing, CORS, identity annotation  | `proxy/`                            |
-| `auth`             | BFF: sign-in, sessions, account management, ext_authz    | `services/auth`                     |
-| `payments`, `api`  | gRPC services behind the internal JWT                    | `services/payments`, `services/api` |
-| `conversion`       | Document → Markdown (MarkItDown, CPU OCR), HTTP, internal | `services/conversion`               |
-| Keycloak           | Identity provider (realm `protofast`)                    | `infra/keycloak`, `deploy/keycloak` |
-| Postgres           | Keycloak's `keycloak` DB + auth's `auth` DB              | upstream image                      |
-| Redis              | Session / correlation / replay cache (in-memory only)    | upstream image                      |
-| otel-collector     | OTLP ingest → Aspire dashboard                           | `otel-collector/`                   |
+| Component               | Kind     | What it is                                                         | Source                                  |
+| ----------------------- | -------- | ------------------------------------------------------------------ | --------------------------------------- |
+| `clients`               | service  | One Node host serving the `protofast`, `theplot` and `admin` SSR apps, each on the host of its name | `clients/Dockerfile`, `clients/host` |
+| `clients-admin-theplot` | service  | The same image serving only theplot's admin console, on `admin/theplot/` | `clients/Dockerfile`               |
+| `auth`                  | service  | BFF: sign-in, sessions, account management, and the edge's authorizer | `services/auth`                      |
+| `api`                   | service  | gRPC: documents, uploads, stories, and the admin consoles' RPCs    | `services/api`                          |
+| `payments`              | service  | gRPC: the `greet` service so far                                    | `services/payments`                     |
+| `conversion`            | service  | Document to Markdown (MarkItDown, CPU OCR), HTTP, no routes        | `services/conversion`                   |
+| `document-import`       | worker   | Drains the `document-upload` queue through conversion and the model APIs | `services/document_import`        |
+| `keycloak`              | service  | Identity provider: realms `protofast`, `theplot`, `operators`      | `services/keycloak`                     |
+| `keycloak-config`       | task     | Keycloak's configure task: applies the three realms                | `services/keycloak-config`              |
+| `otel-collector`        | service  | Takes browsers' traces and logs on `/otlp/` and passes them on     | `services/otel-collector`               |
+| `auth-migrations`       | task     | auth's schema migrations, auth's `migrate`                         | `services/auth/src/ProtoFast.Auth.SchemaMigrations` |
+| `protofast-migrations`  | task     | The `protofast` database's migrations, the api's and document-import's `migrate` | `services/api/src/ProtoFast.SchemaMigrations` |
+| `postgres-config`       | task     | PostgreSQL's configure task: a user and a database per connection string | `services/postgres_config`        |
+| `postgres`              | stateful | PostgreSQL 18: databases `keycloak`, `auth`, `protofast`           | upstream `postgres:18.3`                |
+| `redis`                 | stateful | Sessions, sign-in correlation and replay guards; memory only       | upstream `redis:8.6`                    |
 
+The spec also has a bucket, `documents` (browser uploads, versioned, object lock), two
+queues, `document-upload` and `workflow-outcomes` (FIFO), and email from the protofast host's
+domain. ProtoStrap adds its own edge and telemetry; neither is in the AppHost.
 
+## Hosts
 
+ProtoStrap names hosts and prod's Terraform root gives each name a hostname, so no code
+holds a hostname. Every replica gets `HOST_<NAME>` and `ORIGIN_<NAME>` for each.
 
-## Development
+| Name        | Prod                    | Locally                   | Serves                                                    |
+| ----------- | ----------------------- | ------------------------- | --------------------------------------------------------- |
+| `protofast` | `protofast.dev`         | `protofast.dev.localhost` | the protofast client, auth's sign-in paths, api, payments |
+| `theplot`   | `theplot.protofast.dev` | `theplot.dev.localhost`   | the theplot client, auth's sign-in paths, api, payments   |
+| `admin`     | `admin.protofast.dev`   | `admin.dev.localhost`     | the admin console, theplot's console at `/theplot/`, auth's sign-in paths, api, payments |
+| `auth`      | `auth.protofast.dev`    | `auth.dev.localhost`      | Keycloak's sign-in pages only                              |
 
-`aspire run` starts everything as local processes and containers. Ports are
-assigned by Aspire at startup **except** the Envoy client listeners, which are
-pinned because Keycloak's redirect URIs are exact.
+Each client has a host of its own because cookies ignore ports: two clients on one host would
+share one `pf_session`.
 
-```mermaid
-graph TD
-    Browser -->|https://admin.dev.localhost:20000| EnvoyAdmin["Envoy listener · admin"]
-    Browser -->|https://protofast.dev.localhost:20001| EnvoyPF["Envoy listener · protofast"]
-    EnvoyAdmin --> NgAdmin["ng serve · admin"]
-    EnvoyPF --> NgPF["ng serve · protofast"]
-    EnvoyAdmin & EnvoyPF -->|"/signin, /account/*"| Auth["auth (BFF)"]
-    EnvoyAdmin & EnvoyPF -->|"/payments/*, /api/*"| Svcs["payments · api"]
-    EnvoyAdmin & EnvoyPF -->|"/otlp/*"| Otel["otel-collector"]
-    Browser -->|"login pages"| KC["Keycloak :8080"]
-    Auth --> KC
-    Auth --> Redis
-    Auth --> PG["Postgres"]
-    KC --> PG
-```
+## Locally
 
-
-
-Key facts:
-
-- One **listener per client**, each on its own hostname: `admin.dev.localhost:20000`,
-`protofast.dev.localhost:20001`, `theplot.dev.localhost:20002`. Pages and API share
-an origin, so there is no cross-origin problem to solve. Any other `Host` (e.g.
-`localhost:20000`) is redirected to the client's hostname.
-- Keycloak is reached **directly** on `:8080` in dev — it is not behind Envoy.
-- Each client needs its own hostname because cookies ignore ports: clients on
-one host would share one `pf_session`. Browsers resolve `*.localhost` to loopback,
-and the ASP.NET dev certificate covers `*.dev.localhost`.
-
-
-
-## Production
-
-Two EC2 instances in one subnet, no inbound ports on either.
+`aspire run` starts everything as local processes and containers. Projects and dev servers
+get ports from Aspire; the only fixed ports are the local edge's, 20000, and smtp4dev's,
+8025. [Layer 02](02-local-development.md) has the details.
 
 ```mermaid
 graph TD
-    Internet --> CF["Cloudflare edge · DNS, TLS, WAF, cache"]
-    CF -.->|tunnel| CFD["cloudflared (Host A)"]
-    CFD -->|https://envoy:8443| Envoy
-
-    subgraph HostA["Host A — edge (t4g.small)"]
-        CFD
-        Envoy
-        ClientsHost["clients host :4000"]
-        OtelA["otel-collector :4317/:4318"]
-        Dash["Aspire dashboard"]
-    end
-
-    subgraph HostB["Host B — services + state (t4g.medium)"]
-        AuthB["auth :8080"]
-        PayB["payments :8081"]
-        ApiB["api :8082"]
-        ConvB["conversion (internal)"]
-        KCB["keycloak :8083"]
-        PGB["postgres (EBS /mnt/pgdata)"]
-        RedisB["redis"]
-    end
-
-    Envoy --> ClientsHost
-    Envoy -->|private IP| AuthB & PayB & ApiB & KCB
-    AuthB --> RedisB & PGB & KCB
-    KCB --> PGB
-    ConvB -->|S3| Docs[(documents bucket)]
-    HostB -->|OTLP| OtelA
-    OtelA --> Dash
+    Browser -->|"http://«host».dev.localhost:20000"| Edge["protostrap-edge (Envoy)"]
+    Edge -->|"protofast/ theplot/ admin/ admin/theplot/"| Ng["ng serve × 4"]
+    Edge -->|"/signin … /account/"| Auth["auth"]
+    Edge -->|"/document. /story. /admin. … (gRPC-Web)"| Api["api"]
+    Edge -->|"/greet."| Pay["payments"]
+    Edge -->|"auth host: sign-in pages"| KC["keycloak (start-dev)"]
+    Edge -->|"/otlp/"| Otel["otel-collector"]
+    Edge -.->|"/ext-authz/…"| Auth
+    Auth --> KC & Redis & PG["postgres"]
+    Api --> PG & Redis & LS["protostrap-localstack (S3, SQS)"]
+    Import["document-import"] --> LS & Conv["conversion"] & PG
+    Auth & KC --> Smtp["smtp4dev :8025"]
+    Otel --> Dash["Aspire dashboard"]
 ```
-
-
 
 Key facts:
 
-- **Public hostnames**: `protofast.dev` and `admin.protofast.dev` (the clients),
-`auth.protofast.dev` (Keycloak's login pages), optionally a telemetry hostname
-for the Aspire dashboard behind Cloudflare Access. All are proxied CNAMEs to
-the tunnel; all land on Envoy's single `:8443` listener except telemetry.
-- **Cross-host traffic** uses static private IPs (`HOST_A_IP`, `HOST_B_IP`,
-derived from the subnet CIDR) over ports `8080–8083` (Host B) and `4317/4318`
-(Host A's OTLP receivers). A self-referencing security group admits only the
-sibling instance.
-- **Only Host B holds state.** Postgres lives on a separate EBS volume that
-survives instance replacement; Redis is deliberately memory-only.
-- Host A is disposable: on boot it pulls the published manifest from S3 and
-brings itself back up.
+- **One port for every host.** The local edge is ProtoStrap's Envoy, rendered from the same
+  routes and authorizer as an account's, on plain HTTP. Browsers resolve `*.localhost` to
+  loopback.
+- **Keycloak is behind the edge too,** on the auth host, with the same allowlist as in an
+  account. auth and keycloak-config reach it directly.
+- **A resource's own URL on the dashboard reaches it directly,** past the edge's routing and
+  authorizer.
 
+## In an account
 
+```mermaid
+graph TD
+    Internet --> CF["Cloudflare · DNS, TLS, rate limit, cache"]
+    CF -.->|tunnel| Edge
+
+    subgraph Ingress["ingress VM (one per zone)"]
+        Edge["edge: cloudflared + Envoy"]
+    end
+
+    subgraph General["general pool"]
+        Clients["clients · clients-admin-theplot"]
+        AuthG["auth"]
+        ApiG["api · payments"]
+        KCG["keycloak"]
+        OtelG["otel-collector"]
+        Tasks["tasks: migrations, keycloak-config, postgres-config"]
+    end
+
+    subgraph Compute["compute pool (Spot)"]
+        ConvC["conversion"]
+        ImportC["document-import"]
+    end
+
+    subgraph Data1["data-1"]
+        PGD["postgres"]
+        RedisD["redis"]
+        Tel["ProtoStrap telemetry · scheduler"]
+    end
+
+    Edge --> Clients & AuthG & ApiG & KCG & OtelG
+    AuthG --> KCG & RedisD & PGD
+    ApiG --> PGD & RedisD
+    KCG --> PGD
+    ImportC --> ConvC & PGD
+    ApiG & ImportC & ConvC --> S3[("documents bucket, SQS queues")]
+    OtelG --> Tel
+```
+
+Key facts:
+
+- **The VMs are ProtoStrap's.** An ingress VM per zone runs the edge alone. The general pool
+  runs every service, worker and task, apart from conversion and document-import, which run
+  on the compute pool. data-1
+  holds PostgreSQL and Redis, each with its own EBS volume, and ProtoStrap's telemetry and
+  scheduler ([ProtoStrap's VMs](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/vms.md)).
+- **Containers reach each other by component name** on ProtoStrap's overlay network:
+  `http://keycloak:8080`, `http://auth:8080`, `http://conversion:8090`, `postgres:5432`,
+  `redis:6379`. The connection strings in the secret use these names.
+- **No inbound ports.** Cloudflare terminates TLS and sends every host through the tunnel to
+  the edge, which routes by host and path ([layer 04](04-edge.md)). Traffic inside the VPC
+  is plain HTTP.
+- **Every component sends its telemetry to ProtoStrap's collector** on data-1
+  (`http://telemetry:4318`). ProtoFast's own `otel-collector` only takes what browsers send.
+
+### Sizes
+
+Prod is the one deployed environment, and its spec, `protostrap.yaml`, takes the smallest
+VMs, `t4g.small` and `t4g.medium`. The sizes are in
+[`apphost/Program.cs`](../apphost/Program.cs).
+
+|                           | Prod                                              |
+| ------------------------- | ------------------------------------------------- |
+| Ingress VM                | `t4g.small`                                       |
+| General pool              | `t4g.medium`, 1–4 VMs, one spare                  |
+| Compute pool              | `t4g.medium`, 0–3 Spot VMs                        |
+| data-1                    | `t4g.medium`                                      |
+| auth, api, clients        | 2–4 replicas, so a VM's loss leaves one           |
+| conversion                | 1–4 replicas                                      |
+| document-import           | 0–4 replicas, from the queue                      |
+| PostgreSQL request        | 1 CPU, 1 GiB                                      |
+| Redis request, max memory | 250m CPU, 512 MiB; `--maxmemory 256mb`            |
+
+PostgreSQL, Redis and ProtoStrap's telemetry (500m CPU, 1.5 GiB) fill data-1's 3 GiB after
+ProtoStrap's reserve. Every VM is Graviton (arm64), and every image is built for
+`linux/arm64`.
 
 ## The path of a request
 
-**A page load** (`GET https://protofast.dev/app`)
-Cloudflare → tunnel → Envoy `:8443` → vhost `protofast` matched by Host header →
-ext_authz asks `auth` who the caller is (session cookie → `x-user-id` headers) →
-clients host, tagged `x-client: protofast` → that client's SSR bundle renders.
-If the path is protected and no `x-user-id` arrived, SSR redirects to `/signin`.
+**A page load** (`GET https://protofast.dev/app`).
+Cloudflare → tunnel → the edge's Envoy → route `protofast/` (the clients) → the edge first
+asks auth at `/ext-authz/app`, with the request's Host and cookie → auth answers 200 with
+`x-user-id`, `x-tenant`, `x-roles`, `x-internal-jwt` and `x-authenticated` for a live session,
+or `x-authenticated: false` → the edge adds them to the request → the clients host picks the
+`protofast` app by the Host → SSR renders. Without `x-user-id`, `/app` redirects to
+`/signin`.
 
-**A gRPC-Web call** (`POST /api/…`)
-Same edge, but the route strips the `/api/` prefix and forwards to the `api`
-cluster with no timeout. The backend enforces the **internal JWT** minted by
-`auth`; the edge only annotates.
+**A gRPC-Web call** (`POST /document.DocumentService/...`).
+Same edge and the same question to auth, on route `protofast/document.` → the edge translates
+gRPC-Web to gRPC → the api. The api trusts only the internal JWT that auth's answer carried;
+the edge only annotates.
 
-**A sign-in**
-`/signin` (allow-listed on the vhost, ext_authz off) → `auth` starts an OIDC
-authorization code + PKCE flow → the browser goes to `auth.protofast.dev`
-(Keycloak, through its own Envoy vhost) → Keycloak redirects back to
-`/signin-oidc` → `auth` exchanges the code back-channel over the private network,
-stores the session in Redis and sets the `pf_session` cookie.
+**A sign-in.**
+`/signin` on the client's own host goes to auth (its routes aren't authorized) → auth starts
+an OIDC authorization code flow with PKCE → the browser goes to the auth host, where the edge
+lets through only Keycloak's sign-in pages → Keycloak redirects back to `/signin-oidc` →
+auth exchanges the code with `http://keycloak:8080` on the overlay, stores the session in
+Redis and sets the `pf_session` cookie.
 
-## Dev vs prod, at a glance
+## Locally and in an account, at a glance
 
-
-|              | Development                                     | Production                                            |
-| ------------ | ----------------------------------------------- | ----------------------------------------------------- |
-| Orchestrator | Aspire AppHost (`apphost/Program.cs`)           | `docker compose` per host                             |
-| Envoy mode   | `dev` (one listener per client)                 | `publish` (one listener, vhost per domain)            |
-| Clients      | `ng serve` per client, HMR                      | prebuilt bundles pulled from S3 into the clients host |
-| Keycloak     | direct on `:8080`                               | behind Envoy's allow-listed `keycloak` vhost          |
-| Secrets      | each service reads `protofast/dev` (SSO `developer`) | AWS Secrets Manager `protofast/app`                   |
-| TLS          | Aspire dev certificate                          | Cloudflare edge cert + baked internal cert            |
-| Telemetry    | Aspire dashboard (local)                        | otel-collector on Host A → Aspire dashboard           |
-
-
+|              | Locally                                              | In an account                                        |
+| ------------ | ---------------------------------------------------- | ---------------------------------------------------- |
+| Orchestrator | The AppHost (`aspire run`)                           | ProtoStrap's scheduler, from the spec                |
+| Edge         | `protostrap-edge`, plain HTTP on port 20000          | cloudflared and Envoy on the ingress VM, behind Cloudflare |
+| Clients      | `ng serve` per client (or the clients image with `SsrHost__Dev=true`) | the clients image: `clients` and `clients-admin-theplot` |
+| Keycloak     | `start-dev`, themes bind-mounted, mail to smtp4dev   | the image's `start --optimized`, mail through SES    |
+| S3, SQS      | LocalStack                                           | the account's bucket and queues                      |
+| Secrets      | generated by the AppHost, set as environment variables | `protofast/<environment>` in Secrets Manager       |
+| Telemetry    | the Aspire dashboard                                 | ProtoStrap's telemetry on data-1, read in Grafana    |

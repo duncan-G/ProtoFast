@@ -147,7 +147,7 @@ internal sealed partial class S3ObjectStore(
     }
 
     /// <summary>
-    /// GOVERNANCE retention, set at write time. The instance role deliberately has no
+    /// GOVERNANCE retention, set at write time. ProtoStrap gives no component role
     /// <c>s3:BypassGovernanceRetention</c>, so the worker that wrote it cannot unwrite it.
     /// </summary>
     public Task<ObjectRef> WriteFrozenAsync<T>(

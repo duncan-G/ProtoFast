@@ -4,13 +4,15 @@ version = "0.1.0"
 description = "Document-to-Markdown conversion for ThePlot: MarkItDown, CPU OCR, layout extraction."
 requires-python = ">=3.12"
 
+# The direct dependencies. The image installs requirements.txt, every package pinned for
+# linux/arm64, which is resolved from these (see its header); change both together.
 dependencies = [
   "fastapi==0.141.1",
   "uvicorn[standard]==0.53.0",
   "pydantic==2.13.5",
   "boto3==1.43.97",
   # Never `markitdown[all]`: its audio, YouTube and Azure extras send content off the box.
-  # deploy-conversion.yml fails the build if their packages appear.
+  # tests/test_image.py fails if their packages appear in requirements.txt.
   "markitdown[pdf,docx,pptx,xlsx,xls,outlook]==0.1.7",
   "pdfplumber==0.11.10",
   "pikepdf==10.16.0",
@@ -19,16 +21,22 @@ dependencies = [
   "pillow==12.3.0",
   "ocrmypdf==17.12.1",
   "defusedxml==0.7.1",
-  "opentelemetry-distro==0.65b0",
-  "opentelemetry-exporter-otlp==1.44.0",
-  "opentelemetry-instrumentation-fastapi==0.65b0",
-  "opentelemetry-instrumentation-botocore==0.65b0",
+  # The OTLP exporters for both protocols: ProtoStrap sets OTEL_EXPORTER_OTLP_PROTOCOL to
+  # http/protobuf, and a local run may say grpc. opentelemetry-instrument picks by it.
+  "opentelemetry-distro==0.66b2",
+  "opentelemetry-exporter-otlp==1.45.2",
+  "opentelemetry-instrumentation-fastapi==0.66b2",
+  "opentelemetry-instrumentation-botocore==0.66b2",
+  # Puts the trace on each log line (OTEL_PYTHON_LOG_CORRELATION); the image turns its OTLP
+  # log handler off, since logs leave as JSON lines on stdout.
+  "opentelemetry-instrumentation-logging==0.66b2",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest==9.1.1",
-  "httpx==0.28.1",
+  # What Starlette's TestClient uses.
+  "httpx2==2.16.0",
   "ruff==0.16.8",
 ]
 

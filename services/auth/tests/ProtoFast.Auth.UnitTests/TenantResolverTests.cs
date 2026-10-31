@@ -134,6 +134,79 @@ public class TenantResolverTests
     }
 
     [Fact]
+    public void A_host_name_resolves_by_its_hostname_in_this_account()
+    {
+        // ProtoStrap names hosts, and each account gives each name a hostname, which replicas
+        // get as HOST_<NAME>. So appsettings names the host, never its hostname.
+        var hostnames = new Dictionary<string, string> { ["admin"] = "admin.protofast.dev" };
+        var resolver = new TenantResolver(
+            Options.Create(new TenantOptions
+            {
+                ByHost = { ["admin"] = new TenantConfig { Realm = "operators", ClientId = "admin" } },
+            }),
+            name => hostnames.GetValueOrDefault(name));
+
+        Assert.True(resolver.TryResolve("admin.protofast.dev:443", out var tenant));
+        Assert.Equal("operators", tenant!.Realm);
+        Assert.False(resolver.TryResolve("admin", out _));
+    }
+
+    [Fact]
+    public void A_key_that_names_no_host_is_a_hostname()
+    {
+        var resolver = new TenantResolver(
+            Options.Create(new TenantOptions
+            {
+                ByHost = { ["protofast.dev"] = new TenantConfig { Realm = "protofast", ClientId = "protofast-web" } },
+            }),
+            _ => null);
+
+        Assert.True(resolver.TryResolve("protofast.dev", out var tenant));
+        Assert.Equal("protofast-web", tenant!.ClientId);
+    }
+
+    [Theory]
+    [InlineData("/theplot/runs", "admin-theplot")]
+    [InlineData("/theplot", "admin-theplot")]
+    [InlineData("/theplot/", "admin-theplot")]
+    [InlineData("/theplotx/runs", null)]
+    [InlineData("/", null)]
+    [InlineData("/app/theplot", null)]
+    [InlineData("", null)]
+    public void A_console_is_the_first_segment_of_its_path(string path, string? role)
+    {
+        var tenant = new TenantConfig
+        {
+            Realm = "operators",
+            ClientId = "admin",
+            Consoles = new Dictionary<string, string> { ["theplot"] = "admin-theplot" },
+        };
+
+        Assert.Equal(role, tenant.ConsoleRole(path));
+    }
+
+    [Fact]
+    public void Consoles_survive_configuration_binding()
+    {
+        var json = """
+            {
+              "Tenants": {
+                "ByHost": {
+                  "admin": { "Realm": "operators", "ClientId": "admin", "Consoles": { "theplot": "admin-theplot" } }
+                }
+              }
+            }
+            """;
+        var config = new ConfigurationBuilder()
+            .AddJsonStream(new MemoryStream(Encoding.UTF8.GetBytes(json)))
+            .Build();
+        var options = new TenantOptions();
+        config.GetSection("Tenants").Bind(options);
+
+        Assert.Equal("admin-theplot", options.ByHost["admin"].ConsoleRole("/theplot/families"));
+    }
+
+    [Fact]
     public void Resolves_backwards_from_realm_and_client()
     {
         // Back-channel logout arrives from Keycloak, so there is no Host to map — the realm and

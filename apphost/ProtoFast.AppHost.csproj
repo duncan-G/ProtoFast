@@ -5,25 +5,40 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <NoWarn>$(NoWarn);ASPIRECERTIFICATES001</NoWarn>
-    <!-- Persist generated resource passwords (Postgres, Redis, …) across aspire run. -->
+    <!-- Keeps generated passwords (Postgres, Redis, Keycloak's admin, the client secrets) across
+         runs, so the local data volume's passwords keep matching. -->
     <UserSecretsId>protofast-apphost-dev</UserSecretsId>
+    <!-- The dashboard and orchestrator come from NuGet rather than the Aspire CLI's bundle, so
+         plain `dotnet run`, which CI's spec drift check uses, works without the CLI. -->
+    <NoWarn>$(NoWarn);ASPIRE010</NoWarn>
+  </PropertyGroup>
+
+  <!-- ProtoStrap.Hosting isn't on NuGet yet, so the AppHost builds it from ProtoStrap's source,
+       at the version the spec and the workflows name:
+         - .protostrap in this repository, where the workflows check ProtoStrap out, or
+         - a ProtoStrap checkout beside this repository, ../ProtoStrap, on a laptop.
+       Set ProtoStrapSource to use another. Once the package is published, this becomes
+       <PackageReference Include="ProtoStrap.Hosting" Version="0.1.0" />. -->
+  <PropertyGroup>
+    <ProtoStrapSource Condition="'$(ProtoStrapSource)' == '' and Exists('$(MSBuildThisFileDirectory)../.protostrap/hosting')">$(MSBuildThisFileDirectory)../.protostrap</ProtoStrapSource>
+    <ProtoStrapSource Condition="'$(ProtoStrapSource)' == ''">$(MSBuildThisFileDirectory)../../ProtoStrap</ProtoStrapSource>
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="$(ProtoStrapSource)/hosting/src/ProtoStrap.Hosting/ProtoStrap.Hosting.csproj" IsAspireProjectResource="false" />
     <ProjectReference Include="../services/auth/src/ProtoFast.Auth.Api/ProtoFast.Auth.Api.csproj" />
     <ProjectReference Include="../services/auth/src/ProtoFast.Auth.SchemaMigrations/ProtoFast.Auth.SchemaMigrations.csproj" />
     <ProjectReference Include="../services/payments/src/ProtoFast.Payments.Api/ProtoFast.Payments.Api.csproj" />
     <ProjectReference Include="../services/api/src/ProtoFast.Api/ProtoFast.Api.csproj" />
     <ProjectReference Include="../services/api/src/ProtoFast.SchemaMigrations/ProtoFast.SchemaMigrations.csproj" />
     <ProjectReference Include="../services/document_import/src/ProtoFast.DocumentImport.Worker/ProtoFast.DocumentImport.Worker.csproj" />
+    <ProjectReference Include="../services/postgres_config/src/ProtoFast.PostgresConfig/ProtoFast.PostgresConfig.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting.JavaScript" Version="13.6.2" />
     <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.6.2" />
     <PackageReference Include="Aspire.Hosting.Redis" Version="13.6.2" />
-    <PackageReference Include="Aspire.Hosting.Keycloak" Version="13.6.2-preview.1.26519.11" />
   </ItemGroup>
 
 </Project>

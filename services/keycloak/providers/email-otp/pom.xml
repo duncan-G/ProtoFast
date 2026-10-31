@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Keycloak server extensions for ProtoFast's realms, packaged as one JAR that the image
+  copies into /opt/keycloak/providers: the email-otp authenticator, the verify-email-code
+  required action, the protofast-registration-user-creation form action and the apple
+  identity provider. The realms' flows name them by id, so Keycloak can't sign anyone in
+  without this JAR.
+
+  The Keycloak dependencies are `provided`: the server already has them on its
+  classpath and shipping a second copy inside the JAR is how a provider ends up
+  loading a different version of a class than the server it runs in. Their version
+  is the running server's: a provider compiled against another SPI can load and still
+  fail with a NoSuchMethodError under a user's sign-in.
+
+  The image's Maven stage builds it (../../Dockerfile), so nothing needs a JDK
+  outside Docker.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>dev.protofast</groupId>
+  <artifactId>protofast-keycloak</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+  <name>ProtoFast Keycloak providers</name>
+
+  <properties>
+    <!-- The server's version: quay.io/keycloak/keycloak:26.7 in ../../Dockerfile is 26.7.5.
+         ../ses-email-sender/pom.xml names the same version. -->
+    <keycloak.version>26.7.5</keycloak.version>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.build.outputTimestamp>2026-01-01T00:00:00Z</project.build.outputTimestamp>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.keycloak</groupId>
+      <artifactId>keycloak-core</artifactId>
+      <version>${keycloak.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.keycloak</groupId>
+      <artifactId>keycloak-server-spi</artifactId>
+      <version>${keycloak.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.keycloak</groupId>
+      <artifactId>keycloak-server-spi-private</artifactId>
+      <version>${keycloak.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.keycloak</groupId>
+      <artifactId>keycloak-services</artifactId>
+      <version>${keycloak.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>jakarta.ws.rs</groupId>
+      <artifactId>jakarta.ws.rs-api</artifactId>
+      <version>3.1.0</version>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <!-- A stable name: the image copies target/protofast-keycloak.jar. -->
+    <finalName>protofast-keycloak</finalName>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <artifactId>maven-clean-plugin</artifactId>
+          <version>3.5.0</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-resources-plugin</artifactId>
+          <version>3.5.0</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.16.0</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>3.6.1</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>3.5.1</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-install-plugin</artifactId>
+          <version>3.2.0</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+</project>

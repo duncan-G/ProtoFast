@@ -8,29 +8,29 @@ using ProtoFast.DocumentImport.Worker;
 using ProtoFast.DocumentImport.Worker.Briefing;
 using ProtoFast.DocumentImport.Worker.Import;
 using ProtoFast.ServiceDefaults;
-using ProtoFast.ServiceDefaults.Secrets;
 using ProtoFast.Storage;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-builder.AddServiceDefaults();
-
-builder.Configuration
-    .AddEnvironmentVariables("Shared_")
-    .AddEnvironmentVariables("DocumentImport_")
-    // The model API keys are stored under the api's prefix (Api_Providers__…), so that prefix is
-    // the one the secret is read with.
-    .AddSecretsManager(options => builder.Configuration.Bind("Secrets", options));
+// Its keys, the model APIs' (Providers__<name>__ApiKey), come from the environment's secret
+// under ProtoStrap, and from the AppHost's environment variables under `aspire run`. Stopping
+// cancels imports in progress, whose messages come back once their lease lapses.
+builder.AddServiceDefaults(stop: TimeSpan.FromSeconds(40));
 
 // Both the plot schema (stories) and the engine schema (runs, policy) live in the protofast database.
 builder.AddNpgsqlDataSource("protofast");
 builder.Services.AddThePlotData();
 
-builder.Services.AddS3ObjectStorage(options => builder.Configuration.GetSection("S3").Bind(options));
+// The spec's documents bucket and its two queues, from what ProtoStrap sets.
+builder.Services.AddS3ObjectStorage(options => builder.Configuration.GetSection("S3").Bind(options), bucket: "documents");
 builder.Services.AddSqsQueue(
-    DocumentImportQueues.ImportQueueKey, options => builder.Configuration.GetSection("Sqs:DocumentImport").Bind(options));
+    DocumentImportQueues.ImportQueueKey,
+    options => builder.Configuration.GetSection("Sqs:DocumentImport").Bind(options),
+    queue: "document-upload");
 builder.Services.AddSqsQueue(
-    SqsOutcomeQueue.QueueKey, options => builder.Configuration.GetSection("Sqs:WorkflowOutcomes").Bind(options));
+    SqsOutcomeQueue.QueueKey,
+    options => builder.Configuration.GetSection("Sqs:WorkflowOutcomes").Bind(options),
+    queue: "workflow-outcomes");
 
 builder.Services.AddAgentWorkflowEngine();
 builder.Services.AddDurableWorkflowEngineStores();

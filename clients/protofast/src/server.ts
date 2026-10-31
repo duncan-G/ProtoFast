@@ -14,22 +14,18 @@ const browserDistFolder = join(import.meta.dirname, '../browser');
 
 const app = express();
 
-// NG_ALLOWED_HOSTS is a comma-separated list of allowed hosts.
+// NG_ALLOWED_HOSTS is a comma-separated list of allowed hosts: the clients host sets it to every
+// HOST_<NAME> before loading this bundle. Angular's SSRF guard renders for no other `Host`.
 const allowedHosts = (process.env['NG_ALLOWED_HOSTS'] ?? '')
   .split(',')
   .map((host) => host.trim())
   .filter((host) => host.length > 0);
 
-// Requests reach this app through Envoy. Trust the forwarded host and proto it sets.
-// Angular's SSRF guard rejects any request whose `Host`/`X-Forwarded-Host` is not listed.
+// Requests reach this app through the edge. Of the proxy headers, trust the two it sets, so
+// pages render `https://` behind it; Angular drops (and warns about) any other.
 const angularApp = new AngularNodeAppEngine({
   allowedHosts,
-  trustProxyHeaders: [
-    'x-forwarded-host',
-    'x-forwarded-proto',
-    'x-forwarded-port',
-    'x-forwarded-prefix',
-  ],
+  trustProxyHeaders: ['x-forwarded-for', 'x-forwarded-proto'],
 });
 
 /**
@@ -40,7 +36,7 @@ const angularApp = new AngularNodeAppEngine({
 const PROTECTED_PREFIXES = ['/app', '/subscribe'];
 
 /**
- * Protected-area gate. The edge only annotates identity, so the SSR host itself
+ * Protected-area gate. The edge only annotates identity, so the SSR server itself
  * enforces these paths: anonymous requests (no `x-user-id` from ext_authz) are bounced to the
  * BFF sign-in server-side — no flash of protected chrome — and personalized responses are
  * never cached.

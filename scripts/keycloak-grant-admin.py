@@ -13,14 +13,16 @@ comes to exist (docs/design/admin-consoles.md §4.5). Idempotently, it:
 Roles: `--app APP` grants `admin-APP` (repeatable; APP must be a known app, so a typo cannot mint
 `admin-teplot`), `--platform` grants `platform`.
 
-Usage (dev, against the Aspire Keycloak; --insecure only if it serves the self-signed cert):
+Usage (dev, against the AppHost's Keycloak: its http endpoint on the dashboard, the admin user
+`admin` and the `keycloak-password` parameter; `aspire run` already makes the DEV_OPERATORS
+through keycloak-config):
 
-    KC_URL=http://localhost:8080 KC_ADMIN_USER=admin KC_ADMIN_PASSWORD=... \\
+    KC_URL=http://localhost:<port> KC_ADMIN_USER=admin KC_ADMIN_PASSWORD=... \\
         scripts/keycloak-grant-admin.py --app theplot someone@example.com
 
-Usage (prod): mint the throwaway service account the way
-scripts/keycloak-apply-account-admin-client.py documents, run with KC_ADMIN_CLIENT_ID /
-KC_ADMIN_CLIENT_SECRET, then delete that client again so no standing admin credential remains.
+In an account, Keycloak's admin API is reachable only on ProtoStrap's overlay: the edge never
+routes it, and no admin credential stands besides keycloak-config's bootstrap client. Granting
+operators there is still to be decided (docs/protostrap-migration.md, "Open items").
 
 A revoke takes effect at the operator's next access-token refresh: auth drops a session whose
 account holds no console role, and every admin RPC re-checks the role.

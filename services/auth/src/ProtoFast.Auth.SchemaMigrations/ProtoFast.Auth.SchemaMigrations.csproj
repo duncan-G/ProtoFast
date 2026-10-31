@@ -6,11 +6,10 @@
     <RootNamespace>ProtoFast.Auth.SchemaMigrations</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ContainerRepository>protofast-auth-migrations</ContainerRepository>
-    <ContainerFamily>noble-chiseled</ContainerFamily>
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\..\shared\ProtoStrap\ProtoStrap.csproj" />
     <ProjectReference Include="..\ProtoFast.Auth.Data\ProtoFast.Auth.Data.csproj" />
   </ItemGroup>
 

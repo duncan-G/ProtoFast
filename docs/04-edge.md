@@ -1,118 +1,149 @@
-# 04 · The edge (Envoy)
+# 04 · The edge
 
-*How the proxy's configuration is produced, what it routes, and what it enforces.
-Self-contained.*
+*What routes each request, what it asks auth first, and what it enforces. Self-contained.*
 
-## Envoy's config is generated at container start
+## ProtoStrap's edge, not ProtoFast's
 
-There is no checked-in `envoy.yaml`. [`proxy/entrypoint.sh`](../proxy/entrypoint.sh)
-renders one from templates using environment variables, then execs Envoy:
+ProtoFast runs no proxy of its own. In an account the edge is ProtoStrap's: one container per
+zone on the ingress VM, holding cloudflared, which runs the Cloudflare tunnel, and Envoy.
+Locally `aspire run` runs the same Envoy as the `protostrap-edge` container on port 20000,
+rendered by the same code from the same routes
+([ProtoStrap's edge](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/protostrap.md#edge),
+[the local edge](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/protostrap-aspire.md#the-local-edge)).
 
+There is no Envoy config in this repository. The routes are each service's `Routes(...)` in
+[`apphost/Program.cs`](../apphost/Program.cs), written into the spec's `routes`, and the
+authorizer is its `Authorize(...)`.
+
+What the edge does with them:
+
+- **A route is a host's name and a path prefix,** such as `admin/theplot/`. The host's name
+  becomes this account's hostname. The longest prefix wins.
+- **A prefix is plain text,** not a path segment: `/signin` also matches `/signin-oidc`.
+  There is no prefix rewrite, no regex and no header matching. The service sees the path as
+  the browser sent it.
+- **gRPC-Web is translated** to gRPC for `grpc` services (the api, payments), so browsers call
+  `/<package>.<Service>/<Method>` on their own origin.
+- **Each route can have a rate** in requests a second.
+- **Requests go only to ready replicas,** found by component name on the overlay.
+- **A request no route matches gets 404** and never reaches a service.
+
+## The routes
+
+| Host        | Prefix                                                                            | Service                  | Authorized by auth |
+| ----------- | --------------------------------------------------------------------------------- | ------------------------ | ------------------ |
+| `protofast` | `/`                                                                               | `clients`                | yes                |
+| `theplot`   | `/`                                                                               | `clients`                | yes                |
+| `admin`     | `/`                                                                               | `clients`                | yes                |
+| `admin`     | `/theplot/`                                                                       | `clients-admin-theplot`  | yes                |
+| `protofast`, `theplot`, `admin` | `/signin`, `/signup`, `/signout`, `/reset`, `/add-passkey`, `/account/` | `auth`        | no                 |
+| `protofast`, `theplot`, `admin` | `/document.`, `/document_upload.`, `/story.`                      | `api`                    | yes                |
+| `admin`     | `/admin.`                                                                         | `api`                    | yes                |
+| `protofast`, `theplot`, `admin` | `/greet.`                                                         | `payments`               | yes                |
+| `protofast`, `theplot`, `admin` | `/otlp/`, 20 requests a second                                    | `otel-collector`         | no                 |
+| `auth`      | `/realms/<realm>/protocol/openid-connect/auth`, `/realms/<realm>/protocol/openid-connect/logout`, `/realms/<realm>/login-actions/`, `/realms/<realm>/broker/` for `protofast`, `theplot` and `operators`; `/resources/` | `keycloak` | no |
+
+Under `aspire run` the dev servers `protofast`, `theplot`, `admin` and `admin-theplot` take the
+clients' routes, with the same authorizer.
+
+Three things about this table are load-bearing:
+
+- **`/backchannel-logout` and `/ext-authz` are never routed.** auth serves both. Keycloak
+  posts logout tokens to `/backchannel-logout` on the overlay (`http://auth:8080`), and it
+  deletes sessions on the strength of them; `/ext-authz` is the edge's own question. auth's
+  routes are a list of prefixes for exactly this reason: routing all of auth would publish
+  both. A request for either on a client's host goes to the clients, not auth.
+- **The auth host is an allowlist.** Only Keycloak's browser sign-in pages, its identity
+  provider callbacks and its theme files are routed. The admin console, the admin REST API,
+  the account console, the token endpoint and the `master` realm aren't reachable from the
+  internet at all; auth and keycloak-config reach Keycloak at `http://keycloak:8080` on the
+  overlay.
+- **Every client route is authorized, static assets included.** See below.
+
+## auth's answer to every request
+
+The clients, the api and payments name auth as their authorizer:
+
+```yaml
+authorize:
+  by: auth
+  path: /ext-authz
+  headers: [x-user-id, x-tenant, x-roles, x-internal-jwt, x-authenticated]
+  forward: [cookie]
+  respond: [set-cookie]
 ```
-proxy/envoy.yaml.tmpl              base config: clusters, tracing, admin
-proxy/envoy.listener.yaml.tmpl     one per listener
-proxy/envoy.rds.yaml.tmpl          route config wrapper
-proxy/envoy.vhost.yaml.tmpl        the client virtual host (routes below)
-proxy/envoy.keycloak-vhost.yaml.tmpl  the optional Keycloak allowlist vhost
-proxy/envoy.cluster.yaml.tmpl      one per upstream
-```
 
-The entrypoint fails fast: every required variable is checked, and an unknown
-`ENVOY_MODE` aborts the container.
+For each request on one of their routes, the edge:
 
-## The three modes
+1. removes the client's own copies of the five `headers`, so a browser can't send them;
+2. asks auth at `/ext-authz` followed by the request's path and query, with its method, Host
+   and cookie but not its body
+   ([`ExtAuthzEndpoint`](../services/auth/src/ProtoFast.Auth.Api/Endpoints/ExtAuthzEndpoint.cs));
+3. on a 2xx, adds auth's five headers to the request and sends it on, then adds auth's
+   `set-cookie`, if any, to the response;
+4. on anything else, gives the browser auth's answer as it is.
 
-| `ENVOY_MODE` | Used by | Shape |
-|---|---|---|
-| `dev` | `aspire run` | one HTTPS listener per client on `CLIENT_<NAME>_LISTENER_PORT`, serving only `CLIENT_<NAME>_DOMAIN` (any other `Host` is 302-redirected to it); catch-all → that client's `ng serve` |
-| `dev-host` | `SsrHost__Dev=true aspire run` | same listeners; catch-all → the unified SSR host with an `x-client` header |
-| `publish` | production | one listener on `PORT` (8443); one virtual host per `CLIENT_<NAME>_DOMAIN`, all → the SSR host |
+auth's answers:
 
-In `publish` mode the `DEFAULT_CLIENT`'s virtual host also claims `*`, so an
-unmatched Host header still gets a sensible site.
+| Request                                                   | auth answers                                                       |
+| --------------------------------------------------------- | ------------------------------------------------------------------ |
+| A live session                                            | 200 with `x-user-id`, `x-tenant`, `x-roles`, `x-internal-jwt`, `x-authenticated: true` |
+| No session, or one that can't be resolved                 | 200 with `x-authenticated: false`                                  |
+| A session whose id was just rotated                       | the same, plus `set-cookie` with the new `pf_session`, whatever the status |
+| A console path on the admin host (`/theplot/…`), no session | 302 to `/signin?returnUrl=<path and query>`                       |
+| A console path, without the console's role (`admin-theplot`) | 302 to `/forbidden`                                             |
 
-## Environment contract
+So it **annotates and doesn't authorize**, apart from the consoles. Enforcement is downstream:
+the api and payments accept only a valid internal JWT, and the SSR servers redirect anonymous
+requests for protected pages. The consoles are mapped in auth's tenant config
+(`Tenants:ByHost:admin:Consoles`, `theplot` → `admin-theplot`), so only holders of the role
+reach `clients-admin-theplot`'s process at all, assets included
+([design](design/admin-consoles.md)).
 
-| Variable | Meaning |
-|---|---|
-| `ENVOY_MODE` | `dev` \| `dev-host` \| `publish` |
-| `CLIENTS`, `DEFAULT_CLIENT` | which clients exist; which one is the fallback |
-| `PORT` (publish) / `CLIENT_<NAME>_LISTENER_PORT` (dev) | listener ports |
-| `CLIENT_<NAME>_DOMAIN` | the vhost domain for that client (dev: `«client».dev.localhost`) |
-| `CLIENT_<NAME>_HOST/_PORT` (dev) | that client's dev server |
-| `CLIENTS_HOST_HOST/_PORT` | the unified SSR host (publish and dev-host) |
-| `AUTH_HOST/_PORT`, `PAYMENTS_…`, `API_…` | backend upstreams |
-| `KEYCLOAK_HOST/_PORT/_DOMAIN` | **optional** — setting `KEYCLOAK_HOST` switches the Keycloak vhost on |
-| `OTEL_GRPC_HOST/_PORT`, `OTEL_HTTP_HOST/_PORT`, `OTEL_INSTANCE_ID` | tracing + the `/otlp` ingest route |
-| `ENVOY_TLS_CERT`, `ENVOY_TLS_KEY` | listener certificate (dev: the Aspire dev cert) |
-| `ENVOY_ADMIN_PORT` | admin interface (9901); `/ready` is the health check |
+If auth doesn't answer within 2 seconds, or has no ready replica, the edge answers 503: it
+never lets a request through unasked. auth's sign-in routes aren't authorized, so they don't
+depend on that question; they resolve the session themselves.
 
-## What a client virtual host routes
+## What isn't at the edge
 
-Route order matters — the first match wins.
+- **No CORS.** Pages, gRPC-Web, auth's endpoints and telemetry share each client's origin.
+- **No client header.** The clients host picks the app by the request's Host.
+- **No CSP at the edge.** The clients host sets the admin consoles' Content-Security-Policy
+  on their responses, and the admin dev servers set the same header
+  ([layer 03](03-services-and-clients.md#the-clients-host)).
 
-| Match | Cluster | ext_authz | Notes |
-|---|---|---|---|
-| `/otlp/v1/…` | otel-collector (HTTP) | off | rewritten to `/v1/…`; tracing suppressed |
-| `^/(signin\|signup\|signin-oidc\|signout\|reset\|add-passkey)(\?…)?$` | `auth` | off | the OIDC browser flow — an **allowlist**, not a prefix |
-| `/account/` | `auth` | off | account JSON; these endpoints resolve the session themselves |
-| `/assets/`, and any `*.js/.css/.woff2/...` | web | off | cacheable, identity-free; tracing suppressed |
-| `/payments/`, `/api/` | those services | on | prefix stripped, no timeout (streaming-safe) |
-| `/` | web | on | SSR |
+## TLS and forwarded headers
 
-Three things about this list are load-bearing:
+- **In an account** Cloudflare terminates TLS and redirects plain HTTP to HTTPS; cloudflared
+  sends each request to Envoy in the same container, and Envoy to the services over the
+  overlay, all plain HTTP inside the VPC
+  ([Requests in](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/network.md#requests-in)).
+  Cloudflare also applies a per-client rate limit (`client_rate_limit` in the platform root,
+  0 so far: no limit) and caches static assets.
+- **Locally** everything is plain HTTP on port 20000.
+- Keycloak (`KC_PROXY_HEADERS=xforwarded`), the SSR servers (`x-forwarded-for`,
+  `x-forwarded-proto`) and the .NET services (`ASPNETCORE_FORWARDEDHEADERS_ENABLED`) trust the
+  forwarded headers they receive. auth ignores the scheme: it builds its redirect URLs as
+  `https://<Host>` ([layer 05](05-identity.md#known-gaps)).
 
-- **`/backchannel-logout` is deliberately absent.** `auth` serves it, Keycloak
-  posts logout tokens to it over the private network, and it deletes sessions on
-  the strength of that token. Widening the sign-in regex to a prefix would publish
-  a session-deletion endpoint to the internet.
-- **ext_authz annotates; it does not authorize.** Where it is on, Envoy calls
-  `auth`'s gRPC `Check`, which turns the `pf_session` cookie into `x-user-id`-style
-  headers. Enforcement happens in the backends (internal JWT) and in the SSR
-  protected-path gate.
-- **`x-client` is set at the vhost level**, so every route — static assets included
-  — carries it. Without that, one client would serve another's hashed bundles.
+## Known gaps
 
-Each vhost also sets CORS (the client's exact origin — in dev
-`https://«client».dev.localhost:«port»` — with `allow_credentials: true`) and an `alt-svc` header advertising HTTP/3.
-
-## The Keycloak vhost (production only)
-
-When `KEYCLOAK_HOST` is set, Envoy adds a virtual host for `KEYCLOAK_DOMAIN` that
-forwards to Keycloak on Host B. It is the only thing between the internet and
-everything else Keycloak serves on that port, so it is an **allowlist**:
-
-- non-`GET/HEAD/POST/OPTIONS` → `405`;
-- `/realms/master…` → `404` (that realm fronts the bootstrap admin);
-- allowed: the realm's `openid-connect/auth` and `logout`, `login-actions/…`,
-  `broker/{alias}/login|endpoint`, and `/resources/…` theme assets;
-- anything else → `404`, never reaching Keycloak.
-
-The admin console, the admin REST API and the account console are therefore not
-reachable from the internet at all — `auth` talks to Keycloak over the private
-network, and operators go through the private IP.
-
-The vhost re-asserts `x-forwarded-proto: https`, because the listener's scheme
-transformation (which keeps `:scheme` matching the cleartext gRPC upstreams) would
-otherwise tell Keycloak the request was plaintext and the realm's
-`sslRequired: external` would answer `ssl_required`.
-
-## TLS
-
-- **Dev**: the AppHost hands Envoy the ASP.NET developer certificate; upstream dev
-  servers are also HTTPS, and Envoy accepts their untrusted chain.
-- **Production**: Cloudflare terminates the public TLS. `cloudflared` dials
-  `https://envoy:8443` inside the Docker network with `noTLSVerify` against the
-  image's baked certificate. Traffic never crosses a network in cleartext outside
-  the host, and Cloudflare's zone setting is Full + Always-Use-HTTPS.
+- **Unverified in an account.** Nothing has run on AWS yet, in particular what
+  `x-forwarded-proto` Keycloak and the SSR servers see behind Cloudflare and cloudflared.
+- **Static assets pass through the authorizer.** Every request on a client route, each
+  script, stylesheet and image included, costs a call to auth and a Redis lookup when it
+  carries a cookie, and fails with 503 while auth is down. Cloudflare's cache spares the edge
+  only what it serves itself.
+- **The browsers' collector route is open.** Anyone can post to `/otlp/`; its rate, size limit
+  and `service.name` filter are what bound it.
 
 ## Changing routing
 
-Edit the templates under `proxy/`, then deploy the `envoy` component (layer 07) —
-the whole directory is the content hash for its image, so any template change
-produces a new artefact. Two constraints to respect:
+Edit the service's `Routes(...)` or `Authorize(...)` in the AppHost, then write the spec
+(`aspire do protostrap-spec`) and commit it.
+A route change reloads the edge's routes without restarting it. Two rules:
 
-1. **Keep regexes small.** Envoy rejects a route config whose RE2 program size
-   exceeds 100, and a rejected RDS update leaves the vhost with *no* routes.
-2. **New public paths on `auth` must be added deliberately** — the sign-in
-   allowlist exists to keep everything else on that service private.
+1. **New public paths on auth are added deliberately,** one prefix at a time: everything else
+   on that service stays private.
+2. **Keep prefixes unambiguous.** `protostrap check` refuses two routes for the same host and
+   path, and a prefix matches any path that starts with its text.
