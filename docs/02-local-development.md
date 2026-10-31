@@ -23,8 +23,9 @@ Prerequisites:
   [`ProtoFast.AppHost.csproj`](../apphost/ProtoFast.AppHost.csproj) chooses another, and CI
   uses `.protostrap`), and builds the `protostrap` CLI that renders the local edge.
 
-`bash scripts/setup-dev-dependencies.sh` installs Node, Docker and the Aspire CLI on Ubuntu 24.
-No AWS account, profile or secret is needed.
+On Ubuntu, `bash scripts/setup-dev-dependencies.sh` installs Docker, Node's current LTS and
+the latest Aspire CLI when they're missing, not the versions above; the .NET SDK and Go are
+yours to install. No AWS account, profile or secret is needed.
 
 | Open                                 | For                                                    |
 | ------------------------------------ | ------------------------------------------------------ |
@@ -91,6 +92,7 @@ with the names a component reads from the environment's secret but without the p
 | PostgreSQL's and Redis's passwords, connection strings    | Aspire's own parameters and references, also kept across runs |
 | The internal JWT's key pair                               | made fresh on every run (EC P-256), key id `local`; tokens live five minutes |
 | The model APIs' keys                                      | `Parameters:deepseek-api-key`, `gemini-api-key`, `anthropic-api-key` in user secrets if you set them; empty otherwise, and imports fail at the model call |
+| Social sign-in's credentials                              | `Parameters:google-client-id`, `google-client-secret`, `apple-client-id`, `apple-team-id`, `apple-key-id`, `apple-private-key` in user secrets if you set them, for keycloak-config; empty otherwise, and the providers stay disabled |
 
 ```bash
 dotnet user-secrets --project apphost set Parameters:deepseek-api-key <key>
@@ -114,12 +116,14 @@ has.
 ## Known gaps
 
 - **Live reload doesn't work through the local edge.** Refresh the page after a change.
-- **Containers' telemetry doesn't reach the dashboard over HTTPS.** The dashboard's OTLP
+- **Some containers' telemetry doesn't reach the dashboard over HTTPS.** The dashboard's OTLP
   endpoint uses the development certificate, which Keycloak's JVM and conversion's Python don't
   trust, so their exports fail locally (Keycloak gets no local exporter at all). The .NET
-  services, the dev servers and browsers' telemetry arrive.
-- **The local edge isn't Cloudflare:** no TLS, no cache, no per-client rate limit. Route rates
-  and the authorizer do apply.
+  services, the dev servers and otel-collector, which skips the check, and so browsers'
+  telemetry, arrive.
+- **The local edge isn't Cloudflare:** no TLS and no cache. Route rates and the authorizer
+  apply in both; prod sets no per-client rate limit at Cloudflare yet
+  ([layer 08](08-infrastructure.md#the-platform-root)).
 
 ## Variations
 
@@ -131,7 +135,7 @@ SsrHost__Dev=true aspire run
 ```
 
 (the `https-ssr-host` launch profile, or `--SsrHost:Dev=true`). Same hosts, same routes and
-authorizer; no live reload.
+authorizer; a client change shows once the image is built again, on the next start.
 
 **Run beside another AppHost** that holds port 20000 or 8025:
 

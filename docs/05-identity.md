@@ -116,7 +116,8 @@ Keycloak is configured by three things.
 starts or builds (its [README](../services/keycloak/README.md) has every option and the upgrade
 steps):
 
-- **The providers**, built and tested by Maven in the image build:
+- **The providers**, built by Maven in the image build, which runs the SES sender's tests
+  (the email-otp JAR has none):
   `protofast-keycloak.jar` (from `providers/email-otp`) supplies the `email-otp` authenticator,
   the `verify-email-code` required action, the claiming user-creation form action
   (`protofast-registration-user-creation`) and the Apple identity provider (`apple`);
@@ -261,5 +262,5 @@ domains.
 - **Keycloak's readiness doesn't test the Host.** `9000/health/ready` is Keycloak's own and
   can't be told to answer only for `keycloak`, as ProtoStrap's contract asks.
 - **SES sandbox.** A new account's SES sends only to verified addresses, 200 a day, until an
-  Org Admin asks AWS for production access, once per account. Neither root sets
+  Org Admin asks AWS for production access, once per account. The prod root doesn't set
   `email_dmarc`, so no DMARC record is published.

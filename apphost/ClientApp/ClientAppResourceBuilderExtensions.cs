@@ -9,7 +9,7 @@ public static class ClientAppResourceBuilderExtensions
     private static readonly HttpClient DevServerProbe = new() { Timeout = TimeSpan.FromSeconds(5) };
 
     /// <summary>
-    /// Adds a client's Angular dev server, with HMR, for <c>aspire run</c> only. ProtoStrap's
+    /// Adds a client's Angular dev server for <c>aspire run</c> only. ProtoStrap's
     /// local edge reaches it over plain HTTP, at the routes the caller gives it with
     /// PublishAsProtoStrapService, so the browser uses the client's host
     /// (<c>http://«host».dev.localhost:20000</c>) exactly as in an account.

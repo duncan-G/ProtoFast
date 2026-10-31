@@ -26,7 +26,8 @@ multi-platform index digest; a patched base image is a commit.
 ## The pipeline
 
 **[`ci.yml`](../.github/workflows/ci.yml)** runs on every pull request and every push to
-`main`, with no AWS access. main's ruleset should require it, since the deploy runs no tests:
+`main`, with no AWS access. main's ruleset should require each of its jobs' checks (GitHub
+has no single `ci` check), since the deploy runs no tests:
 
 | Job            | Checks                                                                          |
 | -------------- | ------------------------------------------------------------------------------- |
@@ -42,7 +43,8 @@ ProtoStrap.Hosting and the `protostrap` action builds the CLI.
 
 **[`deploy.yml`](../.github/workflows/deploy.yml)** runs on every push to `main` (and by hand),
 after CI passed on the pull request, and deploys to prod. One run at a time
-(`concurrency: deploy`, never cancelled):
+(`concurrency: deploy`): the running one is never cancelled, and of those waiting behind it
+GitHub keeps only the newest, which carries the skipped commits too:
 
 ```mermaid
 graph LR
@@ -51,9 +53,9 @@ graph LR
 
 | Job       | ProtoStrap workflow | Does                                                              |
 | --------- | ------------------- | ----------------------------------------------------------------- |
-| `approve` | (none)              | waits in the `prod-approval` GitHub environment: one approval per release |
+| `approve` | (none)              | waits in the `prod-approval` GitHub environment: one approval per release, and a second, in `prod-infra`, when the infrastructure changed |
 | `plan`    | `plan.yml`          | regenerates `protostrap.yaml` from the AppHost, fails if it differs from the commit, checks it, and works out which image tags are missing and whether the infrastructure changed |
-| `infra`   | `infra.yml`         | applies `infra/prod`, only when the plan says the infrastructure changed |
+| `infra`   | `infra.yml`         | only when the plan says the infrastructure changed: puts the `protostrap` binary of the spec's version in the deploy bucket, so every new VM boots with its agent, then applies `infra/prod` |
 | `deploy`  | `deploy.yml`        | builds and pushes the missing images, copies ProtoStrap's binary, edge and telemetry images and the upstream images, writes the release, and sends `protostrap-deploy` to prod's data-1 through SSM |
 
 The reusable workflows sign in to AWS with GitHub's OIDC token, as the Deploy role in the
@@ -123,16 +125,21 @@ Migrations aren't undone, and a secret is never rolled back: write the right val
 
 ## GitHub settings
 
-`infra/bootstrap/prod` creates the `prod` and `prod-infra` environments and their variables. The rest is by hand, per ProtoStrap's
+`infra/bootstrap` creates the `prod` and `prod-infra` environments and their variables. The
+rest is by hand, per ProtoStrap's
 [production checklist](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/production.md):
 
 | Setting                                         | Why                                                         |
 | ----------------------------------------------- | ----------------------------------------------------------- |
 | `CLOUDFLARE_API_TOKEN` in `prod-infra`          | the infra workflow's Cloudflare access                      |
-| `prod-approval`, with required reviewers        | the one approval per release in `deploy.yml`                |
-| Required reviewers on `prod-infra`              | otherwise `infra.yml` applies a change to `infra/prod` on push to `main` with no approval |
+| `prod-approval`, with required reviewers        | the approval every release in `deploy.yml` waits for        |
+| Required reviewers on `prod-infra`              | otherwise `infra.yml` applies a change to `infra/prod` on push to `main` with no approval; a release that changes the infrastructure waits here too |
 | Deployment branches `main` only, on `prod` and `prod-infra` | the AWS roles trust these environments, so this decides what code can take them on |
-| A ruleset on `main` requiring review and `ci`   | the deploy runs no tests                                    |
+| A ruleset on `main` requiring review and each `ci.yml` job's check (`dotnet`, `clients (…)`, `clients-host`, `conversion`, `images (…)`, `terraform`) | the deploy runs no tests |
+| `CODEOWNERS` owning `protostrap.yaml`, `apphost/` and `infra/` | what an account runs and may do needs its owner's review; [`.github/CODEOWNERS`](../.github/CODEOWNERS) has it |
+
+Bootstrap doesn't manage the reviewers or the branch limits, and applying it again can clear
+them on `prod` and `prod-infra`: check them after.
 
 ## Known gaps
 

@@ -28,7 +28,7 @@ process, built on a platform layer we own and the agent cannot change.
 | Piece | Where |
 |---|---|
 | `operators` realm: registration off, no social sign-in, one `admin` client, `platform` / `admin-protofast` / `admin-theplot` roles | `services/keycloak-config/realms/operators-realm.json` |
-| `admin` client removed from the protofast realm; `protofast-web` no longer answers on the admin dev port | `protofast-realm.json` |
+| `admin` client removed from the protofast realm; `protofast-web`'s redirect URIs come from `ORIGIN_PROTOFAST` alone | `protofast-realm.json` |
 | `TenantConfig.RequiredRoles`: no session without one of them; a session that loses its last one is dropped at the next refresh | [AuthFlow](../../services/auth/src/ProtoFast.Auth.Api/Endpoints/AuthFlow.cs), [SessionResolver](../../services/auth/src/ProtoFast.Auth.Api/Sessions/SessionResolver.cs) |
 | `CallerIdentity.Tenant`, `AdminAccess.Require` / `RequireRow` / `RequirePlatform` | [services/shared/Grpc](../../services/shared/Grpc/AdminAccess.cs) |
 | Admin RPCs: `Admin/Shared` (`AdminOverview`) and `Admin/Theplot` (`TheplotAdmin`, `TheplotRuns`, `TheplotFamilies`) | `services/api/.../Protos/Admin`, `Services/Admin` |
@@ -130,9 +130,9 @@ operator holds becomes a cross-app permission the moment an RPC is gated on it.
 exist, creates the operator if missing (registration is off; a passkey is a required action on
 first sign-in unless `--no-passkey`), adds or removes the mappings and prints the result. `--app` is
 checked against the known apps. It needs Keycloak's admin API, which the edge doesn't route; in an
-account only the overlay reaches it, and there is no supported way to run the script there yet
-(its own prod instructions name a script that no longer exists). Locally, `DEV_OPERATORS` in the
-AppHost creates the operators keycloak-config seeds.
+account only the overlay reaches it, and how to make an operator there is still to be decided,
+as the script's own docstring says. Locally, `DEV_OPERATORS` in the AppHost creates the
+operators keycloak-config seeds.
 
 A revoke takes effect at the operator's next access-token refresh, within one token lifetime.
 
@@ -160,7 +160,7 @@ proto folder, CODEOWNERS entries and its card on the console list, then prints t
 still done by hand: `KnownApps` (and the grant script's list), the `admin-{app}` role in the
 operators realm file, `RequiredRoles` and `Consoles` in auth's admin tenant, the RPCs, the
 AppHost's dev server and `clients-admin-{app}` component, a build stage in `clients/Dockerfile`,
-`CONSOLE_PATHS` in the clients host, and both specs. App ids that collide with the host's own paths
+`CONSOLE_PATHS` in the clients host, and the spec (`aspire do protostrap-spec`). App ids that collide with the host's own paths
 (`app`, `api`, `forbidden`, …) are refused.
 
 ## 7. Tests

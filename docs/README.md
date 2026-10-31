@@ -47,15 +47,17 @@ sets the same names as environment variables. The few places that check
   `http://theplot.dev.localhost:20000`, `http://admin.dev.localhost:20000` and
   `http://auth.dev.localhost:20000`. No AWS account is needed.
 - **In an account**: ProtoStrap's VMs. An ingress VM runs the edge (cloudflared and Envoy),
-  the general pool runs the services and clients, a Spot compute pool runs conversion and
-  document-import, and data-1 runs PostgreSQL, Redis and ProtoStrap's telemetry. There are
-  no inbound ports: Cloudflare reaches the edge through a tunnel.
+  the general pool runs the services and clients, conversion and document-import start in the
+  general VMs' spare room and get Spot compute VMs when they outgrow it, and data-1 runs
+  PostgreSQL, Redis and ProtoStrap's telemetry. There are no inbound ports: Cloudflare reaches
+  the edge through a tunnel.
 - **Config** is the spec: each component's `env`, `secrets`, routes, requests and scaling,
-  written by the AppHost. Hostnames come from prod's Terraform root.
+  written by the AppHost. The AppHost names prod's hostnames too; bootstrap's `hosts` is what
+  prod's platform root uses.
 - **Secrets** live in one AWS Secrets Manager secret, `protofast/prod`, with keys prefixed by
   who reads them. An Org Admin fills it with `scripts/set-secrets.sh`. Locally the AppHost
-  generates its own values. The dev account holds only development secrets, which Developers
-  manage.
+  generates its own values. Dev's secret, `protofast/dev`, is beside prod's in the same
+  account; Developers manage it, and the AppHost doesn't read it yet.
 - **Deploys** go through ProtoStrap's reusable workflows: every push to `main` deploys to prod
   once someone approves. Each image is tagged from its own sources, so an unchanged
   component isn't rebuilt or restarted. A rollback is deploying an earlier commit again.
@@ -95,8 +97,8 @@ layers describe what is there now.
 
 ## Conventions used in these docs
 
-- **Locally** means under `aspire run`, which is dev. **An account** means prod's AWS account,
-  where ProtoStrap runs it.
+- **Locally** means under `aspire run`, which is dev. **An account** means ProtoFast's one AWS
+  account, where ProtoStrap runs prod.
 - `Shared_Foo__Bar` is a key in the environment's secret. The part before the first `_` says
   who reads it and is dropped when read; `__` is the .NET section separator, so the component
   sees `Foo:Bar`. See [layer 06](06-secrets.md).

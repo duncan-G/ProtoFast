@@ -31,8 +31,11 @@ domain. ProtoStrap adds its own edge and telemetry; neither is in the AppHost.
 
 ## Hosts
 
-ProtoStrap names hosts and prod's Terraform root gives each name a hostname, so no code
-holds a hostname. Every replica gets `HOST_<NAME>` and `ORIGIN_<NAME>` for each.
+The spec names hosts, and components refer to a host only by its name: every replica gets
+`HOST_<NAME>` and `ORIGIN_<NAME>` for each. The AppHost gives each name its prod and local
+hostnames (`WithHost`), so the spec carries prod's; in the account, prod's platform root takes
+them from bootstrap's `hosts` ([layer 08](08-infrastructure.md#hosts-and-mail)), which must
+name the same ones.
 
 | Name        | Prod                    | Locally                   | Serves                                                    |
 | ----------- | ----------------------- | ------------------------- | --------------------------------------------------------- |
@@ -47,8 +50,9 @@ share one `pf_session`.
 ## Locally
 
 `aspire run` starts everything as local processes and containers. Projects and dev servers
-get ports from Aspire; the only fixed ports are the local edge's, 20000, and smtp4dev's,
-8025. [Layer 02](02-local-development.md) has the details.
+get ports from Aspire. The fixed ports are the local edge's, 20000, smtp4dev's, 8025, and the
+dashboard's own, in `apphost/Properties/launchSettings.json`.
+[Layer 02](02-local-development.md) has the details.
 
 ```mermaid
 graph TD
@@ -81,7 +85,7 @@ Key facts:
 
 ```mermaid
 graph TD
-    Internet --> CF["Cloudflare · DNS, TLS, rate limit, cache"]
+    Internet --> CF["Cloudflare · DNS, TLS, cache"]
     CF -.->|tunnel| Edge
 
     subgraph Ingress["ingress VM (one per zone)"]
@@ -97,7 +101,7 @@ graph TD
         Tasks["tasks: migrations, keycloak-config, postgres-config"]
     end
 
-    subgraph Compute["compute pool (Spot)"]
+    subgraph Compute["compute pool (Spot), or general's spare room"]
         ConvC["conversion"]
         ImportC["document-import"]
     end
@@ -119,11 +123,14 @@ graph TD
 
 Key facts:
 
-- **The VMs are ProtoStrap's.** An ingress VM per zone runs the edge alone. The general pool
-  runs every service, worker and task, apart from conversion and document-import, which run
-  on the compute pool. data-1
-  holds PostgreSQL and Redis, each with its own EBS volume, and ProtoStrap's telemetry and
-  scheduler ([ProtoStrap's VMs](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/vms.md)).
+- **The VMs are ProtoStrap's.** An ingress VM per zone runs the edge alone, and is its zone's
+  NAT: every outbound call but S3's, to the model APIs, SES or other AWS APIs, leaves through
+  it. The general pool runs every service, worker and task, apart from conversion and
+  document-import, which are compute's. Compute keeps no VM of its own until they outgrow the
+  general VMs' spare room, so they usually start there, on On-Demand VMs, and move to Spot
+  compute VMs when they don't fit. data-1 holds PostgreSQL and Redis, each with its own EBS
+  volume, and ProtoStrap's telemetry and scheduler
+  ([ProtoStrap's VMs](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/vms.md)).
 - **Containers reach each other by component name** on ProtoStrap's overlay network:
   `http://keycloak:8080`, `http://auth:8080`, `http://conversion:8090`, `postgres:5432`,
   `redis:6379`. The connection strings in the secret use these names.
@@ -146,6 +153,7 @@ VMs, `t4g.small` and `t4g.medium`. The sizes are in
 | Compute pool              | `t4g.medium`, 0–3 Spot VMs                        |
 | data-1                    | `t4g.medium`                                      |
 | auth, api, clients        | 2–4 replicas, so a VM's loss leaves one           |
+| keycloak, payments, otel-collector, clients-admin-theplot | 1 replica: a VM's loss stops it until it starts on another |
 | conversion                | 1–4 replicas                                      |
 | document-import           | 0–4 replicas, from the queue                      |
 | PostgreSQL request        | 1 CPU, 1 GiB                                      |
@@ -161,9 +169,11 @@ ProtoStrap's reserve. Every VM is Graviton (arm64), and every image is built for
 Cloudflare → tunnel → the edge's Envoy → route `protofast/` (the clients) → the edge first
 asks auth at `/ext-authz/app`, with the request's Host and cookie → auth answers 200 with
 `x-user-id`, `x-tenant`, `x-roles`, `x-internal-jwt` and `x-authenticated` for a live session,
-or `x-authenticated: false` → the edge adds them to the request → the clients host picks the
-`protofast` app by the Host → SSR renders. Without `x-user-id`, `/app` redirects to
-`/signin`.
+or `x-authenticated: false` → the edge adds them to the request, and a rotated `pf_session`
+cookie in auth's answer to the response (`respond`) → the clients host picks the `protofast`
+app by the Host → SSR renders. Without `x-user-id`, `/app` redirects to `/signin`. On
+`admin/theplot/` auth may answer 302 instead, to `/signin` or `/forbidden`, and the edge
+hands that to the browser ([layer 04](04-edge.md#auths-answer-to-every-request)).
 
 **A gRPC-Web call** (`POST /document.DocumentService/...`).
 Same edge and the same question to auth, on route `protofast/document.` → the edge translates

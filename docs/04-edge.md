@@ -76,8 +76,8 @@ authorize:
 For each request on one of their routes, the edge:
 
 1. removes the client's own copies of the five `headers`, so a browser can't send them;
-2. asks auth at `/ext-authz` followed by the request's path and query, with its method, Host
-   and cookie but not its body
+2. asks auth at `/ext-authz` followed by the request's path and query, with its method, Host,
+   cookie and any `Authorization` header (Envoy always sends that one), but not its body
    ([`ExtAuthzEndpoint`](../services/auth/src/ProtoFast.Auth.Api/Endpoints/ExtAuthzEndpoint.cs));
 3. on a 2xx, adds auth's five headers to the request and sends it on, then adds auth's
    `set-cookie`, if any, to the response;
@@ -118,13 +118,15 @@ depend on that question; they resolve the session themselves.
   sends each request to Envoy in the same container, and Envoy to the services over the
   overlay, all plain HTTP inside the VPC
   ([Requests in](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/network.md#requests-in)).
-  Cloudflare also applies a per-client rate limit (`client_rate_limit` in the platform root,
-  0 so far: no limit) and caches static assets.
+  Cloudflare caches static assets. Its per-client rate limit (`client_rate_limit` in the
+  platform root) is off so far, at 0.
 - **Locally** everything is plain HTTP on port 20000.
 - Keycloak (`KC_PROXY_HEADERS=xforwarded`), the SSR servers (`x-forwarded-for`,
   `x-forwarded-proto`) and the .NET services (`ASPNETCORE_FORWARDEDHEADERS_ENABLED`) trust the
-  forwarded headers they receive. auth ignores the scheme: it builds its redirect URLs as
-  `https://<Host>` ([layer 05](05-identity.md#known-gaps)).
+  forwarded headers they receive. auth ignores the scheme: it builds its OIDC `redirect_uri`
+  and post-logout URL from the request's host's `ORIGIN_<NAME>` (`https://` in an account,
+  the local edge's `http://` origin locally), and assumes `https://<Host>` only for a host
+  that isn't in the spec.
 
 ## Known gaps
 

@@ -93,7 +93,7 @@ Ghostscript doesn't run.
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | The AppHost (`test`) | — | LocalStack only |
 | `PROTOSTRAP_COMPONENT` | ProtoStrap | unset | Readiness's host test; each log line |
 | `PROTOSTRAP_REPLICA`, `PROTOSTRAP_RELEASE` | ProtoStrap | host name, `local` | Each log line; `PROTOSTRAP_REPLICA` set means under ProtoStrap |
-| `DRAIN_SECONDS` | ProtoStrap | 10 under ProtoStrap, else 0 | How long to keep serving after SIGTERM |
+| `DRAIN_SECONDS` | unset (ProtoStrap doesn't set it) | 10 under ProtoStrap, else 0 | How long to keep serving after SIGTERM |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` | ProtoStrap, Aspire | — | Traces and metrics, through `opentelemetry-instrument`. `http/protobuf` or `grpc`: both exporters are installed |
 | `CONVERSION_MAX_SOURCE_BYTES` | | 10 MiB | Backstop for the upload policy's limit |
 | `CONVERSION_MAX_OUTPUT_BYTES` | | 25 MiB | |

@@ -5,6 +5,13 @@ recording every movement in a ledger, refunding them when an app is de-listed, a
 holding accounts with a meaningful balance for 30 days before deletion. Ships to
 production on Stripe **test mode** first; the live switch is a config change.*
 
+> **Updated for ProtoStrap (2026-10-30).** ProtoFast now deploys with ProtoStrap, and the
+> plan's wiring, config, secrets and rollout steps were rewritten in place for it: payments is a
+> spec component, routed by its proto package on each client's own host, its settings are the
+> spec's `env` and its keys the environment's secret. The edge never strips or rewrites a path,
+> so there is no `/payments/` prefix; where the webhook is served is still to be decided (§6).
+> None of the plan is built yet.
+
 ## 1. Goal
 
 | Capability | Summary |
@@ -27,17 +34,17 @@ graph LR
         Admin["admin client<br/>/billing"]
     end
     Stripe["Stripe"]
-    subgraph HostB["services"]
+    subgraph Services["services, behind ProtoStrap's edge"]
         Pay["payments<br/>Checkout, webhook, refunds,<br/>balance + history RPCs"]
         Api["api / document_import worker<br/>debits per run"]
         Auth["auth<br/>account delete / restore / sweeper"]
     end
     PG[("protofast DB<br/>schema billing")]
 
-    App -->|gRPC-Web /payments/| Pay
-    Admin -->|gRPC-Web /payments/| Pay
+    App -->|"gRPC-Web, by proto package"| Pay
+    Admin -->|"gRPC-Web, by proto package"| Pay
     App -->|redirect| Stripe
-    Stripe -->|POST /payments/stripe/webhook| Pay
+    Stripe -->|"webhook (route to decide, §6)"| Pay
     Pay --> PG
     Api --> PG
     Auth -->|gRPC, self-minted JWT| Pay

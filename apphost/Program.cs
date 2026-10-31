@@ -26,10 +26,11 @@ const ReferenceEnvironmentInjectionFlags connectionStringOnly =
 var edgePort = int.TryParse(builder.Configuration["LocalEdge:Port"], out var port) ? port : 20000;
 string LocalOrigin(string local) => $"http://{local}:{edgePort}";
 
-// The spec's top. prod's Terraform root gives the four hosts their hostnames (infra/prod); the
-// version matches the workflows' @v0.1.0 and the roots' ?ref=v0.1.0. The pools take the smallest
-// VMs, t4g.small and t4g.medium: services in pairs across the general VMs, Spot VMs for the
-// conversions and imports.
+// The spec's top. The four hosts' prod hostnames are here and in bootstrap's hosts, which prod's
+// Terraform root uses (infra/prod); the version matches the workflows' @v0.1.0 and the roots'
+// ?ref=v0.1.0. The pools take the smallest VMs, t4g.small and t4g.medium: auth, the api and the
+// clients in pairs across the general VMs; conversions and imports on compute, which starts in
+// the general VMs' spare room and adds Spot VMs when they outgrow it.
 builder.AddProtoStrapEnvironment("protostrap", app: "protofast")
     .WithVersion("0.1.0")
     .WithHost("protofast", "protofast.dev", local: "protofast.dev.localhost")
@@ -309,7 +310,7 @@ var clientsImage = !run || bool.TryParse(builder.Configuration["SsrHost:Dev"], o
 if (clientsImage)
 {
     // Set SsrHost__Dev=true (the https-ssr-host launch profile) to run this image under
-    // `aspire run` instead of the dev servers: the same hosts, no HMR.
+    // `aspire run` instead of the dev servers: the same hosts, built from the image.
     IResourceBuilder<ContainerResource> ClientsHost(string name, string clients, string defaultClient, IReadOnlyDictionary<string, string> environment)
     {
         var host = builder.AddDockerfile(name, "../clients")
@@ -341,7 +342,8 @@ if (clientsImage)
 }
 else
 {
-    // Each client's own Angular dev server, with HMR, behind the same routes and authorizer.
+    // Each client's own Angular dev server, behind the same routes and authorizer. Live reload
+    // doesn't pass the edge: refresh after a change.
     void DevServer(string name, string local, string[] routes, IReadOnlyDictionary<string, string>? environment = null) =>
         builder.AddClientApp(name, LocalOrigin(local), environment)
             .PublishAsProtoStrapService(s => Authorized(s.Request(cpu: "250m", memory: "512Mi").Ready(Readiness.Tcp).Routes(routes)));

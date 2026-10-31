@@ -35,15 +35,18 @@ lists everything it sets. What ProtoFast reads of it:
 | Variable                                  | Read by                                                        |
 | ----------------------------------------- | -------------------------------------------------------------- |
 | `HOST_<NAME>`                             | auth (tenants, the SES sender's From), the clients host (which app answers a host, Angular's allowed hosts), keycloak-config |
-| `ORIGIN_<NAME>`                           | auth (`ORIGIN_AUTH`, Keycloak's public URL), keycloak (`KC_HOSTNAME`), keycloak-config (redirect URIs) |
+| `ORIGIN_<NAME>`                           | auth (`ORIGIN_AUTH`, Keycloak's public URL; the request's host's origin, for its OIDC `redirect_uri` and post-logout URL), keycloak (`KC_HOSTNAME`), keycloak-config (redirect URIs) |
 | `BUCKET_DOCUMENTS`                        | api, document-import, conversion                               |
 | `QUEUE_DOCUMENT_UPLOAD_URL`               | api (sends), document-import (receives)                        |
 | `QUEUE_WORKFLOW_OUTCOMES_URL`             | document-import (FIFO, the URL ends in `.fifo`)                |
 | `SECRET_ID`, `SECRET_PREFIX`              | every .NET component                                           |
 | `PROTOSTRAP_COMPONENT`                    | readiness: a check passes only for its own name                |
 | `PROTOSTRAP_REPLICA`                      | "running under ProtoStrap": logs by OTLP only, SES instead of SMTP, a 10 s drain |
-| `DRAIN_SECONDS`                           | how long to keep serving after SIGTERM (10 under ProtoStrap, 0 locally; the clients host defaults to 10 either way) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` | every component's OpenTelemetry SDK; `http://telemetry:4318`, `http/protobuf` in an account |
+
+`DRAIN_SECONDS`, how long a component keeps serving after SIGTERM, isn't ProtoStrap's:
+neither ProtoStrap nor the spec sets it, so each component uses its own default, 10 s under
+ProtoStrap and 0 locally.
 
 ## .NET services
 
@@ -127,7 +130,7 @@ queue:
 | `Conversion:BaseUrl`                     | the spec's `env`, `http://conversion:8090`; locally conversion's endpoint |
 | `Consumer:MaxConcurrentImports`          | 2 (`appsettings.json`), 8 locally                  |
 
-It stops within 30 s of SIGTERM, inside the spec's 45 s: imports in progress are cancelled
+It stops within 40 s of SIGTERM, inside the spec's 45 s: imports in progress are cancelled
 and their messages come back once their lease lapses. It scales from zero on the
 `document-upload` queue.
 
@@ -161,7 +164,7 @@ fork.
 | `SERVER_URL`             | SSR, handed to the browser through `TransferState` | the base of the gRPC-Web transport and of browser telemetry. Set only for the dev servers (the host's local origin); the clients image leaves it empty, and the browser uses its own origin |
 | `NG_ALLOWED_HOSTS`       | `src/server.ts`, admin-kit's server | the hosts Angular's SSRF guard renders for. The clients host sets it to every `HOST_<NAME>` before loading the apps |
 | `ADMIN_CONSOLE_ROLES`    | admin-kit's SSR gate            | the roles that open a console (`*` for the platform console, `admin-theplot` for theplot's). Set by the AppHost, never by a console |
-| `OTEL_*`                 | `src/telemetry.server.ts`       | the Node SDK, configured from the variables alone; under the clients host, the host starts it once for every app |
+| `OTEL_*`                 | `src/telemetry.server.ts` (protofast, theplot), `src/instrumentation.ts` (the admin consoles) | the Node SDK, configured from the variables alone; under the clients host, the host starts it once for every app |
 | `PORT`                   | `ng serve`                      | the port Aspire assigns                                       |
 
 Behaviour that lives in the SSR server rather than in config:
@@ -196,7 +199,7 @@ which this replica loads.
 | `DEFAULT_CLIENT`  | the client for a host no client is named for: `protofast`, or `admin-theplot` |
 | `HOST_<NAME>`     | a client is served on the host of its name (client `protofast` on `HOST_PROTOFAST`) |
 | `PORT`            | 4000                                                                  |
-| `DRAIN_SECONDS`   | default 10                                                            |
+| `DRAIN_SECONDS`   | ProtoFast's own, unset in the spec: 10 under ProtoStrap, 0 locally     |
 | `ADMIN_CONSOLE_ROLES`, `OTEL_*` | passed on to the apps                                   |
 
 What it does itself:
@@ -229,6 +232,3 @@ SIGTERM, so a browser's batch sent during a deploy may be lost.
 
 - **Unverified in an account.** The components' AWS calls with their roles (S3, SQS, SES,
   Secrets Manager), readiness behind the edge and the drain on a real rollout haven't run yet.
-- **Stop times.** conversion's README says its `stop` must cover the drain plus
-  `CONVERSION_TIMEOUT_SECONDS` + 120 s, 610 s with the defaults, but the AppHost gives it 9
-  minutes (540 s), so a conversion near its budget can be cut off at a deploy.

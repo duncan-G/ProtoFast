@@ -45,9 +45,12 @@ password.
 **Terraform creates the secret empty and never writes a value**, so no value passes through
 Terraform's state, CI or an image. An Org Admin fills it in from their own machine.
 
-Dev is the local run, so it has no such secret: the AppHost makes the local values
-([below](#how-a-value-reaches-a-process)). The dev account holds only development secrets,
-under `protostrap-dev/`, which Developers manage.
+Dev is the local run, with no account of its own. Its secret, `protofast/dev`, sits beside
+`protofast/prod` in ProtoFast's one account, named like it. No Terraform makes it: Developers
+make it once (`aws secretsmanager create-secret --name protofast/dev`) and fill it with
+ProtoStrap's `scripts/set-secret.sh` and their own sign-in. The AppHost doesn't read it yet:
+it makes the local values and keeps the third-party keys in user secrets
+([below](#how-a-value-reaches-a-process)).
 
 ## Filling an environment's secret
 
@@ -78,7 +81,10 @@ its `master` realm. A new `Keycloak_KC_BOOTSTRAP_ADMIN_CLIENT_SECRET` written la
 reach Keycloak's database, so keycloak-config can't log in until the client's secret is
 changed to match by hand.
 
-The other keys:
+The other keys: the tunnel's token, once the first infra apply has made the tunnel, with
+`CLOUDFLARE_ACCOUNT_ID` and a `CLOUDFLARE_API_TOKEN` that may edit tunnels (the infra
+workflow's has that) set beside the Org Admin's AWS credentials; and the model APIs' keys prod
+uses:
 
 ```bash
 ../ProtoStrap/scripts/set-edge-token.sh protofast prod
@@ -128,6 +134,7 @@ it, in `depends_on` order
 | redis               | its command: `CONFIG SET requirepass`, logged in with the old password if the new one fails |
 | postgres-config     | it runs again (a configure task's keys changed), giving each database's user the password in its new connection string, before the services that connect get it |
 | keycloak-config     | it runs again, setting the new client secrets on the realms before auth gets them |
+| keycloak            | its replicas are replaced on a change to any `Keycloak_` key, the social sign-in keys included: its own prefix, from its name, is the one keycloak-config's keys use |
 | everything else     | its replicas are replaced, a quarter at a time                         |
 
 There is no going back to an old value: once PostgreSQL has a new password, the old one no
@@ -152,9 +159,12 @@ can't read it; Org Admins set it. ProtoStrap names this an accepted risk
 which is why each database has its own user rather than every service holding the
 superuser's password.
 
-> Because no value is in Terraform's state, destroying the secret loses everything in it.
-> `set-secrets.sh` makes a fresh set, which ProtoStrap then applies like a rotation of every
-> key.
+> Because no value is in Terraform's state, nothing else holds the secret's values. A
+> destroyed secret can be restored for 7 days, its recovery window. After that,
+> `set-secrets.sh` makes a fresh set, which ProtoStrap applies like a rotation of every key,
+> but not all of it: the tunnel's token and the model APIs' keys must be set again, and
+> Keycloak's database keeps the old bootstrap admin client secret, so keycloak-config can't
+> log in until it is changed by hand ([above](#filling-an-environments-secret)).
 
 ## Adding a secret
 

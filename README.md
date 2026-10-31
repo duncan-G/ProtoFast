@@ -59,7 +59,7 @@ deploys. [docs/README.md](docs/README.md) explains every layer;
 | `protostrap.yaml`            | Prod's spec, written by the AppHost: never edit it                      |
 | `services/`                  | auth, api, payments, document-import, conversion, the tasks (migrations, postgres-config), Keycloak's image and its realms' configure task, the browsers' collector, and shared code |
 | `clients/`                   | The Angular clients and the Node host that serves them (`clients/Dockerfile`) |
-| `infra/`                     | Terraform roots: `bootstrap/prod` and `people` (an Org Admin, once), `prod` (the infra workflow) |
+| `infra/`                     | Terraform roots: `bootstrap` and `people` (an Org Admin, once), `prod` (the infra workflow) |
 | `.github/workflows/`         | `ci` before merge; `deploy` (prod, after approval); `infra`             |
 | `scripts/set-secrets.sh`     | Fills in prod's secret, for an Org Admin                                |
 
@@ -72,8 +72,9 @@ version it deploys with.
 You need the .NET SDK `global.json` pins, Docker, Node 24, the Aspire CLI 13.6.2, and Go at
 the version ProtoStrap's `go.mod` names, with a ProtoStrap checkout beside this repository
 (`../ProtoStrap`): the AppHost builds ProtoStrap.Hosting and the `protostrap` CLI, which
-renders the local edge, from it. `bash scripts/setup-dev-dependencies.sh` installs most of
-these on Ubuntu 24. No AWS account or profile is needed.
+renders the local edge, from it. On Ubuntu, `bash scripts/setup-dev-dependencies.sh`
+installs Docker, Node's current LTS and the latest Aspire CLI when they're missing; the .NET
+SDK and Go are yours to install. No AWS account or profile is needed.
 
 ```bash
 aspire run
@@ -120,7 +121,7 @@ dotnet test ProtoFast.slnx
 Each client (`npm test` in `clients/<name>`), the clients host (`node --test` in
 `clients/host`), conversion (`python -m pytest` in `services/conversion`) and Keycloak's
 images (`test/entrypoint_test.sh`) have their own. `ci.yml` runs them all on every pull
-request; main's ruleset should require it.
+request. GitHub has no check named `ci`: main's ruleset requires each of its jobs' checks.
 
 
 ## Deploying
@@ -128,21 +129,30 @@ request; main's ruleset should require it.
 ProtoFast deploys to prod with ProtoStrap's reusable workflows. An Org Admin does these once,
 in order:
 
-1. Identity Center, once for the organization: `infra/people` (see its `main.tf`), with the dev
-   and prod accounts.
-2. Copy `infra/bootstrap/prod/terraform.tfvars.example` to `terraform.tfvars` and fill it in.
-   Then, with prod's admin credentials and `GITHUB_TOKEN=$(gh auth token)`:
-   `terraform -chdir=infra/bootstrap/prod init && terraform -chdir=infra/bootstrap/prod apply`.
+1. Identity Center, in ProtoFast's one account, which is its organization's management
+   account: enable it in the console, then apply `infra/people` (see its `main.tf`) with the
+   account's id as `prod`.
+2. Copy `infra/bootstrap/terraform.tfvars.example` to `terraform.tfvars` and fill it in.
+   Then, with the account's admin credentials and `GITHUB_TOKEN=$(gh auth token)`:
+   `terraform -chdir=infra/bootstrap init && terraform -chdir=infra/bootstrap apply`.
 3. `gh secret set CLOUDFLARE_API_TOKEN --env prod-infra`.
-4. `gh workflow run infra.yml -f action=plan`, then `-f action=apply`.
-5. The tunnel's token, with ProtoStrap's `scripts/set-edge-token.sh protofast prod`, then every
+4. The GitHub settings bootstrap doesn't make, before the workflows reach `main`: a
+   `prod-approval` environment with required reviewers; required reviewers on `prod-infra`;
+   `prod` and `prod-infra` limited to `main`; and a ruleset on `main` requiring review and
+   every `ci.yml` job's check. Without them, the merge's deploy would run unapproved. Applying
+   bootstrap again can clear the environments' reviewers and branch limits: check them after.
+5. Merge to `main`. The merge starts `deploy.yml` and, since it adds `infra/prod`, an infra
+   apply; both wait for approval. Reject them: nothing is set up yet.
+6. `gh workflow run infra.yml -f action=plan`, read the plan, then `-f action=apply`. Confirm
+   each alert email's SNS subscription.
+7. The tunnel's token, with ProtoStrap's `scripts/set-edge-token.sh protofast prod`
+   (`CLOUDFLARE_ACCOUNT_ID`, and a `CLOUDFLARE_API_TOKEN` that may edit tunnels), then every
    other key: `scripts/set-secrets.sh prod`, which makes every password and key itself and
    never shows one. Set the model APIs' keys prod uses as its comment says.
-6. A `prod-approval` GitHub environment with required reviewers; required reviewers on
-   `prod-infra` too, since `infra.yml` applies on a push to `infra/prod`; `prod` and
-   `prod-infra` limited to `main`; and a ruleset on `main` requiring review and `ci`.
-7. Push to `main`: `deploy.yml` deploys to prod once approved.
+8. `gh workflow run deploy.yml`, and approve it. From then on every push to `main` deploys to
+   prod once approved.
 
-The dev account holds only development secrets, which Developers manage with their Identity
-Center sign-in. Nothing is bootstrapped or deployed in it, and no workflow touches it: dev is
-the local run.
+The account also holds dev's secret, `protofast/dev`, beside prod's. Developers make it once
+and fill it with their Identity Center sign-in
+([layer 06](docs/06-secrets.md#one-secret-per-environment)). Nothing is deployed for dev, and
+no workflow touches its secret: dev is the local run.

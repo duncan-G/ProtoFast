@@ -81,7 +81,8 @@ class Settings:
     port: int = field(default_factory=lambda: _int("CONVERSION_PORT", 8090))
 
     # After SIGTERM, how long readiness fails while requests are still taken, so the callers
-    # notice. ProtoStrap sets DRAIN_SECONDS (10 by default); a local run stops at once.
+    # notice. Nothing sets DRAIN_SECONDS: 10 under ProtoStrap (PROTOSTRAP_REPLICA), and a local
+    # run stops at once.
     drain_seconds: float = field(
         default_factory=lambda: max(
             0.0, _float("DRAIN_SECONDS", 10.0 if os.environ.get("PROTOSTRAP_REPLICA") else 0.0)

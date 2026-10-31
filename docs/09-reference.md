@@ -26,7 +26,7 @@ Self-contained: no reading order required.*
 | Which clients a host process serves | `CLIENTS`, `DEFAULT_CLIENT` in `apphost/Program.cs`; `clients/Dockerfile` for a new app; `CONSOLE_PATHS` in `clients/host/host.mjs` for a new console | write the spec, merge |
 | A client's runtime behaviour | `clients/<name>/src/server.ts`, `app.config.ts` | merge |
 | The browsers' collector | `services/otel-collector/config.yaml` | merge |
-| Hostnames or email domains in an account | `infra/bootstrap/prod/terraform.tfvars` | apply bootstrap again, then the platform (`infra.yml`) |
+| Hostnames or email domains in an account | `infra/bootstrap/terraform.tfvars` | apply bootstrap again, then the platform (`infra.yml`) |
 | Retention, destroy protection, rate limit | `infra/prod/main.tf` | merge: the infra workflow applies it |
 | CI | `.github/workflows/ci.yml` | merge |
 | The deploy pipeline | `.github/workflows/deploy.yml` | merge |
@@ -114,7 +114,7 @@ Locally the AppHost sets the same names.
 | `KC_BOOTSTRAP_ADMIN_USERNAME`, `KC_BOOTSTRAP_ADMIN_PASSWORD` | `admin`, generated `keycloak-password` | unset |
 | `ORIGIN_AUTH` → `KC_HOSTNAME` | `http://auth.dev.localhost:20000` | ProtoStrap |
 | `KC_SPI_EMAIL_SENDER__PROVIDER` | `default` (SMTP) | `ses` (the image) |
-| `OTEL_EXPORTER_OTLP_*`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` → `KC_TRACING_*`, `KC_TELEMETRY_*` | the dashboard | ProtoStrap's collector |
+| `OTEL_EXPORTER_OTLP_*`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` → `KC_TRACING_*`, `KC_TELEMETRY_*` | unset: nothing exported (the JVM doesn't trust the dashboard's certificate) | ProtoStrap's collector |
 | The image's: `KC_DB`, `KC_HEALTH_ENABLED`, `KC_FEATURES`, `KC_TRACING_ENABLED`, `KC_TRACING_SAMPLER_TYPE`, `KC_TELEMETRY_LOGS_ENABLED`, `KC_HTTP_ENABLED`, `KC_PROXY_HEADERS`, `KC_HOSTNAME_BACKCHANNEL_DYNAMIC`, `KC_SPI_THEME__STATIC_MAX_AGE`, `KC_TRACING_INFINISPAN_ENABLED`, `KC_SHUTDOWN_DELAY` | the same | the same |
 | Command | `start-dev` | `start --optimized` |
 
@@ -142,7 +142,7 @@ Locally the AppHost sets the same names.
 | `NG_ALLOWED_HOSTS` | — | set by the host from every `HOST_<NAME>` |
 | `SERVER_URL` | the host's local origin | unset: the browser uses its own origin |
 | `PORT` | Aspire's | 4000 |
-| `DRAIN_SECONDS` | — | ProtoStrap; default 10 |
+| `DRAIN_SECONDS` | — | unset: the host's default, 10 under ProtoStrap |
 | `OTEL_*` | Aspire's | ProtoStrap |
 
 ### `otel-collector`
@@ -165,16 +165,18 @@ Locally both are Aspire's containers with Aspire's generated passwords.
 `PROTOSTRAP_APP`, `PROTOSTRAP_COMPONENT`, `PROTOSTRAP_REPLICA`, `PROTOSTRAP_RELEASE`,
 `SECRET_ID`, `SECRET_PREFIX`, `AWS_REGION`, `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI`,
 `QUEUE_<NAME>_URL`, `BUCKET_<NAME>`, `FILES_BUCKET`, `HOST_<NAME>`, `ORIGIN_<NAME>`,
-`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_SERVICE_NAME`,
-`OTEL_RESOURCE_ATTRIBUTES`, and `DRAIN_SECONDS`
+`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_SERVICE_NAME` and
+`OTEL_RESOURCE_ATTRIBUTES`
 ([application contract](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/protostrap.md#application-contract)).
+`DRAIN_SECONDS` isn't among them: each component defaults it itself, 10 s when
+`PROTOSTRAP_REPLICA` is set and 0 otherwise.
 
 ### GitHub
 
 | Where | What | Set by |
 |---|---|---|
-| `prod` environment | `AWS_ROLE_ARN` (Deploy role), `AWS_REGION`, `PROTOSTRAP_*` bucket, registry and role names | `infra/bootstrap/prod` |
-| `prod-infra` environment | the same with the Infra role, plus `TF_VAR_cloudflare_account_id`, `TF_VAR_cloudflare_zone`, `TF_VAR_hosts`, `TF_VAR_email_domains`, `TF_VAR_alert_emails` | `infra/bootstrap/prod` |
+| `prod` environment | `AWS_ROLE_ARN` (Deploy role), `AWS_REGION`, `PROTOSTRAP_*` bucket, registry and role names | `infra/bootstrap` |
+| `prod-infra` environment | the same with the Infra role, plus `TF_VAR_cloudflare_account_id`, `TF_VAR_cloudflare_zone`, `TF_VAR_hosts`, `TF_VAR_email_domains`, `TF_VAR_alert_emails` (GitHub shows them in uppercase; the infra workflow lowercases them) | `infra/bootstrap` |
 | `prod-infra` secrets | `CLOUDFLARE_API_TOKEN` | an Org Admin, `gh secret set` |
 | `prod-approval` environment | required reviewers | by hand |
 
@@ -204,7 +206,7 @@ services/shared/ProtoStrap/ what ProtoStrap tells a replica; reading the environ
 services/shared/ServiceDefaults/ telemetry, readiness, drain, the internal JWT check
 services/shared/Storage/    S3 and SQS from BUCKET_<NAME> and QUEUE_<NAME>_URL
 infra/people/               Identity Center groups and permission sets (once)
-infra/bootstrap/prod/       prod's bootstrap (once, by an Org Admin)
+infra/bootstrap/            the account's bootstrap (once, by an Org Admin)
 infra/prod/                 prod's platform (the infra workflow)
 scripts/set-secrets.sh      fills or rotates a deployed environment's secret
 scripts/                    dev helpers, admin console scaffold and checks, the operator grant script
@@ -226,7 +228,7 @@ scripts/                    dev helpers, admin console scaffold and checks, the 
 | 4318 | overlay | otel-collector's OTLP/HTTP (routed at `/otlp/`), and ProtoStrap's collector, `telemetry:4318` |
 | 13133 | overlay | otel-collector's health check |
 | 5432, 6379 | overlay | PostgreSQL, Redis on data-1; never routed |
-| 7480, 7481, 7482 | data-1 loopback, through SSM | ProtoStrap's operator UI (Platform Admins, Org Admins) and Grafana |
+| 7480, 7481, 7482 | data-1 loopback, through SSM | ProtoStrap's operator UI (Platform Admins, Org Admins) and Grafana (Developers too) |
 
 Locally projects and dev servers get ports from Aspire; their containers' targets are the
 same as in an account.

@@ -103,11 +103,11 @@ another value.
 | `KC_BOOTSTRAP_ADMIN_CLIENT_ID`      | The spec's `env`: `protofast-admin`                                    | Itself  |
 | `KC_BOOTSTRAP_ADMIN_CLIENT_SECRET`  | The secret's `Keycloak_KC_BOOTSTRAP_ADMIN_CLIENT_SECRET`; a parameter locally | Itself  |
 | `KC_BOOTSTRAP_ADMIN_USERNAME`, `_PASSWORD` | Locally only: the AppHost, for a database whose master realm is new | Themselves |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`       | ProtoStrap (`http://telemetry:4318`) or the AppHost                  | `KC_TRACING_ENDPOINT` and `KC_TELEMETRY_LOGS_ENDPOINT`, each unless set; without it, `KC_TELEMETRY_LOGS_LEVEL=off` and `KC_TRACING_SAMPLER_RATIO=0.0` |
-| `OTEL_EXPORTER_OTLP_PROTOCOL`       | ProtoStrap (`http/protobuf`) or the AppHost                          | `KC_TRACING_PROTOCOL` and `KC_TELEMETRY_LOGS_PROTOCOL`: `grpc` or `http/protobuf` (unset is `http/protobuf`; `http/json`, which Keycloak can't send, becomes `http/protobuf`) |
-| `OTEL_SERVICE_NAME`                 | ProtoStrap (`keycloak`) or the AppHost                               | `KC_TELEMETRY_SERVICE_NAME` |
-| `OTEL_RESOURCE_ATTRIBUTES`          | ProtoStrap or the AppHost                                            | `KC_TELEMETRY_RESOURCE_ATTRIBUTES` |
-| `OTEL_EXPORTER_OTLP_HEADERS`        | The AppHost (the dashboard's `x-otlp-api-key`)                       | `KC_TELEMETRY_HEADER_<NAME>`, such as `KC_TELEMETRY_HEADER_X_OTLP_API_KEY`, percent-decoded |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`       | ProtoStrap (`http://telemetry:4318`). Unset locally: the JVM doesn't trust the dashboard's certificate, so Keycloak exports nothing | `KC_TRACING_ENDPOINT` and `KC_TELEMETRY_LOGS_ENDPOINT`, each unless set; without it, `KC_TELEMETRY_LOGS_LEVEL=off` and `KC_TRACING_SAMPLER_RATIO=0.0` |
+| `OTEL_EXPORTER_OTLP_PROTOCOL`       | ProtoStrap (`http/protobuf`)                                         | `KC_TRACING_PROTOCOL` and `KC_TELEMETRY_LOGS_PROTOCOL`: `grpc` or `http/protobuf` (unset is `http/protobuf`; `http/json`, which Keycloak can't send, becomes `http/protobuf`) |
+| `OTEL_SERVICE_NAME`                 | ProtoStrap (`keycloak`)                                              | `KC_TELEMETRY_SERVICE_NAME` |
+| `OTEL_RESOURCE_ATTRIBUTES`          | ProtoStrap                                                           | `KC_TELEMETRY_RESOURCE_ATTRIBUTES` |
+| `OTEL_EXPORTER_OTLP_HEADERS`        | Nothing sets it now; for an endpoint that wants headers, such as the dashboard's `x-otlp-api-key` | `KC_TELEMETRY_HEADER_<NAME>`, such as `KC_TELEMETRY_HEADER_X_OTLP_API_KEY`, percent-decoded |
 | `PROTOSTRAP_REPLICA`                | ProtoStrap                                                           | With an endpoint, `KC_LOG_CONSOLE_LEVEL=off`, unless set |
 | `AWS_REGION`, `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` | ProtoStrap's agent                                 | The SES client's region and credentials |
 | Any other `KC_` variable            | Anyone                                                               | Keycloak's option, as usual |

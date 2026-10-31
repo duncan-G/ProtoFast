@@ -34,7 +34,7 @@ existed. This task applies every change, every time.
 | `AUTH_URL`                          | The spec's `env`: `http://auth:8080`; auth's endpoint as Keycloak's container reaches it | Back-channel logout, `<AUTH_URL>/backchannel-logout` |
 | `Keycloak__ClientSecretProtofastWeb`, `Keycloak__ClientSecretTheplotWeb`, `Keycloak__ClientSecretAdmin` | The secret's `Shared_` keys, secret files; AppHost parameters | The `protofast-web`, `theplot-web` and `admin` clients' secrets |
 | `Keycloak__AdminClientSecret`       | The secret's `Shared_Keycloak__AdminClientSecret`, a secret file       | Every realm's `account-admin` client's secret |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | The secret's `Keycloak_` keys, secret files; may be missing or empty | The `google` and `apple` identity providers of `protofast` and `theplot`, which ship disabled |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | The secret's `Keycloak_` keys, secret files, each of which must exist, even empty; locally the AppHost's user secrets, empty unless set | The `google` and `apple` identity providers of `protofast` and `theplot`, which ship disabled |
 | `SMTP_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SSL`, `SMTP_STARTTLS`, `SMTP_AUTH`, `SMTP_USER`, `SMTP_PASSWORD` | Locally, the AppHost: smtp4dev's host and port | The realms' `smtpServer`; defaults `no-reply@<HOST_PROTOFAST>`, `localhost`, `1025`, `false`, `false`, `false`, empty, empty. SES ignores all but `from` |
 | `WEBAUTHN_RP_ID`, `THEPLOT_WEBAUTHN_RP_ID`, `OPERATORS_WEBAUTHN_RP_ID` | Worked out by the entrypoint, unless set                  | Each realm's passwordless WebAuthn RP ID |
 | `DEV_OPERATORS`                     | Locally only, the AppHost                                             | The operators realm's dev users (below) |
@@ -142,8 +142,9 @@ a file names, so it leaves the rest of the realm as `operators-realm.json` set i
 by comparing every realm setting, client, flow, required action, component and role, with
 their ids, before and after.
 
-In an account an operator is made with `scripts/keycloak-grant-admin.py` against the
-`operators` realm, never by this variable.
+Never in an account. How an Org Admin makes the first operator there is still to be decided:
+`scripts/keycloak-grant-admin.py` needs Keycloak's admin API, which the edge doesn't route and
+only the overlay reaches ([open items](../../docs/protostrap-migration.md#open-items)).
 
 ## The credential model
 
