@@ -1,20 +1,20 @@
-# Who signs in to ProtoFast's accounts, and what they may do: ProtoStrap's people module
+# Who signs in to ProtoFast's account, and what they may do: ProtoStrap's people module
 # (its docs/identity.md#people). People sign in through IAM Identity Center with MFA, for
 # credentials that last the session; there are no IAM users and no access keys:
 #
-#   Org-Admins       OrgAdmin          AdministratorAccess                   every account
-#   Platform-Admins  PlatformAdmin     read-only view, operator UI, Grafana  every account
-#   Developers       Developer         read-only view, development secrets   dev
-#   Developers       ServiceTelemetry  Grafana                               prod
+#   Org-Admins       OrgAdmin       AdministratorAccess                     every account
+#   Platform-Admins  PlatformAdmin  read-only view, operator UI, Grafana    every account
+#   Developers       Developer      read-only view, protofast/dev, Grafana  every account
 #
-# Dev is the local run (aspire run). The dev account holds only development secrets, which
-# Developers manage: nothing is bootstrapped or deployed in it. In prod, as in any account not
-# in developer_environments, Developers open Grafana to see their services' telemetry, and
-# nothing else.
+# ProtoFast has one account. It holds Identity Center (it is its organization's management
+# account), prod, and dev's secret, protofast/dev, beside prod's. Dev is the local run
+# (aspire run): nothing is bootstrapped or deployed for it. Developers manage protofast/dev
+# and open Grafana to see their services' telemetry in prod; they can't read protofast/prod
+# or open the operator UI.
 #
-# An Org Admin applies it once, from the organization's management account (or Identity
-# Center's delegated administrator), after enabling Identity Center in the console, and adds
-# people to the groups in Identity Center:
+# An Org Admin applies it once, from their own machine with that account's admin
+# credentials, after enabling Identity Center in the console, and adds people to the groups
+# in Identity Center:
 #
 #   cp terraform.tfvars.example terraform.tfvars    # Then fill it in.
 #   export AWS_PROFILE=...
@@ -34,7 +34,7 @@ variable "region" {
   default     = "us-east-1"
 }
 variable "accounts" {
-  description = "Each environment's AWS account: { dev = \"111111111111\", prod = \"222222222222\" }."
+  description = "ProtoFast's one AWS account, by deployed environment: { prod = \"111111111111\" }. Dev, the local run, has no account: its secret is in this one."
   type        = map(string)
 }
 
@@ -45,8 +45,7 @@ provider "aws" {
 module "people" {
   source = "github.com/duncan-G/protostrap//infra/people?ref=v0.1.0"
 
-  accounts               = var.accounts
-  developer_environments = ["dev"]
+  accounts = var.accounts
 }
 
 output "permission_sets" { value = module.people.permission_sets }

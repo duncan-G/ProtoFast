@@ -1,7 +1,7 @@
-# The prod account's platform: ProtoStrap's platform module for protostrap.yaml. The infra
-# workflow applies it with the Infra role, after the release's approval; its inputs come from
-# the prod-infra environment, which infra/bootstrap/prod filled in. ProtoStrap's
-# docs/production.md is the checklist before go-live.
+# Prod's platform, in ProtoFast's one account: ProtoStrap's platform module for
+# protostrap.yaml. The infra workflow applies it with the Infra role, after the release's
+# approval; its inputs come from the prod-infra environment, which infra/bootstrap filled in.
+# ProtoStrap's docs/production.md is the checklist before go-live.
 terraform {
   required_version = ">= 1.10"
 

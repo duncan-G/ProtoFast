@@ -1,5 +1,2 @@
-region = "us-east-1"
-accounts = {
-  dev  = "111111111111"
-  prod = "222222222222"
-}
+region   = "us-east-1"
+accounts = { prod = "111111111111" }

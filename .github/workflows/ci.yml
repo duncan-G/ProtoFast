@@ -130,7 +130,7 @@ jobs:
       - name: Validate
         run: |
           set -euo pipefail
-          for dir in infra/bootstrap/prod infra/prod infra/people; do
+          for dir in infra/bootstrap infra/prod infra/people; do
             echo "::group::$dir"
             terraform -chdir="$dir" init -backend=false -input=false
             terraform -chdir="$dir" validate

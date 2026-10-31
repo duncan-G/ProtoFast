@@ -1,6 +1,7 @@
-# Bootstraps the prod account: the state bucket, GitHub's OIDC provider, the Infra and Deploy
-# roles and their boundaries, and the prod and prod-infra GitHub environments. An Org Admin
-# applies it once, from their own machine, with the account's admin credentials:
+# Bootstraps ProtoFast's one account, where prod runs: the state bucket, GitHub's OIDC
+# provider, the Infra and Deploy roles and their boundaries, and the prod and prod-infra GitHub
+# environments. An Org Admin applies it once, from their own machine, with the account's admin
+# credentials:
 #
 #   cp terraform.tfvars.example terraform.tfvars    # Then fill it in.
 #   export AWS_PROFILE=... GITHUB_TOKEN=$(gh auth token)
