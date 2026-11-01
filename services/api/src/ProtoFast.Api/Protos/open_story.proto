@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+option csharp_namespace = "ProtoFast.Api";
+
+package openstory;
+
+import "story.proto";
+
+// Open stories: screenplays ThePlot offers every writer, which a writer copies onto their own
+// desk to read and rework. The copy is the writer's like any other story; the open story never
+// changes. Every call is confined to the caller the internal JWT names.
+service OpenStories {
+
+    // Newest first.
+    rpc ListOpenStories (ListOpenStoriesRequest) returns (ListOpenStoriesReply);
+
+    // Copies the open story's outline, scenes and library into a new story of the caller's. A
+    // caller who already has a copy gets that one back rather than a second.
+    rpc ImportOpenStory (ImportOpenStoryRequest) returns (ImportOpenStoryReply);
+}
+
+message OpenStory {
+    string id = 1;
+    string title = 2;
+    // The story's opening title card (place and date), or its first action line.
+    string opening = 3;
+    int32 scene_count = 4;
+    int32 character_count = 5;
+    int64 published_unix_seconds = 6;
+    // The caller's copy, when they have one.
+    string imported_story_id = 7;
+}
+
+message ListOpenStoriesRequest {}
+
+message ListOpenStoriesReply {
+    repeated OpenStory stories = 1;
+}
+
+message ImportOpenStoryRequest {
+    string open_story_id = 1;
+}
+
+message ImportOpenStoryReply {
+    story.StorySummary story = 1;
+    // False when the caller already had a copy.
+    bool created = 2;
+}

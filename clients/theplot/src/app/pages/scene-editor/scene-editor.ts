@@ -29,7 +29,14 @@ const DRAWER_MAX_WIDTH = 767;
 @Component({
   selector: 'app-scene-editor',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ContainerMenu, LibraryPanel, OverviewPanel, RouterLink, StoryView, TheplotLogo],
+  imports: [
+    ContainerMenu,
+    LibraryPanel,
+    OverviewPanel,
+    RouterLink,
+    StoryView,
+    TheplotLogo,
+  ],
   providers: [SceneEditorStore],
   host: { '(window:resize)': 'width.set($any($event.target).innerWidth)' },
   templateUrl: './scene-editor.html',

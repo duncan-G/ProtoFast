@@ -12,7 +12,14 @@ public sealed class Writer(StoryDatabase database)
 {
     public string UserId { get; } = $"writer-{Guid.NewGuid():N}";
 
-    public Task<TReply> Call<TReply>(Func<StoryService, ServerCallContext, Task<TReply>> call) => CallAs(call);
+    public Task<TReply> Call<TReply>(Func<StoryService, ServerCallContext, Task<TReply>> call) => Call<StoryService, TReply>(call);
+
+    public async Task<TReply> Call<TService, TReply>(Func<TService, ServerCallContext, Task<TReply>> call) where TService : notnull
+    {
+        await using var scope = database.Services.CreateAsyncScope();
+        using var user = scope.ServiceProvider.GetRequiredService<UserContext>().SetCurrentUser(UserId);
+        return await call(scope.ServiceProvider.GetRequiredService<TService>(), new TestServerCallContext());
+    }
 
     public Task<TReply> CallFiles<TReply>(Func<StoryFileService, ServerCallContext, Task<TReply>> call) => CallAs(call);
 

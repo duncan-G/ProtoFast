@@ -21,6 +21,7 @@
         <ProjectReference Include="..\..\..\shared\Storage\Storage.csproj" />
         <ProjectReference Include="..\ProtoFast.DocumentImport.Core\ProtoFast.DocumentImport.Core.csproj" />
         <ProjectReference Include="..\ProtoFast.DocumentImport.Data\ProtoFast.DocumentImport.Data.csproj" />
+        <ProjectReference Include="..\ProtoFast.DocumentImport.History\ProtoFast.DocumentImport.History.csproj" />
         <ProjectReference Include="..\ProtoFast.DocumentImport.Screenplay\ProtoFast.DocumentImport.Screenplay.csproj" />
         <ProjectReference Include="..\ProtoFast.DocumentImport.Storage\ProtoFast.DocumentImport.Storage.csproj" />
     </ItemGroup>

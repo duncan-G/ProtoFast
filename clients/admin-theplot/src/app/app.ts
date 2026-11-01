@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, isDevMode } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { ConsoleShell } from '../admin-kit';
 
@@ -17,8 +17,14 @@ import { ConsoleShell } from '../admin-kit';
       <a consoleNav routerLink="/stories" routerLinkActive="text-indigo-600">Stories</a>
       <a consoleNav routerLink="/runs" routerLinkActive="text-indigo-600">Runs</a>
       <a consoleNav routerLink="/families" routerLinkActive="text-indigo-600">Families</a>
+      <a consoleNav routerLink="/world-models" routerLinkActive="text-indigo-600">World models</a>
+      @if (devMode) {
+        <a consoleNav routerLink="/history" routerLinkActive="text-indigo-600">History</a>
+      }
       <router-outlet />
     </kit-console-shell>
   `,
 })
-export class App {}
+export class App {
+  protected readonly devMode = isDevMode();
+}

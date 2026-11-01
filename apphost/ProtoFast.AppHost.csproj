@@ -17,6 +17,7 @@
     <ProjectReference Include="../services/api/src/ProtoFast.Api/ProtoFast.Api.csproj" />
     <ProjectReference Include="../services/api/src/ProtoFast.SchemaMigrations/ProtoFast.SchemaMigrations.csproj" />
     <ProjectReference Include="../services/document_import/src/ProtoFast.DocumentImport.Worker/ProtoFast.DocumentImport.Worker.csproj" />
+    <ProjectReference Include="../services/document_import/tools/ProtoFast.DocumentImport.HistoryLoader/ProtoFast.DocumentImport.HistoryLoader.csproj" />
   </ItemGroup>
 
   <ItemGroup>

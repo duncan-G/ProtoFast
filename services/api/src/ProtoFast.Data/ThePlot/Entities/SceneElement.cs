@@ -42,6 +42,8 @@ public sealed class SceneElement : IDateStamped
 
     public List<SceneElementMention> Mentions { get; set; } = [];
 
+    public List<LocationObservation> Observations { get; set; } = [];
+
     public DateTime DateCreated { get; set; }
 
     public DateTime DateLastModified { get; set; }

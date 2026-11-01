@@ -263,5 +263,5 @@ public static class StoryMessages
         return spot;
     }
 
-    private static long UnixSeconds(DateTime utc) => new DateTimeOffset(utc, TimeSpan.Zero).ToUnixTimeSeconds();
+    internal static long UnixSeconds(DateTime utc) => new DateTimeOffset(utc, TimeSpan.Zero).ToUnixTimeSeconds();
 }

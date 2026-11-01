@@ -23,7 +23,14 @@ import { errorMessage, TheplotAdminApi } from '../../theplot-admin';
     }
 
     @if (reply(); as reply) {
-      <h1 class="mt-4 text-2xl font-bold text-gray-900">{{ reply.story?.title }}</h1>
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 class="text-2xl font-bold text-gray-900">{{ reply.story?.title }}</h1>
+        <a
+          [routerLink]="['/stories', id(), 'world']"
+          class="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700"
+          >View the world</a
+        >
+      </div>
       <dl
         class="mt-6 grid gap-4 rounded-2xl border border-gray-200 bg-white p-6 text-sm shadow-sm sm:grid-cols-2"
       >

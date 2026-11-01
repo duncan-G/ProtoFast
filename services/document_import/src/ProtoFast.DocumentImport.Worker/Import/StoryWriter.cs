@@ -47,6 +47,17 @@ public sealed class StoryWriter(
         return story.Id;
     }
 
+    /// <summary>Saves the story as a new one of the writer's, with no document behind it.</summary>
+    public async Task<Guid> CreateAsync(string userId, StoryDraft draft, CancellationToken ct)
+    {
+        using var user = userContext.SetCurrentUser(userId);
+        using var unitOfWork = unitOfWorkFactory.CreateReadWrite(nameof(CreateAsync));
+        var story = Build(draft);
+        await stories.AddAsync(story, ct);
+        await unitOfWork.CommitAsync(ct);
+        return story.Id;
+    }
+
     internal static Story Build(StoryDraft draft)
     {
         var story = new Story { Title = Trim(draft.Title, NameLength, "Untitled") };

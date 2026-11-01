@@ -37,6 +37,7 @@ internal sealed class FrozenObjectStore : IObjectStore
     public Task<ObjectRef> WriteTextAsync(string key, string content, string idempotencyKey, string contentType = "text/plain", CancellationToken ct = default) => throw new NotSupportedException();
     public Task<ObjectRef> WriteJsonLinesAsync<T>(string key, IEnumerable<T> values, string idempotencyKey, CancellationToken ct = default) => throw new NotSupportedException();
     public Task<ObjectRef> WriteFrozenAsync<T>(string key, T value, string idempotencyKey, CancellationToken ct = default) => throw new NotSupportedException();
+    public Task<ObjectRef> WriteBytesAsync(string key, byte[] content, string contentType, string idempotencyKey, CancellationToken ct = default) => throw new NotSupportedException();
     public Task CopyAsync(string sourceKey, string destinationKey, CancellationToken ct = default) => throw new NotSupportedException();
     public Task DeleteAsync(string key, CancellationToken ct = default) => throw new NotSupportedException();
 }
