@@ -160,7 +160,7 @@ and adds a bootstrap admin user, `admin`, for keycloak-config to log in as.
 The realms aren't imported at startup. [`services/keycloak-config`](../services/keycloak-config)
 is keycloak's configure task: ProtoStrap runs it once Keycloak is ready, and again whenever
 the task's image, one of its keys, Keycloak's release or a hostname changes
-([configure tasks](https://github.com/duncan-G/protostrap/blob/v0.1.3/docs/config.md#configure-tasks)).
+([configure tasks](https://github.com/duncan-G/protostrap/blob/v0.1.4/docs/config.md#configure-tasks)).
 It runs keycloak-config-cli, which makes `protofast`, `theplot` and `operators` match
 `realms/*.json` through Keycloak's admin API, creating a realm that's missing, and exits 0
 only when all of it is applied. Locally it runs once each `aspire run`, after Keycloak is
@@ -244,7 +244,7 @@ watch the run.
 | From | `no-reply@protofast.dev` (auth), `no-reply@protofast.dev.localhost` (realms) | `no-reply@<HOST_PROTOFAST>`: `no-reply@protofast.dev` in prod |
 
 ProtoStrap creates an SES identity, DKIM and a MAIL FROM domain for each of the account's
-`email_domains` ([email](https://github.com/duncan-G/protostrap/blob/v0.1.3/docs/email.md)).
+`email_domains` ([email](https://github.com/duncan-G/protostrap/blob/v0.1.4/docs/email.md)).
 Only components with `email` in their `uses`, auth and keycloak, may send, and only from those
 domains.
 
