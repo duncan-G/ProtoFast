@@ -8,8 +8,8 @@ ProtoFast runs no proxy of its own. In an account the edge is ProtoStrap's: one 
 zone on the ingress VM, holding cloudflared, which runs the Cloudflare tunnel, and Envoy.
 Locally `aspire run` runs the same Envoy as the `protostrap-edge` container on port 20000,
 rendered by the same code from the same routes
-([ProtoStrap's edge](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/protostrap.md#edge),
-[the local edge](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/protostrap-aspire.md#the-local-edge)).
+([ProtoStrap's edge](https://github.com/duncan-G/protostrap/blob/v0.1.3/docs/protostrap.md#edge),
+[the local edge](https://github.com/duncan-G/protostrap/blob/v0.1.3/docs/protostrap-aspire.md#the-local-edge)).
 
 There is no Envoy config in this repository. The routes are each service's `Routes(...)` in
 [`apphost/Program.cs`](../apphost/Program.cs), written into the spec's `routes`, and the
@@ -126,13 +126,16 @@ on that question; they resolve the session themselves.
 - **In an account** Cloudflare terminates TLS and redirects plain HTTP to HTTPS; cloudflared
   sends each request to Envoy in the same container, and Envoy to the services over the
   overlay, all plain HTTP inside the VPC
-  ([Requests in](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/network.md#requests-in)).
+  ([Requests in](https://github.com/duncan-G/protostrap/blob/v0.1.3/docs/network.md#requests-in)).
 - **Cloudflare's own rules** are the AppHost's `AddCloudflareCdn`: a WAF rule blocks
-  scanners' probes (`/wp-admin/`, `/.env`, `/.git/` and the like), and a cache rule keeps the
-  ThePlot console (`/theplot/` on the admin host) out of Cloudflare's cache: its bundles are
-  behind its role, yet sent with `max-age=1y`. Other static files cache by Cloudflare's
-  default, for their own `max-age`. There's no per-client rate limit yet (`WithRateLimit`): it waits on real
-  traffic, and a Free-plan zone refuses one, as ProtoStrap scopes it by host.
+  scanners' probes (`/wp-admin/`, `/.env`, `/.git/` and the like), and two cache rules keep
+  out of Cloudflare's cache the ThePlot console (`/theplot/` on the admin host), whose
+  bundles are behind its role yet sent with `max-age=1y`, and the auth host, whose Keycloak
+  theme files keep their URLs when a theme changes
+  ([Keycloak](../services/keycloak/README.md)). Other static files cache by Cloudflare's
+  default, for their own `max-age`, in browsers too. There's no per-client rate limit yet
+  (`WithRateLimit`): it waits on real traffic, and a Free-plan zone refuses one, as
+  ProtoStrap scopes it by host.
 - **Locally** everything is plain HTTP on port 20000.
 - Keycloak (`KC_PROXY_HEADERS=xforwarded`), the SSR servers (`x-forwarded-for`,
   `x-forwarded-proto`) and the .NET services (`ASPNETCORE_FORWARDEDHEADERS_ENABLED`) trust the

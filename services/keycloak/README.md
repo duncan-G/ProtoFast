@@ -67,7 +67,7 @@ another value.
 | Plain HTTP on 8080           | `KC_HTTP_ENABLED`                         | Run    | `true`             |
 | The edge's headers           | `KC_PROXY_HEADERS`                        | Run    | `xforwarded`       |
 | Back-channel URLs            | `KC_HOSTNAME_BACKCHANNEL_DYNAMIC`         | Run    | `false`: the issuer is `KC_HOSTNAME` on both paths |
-| Theme files' browser cache   | `KC_SPI_THEME__STATIC_MAX_AGE`            | Run    | `300` (seconds)    |
+| Theme files' browser cache   | `KC_SPI_THEME__STATIC_MAX_AGE`            | Run    | `-1`: `no-cache`   |
 | Infinispan's cache spans     | `KC_TRACING_INFINISPAN_ENABLED`           | Run    | `false`            |
 | Drain on SIGTERM             | `KC_SHUTDOWN_DELAY`                       | Run    | `10s`              |
 | Browsers' URL, the issuer    | `KC_HOSTNAME`                             | Run    | `ORIGIN_AUTH`, by the entrypoint |
@@ -194,9 +194,11 @@ email sender and exits.
   same keys feed the HTML part and the `text/plain` alternative.
 - The admin console's **Test connection** button, under Realm settings → Email, sends
   `email-test.ftl` through the realm's email theme: the one message you can trigger on demand.
-- Theme files are served at `/resources/<Keycloak's version>/...`, not under a content hash,
-  so browsers keep them 5 minutes (`KC_SPI_THEME__STATIC_MAX_AGE=300`), not a year. The login
-  pages themselves are `no-store`.
+- Theme files are served at `/resources/<version>/...`, where the version is one Keycloak
+  draws at random and keeps in its database: it moves when Keycloak upgrades, never when a
+  theme changes. So they are sent `no-cache` (`KC_SPI_THEME__STATIC_MAX_AGE=-1`), and
+  Cloudflare doesn't cache the auth host: a copy cached anywhere outlives a deploy, and the
+  new login page, which is `no-store`, would run the old JS.
 - **Locally**, the AppHost bind-mounts `themes/` read-only over `/opt/keycloak/themes`, and
   `start-dev` caches no theme, so an edit shows on the next refresh. In an account the
   themes are the image's: a change is a new image.

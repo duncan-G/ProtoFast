@@ -55,16 +55,17 @@ RUN /opt/keycloak/bin/kc.sh build
 # X-Forwarded-*. KC_HOSTNAME (the entrypoint sets it from ORIGIN_AUTH) is the issuer on
 # both paths: back-channel calls to http://keycloak:8080 get the public URL too, so a token
 # a browser's sign-in minted refreshes on the back channel (docs/05-identity.md, "Why two
-# Keycloak authorities"). Theme files are cached by browsers for 5 minutes: their URLs
-# carry Keycloak's version, not a content hash. Infinispan's cache spans, from background
-# session tasks, are left out. Health is on the management port, 9000: /health/ready. On
-# SIGTERM, readiness fails at once and Keycloak keeps serving for ProtoStrap's 10 s drain,
-# then has up to 10 s (KC_SHUTDOWN_TIMEOUT's default) to finish requests, so the
-# component's stop must be over 20 s.
+# Keycloak authorities"). Theme files are sent no-cache: their URLs carry a version Keycloak
+# keeps in its database, which moves when Keycloak upgrades, never when a theme changes, so
+# a cached copy outlives a deploy and a new page runs old JS. Infinispan's cache spans, from
+# background session tasks, are left out. Health is on the management port, 9000:
+# /health/ready. On SIGTERM, readiness fails at once and Keycloak keeps serving for
+# ProtoStrap's 10 s drain, then has up to 10 s (KC_SHUTDOWN_TIMEOUT's default) to finish
+# requests, so the component's stop must be over 20 s.
 ENV KC_HTTP_ENABLED=true \
     KC_PROXY_HEADERS=xforwarded \
     KC_HOSTNAME_BACKCHANNEL_DYNAMIC=false \
-    KC_SPI_THEME__STATIC_MAX_AGE=300 \
+    KC_SPI_THEME__STATIC_MAX_AGE=-1 \
     KC_TRACING_INFINISPAN_ENABLED=false \
     KC_SHUTDOWN_DELAY=10s
 

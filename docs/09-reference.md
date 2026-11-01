@@ -168,7 +168,7 @@ Locally both are Aspire's containers with Aspire's generated passwords.
 `QUEUE_<NAME>_URL`, `BUCKET_<NAME>`, `FILES_BUCKET`, `HOST_<NAME>`, `ORIGIN_<NAME>`,
 `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_SERVICE_NAME` and
 `OTEL_RESOURCE_ATTRIBUTES`
-([application contract](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/protostrap.md#application-contract)).
+([application contract](https://github.com/duncan-G/protostrap/blob/v0.1.3/docs/protostrap.md#application-contract)).
 `DRAIN_SECONDS` isn't among them: each component defaults it itself, 10 s when
 `PROTOSTRAP_REPLICA` is set and 0 otherwise.
 
@@ -212,7 +212,7 @@ infra/prod/                 prod's platform (the infra workflow)
 scripts/set-secrets.sh      fills or rotates a deployed environment's secret
 scripts/                    dev helpers, admin console scaffold and checks, the operator grant script
 .github/workflows/          ci, deploy, infra
-.claude/settings.json       ProtoStrap's skills, pinned to v0.1.2
+.claude/settings.json       ProtoStrap's skills, pinned to v0.1.3
 ```
 
 ## Ports

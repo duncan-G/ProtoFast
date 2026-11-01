@@ -73,7 +73,7 @@ Things worth knowing because they explain otherwise odd behaviour:
 - **A resource's own URL on the dashboard skips the edge,** its routes and the authorizer. Go
   through `http://«host».dev.localhost:20000` to see what a browser sees.
 - **The local edge reaches projects at `host.docker.internal`** on their port and containers by
-  name on Aspire's network ([ProtoStrap's local edge](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/protostrap-aspire.md#the-local-edge)).
+  name on Aspire's network ([ProtoStrap's local edge](https://github.com/duncan-G/protostrap/blob/v0.1.3/docs/protostrap-aspire.md#the-local-edge)).
   When the ProtoStrap checkout changes, `protostrap-build` says `Behind`; its **Rebuild**
   command rebuilds `protostrap` and restarts the edge.
 - **Readiness skips the host test locally.** Services answer `/healthz` for any Host when

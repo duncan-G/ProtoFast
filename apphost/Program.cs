@@ -19,7 +19,7 @@ var edgePort = int.TryParse(builder.Configuration["LocalEdge:Port"], out var por
 string LocalOrigin(string local) => $"http://{local}:{edgePort}";
 
 var protostrap = builder.AddProtoStrapEnvironment("protostrap", app: "protofast")
-    .WithVersion("0.1.2")
+    .WithVersion("0.1.3")
     .WithIngressPool(vm: "t4g.small")
     .WithGeneralPool(vm: ["t4g.medium"], min: 1, max: 4, spare: 1)
     .WithComputePool(vm: ["t4g.small"], min: 0, max: 3)
@@ -42,7 +42,9 @@ protostrap.AddCloudflareCdn("cdn", tunnel)
     .WithWafRule("scanners", r => r.Paths("/wp-admin/", "/wp-login.php", "/xmlrpc.php", "/.env", "/.git/").Block())
     // The ThePlot console's bundles are behind its role, but sent with a year's public max-age:
     // cached at Cloudflare, they would reach anyone. Other static files cache by default.
-    .WithCacheRule("theplot-console", r => r.Hosts("admin").Paths("/theplot/").Bypass());
+    .WithCacheRule("theplot-console", r => r.Hosts("admin").Paths("/theplot/").Bypass())
+    // Keycloak's theme URLs don't change when a theme does, and Cloudflare can't tell a deploy.
+    .WithCacheRule("keycloak", r => r.Hosts("auth").Bypass());
 protostrap.AddTelemetry("telemetry");
 
 // keycloak and keycloak-config are containers that can't read protofast/dev, so locally Aspire

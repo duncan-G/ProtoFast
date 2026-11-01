@@ -38,7 +38,7 @@ has no single `ci` check), since the deploy runs no tests:
 | `images`       | each Dockerfile builds (amd64 here); Keycloak's and keycloak-config's entrypoint tests; Keycloak's build runs its providers' Maven tests |
 | `terraform`    | `terraform fmt -check` and `validate` on every root, without a backend          |
 
-CI checks ProtoStrap out at `v0.1.2` into `.protostrap`, where the AppHost finds
+CI checks ProtoStrap out at `v0.1.3` into `.protostrap`, where the AppHost finds
 ProtoStrap.Hosting and the `protostrap` action builds the CLI.
 
 **[`deploy.yml`](../.github/workflows/deploy.yml)** runs on every push to `main` (and by hand),
@@ -69,7 +69,7 @@ hand, and applies it when its root (`infra/prod/**`) changes on `main`
 
 The scheduler rolls out every changed component together, a quarter of its replicas at a
 time: start new ones, wait until they're ready, stop as many old ones
-([deploy a release](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/protostrap.md#deploy-a-release)).
+([deploy a release](https://github.com/duncan-G/protostrap/blob/v0.1.3/docs/protostrap.md#deploy-a-release)).
 For ProtoFast that means:
 
 - **Migrations run first, as tasks.** `auth-migrations` is auth's `migrate`, and
@@ -97,7 +97,7 @@ deploy, since components with secret files fail without their keys.
 ## Rolling back
 
 A release that rolled out but is wrong is replaced by deploying an earlier commit
-([rolling back](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/production.md#rolling-back)):
+([rolling back](https://github.com/duncan-G/protostrap/blob/v0.1.3/docs/production.md#rolling-back)):
 
 - **`git revert`** the change and merge. It goes through approval like any release.
 - **Faster:** re-run the deploy workflow's run for the last good commit. Its images are still
@@ -118,7 +118,7 @@ Migrations aren't undone, and a secret is never rolled back: write the right val
 | Roll back                          | revert, or re-run the last good commit's deploy run                     |
 | Change a component's settings, routes or size | edit the AppHost, write the spec, merge                  |
 | Change a secret                    | `scripts/set-secrets.sh prod --rotate <group>` or ProtoStrap's `set-secret.sh`; no deploy |
-| See what is running, or why a deploy failed | the workflow's log (`gh run view <id> --log-failed`), `protostrap status`, the operator UI and Grafana through SSM ([ProtoStrap's protostrap-operate skill](https://github.com/duncan-G/protostrap/blob/v0.1.2/plugins/protostrap/skills/protostrap-operate/SKILL.md)) |
+| See what is running, or why a deploy failed | the workflow's log (`gh run view <id> --log-failed`), `protostrap status`, the operator UI and Grafana through SSM ([ProtoStrap's protostrap-operate skill](https://github.com/duncan-G/protostrap/blob/v0.1.3/plugins/protostrap/skills/protostrap-operate/SKILL.md)) |
 | Upgrade Keycloak                   | the base image's digest in `services/keycloak/Dockerfile`, and each provider's `keycloak.version` to match; check keycloak-config's client library knows the new realm fields |
 | Upgrade PostgreSQL or Redis        | their tags come from Aspire's PostgreSQL and Redis integrations (13.6.2); `WithImageTag` in the AppHost pins another. Nothing here upgrades PostgreSQL's data across a major version |
 | Upgrade ProtoStrap                 | in one pull request: `WithVersion` in the AppHost (then the spec), every workflow's `@v…` and `protostrap-ref`, `ci.yml`'s checkout, every root's `?ref=`, and `.claude/settings.json`'s `ref` |
@@ -127,7 +127,7 @@ Migrations aren't undone, and a secret is never rolled back: write the right val
 
 `infra/bootstrap` creates the `prod` and `prod-infra` environments and their variables. The
 rest is by hand, per ProtoStrap's
-[production checklist](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/production.md):
+[production checklist](https://github.com/duncan-G/protostrap/blob/v0.1.3/docs/production.md):
 
 | Setting                                         | Why                                                         |
 | ----------------------------------------------- | ----------------------------------------------------------- |
