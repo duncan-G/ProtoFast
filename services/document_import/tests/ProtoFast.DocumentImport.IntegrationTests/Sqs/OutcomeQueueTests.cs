@@ -101,17 +101,4 @@ public class OutcomeQueueTests(LocalStackFixture localStack) : IAsyncLifetime
             return Task.CompletedTask;
         }
     }
-
-    private sealed class RunningLifetime : IHostApplicationLifetime
-    {
-        public CancellationToken ApplicationStarted => CancellationToken.None;
-
-        public CancellationToken ApplicationStopping => CancellationToken.None;
-
-        public CancellationToken ApplicationStopped => CancellationToken.None;
-
-        public void StopApplication()
-        {
-        }
-    }
 }
