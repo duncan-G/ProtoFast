@@ -27,7 +27,8 @@ builder.Services.Configure<SubscriptionOptions>(builder.Configuration.GetSection
 builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection("Smtp"));
 
 builder.AddRedisClient("redis");        // IConnectionMultiplexer (Aspire wires the connection string)
-builder.AddNpgsqlDataSource("auth");    // NpgsqlDataSource for the AuthDbContext
+// Out of readiness: the edge asks auth about every request, and that path never reads Postgres.
+builder.AddNpgsqlDataSource("auth", settings => settings.DisableHealthChecks = true);
 builder.Services.AddAuthDbContext();
 builder.Services.AddHttpClient();       // back-channel to Keycloak
 
