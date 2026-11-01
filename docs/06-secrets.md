@@ -8,7 +8,7 @@ one. Self-contained.*
 Each deployed environment's account holds every runtime secret in one AWS Secrets Manager
 secret, `protofast/<environment>`: `protofast/prod` in prod. It is one JSON object of keys,
 each starting with who reads it
-([ProtoStrap's secrets](https://github.com/duncan-G/protostrap/blob/v0.1.3/docs/secrets.md)):
+([ProtoStrap's secrets](https://github.com/duncan-G/protostrap/blob/v0.1.4/docs/secrets.md)):
 
 | Prefix                 | Read by                                                          |
 | ---------------------- | ---------------------------------------------------------------- |
@@ -52,7 +52,7 @@ prod's: under `aspire run` ProtoStrap.Hosting's environment gives each .NET proc
 `SECRET_ID=protofast/dev`, its `SECRET_PREFIX`, `AWS_REGION` and `AWS_PROFILE=developer`, and
 `AddProtoStrapSecret` reads it with the SDK's default chain, which finds your SSO profile where
 a replica finds its role ([ProtoStrap's dev
-secret](https://github.com/duncan-G/protostrap/blob/v0.1.3/docs/secrets.md#dev),
+secret](https://github.com/duncan-G/protostrap/blob/v0.1.4/docs/secrets.md#dev),
 [layer 02](02-local-development.md#local-secrets-and-keys)).
 
 It holds only what the processes read: the internal JWT and the model APIs' keys. The local
@@ -151,7 +151,7 @@ before any file ([Dev](#dev), [layer 02](02-local-development.md#local-secrets-a
 Write the new value with `set-secrets.sh --rotate <group>` or ProtoStrap's `set-secret.sh`.
 ProtoStrap notices within a minute, waits two minutes for the secret to settle, then applies
 it, in `depends_on` order
-([changing a value](https://github.com/duncan-G/protostrap/blob/v0.1.3/docs/secrets.md#changing-a-value)):
+([changing a value](https://github.com/duncan-G/protostrap/blob/v0.1.4/docs/secrets.md#changing-a-value)):
 
 | Component           | Takes a new key by                                                    |
 | ------------------- | --------------------------------------------------------------------- |
@@ -180,7 +180,7 @@ five minutes.
 Secrets Manager can't grant one key alone: every component's role can read every key in the
 environment's secret, and so can the edge's role and data-1's. Platform Admins and Developers
 can't read it; Org Admins set it. ProtoStrap names this an accepted risk
-([who can read it](https://github.com/duncan-G/protostrap/blob/v0.1.3/docs/secrets.md#who-can-read-it)),
+([who can read it](https://github.com/duncan-G/protostrap/blob/v0.1.4/docs/secrets.md#who-can-read-it)),
 which is why each database has its own user rather than every service holding the
 superuser's password.
 
