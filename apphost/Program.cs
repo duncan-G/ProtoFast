@@ -4,6 +4,10 @@ using ProtoFast.AppHost.Postgres;
 
 var builder = DistributedApplication.CreateBuilder(args);
 var isRunMode = builder.ExecutionContext.IsRunMode;
+if (isRunMode)
+{
+    AwsSignIn.EnsureSession();
+}
 
 // Each component reads only its connection strings, so the environment's secret holds one key per connection.
 const ReferenceEnvironmentInjectionFlags connectionStringOnly =

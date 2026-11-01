@@ -93,7 +93,7 @@ The clients run as Angular dev servers behind the edge; `SsrHost__Dev=true aspir
 `https-ssr-host` profile) runs the production clients image instead. Admin operators
 `protofast@admin.test` and `theplot@admin.test` sign in with the code smtp4dev receives.
 The services read dev's secret, `protofast/dev`, as they read prod's, with the `developer` AWS
-SSO profile: run `aws sso login --profile developer` first
+SSO profile, and the AppHost runs `aws sso login --profile developer` when there's no session
 ([layer 02](docs/02-local-development.md#local-secrets-and-keys)). Imports need a model API's
 key in it, such as `../ProtoStrap/scripts/set-secret.sh protofast/dev
 DocumentImport_Providers__deepseek__ApiKey=-`; without one, everything runs and imports fail at

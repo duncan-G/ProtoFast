@@ -95,12 +95,10 @@ Once per machine, make the profile in ProtoFast's account with the Developer per
 aws configure sso --profile developer
 ```
 
-Then sign in before each `aspire run`, and again when the session expires. Without a session,
-the .NET services fail at startup with the SDK's SSO error:
-
-```bash
-aws sso login --profile developer
-```
+`aspire run` checks for a session for the launch profile's `AWS_PROFILE` and, when there is none
+or it has expired, runs `aws sso login --profile developer` before it starts anything. A session
+that expires while the AppHost runs fails the next process to start with the SDK's SSO error:
+sign in again, then restart it.
 
 | Value                                                     | From                                                          |
 | --------------------------------------------------------- | ------------------------------------------------------------- |
