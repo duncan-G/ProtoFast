@@ -21,7 +21,7 @@ string LocalOrigin(string local) => $"http://{local}:{edgePort}";
 var protostrap = builder.AddProtoStrapEnvironment("protostrap", app: "protofast")
     .WithVersion("0.1.4")
     .WithIngressPool(vm: "t4g.small")
-    .WithGeneralPool(vm: ["t4g.medium"], min: 1, max: 4, spare: 1)
+    .WithGeneralPool(vm: ["t4g.medium"], min: 1, max: 4, spare: 0)
     .WithComputePool(vm: ["t4g.small"], min: 0, max: 3)
     .WithDataPool(vm: "t4g.medium");
 
