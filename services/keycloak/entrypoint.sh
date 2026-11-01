@@ -17,6 +17,10 @@
 #      OTEL_EXPORTER_OTLP_HEADERS; under ProtoStrap the console logger is turned off, so
 #      each line leaves once. Without it, nothing is exported: log export is off and
 #      traces Keycloak starts itself aren't sampled.
+#   5. Under ProtoStrap (PROTOSTRAP_REPLICA), KC_CACHE_EMBEDDED_NETWORK_BIND_ADDRESS is the
+#      replica's address on the overlay, unless it is already set. A release runs the new
+#      replica beside the old one, often on another VM, and the default, SITE_LOCAL, may
+#      take the docker_gwbridge address, which only its own VM reaches.
 #
 # "Already set" means set and not empty. It never prints a value. test/entrypoint_test.sh
 # sources this file and calls its functions.
@@ -211,11 +215,25 @@ apply_telemetry() {
     fi
 }
 
+# apply_cluster_address binds the cluster to the address the replica's name, its container's,
+# resolves to on the overlay. Unresolved, it leaves Keycloak's default.
+apply_cluster_address() {
+    [[ -n ${PROTOSTRAP_REPLICA-} ]] || return 0
+    local address=''
+    read -r address _ < <(getent hosts "$PROTOSTRAP_REPLICA") || true
+    if [[ -z $address ]]; then
+        echo "entrypoint: $PROTOSTRAP_REPLICA has no address on the overlay; the cluster binds by Keycloak's default" >&2
+        return 0
+    fi
+    set_default KC_CACHE_EMBEDDED_NETWORK_BIND_ADDRESS "$address"
+}
+
 main() {
     load_secret_files "$secrets_dir"
     apply_connection_string || exit 1
     set_default KC_HOSTNAME "${ORIGIN_AUTH-}"
     apply_telemetry
+    apply_cluster_address
     exec "$kc_sh" "$@"
 }
 

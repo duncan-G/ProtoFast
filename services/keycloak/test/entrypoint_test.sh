@@ -30,6 +30,15 @@ export -p >"$STUB_DIR/env"
 STUB
 chmod +x "$work/kc.sh"
 
+# The stub getent resolves keycloak-1, a replica's container name, on the overlay.
+mkdir -p "$work/bin"
+cat >"$work/bin/getent" <<'STUB'
+#!/usr/bin/env bash
+[[ $1 == hosts && $2 == keycloak-1 ]] || exit 2
+echo "10.200.0.7      keycloak-1"
+STUB
+chmod +x "$work/bin/getent"
+
 # scenario starts a test: a fresh secrets directory and stub output.
 scenario() {
     current=$1
@@ -49,7 +58,7 @@ run() {
     done
     (($#)) && shift
     # shellcheck disable=SC2016 # The inner script expands its own arguments.
-    output=$(env -i PATH="$PATH" STUB_DIR="$work/out" "${vars[@]}" bash -c '
+    output=$(env -i PATH="$work/bin:$PATH" STUB_DIR="$work/out" "${vars[@]}" bash -c '
         source "$1"
         secrets_dir=$2
         kc_sh=$3
@@ -443,6 +452,28 @@ check_var KC_LOG_CONSOLE_LEVEL '<unset>'
 scenario "a console log level that is set wins under ProtoStrap"
 run PROTOSTRAP_REPLICA=keycloak-1 OTEL_EXPORTER_OTLP_ENDPOINT=http://telemetry:4318 KC_LOG_CONSOLE_LEVEL=warn -- start
 check_var KC_LOG_CONSOLE_LEVEL warn
+
+# --- the cluster's address -----------------------------------------------------------
+
+scenario "under ProtoStrap the cluster binds to the replica's overlay address"
+run PROTOSTRAP_REPLICA=keycloak-1 -- start --optimized
+check status 0 "$status"
+check output '' "$output"
+check_var KC_CACHE_EMBEDDED_NETWORK_BIND_ADDRESS 10.200.0.7
+
+scenario "a bind address that is set wins"
+run PROTOSTRAP_REPLICA=keycloak-1 KC_CACHE_EMBEDDED_NETWORK_BIND_ADDRESS=10.200.0.9 -- start
+check_var KC_CACHE_EMBEDDED_NETWORK_BIND_ADDRESS 10.200.0.9
+
+scenario "a replica name the overlay can't resolve leaves Keycloak's default"
+run PROTOSTRAP_REPLICA=keycloak-2 -- start
+check status 0 "$status"
+check output 'entrypoint: keycloak-2 has no address on the overlay; the cluster binds by Keycloak'"'"'s default' "$output"
+check_var KC_CACHE_EMBEDDED_NETWORK_BIND_ADDRESS '<unset>'
+
+scenario "outside ProtoStrap the bind address is Keycloak's default"
+run -- start-dev
+check_var KC_CACHE_EMBEDDED_NETWORK_BIND_ADDRESS '<unset>'
 
 # --- all together, printing nothing ------------------------------------------------
 

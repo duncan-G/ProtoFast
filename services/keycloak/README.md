@@ -108,7 +108,7 @@ another value.
 | `OTEL_SERVICE_NAME`                 | ProtoStrap (`keycloak`)                                              | `KC_TELEMETRY_SERVICE_NAME` |
 | `OTEL_RESOURCE_ATTRIBUTES`          | ProtoStrap                                                           | `KC_TELEMETRY_RESOURCE_ATTRIBUTES` |
 | `OTEL_EXPORTER_OTLP_HEADERS`        | Nothing sets it now; for an endpoint that wants headers, such as the dashboard's `x-otlp-api-key` | `KC_TELEMETRY_HEADER_<NAME>`, such as `KC_TELEMETRY_HEADER_X_OTLP_API_KEY`, percent-decoded |
-| `PROTOSTRAP_REPLICA`                | ProtoStrap                                                           | With an endpoint, `KC_LOG_CONSOLE_LEVEL=off`, unless set |
+| `PROTOSTRAP_REPLICA`                | ProtoStrap                                                           | With an endpoint, `KC_LOG_CONSOLE_LEVEL=off`, unless set; `KC_CACHE_EMBEDDED_NETWORK_BIND_ADDRESS`, the address the replica's name resolves to on the overlay, unless set |
 | `AWS_REGION`, `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` | ProtoStrap's agent                                 | The SES client's region and credentials |
 | Any other `KC_` variable            | Anyone                                                               | Keycloak's option, as usual |
 
@@ -239,7 +239,11 @@ When the AWS SDK moves, check `mvn dependency:tree` for a new default HTTP clien
   `KC_BOOTSTRAP_ADMIN_USERNAME`) gets no bootstrap client at all; it needs the client created
   once, by hand.
 - **More than one replica** form an Infinispan cluster, found through the database
-  (JDBC_PING) and joined on port 7800 between the replicas' own addresses.
+  (JDBC_PING) and joined on port 7800 at each replica's overlay address. One replica is
+  enough for that: a release starts the new replica beside the old one, often on another
+  VM, so the two cluster until the old one stops, and its sessions and cache invalidations
+  reach the new one. Keycloak supports that only between patch releases of one version: a
+  minor upgrade needs the old replica stopped first.
 
 ## Tests
 
