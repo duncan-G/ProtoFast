@@ -1,11 +1,8 @@
-# Plans, applies or destroys prod's platform (infra/prod) by hand, and applies it when its root
-# changes on main. deploy.yml applies it too when a release changes what the spec needs.
+# Plans, applies or destroys prod's platform (infra/prod) by hand. deploy.yml applies it too when
+# a release changes what the spec needs.
 name: infra
 
 on:
-  push:
-    branches: [main]
-    paths: [infra/prod/**]
   workflow_dispatch:
     inputs:
       action:
@@ -23,6 +20,6 @@ jobs:
     with:
       environment: prod
       directory: infra/prod
-      action: ${{ github.event_name == 'push' && 'apply' || inputs.action }}
+      action: ${{ inputs.action }}
       protostrap-ref: v0.1.3
     secrets: inherit
