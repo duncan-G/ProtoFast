@@ -118,6 +118,9 @@ uses:
 
 `KEY=-` asks for the value without echoing it.
 
+[`scripts/fill-prod-secret.sh`](../scripts/fill-prod-secret.sh) does all three for prod in one
+go, setting only what the secret lacks, and fails listing any required key still missing.
+
 ## How a value reaches a process
 
 **1. The service reads the secret itself.** Every .NET component (auth, the api, payments,
