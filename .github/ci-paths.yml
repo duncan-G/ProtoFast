@@ -1,0 +1,78 @@
+# What each ci.yml job reads: a pull request runs a job only when it touches one of its paths.
+# A client/<name> or image/<path> filter adds that entry to the job's matrix.
+ci: &ci
+  - .github/workflows/ci.yml
+  - .github/ci-paths.yml
+
+protos: &protos
+  - services/api/src/ProtoFast.Api/Protos/**
+
+# The spec lists every image's build context, which each .dockerignore shapes.
+dotnet:
+  - *ci
+  - apphost/**
+  - services/**
+  - clients/.dockerignore
+  - clients/Dockerfile
+  - ProtoFast.slnx
+  - global.json
+  - Directory.Build.targets
+  - nuget.config
+  - protostrap.yaml
+
+client/admin:
+  - *ci
+  - *protos
+  - clients/admin/**
+  - clients/admin-kit/**
+  - scripts/check-admin-console.py
+
+client/admin-theplot:
+  - *ci
+  - *protos
+  - clients/admin-theplot/**
+  - clients/admin-kit/**
+  - scripts/check-admin-console.py
+
+client/protofast:
+  - *ci
+  - *protos
+  - services/payments/src/ProtoFast.Payments.Api/Protos/**
+  - clients/protofast/**
+
+client/theplot:
+  - *ci
+  - *protos
+  - clients/theplot/**
+
+clients-host:
+  - *ci
+  - clients/host/**
+
+conversion:
+  - *ci
+  - services/conversion/**
+
+image/clients:
+  - *ci
+  - clients/**
+
+image/services/conversion:
+  - *ci
+  - services/conversion/**
+
+image/services/keycloak:
+  - *ci
+  - services/keycloak/**
+
+image/services/keycloak-config:
+  - *ci
+  - services/keycloak-config/**
+
+image/services/otel-collector:
+  - *ci
+  - services/otel-collector/**
+
+terraform:
+  - *ci
+  - infra/**

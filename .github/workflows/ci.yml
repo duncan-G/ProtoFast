@@ -1,7 +1,8 @@
 # Checks every pull request, and every push to main, before anything deploys: each component's
 # tests, that the spec is what the AppHost writes and passes protostrap check, every image's
-# own checks, and the Terraform roots. No AWS: nothing here holds a role. main's ruleset
-# requires this workflow, so a change merges only once it passes; deploy.yml runs no tests.
+# own checks, and the Terraform roots. A pull request runs only the jobs whose paths
+# (.github/ci-paths.yml) it touches; a push to main runs them all. ci-ok is the one check to
+# require. No AWS: nothing here holds a role; deploy.yml runs no tests.
 name: ci
 
 on:
@@ -17,7 +18,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      dotnet: ${{ steps.jobs.outputs.dotnet }}
+      clients: ${{ steps.jobs.outputs.clients }}
+      clients-host: ${{ steps.jobs.outputs.clients-host }}
+      conversion: ${{ steps.jobs.outputs.conversion }}
+      images: ${{ steps.jobs.outputs.images }}
+      terraform: ${{ steps.jobs.outputs.terraform }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: .github/ci-paths.yml
+      - id: jobs
+        env:
+          CHANGES: ${{ steps.filter.outputs.changes }}
+        run: |
+          set -euo pipefail
+          if [ '${{ github.event_name }}' != pull_request ]; then
+            CHANGES=$(yq -o json -I 0 'keys' .github/ci-paths.yml)
+          fi
+          has() { jq -r --arg f "$1" 'index($f) != null' <<<"$CHANGES"; }
+          under() { jq -c --arg p "$1/" 'map(select(startswith($p)) | ltrimstr($p))' <<<"$CHANGES"; }
+          {
+            echo "dotnet=$(has dotnet)"
+            echo "clients=$(under client)"
+            echo "clients-host=$(has clients-host)"
+            echo "conversion=$(has conversion)"
+            echo "images=$(under image)"
+            echo "terraform=$(has terraform)"
+          } | tee -a "$GITHUB_OUTPUT"
+
   dotnet:
+    needs: changes
+    if: needs.changes.outputs.dotnet == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -53,11 +91,13 @@ jobs:
           protostrap check --spec protostrap.yaml
 
   clients:
+    needs: changes
+    if: needs.changes.outputs.clients != '[]'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        client: [admin, admin-theplot, protofast, theplot]
+        client: ${{ fromJSON(needs.changes.outputs.clients) }}
     defaults:
       run:
         working-directory: clients/${{ matrix.client }}
@@ -80,6 +120,8 @@ jobs:
         run: python3 scripts/check-admin-console.py clients/${{ matrix.client }}
 
   clients-host:
+    needs: changes
+    if: needs.changes.outputs.clients-host == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -93,6 +135,8 @@ jobs:
       - run: node --test
 
   conversion:
+    needs: changes
+    if: needs.changes.outputs.conversion == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -106,11 +150,13 @@ jobs:
       - run: python -m pytest -q
 
   images:
+    needs: changes
+    if: needs.changes.outputs.images != '[]'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        image: [clients, services/conversion, services/keycloak, services/keycloak-config, services/otel-collector]
+        image: ${{ fromJSON(needs.changes.outputs.images) }}
     steps:
       - uses: actions/checkout@v5
       - if: matrix.image == 'services/keycloak' || matrix.image == 'services/keycloak-config'
@@ -120,6 +166,8 @@ jobs:
       - run: docker build -t protofast-ci ${{ matrix.image }}
 
   terraform:
+    needs: changes
+    if: needs.changes.outputs.terraform == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -136,3 +184,13 @@ jobs:
             terraform -chdir="$dir" validate
             echo "::endgroup::"
           done
+
+  # Skipped jobs pass; a failed or cancelled one, the changes job's included, fails this.
+  ci-ok:
+    needs: [changes, dotnet, clients, clients-host, conversion, images, terraform]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: jq -e 'all(.[]; .result == "success" or .result == "skipped")' <<<"$NEEDS"
