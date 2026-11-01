@@ -9,7 +9,7 @@ pools:
     vm: [t4g.medium]
     min: 1
     max: 4
-    spare: 1
+    spare: 0
     target: 70%
     reserved: { cpu: 400m, memory: 1Gi }
   compute:
