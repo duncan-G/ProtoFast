@@ -30,6 +30,7 @@ public class DurableEngineTests(PostgresFixture postgres, LocalStackFixture loca
         localStack.AddQueue(services, SqsOutcomeQueue.QueueKey, await localStack.CreateFifoQueueAsync(TimeSpan.FromSeconds(5)), TimeSpan.FromSeconds(5));
         services.AddSingleton<IDocumentClassifier>(new FixedFamily(_family));
         services.AddSingleton<IDiscoveryAgent, WritingAgent>();
+        services.AddSingleton<IHostApplicationLifetime, RunningLifetime>();
         services.AddAgentWorkflowEngine();
         services.AddDurableWorkflowEngineStores();
         _services = services.BuildServiceProvider();

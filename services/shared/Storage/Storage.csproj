@@ -11,10 +11,12 @@
         <PackageReference Include="AWSSDK.S3" Version="4.0.103.3" />
         <PackageReference Include="AWSSDK.SQS" Version="4.0.100.14" />
         <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\ProtoStrap\ProtoStrap.csproj" />
       <ProjectReference Include="..\Storage.Abstractions\Storage.Abstractions.csproj" />
     </ItemGroup>
 </Project>

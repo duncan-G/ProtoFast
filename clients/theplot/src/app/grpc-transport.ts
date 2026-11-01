@@ -18,11 +18,15 @@ const signInWhenUnauthenticated: Interceptor = (next) => async (req) => {
   }
 };
 
+/**
+ * gRPC-Web to the page's own origin: the edge routes `/<package>.<Service>/` to the service that
+ * serves the package, as it is, so the base URL carries no path of its own.
+ */
 export const GRPC_TRANSPORT = new InjectionToken<Transport>('grpc-transport', {
   providedIn: 'root',
   factory: () =>
     createGrpcWebTransport({
-      baseUrl: `${inject(SERVER_URL)}/api`,
+      baseUrl: inject(SERVER_URL),
       interceptors: isPlatformBrowser(inject(PLATFORM_ID))
         ? [traceInterceptor, signInWhenUnauthenticated]
         : [traceInterceptor],

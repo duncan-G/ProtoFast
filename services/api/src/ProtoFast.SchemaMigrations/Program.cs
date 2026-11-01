@@ -4,16 +4,20 @@ using Microsoft.Extensions.Hosting;
 using Npgsql;
 using ProtoFast.Data.ThePlot;
 using ProtoFast.DocumentImport.Data.Postgres;
+using ProtoFast.ProtoStrap;
 
 // Standalone schema-migrations runner for the `protofast` database: ThePlot's `plot` schema and
 // the document import workflow engine's `engine` schema.
 // The API never migrates on boot (replicas would race); this one-shot exe owns schema changes,
-// the same way ProtoFast.Auth.SchemaMigrations does for `auth`. Dev runs it via Aspire's
-// WithSchemaMigrations. Exit codes: 0 ok, 1 migration error, 2 refused (--rebuild-schema in prod).
+// the same way ProtoFast.Auth.SchemaMigrations does for `auth`. It is the spec's
+// protofast-migrations task, the `migrate` of the api and document-import, which `aspire run`
+// runs before both. Exit codes: 0 ok, 1 migration error, 2 refused (--rebuild-schema in prod).
 
 var builder = Host.CreateApplicationBuilder(args);
 
-// Reads ConnectionStrings__protofast (dev: Aspire reference; prod: compose env).
+// Reads ConnectionStrings__protofast: from the environment's secret under ProtoStrap, from the
+// AppHost's reference under `aspire run`.
+builder.Configuration.AddProtoStrapSecret();
 builder.AddNpgsqlDataSource("protofast");
 builder.Services.AddThePlotData();
 builder.Services.AddDbContext<WorkflowEngineDbContext>((sp, options) =>

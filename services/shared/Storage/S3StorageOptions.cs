@@ -2,11 +2,12 @@ namespace ProtoFast.Storage;
 
 public sealed class S3StorageOptions
 {
+    /// <summary>The bucket's name. Unset, it is ProtoStrap's BUCKET_&lt;NAME&gt; for the spec's bucket.</summary>
     public string Bucket { get; set; } = string.Empty;
 
     /// <summary>
-    /// LocalStack's endpoint in dev; unset in production so the SDK resolves the real AWS
-    /// endpoint from the region
+    /// LocalStack's endpoint under <c>aspire run</c> (AWS_ENDPOINT_URL_S3, which ProtoStrap.Hosting
+    /// sets); unset in an account, so the SDK resolves the real endpoint from the region.
     /// </summary>
     public string? ServiceUrl { get; set; }
 
@@ -26,9 +27,9 @@ public sealed class S3StorageOptions
     public int FrozenLockDays { get; set; } = 30;
 
     /// <summary>
-    /// Off for LocalStack, which does not implement object lock. Freezing still writes the frozen
-    /// artifact and its hash — only the storage-level retention is skipped, and the difference is
-    /// logged rather than silently tolerated.
+    /// Off for a bucket without object lock. Freezing still writes the frozen artifact and its
+    /// hash — only the storage-level retention is skipped, and the difference is logged rather
+    /// than silently tolerated. ProtoStrap creates the documents bucket locked, LocalStack too.
     /// </summary>
     public bool ObjectLockEnabled { get; set; } = true;
 }

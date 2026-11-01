@@ -16,6 +16,7 @@ def client(monkeypatch) -> TestClient:
         return object()
 
     monkeypatch.setattr(main, "storage", no_storage)
+    monkeypatch.setattr(main, "readiness", main.Readiness(None))
     return TestClient(main.app, raise_server_exceptions=False)
 
 
@@ -35,8 +36,24 @@ def body(**overrides) -> dict:
     return payload
 
 
-def test_health_answers_without_touching_s3(client):
-    assert client.get("/health").json() == {"status": "ok"}
+def test_conversions_are_served_while_draining(client, monkeypatch):
+    # Readiness fails from the first SIGTERM, but callers that already resolved this replica
+    # still get answers until the drain ends.
+    main.readiness.draining = True
+    monkeypatch.setattr(
+        conversion,
+        "convert",
+        lambda request, storage, settings: main.ConvertReply(
+            markdownKey=request.markdownKey,
+            layoutKey="",
+            markdownBytes=1,
+            pages=1,
+            producer="passthrough",
+            durationMs=1,
+        ),
+    )
+
+    assert client.post("/convert", json=body()).status_code == 200
 
 
 def test_a_successful_conversion_answers_with_keys_and_not_bytes(client, monkeypatch):

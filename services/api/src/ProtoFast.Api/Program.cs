@@ -8,17 +8,13 @@ using ProtoFast.DocumentImport.Data;
 using ProtoFast.Grpc;
 using ProtoFast.ServiceDefaults;
 using ProtoFast.ServiceDefaults.InternalAuth;
-using ProtoFast.ServiceDefaults.Secrets;
 using ProtoFast.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.AddServiceDefaults();
-
-builder.Configuration
-    .AddEnvironmentVariables("Shared_")
-    .AddEnvironmentVariables("Api_")
-    .AddSecretsManager(options => builder.Configuration.Bind("Secrets", options));
+// Its keys come from the environment's secret under ProtoStrap, and from the AppHost's
+// environment variables under `aspire run`.
+builder.AddServiceDefaults(stop: TimeSpan.FromSeconds(28)); // Inside the spec's stop.
 
 builder.Services.AddInternalJwtAuth(builder.Configuration);
 
@@ -42,17 +38,20 @@ builder.Services.AddDurableEngineAdministration();
 builder.Services.AddScoped<StoryScope>();
 builder.Services.AddScoped<StoryLibrary>();
 
-builder.Services.AddS3ObjectStorage(options => builder.Configuration.GetSection("S3").Bind(options));
+// The spec's documents bucket and document-upload queue, from what ProtoStrap sets.
+builder.Services.AddS3ObjectStorage(options => builder.Configuration.GetSection("S3").Bind(options), bucket: "documents");
 
 // Completed uploads are handed to the document-import worker over this queue.
 builder.Services.AddSqsQueue(
-    DocumentImportQueues.ImportQueueKey, options => builder.Configuration.GetSection("Sqs:DocumentImport").Bind(options));
+    DocumentImportQueues.ImportQueueKey,
+    options => builder.Configuration.GetSection("Sqs:DocumentImport").Bind(options),
+    queue: "document-upload");
 
 builder.AddRedisClient("redis");
 
 var app = builder.Build();
 
-app.MapDefaultEndpoints();
+app.MapDefaultEndpoints(grpc: true);
 
 app.MapGrpcService<DocumentUploadService>();
 app.MapGrpcService<DocumentService>();

@@ -1,4 +1,5 @@
 using ProtoFast.Auth.Api.Keycloak;
+using ProtoFast.ProtoStrap;
 
 namespace ProtoFast.Auth.Api.Configuration;
 
@@ -12,12 +13,13 @@ public sealed class KeycloakOptions
 
     /// <summary>
     /// Browser-facing base for redirects (authorize, end-session) and the token issuer,
-    /// e.g. <c>https://auth.protofast.dev</c>. Falls back to <see cref="Authority"/> when empty
-    /// (dev, where the browser and the service reach Keycloak at the same URL).
+    /// e.g. <c>https://auth.protofast.dev</c>. Empty falls back to the auth host's origin,
+    /// ORIGIN_AUTH, which is Keycloak's KC_HOSTNAME too, then to <see cref="Authority"/>.
     /// </summary>
     public string PublicAuthority { get; init; } = "";
 
-    // Confidential-client secrets — auth-svc is the only holder (BFF). From the Auth_ SM secret.
+    // Confidential-client secrets, from the environment's secret (Shared_Keycloak__*), which
+    // keycloak-config sets on the realms' clients.
     public string ClientSecretProtofastWeb { get; init; } = "";
     public string ClientSecretAdmin { get; init; } = "";
     public string ClientSecretTheplotWeb { get; init; } = "";
@@ -38,7 +40,7 @@ public sealed class KeycloakOptions
     public string AdminClientSecret { get; init; } = "";
 
     public string ResolvePublicAuthority() =>
-        string.IsNullOrEmpty(PublicAuthority) ? Authority : PublicAuthority;
+        !string.IsNullOrEmpty(PublicAuthority) ? PublicAuthority : Replica.Origin("auth") ?? Authority;
 
     public string GetClientSecret(string clientId) => clientId switch
     {

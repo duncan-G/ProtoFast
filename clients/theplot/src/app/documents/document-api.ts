@@ -83,8 +83,9 @@ export interface UploadTicket {
 }
 
 /**
- * The document endpoints on the api service, over gRPC-Web through the edge (`/api/…`). The
- * session cookie is the credential; the edge turns it into the internal JWT the api enforces.
+ * The document endpoints on the api service, over gRPC-Web through the edge (`/document.…`,
+ * `/document_upload.…`). The session cookie is the credential; the edge turns it into the
+ * internal JWT the api enforces.
  *
  * Browser only: nothing here runs during SSR, because the cookie never reaches the render.
  */

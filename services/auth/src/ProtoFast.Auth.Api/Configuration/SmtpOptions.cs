@@ -4,10 +4,9 @@ namespace ProtoFast.Auth.Api.Configuration;
 /// The SMTP relay auth-svc sends its own mail through — today, the email-change code and the
 /// heads-up that follows it.
 ///
-/// <para>Bound from the <c>Smtp</c> section, which in a deployment arrives as the
-/// <c>Auth_Smtp__*</c> environment variables. Those are the same Secrets Manager entries
-/// <c>deploy.sh</c> already resolves for Keycloak's own <c>SMTP_*</c> — one relay and one set of
-/// credentials, with two senders on it, rather than a second mail identity to verify.</para>
+/// <para>Bound from the <c>Smtp</c> section. Under <c>aspire run</c> the AppHost points it at
+/// smtp4dev; in an account auth sends with SES's API instead (<see cref="Email.SesEmailSender"/>),
+/// and only <c>From</c> and <c>FromDisplayName</c> are read.</para>
 /// </summary>
 public sealed class SmtpOptions
 {

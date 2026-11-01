@@ -6,11 +6,10 @@
     <RootNamespace>ProtoFast.SchemaMigrations</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ContainerRepository>protofast-api-migrations</ContainerRepository>
-    <ContainerFamily>noble-chiseled</ContainerFamily>
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\..\shared\ProtoStrap\ProtoStrap.csproj" />
     <ProjectReference Include="..\ProtoFast.Data\ProtoFast.Data.csproj" />
     <ProjectReference Include="..\..\..\document_import\src\ProtoFast.DocumentImport.Data\ProtoFast.DocumentImport.Data.csproj" />
   </ItemGroup>

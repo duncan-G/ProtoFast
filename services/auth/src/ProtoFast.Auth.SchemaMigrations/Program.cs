@@ -2,15 +2,19 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ProtoFast.Auth.Data;
+using ProtoFast.ProtoStrap;
 
 // Standalone schema-migrations runner. The auth service NEVER migrates on boot (replicas
-// would race); this one-shot exe owns schema changes. Dev runs it via Aspire's
-// WithSchemaMigrations; prod runs it as a one-shot compose job gated before the auth apply
-// (guide §3.5). Exit codes: 0 ok, 1 migration error, 2 refused (--rebuild-schema in prod).
+// would race); this one-shot exe owns schema changes. It is the spec's auth-migrations task,
+// auth's `migrate`: ProtoStrap runs it once per release that changes it, before any new auth
+// replica, and `aspire run` before auth starts. Exit codes: 0 ok, 1 migration error, 2 refused
+// (--rebuild-schema outside Development).
 
 var builder = Host.CreateApplicationBuilder(args);
 
-// Reads ConnectionStrings__auth (dev: Aspire reference; prod: compose env).
+// Reads ConnectionStrings__auth: from the environment's secret under ProtoStrap, from the
+// AppHost's reference under `aspire run`.
+builder.Configuration.AddProtoStrapSecret();
 builder.AddNpgsqlDataSource("auth");
 builder.Services.AddAuthDbContext();
 

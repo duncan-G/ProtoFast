@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using ProtoFast.DocumentImport.Data.Sqs;
 using ProtoFast.DocumentImport.Engine.Executors;
 using ProtoFast.DocumentImport.Engine.Learning;
@@ -21,6 +22,7 @@ public class OutcomeQueueTests(LocalStackFixture localStack) : IAsyncLifetime
         localStack.AddQueue(services, SqsOutcomeQueue.QueueKey, await localStack.CreateFifoQueueAsync(TimeSpan.FromSeconds(1)), TimeSpan.FromSeconds(1));
         services.AddSingleton<IPolicyUpdater>(_updater);
         services.AddSingleton<SqsOutcomeQueue>();
+        services.AddSingleton<IHostApplicationLifetime, RunningLifetime>();
         services.AddSingleton<OutcomeQueueConsumer>();
         _services = services.BuildServiceProvider();
     }

@@ -1,5 +1,13 @@
 # State host split — Host C for Postgres, Redis, Keycloak
 
+> **Superseded, not built (2026-10-30).** ProtoFast now deploys with ProtoStrap, which
+> replaced Host A, Host B, compose, `deploy.sh`, cloud-init and the per-component workflows
+> this plan changes. The goal is met another way: PostgreSQL and Redis are stateful
+> components on ProtoStrap's data-1, each with its own EBS volume, and everything else,
+> Keycloak included, runs on VMs that can be replaced at any time. See
+> [01 · Topology](../01-topology.md) and [08 · Infrastructure](../08-infrastructure.md). The
+> plan is kept for its reasoning only; none of its files, steps or commands apply.
+
 *Plan to move the stateful tier off Host B onto a third EC2 instance. After this,
 Host B runs only the three gRPC services and becomes disposable; Host C owns the
 pgdata volume and everything that touches it.*

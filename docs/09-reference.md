@@ -1,140 +1,235 @@
 # 09 · Reference
 
-*Lookup tables: where to change a given thing, and what every configuration
-variable is. Self-contained — no reading order required.*
+*Lookup tables: where to change a given thing, and what every configuration variable is.
+Self-contained: no reading order required.*
 
 ## Where do I change…?
 
 | …this | Edit here | Then |
 |---|---|---|
-| A dev-only setting (ports, containers, injected env) | `apphost/Program.cs` | restart `aspire run` |
-| A production setting for a container | `deploy/docker-compose.host-edge.yml` or `…host-services.yml` | deploy any component on that host |
-| A stable production value (domains, `CLIENTS`, region) | `infra/templates/user_data.host_*.sh.tftpl` (new boxes) and `/opt/protofast/.env` (existing) | `terraform apply` and/or a deploy |
-| A secret value | `scripts/generate-dev-secrets.sh` (local JWT/Keycloak) or `scripts/populate-secrets.sh Key=value` (`--prod` for prod) | restart aspire (dev) / deploy the consuming component (prod) |
-| Edge routing, CORS, allow-lists | `proxy/*.tmpl`, `proxy/entrypoint.sh` | deploy `envoy` |
-| A .NET service default | that service's `appsettings.json` | deploy that service |
-| A dev-only service default | `appsettings.Development.json` | restart |
-| The Keycloak realm | `infra/keycloak/realms/protofast-realm.json` **and** `deploy/keycloak/realms/` | deploy `keycloak`; flows need the manual script |
-| The Keycloak login theme or emails | `deploy/keycloak/themes/protofast/…` | deploy `keycloak` (dev: just refresh) |
-| Keycloak's Java extensions | `infra/keycloak/providers/email-otp`, then `build.sh` | commit the JAR under `deploy/keycloak/providers`, deploy `keycloak` |
-| A client's runtime behaviour | `clients/<name>/src/server.ts` or `app.config.ts` | deploy `client-<name>` |
-| Which clients exist | `apphost/Program.cs` (`proxy.WithClient`), `CLIENTS`/`DEFAULT_CLIENT`, a new `deploy-client-<name>.yml` | both |
-| AWS/Cloudflare resources | `infra/*.tf` | run the `infra` workflow |
-| Public hostnames | repo secrets `ADMIN_DOMAIN` / `PROTOFAST_DOMAIN` / `KEYCLOAK_DOMAIN` | `infra` apply, then a deploy so `.env` catches up |
-| CI/CD behaviour | `.github/workflows/_component-deploy.yml` or a `deploy-*.yml` | merge to `main` |
-| On-host deploy behaviour | `deploy/deploy.sh` | any deploy ships the new copy |
+| A component's settings, routes, authorizer, request, `stop` or scaling | `apphost/Program.cs` | `aspire do protostrap-spec`; commit the spec; merge |
+| VMs, pools, replicas, PostgreSQL's and Redis's sizes | `apphost/Program.cs` | the same |
+| Something only `aspire run` does (LocalStack credentials, smtp4dev, `start-dev`, `DEV_OPERATORS`, the dev servers) | `apphost/Program.cs` (`if (run)`), `apphost/LocalExtensions.cs`, `apphost/ClientApp/` | restart `aspire run` |
+| The local edge's or smtp4dev's port | `--LocalEdge:Port`, `--Smtp4dev:Port` (or user secrets) | restart `aspire run` |
+| A secret value in an account | `scripts/set-secrets.sh prod [--rotate <group>]`, or ProtoStrap's `scripts/set-secret.sh protofast/prod Key=-` | nothing: ProtoStrap applies it in about three minutes |
+| A local secret value | dev's secret: `scripts/set-secrets.sh dev [--rotate <group>]`, or ProtoStrap's `scripts/set-secret.sh protofast/dev Key=-` | restart the components that read it: `aspire resource <name> restart` |
+| Edge routing | `Routes(...)`, `Route(...)` and `Authorize(...)` in `apphost/Program.cs` | write the spec, merge |
+| Who reaches an admin console | `Tenants:ByHost:admin:Consoles` and `RequiredRoles` in auth's `appsettings.json`; `ADMIN_CONSOLE_ROLES` in the AppHost | deploy auth and the clients (a merge) |
+| The admin consoles' CSP | `ADMIN_CSP` in `clients/host/host.mjs`; the admin dev servers' `angular.json` headers | merge |
+| A .NET service default | that service's `appsettings.json` | merge |
+| A local-only service default | that service's `appsettings.Development.json` | restart `aspire run` |
+| Tenants (host → realm, client) | `Tenants:ByHost` in auth's `appsettings.json` | merge |
+| A Keycloak realm | `services/keycloak-config/realms/*.json` | merge: keycloak-config applies it; locally restart `aspire run` |
+| Keycloak's login theme or emails | `services/keycloak/themes/<theme>/…` | merge (locally a refresh shows it) |
+| Keycloak's Java providers | `services/keycloak/providers/email-otp`, `…/ses-email-sender` | merge: the image builds and tests them |
+| Keycloak's build or run-time options | `services/keycloak/Dockerfile`, `services/keycloak/entrypoint.sh` | merge |
+| Which clients a host process serves | `CLIENTS`, `DEFAULT_CLIENT` in `apphost/Program.cs`; `clients/Dockerfile` for a new app; `CONSOLE_PATHS` in `clients/host/host.mjs` for a new console | write the spec, merge |
+| A client's runtime behaviour | `clients/<name>/src/server.ts`, `app.config.ts` | merge |
+| The browsers' collector | `services/otel-collector/config.yaml` | merge |
+| Hostnames or email domains in an account | `infra/bootstrap/terraform.tfvars` | apply bootstrap again, then the platform (`infra.yml`) |
+| Cloudflare's WAF and cache rules, its rate limit | `AddCloudflareCdn` in `apphost/Program.cs` | write the spec, merge: the infra workflow applies it |
+| Retention, destroy protection | `infra/prod/main.tf` | merge: the infra workflow applies it |
+| CI | `.github/workflows/ci.yml` | merge |
+| The deploy pipeline | `.github/workflows/deploy.yml` | merge |
+| ProtoStrap's version | `WithVersion` in the AppHost, every workflow's `@v…` and `protostrap-ref`, `ci.yml`'s checkout, every root's `?ref=`, `.claude/settings.json` | one pull request |
 
 ## Variables by component
 
+"Spec" means the spec's `env`, written from the AppHost; "secret" means a key of
+`protofast/<environment>`, shown with its prefix; "ProtoStrap" means set in every replica.
+Locally the AppHost sets the same names.
+
 ### `auth`
 
-| Variable | Dev source | Prod source |
+| Variable | Locally | In an account |
 |---|---|---|
-| `Auth_Keycloak__Authority` | AppHost | compose (`http://keycloak:8080`) |
-| `Auth_Keycloak__PublicAuthority` | — | compose (`https://${KEYCLOAK_DOMAIN}`) |
-| `Auth_Keycloak__ClientSecretProtofastWeb` / `…Admin` / `AdminClientSecret` | Secrets Manager (`protofast/dev`) | Secrets Manager → compose `.env` |
-| `Auth_InternalJwt__PrivateKeyPem` | Secrets Manager (`protofast/dev`) | Secrets Manager (in-process) |
-| `Auth_InternalJwt__KeyId` | Secrets Manager (`dev-1`) | `.env` (`INTERNAL_JWT_KEY_ID`) |
-| `Auth_Smtp__Host/Port/From/StartTls` | AppHost → smtp4dev (not secrets) | `.env`, from Secrets Manager + SES |
-| `Auth_Smtp__User/Password` | — (smtp4dev needs none) | `.env`, from Secrets Manager + SES |
-| `Tenants__ByHost__<host>__Realm` / `__ClientId` / `__MaxAge` / `__AcrValues` | `appsettings.Development.json` | compose |
-| `ConnectionStrings__redis`, `ConnectionStrings__auth`, `ConnectionStrings__keycloak` | Aspire references | compose |
-| `Secrets:SecretId`, `Secrets:Prefix` | `appsettings.Development.json` (`protofast/dev`) | `appsettings.json` (`protofast/app`) |
-| `AWS_REGION` / `AWS_DEFAULT_REGION` | SSO profile `developer` | compose (required by the SDK) |
-| `AWS_PROFILE` | AppHost (`developer`) | — |
+| `ConnectionStrings__auth`, `ConnectionStrings__redis` | Aspire references | secret `Shared_ConnectionStrings__auth`, `Shared_ConnectionStrings__redis` |
+| `Keycloak__Authority` | Keycloak's endpoint | spec: `http://keycloak:8080` |
+| `Keycloak__PublicAuthority` | unset: `ORIGIN_AUTH` | unset: `ORIGIN_AUTH` |
+| `Keycloak__ClientSecretProtofastWeb`, `…TheplotWeb`, `…Admin`, `Keycloak__AdminClientSecret` | generated parameters | secret `Shared_Keycloak__*` |
+| `InternalJwt__PrivateKeyPem`, `InternalJwt__KeyId` | `protofast/dev`'s `Auth_InternalJwt__*` | secret `Auth_InternalJwt__*` |
+| `Smtp__Host`, `Smtp__Port`, `Smtp__StartTls` | smtp4dev, `false` | unset (SES) |
+| `Smtp__From` | `no-reply@protofast.dev` (`appsettings.Development.json`) | unset: `no-reply@<HOST_PROTOFAST>` |
+| `Tenants__ByHost__*` | `appsettings.json` | `appsettings.json` |
+| `HOST_PROTOFAST`, `HOST_THEPLOT`, `HOST_ADMIN`, `ORIGIN_AUTH` | the local hostnames and origin | ProtoStrap |
+| `HTTP_PORTS`, `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | Aspire | spec: `8080`, `true` |
+| `PROTOSTRAP_REPLICA` | unset: SMTP, console logs | ProtoStrap: SES, logs by OTLP only |
+| `SECRET_ID`, `SECRET_PREFIX`, `AWS_REGION`, and the role's credentials | `protofast/dev`, `Auth_`, `us-west-2`, and `AWS_PROFILE=developer` | ProtoStrap (`Auth_`, `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI`) |
 
-### `payments` and `api`
+### `api`
 
-| Variable | Purpose |
-|---|---|
-| `Shared_InternalJwt__PublicKeyPem` (dev) / `…PublicKeyPemFile` (prod) | verify the internal JWT |
-| `Secrets:SecretId`, `Secrets:Prefix` | `protofast/dev` + `Payments_` / `Api_` in Development; `protofast/app` in Production |
-| `ASPNETCORE_HTTP_PORTS`, `ASPNETCORE_KESTREL__ENDPOINTDEFAULTS__PROTOCOLS` | gRPC over HTTP/2 on 8080 |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | telemetry; unset disables the exporters |
+| Variable | Locally | In an account |
+|---|---|---|
+| `ConnectionStrings__protofast`, `ConnectionStrings__redis` | Aspire references | secret `Shared_ConnectionStrings__protofast`, `Shared_ConnectionStrings__redis` |
+| `InternalJwt__PublicKeyPem` | `protofast/dev`'s `Api_InternalJwt__PublicKeyPem` | secret `Api_InternalJwt__PublicKeyPem` |
+| `BUCKET_DOCUMENTS`, `QUEUE_DOCUMENT_UPLOAD_URL` | LocalStack's | ProtoStrap |
+| `AWS_ENDPOINT_URL_S3`, `AWS_ENDPOINT_URL_SQS` | LocalStack | unset |
+| `AWS_PROFILE` | `developer`, which signs its LocalStack calls too | unset: the role |
+| `S3__UploadUrlTtl`, `S3__DownloadUrlTtl` | `appsettings.json`: 5 min | the same |
+| `HTTP_PORTS`, `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | Aspire | spec: `8080`, `true` |
 
-### `envoy`
+### `payments`
 
-`ENVOY_MODE`, `CLIENTS`, `DEFAULT_CLIENT`, `PORT` / `CLIENT_<NAME>_LISTENER_PORT`,
-`CLIENT_<NAME>_DOMAIN`, `CLIENT_<NAME>_HOST/_PORT`, `CLIENTS_HOST_HOST/_PORT`,
-`AUTH_HOST/_PORT`, `PAYMENTS_HOST/_PORT`, `API_HOST/_PORT`,
-`KEYCLOAK_HOST/_PORT/_DOMAIN`, `OTEL_GRPC_HOST/_PORT`, `OTEL_HTTP_HOST/_PORT`,
-`OTEL_INSTANCE_ID`, `ENVOY_ADMIN_PORT`, `ENVOY_TLS_CERT`, `ENVOY_TLS_KEY`.
-Details in [layer 04](04-edge.md).
+| Variable | Locally | In an account |
+|---|---|---|
+| `InternalJwt__PublicKeyPem` | `protofast/dev`'s `Payments_InternalJwt__PublicKeyPem` | secret `Payments_InternalJwt__PublicKeyPem` |
+| `HTTP_PORTS`, `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | Aspire | spec: `8080`, `true` |
 
-### Clients and the SSR host
+### `document-import`
 
-`SERVER_URL`, `NG_ALLOWED_HOSTS`, `NG_TRUST_PROXY_HEADERS`, `SERVER_OTEL_ENDPOINT`,
-`BROWSER_OTEL_ENDPOINT`, `PORT`, `SSL_CERT`/`SSL_KEY` (dev), and for the host
-`CLIENTS`, `DEFAULT_CLIENT`, `ASSETS_BUCKET`, `ASSETS_DIR`, `CLIENT_<NAME>_TAG`.
-Details in [layer 03](03-services-and-clients.md).
+| Variable | Locally | In an account |
+|---|---|---|
+| `ConnectionStrings__protofast` | Aspire reference | secret `Shared_ConnectionStrings__protofast` |
+| `Providers__deepseek__ApiKey`, `…gemini__ApiKey`, `…anthropic__ApiKey` | `protofast/dev`'s `DocumentImport_Providers__*__ApiKey`, empty until set | secret `DocumentImport_Providers__*__ApiKey` |
+| `Conversion__BaseUrl` | conversion's endpoint | spec: `http://conversion:8090` |
+| `BUCKET_DOCUMENTS`, `QUEUE_DOCUMENT_UPLOAD_URL`, `QUEUE_WORKFLOW_OUTCOMES_URL` | LocalStack's | ProtoStrap |
+| `AWS_ENDPOINT_URL_S3`, `AWS_ENDPOINT_URL_SQS`, `AWS_PROFILE` | LocalStack, `developer` | unset: the role |
+| `Consumer__MaxConcurrentImports` | 8 | 2 |
 
-### Keycloak
+### The tasks
 
-`KC_DB`, `KC_DB_URL`, `KC_DB_USERNAME`, `KC_DB_PASSWORD` (from a mounted secret),
-`KC_HOSTNAME`, `KC_HOSTNAME_BACKCHANNEL_DYNAMIC`, `KC_PROXY_HEADERS`,
-`KC_HTTP_ENABLED`, `KC_HEALTH_ENABLED`, `KC_SPI_THEME__STATIC_MAX_AGE`,
-`KC_FEATURES`, `KC_TELEMETRY_LOGS_*`, `KC_TRACING_*`, `JAVA_OPTS_APPEND`, plus the
-realm-import placeholders (`*_CLIENT_SECRET`, `*_BASE_URL`, `BACKCHANNEL_LOGOUT_URL`,
-`SMTP_*`, `GOOGLE_*`, `APPLE_*`, `WEBAUTHN_RP_ID`). Details in
-[layer 05](05-identity.md).
+| Component | Variable | Locally | In an account |
+|---|---|---|---|
+| `auth-migrations` | `ConnectionStrings__auth` | Aspire reference | secret `Shared_ConnectionStrings__auth` |
+| `protofast-migrations` | `ConnectionStrings__protofast` | Aspire reference | secret `Shared_ConnectionStrings__protofast` |
+| `postgres-config` | `ConnectionStrings__postgres` | Aspire reference (the superuser) | secret `PostgresConfig_ConnectionStrings__postgres` |
+| `postgres-config` | `ConnectionStrings__keycloak`, `__auth`, `__protofast` | Aspire references | secret `Shared_ConnectionStrings__*` |
+| `postgres-config` | `Databases__Names` | spec: `keycloak,auth,protofast` | the same |
 
-### `/opt/protofast/.env` (production, both hosts)
+### `conversion`
 
-`ECR`, `AWS_REGION`, `HOST_ROLE`, `HOST_A_IP` / `HOST_B_IP`, `CLIENTS`,
-`DEFAULT_CLIENT`, `ASSETS_BUCKET`, `CLIENT_ADMIN_DOMAIN`, `CLIENT_PROTOFAST_DOMAIN`,
-`KEYCLOAK_DOMAIN`, `DOCUMENTS_BUCKET` (from the deploy job), plus the secret-derived values
-`AUTH_DB_PASSWORD`, `PROTOFAST_DB_PASSWORD`,
-`PROTOFAST_WEB_CLIENT_SECRET`, `ADMIN_CLIENT_SECRET`, `ACCOUNT_ADMIN_CLIENT_SECRET`,
-`INTERNAL_JWT_KEY_ID`, `SMTP_*`, `GOOGLE_*`, `APPLE_*`.
+`BUCKET_DOCUMENTS`, `AWS_REGION`, `AWS_ENDPOINT_URL_S3` (locally), `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY` (locally `test`), `PROTOSTRAP_COMPONENT`, `PROTOSTRAP_REPLICA`,
+`PROTOSTRAP_RELEASE`, `DRAIN_SECONDS`, the `OTEL_` variables, and the `CONVERSION_*` limits:
+`MAX_SOURCE_BYTES`, `MAX_OUTPUT_BYTES`, `TIMEOUT_SECONDS`, `OCR_LANGUAGES`,
+`OCR_MIN_CONFIDENCE`, `MAX_OCR_PAGES`, `MAX_PAGES`, `PORT`. Its
+[README](../services/conversion/README.md) has defaults.
 
-### `/opt/protofast/versions.env` (production)
+### `keycloak`
 
-One tag per component: `AUTH_TAG`, `AUTH_MIGRATIONS_TAG`, `PAYMENTS_TAG`, `API_TAG`,
-`API_MIGRATIONS_TAG`, `CONVERSION_TAG`, `DOCUMENT_IMPORT_TAG`,
-`ENVOY_TAG`, `OTEL_TAG`, `CLIENTS_HOST_TAG`, `CLIENT_ADMIN_TAG`,
-`CLIENT_PROTOFAST_TAG`, `KEYCLOAK_TAG`, `POSTGRES_TAG`, `REDIS_TAG`,
-`CLOUDFLARED_TAG`, `ASPIRE_TAG`.
+| Variable | Locally | In an account |
+|---|---|---|
+| `ConnectionStrings__keycloak` → `KC_DB_URL_*`, `KC_DB_USERNAME`, `KC_DB_PASSWORD` | Aspire reference | secret file, from `Shared_ConnectionStrings__keycloak` |
+| `KC_BOOTSTRAP_ADMIN_CLIENT_ID` | `protofast-admin` | spec: `protofast-admin` |
+| `KC_BOOTSTRAP_ADMIN_CLIENT_SECRET` | generated parameter | secret file, from `Keycloak_KC_BOOTSTRAP_ADMIN_CLIENT_SECRET` |
+| `KC_BOOTSTRAP_ADMIN_USERNAME`, `KC_BOOTSTRAP_ADMIN_PASSWORD` | `admin`, generated `keycloak-password` | unset |
+| `ORIGIN_AUTH` → `KC_HOSTNAME` | `http://auth.dev.localhost:20000` | ProtoStrap |
+| `KC_SPI_EMAIL_SENDER__PROVIDER` | `default` (SMTP) | `ses` (the image) |
+| `OTEL_EXPORTER_OTLP_*`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` → `KC_TRACING_*`, `KC_TELEMETRY_*` | unset: nothing exported (the JVM doesn't trust the dashboard's certificate) | ProtoStrap's collector |
+| The image's: `KC_DB`, `KC_HEALTH_ENABLED`, `KC_FEATURES`, `KC_TRACING_ENABLED`, `KC_TRACING_SAMPLER_TYPE`, `KC_TELEMETRY_LOGS_ENABLED`, `KC_HTTP_ENABLED`, `KC_PROXY_HEADERS`, `KC_HOSTNAME_BACKCHANNEL_DYNAMIC`, `KC_SPI_THEME__STATIC_MAX_AGE`, `KC_TRACING_INFINISPAN_ENABLED`, `KC_SHUTDOWN_DELAY` | the same | the same |
+| Command | `start-dev` | `start --optimized` |
 
-### GitHub repo settings
+### `keycloak-config`
 
-Variables: `AWS_REGION`, `TFSTATE_BUCKET`, `ASSETS_BUCKET`, `DOCUMENTS_BUCKET`.
-Secrets: `AWS_INFRA_ROLE_ARN`, `AWS_DEPLOY_ROLE_ARN`, `ECR_REGISTRY`,
-`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE`, `ADMIN_DOMAIN`,
-`PROTOFAST_DOMAIN`, `KEYCLOAK_DOMAIN`, optional `TELEMETRY_DOMAIN` and
-`TELEMETRY_ACCESS_EMAILS`.
+| Variable | Locally | In an account |
+|---|---|---|
+| `KEYCLOAK_URL` | Keycloak's endpoint | spec: `http://keycloak:8080` |
+| `AUTH_URL` | auth's endpoint | spec: `http://auth:8080` |
+| `KC_BOOTSTRAP_ADMIN_CLIENT_ID`, `KC_BOOTSTRAP_ADMIN_CLIENT_SECRET` | `protofast-admin`, generated | spec; secret file from `Keycloak_KC_BOOTSTRAP_ADMIN_CLIENT_SECRET` |
+| `KEYCLOAK_GRANTTYPE`, `KEYCLOAK_USER`, `KEYCLOAK_PASSWORD` | `password`, `admin`, generated | unset: client credentials |
+| `Keycloak__ClientSecretProtofastWeb`, `…TheplotWeb`, `…Admin`, `Keycloak__AdminClientSecret` | generated parameters | secret files from `Shared_Keycloak__*` |
+| `ORIGIN_PROTOFAST`, `ORIGIN_THEPLOT`, `ORIGIN_ADMIN`, `HOST_PROTOFAST`, `HOST_AUTH` | local | ProtoStrap |
+| `SMTP_HOST`, `SMTP_PORT` | smtp4dev | unset (realm defaults; SES ignores them) |
+| `DEV_OPERATORS` | two operators | unset |
+| `WEBAUTHN_RP_ID`, `THEPLOT_WEBAUTHN_RP_ID`, `OPERATORS_WEBAUTHN_RP_ID`, `SMTP_FROM`, `GOOGLE_*`, `APPLE_*` | derived or defaulted | derived or defaulted |
+
+### Clients, dev servers and the clients host
+
+| Variable | `ng serve` (locally) | The clients image |
+|---|---|---|
+| `CLIENTS`, `DEFAULT_CLIENT` | — | spec: `admin,protofast,theplot` / `protofast`; `admin-theplot` / `admin-theplot` |
+| `ADMIN_CONSOLE_ROLES` | admin: `*`; admin-theplot: `admin-theplot` | spec: the same |
+| `HOST_<NAME>` | the local hostnames | ProtoStrap |
+| `NG_ALLOWED_HOSTS` | — | set by the host from every `HOST_<NAME>` |
+| `SERVER_URL` | the host's local origin | unset: the browser uses its own origin |
+| `PORT` | Aspire's | 4000 |
+| `DRAIN_SECONDS` | — | unset: the host's default, 10 under ProtoStrap |
+| `OTEL_*` | Aspire's | ProtoStrap |
+
+### `otel-collector`
+
+`OTEL_EXPORTER_OTLP_ENDPOINT` (ProtoStrap's collector, or the dashboard locally) and, locally
+only, `ASPIRE_OTLP_API_KEY`.
+
+### `postgres` and `redis`
+
+| Component | Variable | In an account |
+|---|---|---|
+| `postgres` | `POSTGRES_PASSWORD_FILE` | spec: `/run/secrets/POSTGRES_PASSWORD`, from `Postgres_POSTGRES_PASSWORD` |
+| `postgres` | `POSTGRES_HOST_AUTH_METHOD` | spec: `scram-sha-256` (applies when it first makes its data) |
+| `redis` | its command | `--requirepass` from `/run/secrets/REDIS_PASSWORD`, `--maxmemory 256mb`, `volatile-ttl`, no persistence |
+
+Locally both are Aspire's containers with Aspire's generated passwords.
+
+### What ProtoStrap sets in every replica
+
+`PROTOSTRAP_APP`, `PROTOSTRAP_COMPONENT`, `PROTOSTRAP_REPLICA`, `PROTOSTRAP_RELEASE`,
+`SECRET_ID`, `SECRET_PREFIX`, `AWS_REGION`, `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI`,
+`QUEUE_<NAME>_URL`, `BUCKET_<NAME>`, `FILES_BUCKET`, `HOST_<NAME>`, `ORIGIN_<NAME>`,
+`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_SERVICE_NAME` and
+`OTEL_RESOURCE_ATTRIBUTES`
+([application contract](https://github.com/duncan-G/protostrap/blob/v0.1.3/docs/protostrap.md#application-contract)).
+`DRAIN_SECONDS` isn't among them: each component defaults it itself, 10 s when
+`PROTOSTRAP_REPLICA` is set and 0 otherwise.
+
+### GitHub
+
+| Where | What | Set by |
+|---|---|---|
+| `prod` environment | `AWS_ROLE_ARN` (Deploy role), `AWS_REGION`, `PROTOSTRAP_*` bucket, registry and role names | `infra/bootstrap` |
+| `prod-infra` environment | the same with the Infra role, plus `TF_VAR_cloudflare_account_id`, `TF_VAR_cloudflare_zone`, `TF_VAR_hosts`, `TF_VAR_email_domains`, `TF_VAR_alert_emails` (GitHub shows them in uppercase; the infra workflow lowercases them) | `infra/bootstrap` |
+| `prod-infra` secrets | `CLOUDFLARE_API_TOKEN` | an Org Admin, `gh secret set` |
+| `prod-approval` environment | required reviewers | by hand |
+
+Secret keys are listed in [layer 06](06-secrets.md#one-secret-per-environment).
 
 ## File map
 
 ```
-apphost/                  Aspire AppHost — the dev environment in C#
-clients/<name>/           Angular SSR clients
-clients/host/             unified SSR host image (pulls client assets from S3)
-proxy/                    Envoy templates + entrypoint
-services/auth/            BFF: sign-in, sessions, accounts, ext_authz
-services/payments|api/    gRPC services behind the internal JWT
-services/conversion/      document → Markdown service (Python, MarkItDown, Tesseract)
-services/shared/          ServiceDefaults (telemetry, health, secrets, internal JWT)
-infra/                    Terraform: AWS + Cloudflare (run in CI)
-infra/bootstrap/          one-time local Terraform: state bucket + OIDC roles
-infra/identity-center/    one-time local Terraform: SSO permission sets, SES user
-infra/keycloak/           realm source of truth + Java providers
-infra/templates/          cloud-init for both hosts
-deploy/                   compose files, deploy.sh, Keycloak realm/theme/JAR bundle
-otel-collector/           collector image + pipeline config
-scripts/                  secrets, dev helpers, Keycloak apply scripts
-.github/workflows/        one workflow per component + infra
+apphost/                    the AppHost: the application for aspire run and the spec
+protostrap.yaml             prod's spec, written by the AppHost: never edit it
+Directory.Build.targets     the .NET images' base image, pinned by digest
+global.json                 the .NET SDK every project and image builds with
+clients/<name>/             the Angular SSR apps: protofast, theplot, admin, admin-theplot
+clients/admin-kit/          the consoles' shared platform layer, linked into each console
+clients/host/               the Node host that serves the apps (host.mjs, server.mjs)
+clients/Dockerfile          the clients image: all four apps and the host
+services/auth/              BFF: sign-in, sessions, accounts, the edge's authorizer
+services/api/               gRPC: documents, stories, admin RPCs; ProtoFast.SchemaMigrations
+services/payments/          gRPC behind the internal JWT
+services/document_import/   the import worker and its engine
+services/conversion/        document → Markdown (Python, MarkItDown, Tesseract)
+services/keycloak/          Keycloak's image: providers, themes, entrypoint
+services/keycloak-config/   keycloak's configure task: the realms and keycloak-config-cli
+services/postgres_config/   PostgreSQL's configure task
+services/otel-collector/    the browsers' collector
+services/shared/ProtoStrap/ what ProtoStrap tells a replica; reading the environment's secret
+services/shared/ServiceDefaults/ telemetry, readiness, drain, the internal JWT check
+services/shared/Storage/    S3 and SQS from BUCKET_<NAME> and QUEUE_<NAME>_URL
+infra/people/               Identity Center groups and permission sets (once)
+infra/bootstrap/            the account's bootstrap (once, by an Org Admin)
+infra/prod/                 prod's platform (the infra workflow)
+scripts/set-secrets.sh      fills or rotates a deployed environment's secret
+scripts/                    dev helpers, admin console scaffold and checks, the operator grant script
+.github/workflows/          ci, deploy, infra
+.claude/settings.json       ProtoStrap's skills, pinned to v0.1.3
 ```
 
 ## Ports
 
 | Port | Where | What |
 |---|---|---|
-| 20000 / 20001 / 20002 | dev, host | Envoy listeners for `admin` / `protofast` / `theplot`, served as `«client».dev.localhost` |
-| 8443 | prod, Host A | Envoy publish listener (tunnel target) |
-| 9901 | both | Envoy admin (`/ready`) |
-| 4000 | both | unified SSR clients host |
-| 8080 / 8081 / 8082 | prod, Host B | auth / payments / api (gRPC, cross-host) |
-| 8083 | prod, Host B | Keycloak HTTP (cross-host, via Envoy's vhost only) |
-| 4317 / 4318 | prod, Host A | OTLP gRPC / HTTP receivers |
-| 5432, 6379 | prod, Host B | Postgres, Redis — **not** published |
-| 8090 | both | conversion HTTP — **not** published in prod |
+| 20000 | locally | ProtoStrap's local edge, every host (`--LocalEdge:Port`) |
+| 8025 | locally | smtp4dev's web page (`--Smtp4dev:Port`) |
+| 17000 / 15000 | locally | the AppHost's dashboard, https / http (`launchSettings.json`) |
+| 8080 | overlay | auth (HTTP/1.1), api and payments (cleartext HTTP/2, gRPC), keycloak (HTTP) |
+| 9000 | overlay | Keycloak's management port: `/health/ready` |
+| 4000 | overlay | the clients host (`clients`, `clients-admin-theplot`) |
+| 8090 | overlay | conversion; no route |
+| 4318 | overlay | otel-collector's OTLP/HTTP (routed at `/otlp/`), and ProtoStrap's collector, `telemetry:4318` |
+| 13133 | overlay | otel-collector's health check |
+| 5432, 6379 | overlay | PostgreSQL, Redis on data-1; never routed |
+| 7480, 7481, 7482 | data-1 loopback, through SSM | ProtoStrap's operator UI (Platform Admins, Org Admins) and Grafana (Developers too) |
+
+Locally projects and dev servers get ports from Aspire; their containers' targets are the
+same as in an account.

@@ -5,8 +5,6 @@
     <RootNamespace>ProtoFast.Api</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ContainerRepository>protofast-api</ContainerRepository>
-    <ContainerFamily>noble-chiseled</ContainerFamily>
   </PropertyGroup>
 
   <ItemGroup>

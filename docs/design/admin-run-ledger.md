@@ -22,14 +22,23 @@ Ordinary users never see the ledger; the admin console at `admin.protofast.dev` 
 > theplot's, so the RPCs serve the whole ledger to `admin-theplot`; before a second app imports
 > documents, runs need `app`/`source_id` columns and the RPCs a filter on them. `GetArtifact` is
 > unary with a 1 MiB default cap rather than streaming.
+>
+> **Since then (2026-10-30)** ProtoFast deploys with ProtoStrap, so the mechanics in §2–§3 below
+> are history as well as the access model: there is no Envoy or `Check`, no compose file, one
+> copy of each realm file (`services/keycloak-config/realms/`, applied by keycloak-config), no
+> `keycloak-apply-account-admin-client.py`, and no `https://localhost:2000x` listeners. The edge
+> asks auth about every request and auth's answer carries `x-roles`; the console is at
+> `http://admin.dev.localhost:20000/theplot/` locally, where `DEV_OPERATORS` seeds its operators.
+> See [admin-consoles.md](admin-consoles.md) and the configuration layers
+> ([04](../04-edge.md), [05](../05-identity.md)).
 
 The console serves every client app (protofast, theplot, and any app added later) from that one
 host. Which apps a signed-in operator sees is decided by which per-app admin roles their account
 holds (§2, §5).
 
 ```
- browser ──▶ Envoy (admin vhost) ──▶ /api/ ──▶ api: AdminRuns gRPC ──▶ engine.runs / stage_records
-   │              │ ext_authz                         │  tenant = protofast   / run_decisions / run_progress
+ browser ──▶ edge (admin host) ──▶ /admin. ──▶ api: AdminRuns gRPC ──▶ engine.runs / stage_records
+   │              │ asks auth                         │  tenant = protofast   / run_decisions / run_progress
    │              ▼                                   │  role admin-{app}
    │       auth: session only if                      ▼
    │       roles ∋ admin on this host             IArtifactStore (S3)  runs/{runId}/{stageId}/{hash}
@@ -49,7 +58,7 @@ holds (§2, §5).
 | Ledger in the api | `AddDurableRunLedger()` in [Program.cs](../../services/api/src/ProtoFast.Api/Program.cs) | The api already reads `run_progress`, but only for ids the caller's own rows vouch for. |
 | Roles end to end | Keycloak `realm_access.roles` → `SessionData.Roles` → internal JWT `roles` claims → `x-roles` header → [CallerIdentity.RequireRole](../../services/shared/Grpc/CallerIdentity.cs) | Plumbed but unused: neither realm defines a role and nothing calls `RequireRole`. The internal JWT also carries `tenant` (the realm), but `CallerIdentity` does not read it. |
 | Admin host | `admin.protofast.dev` → protofast realm, `admin` client, `MaxAge` 900 s, optional `AcrValues` ([05-identity.md](../05-identity.md)) | Any protofast-realm account can sign in. Registration is open on that realm, so today "admin" means "anyone". |
-| Admin client | [clients/admin](../../clients/admin) | SSR gate on `x-user-id`, `authGuard`, a placeholder dashboard, gRPC-web transport to `/api`. [AuthIdentityService](../../clients/admin/src/app/auth/auth-identity.ts) already parses `x-roles` and `x-tenant` during SSR and transfers them to the browser. |
+| Admin client | [clients/admin](../../clients/admin) | SSR gate on `x-user-id`, `authGuard`, a placeholder dashboard, gRPC-web transport to `/api`. [AuthIdentityService](../../clients/admin-kit/src/access/auth-identity.ts) already parses `x-roles` and `x-tenant` during SSR and transfers them to the browser. |
 
 So the work is: define the roles, gate three layers on them, tag runs with their app, add
 read-only admin RPCs over the ledger and artifact store, and build the pages.
@@ -136,7 +145,7 @@ has been granted one app role per client app it should see, by someone who alrea
 Admin API.
 
 **Script**: `scripts/keycloak-grant-admin.py --app APP [--app APP …] [--revoke] EMAIL`, shaped like
-[keycloak-apply-account-admin-client.py](../../scripts/keycloak-apply-account-admin-client.py).
+`keycloak-apply-account-admin-client.py` (since removed).
 Idempotent:
 
 1. ensure realm role `admin` exists, and that `admin-<app>` exists for each `--app` as a composite
@@ -273,8 +282,8 @@ Notes:
 
 ### 5.1 How the console decides which apps to show
 
-The roles are already in the page. Envoy's `Check` injects `x-roles` on every request,
-[AuthIdentityService](../../clients/admin/src/app/auth/auth-identity.ts) parses it during SSR and
+The roles are already in the page. auth's answer to the edge adds `x-roles` to every request,
+[AuthIdentityService](../../clients/admin-kit/src/access/auth-identity.ts) parses it during SSR and
 hands it to the browser through `TransferState`. No RPC is involved.
 
 - **Catalogue**: `src/app/apps/admin-apps.ts` lists the apps the console knows how to present,

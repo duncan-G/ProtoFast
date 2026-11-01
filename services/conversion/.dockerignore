@@ -1,8 +1,18 @@
-.venv/
-__pycache__/
-.pytest_cache/
-.ruff_cache/
-tests/
-*.egg-info/
-build/
-dist/
+# Left out of the build, and so of the image tag's sources: a change here deploys nothing.
+# The image is the Dockerfile, requirements.txt and src/. No ! patterns: ProtoStrap.Hosting
+# can't follow them.
+tests
+README.md
+pyproject.toml
+.gitignore
+.dockerignore
+.venv
+venv
+.env
+.pytest_cache
+.ruff_cache
+**/__pycache__
+**/*.pyc
+**/*.egg-info
+build
+dist

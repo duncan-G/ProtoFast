@@ -66,7 +66,7 @@ const SHAPES: Record<AvatarShape, AvatarShapeMessage> = {
 };
 
 /**
- * The story endpoints on the api service, over gRPC-Web through the edge (`/api/…`), like
+ * The story endpoints on the api service, over gRPC-Web through the edge (`/story.…`), like
  * `DocumentApi`. Browser only: the editor loads after render.
  */
 @Injectable({ providedIn: 'root' })

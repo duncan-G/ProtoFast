@@ -1,22 +1,14 @@
-# Copy to terraform.tfvars (gitignored) and fill in. Then:
-#   cd infra/bootstrap && terraform init && terraform apply
-#
-# github_repo is required. Derive it, don't invent it:
-#   gh repo view --json nameWithOwner -q .nameWithOwner
-
-github_repo = "owner/repo"
-aws_region  = "us-west-2"
-
-# Set false if you don't want Terraform touching GitHub (needs GITHUB_TOKEN / gh auth).
-# manage_github_repo = true
-
-# Cloudflare — stored as GitHub Actions secrets for the infra.yml TF_VAR_* inputs.
-# Omit any of these to skip writing that secret (set it later with `gh secret set`).
-# cloudflare_api_token     = "cf-zone-and-tunnel-scoped-token"
-# cloudflare_account_id    = "your-cloudflare-account-id"
-# cloudflare_zone          = "example.com"
-# admin_domain             = "admin.example.com"
-# protofast_domain         = "example.com"
-# keycloak_domain          = "auth.example.com"
-# telemetry_domain         = "telemetry.example.com"
-# telemetry_access_emails  = ["you@example.com"]
+github_repository     = "duncan-G/ProtoFast"
+region                = "us-west-2"
+cloudflare_account_id = "0123456789abcdef0123456789abcdef"
+cloudflare_zone       = "protofast.dev"
+hosts = {
+  protofast = "protofast.dev"
+  theplot   = "theplot.protofast.dev"
+  admin     = "admin.protofast.dev"
+  auth      = "auth.protofast.dev"
+}
+# auth and Keycloak send from no-reply@ the protofast host's hostname.
+email_domains = ["protofast.dev"]
+# Confirm each address's SNS subscription after the first apply.
+alert_emails = ["ops@example.com"]

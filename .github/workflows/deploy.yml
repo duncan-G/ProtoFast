@@ -1,0 +1,54 @@
+# Ships main to prod once someone approves the release. ProtoStrap's reusable workflows plan
+# each release (which images to build, whether infrastructure changed), apply the platform if
+# it did, build what's missing and roll the release out; the scheduler in the account replaces
+# only what changed. Tests run before merge, in ci.yml, not here.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# The reusable workflows sign in to AWS with GitHub's OIDC token.
+permissions:
+  contents: read
+  id-token: write
+
+# Not deploy-prod: the reusable deploy job holds deploy-<environment>, and GitHub cancels a run
+# whose workflow and job concurrency groups collide.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  # One approval per release, by prod-approval's required reviewers.
+  approve:
+    runs-on: ubuntu-latest
+    environment: prod-approval
+    steps:
+      - run: echo "Deploying ${{ github.sha }} to prod"
+
+  plan:
+    needs: approve
+    uses: duncan-G/protostrap/.github/workflows/plan.yml@v0.1.3
+    with:
+      environment: prod
+      apphost: apphost/ProtoFast.AppHost.csproj
+      protostrap-ref: v0.1.3
+
+  infra:
+    needs: plan
+    if: needs.plan.outputs.infra-changed == 'true'
+    uses: duncan-G/protostrap/.github/workflows/infra.yml@v0.1.3
+    with: { environment: prod, directory: infra/prod, action: apply, protostrap-ref: v0.1.3 }
+    secrets: inherit
+
+  deploy:
+    needs: [plan, infra]
+    if: always() && needs.plan.result == 'success' && (needs.infra.result == 'success' || needs.infra.result == 'skipped')
+    uses: duncan-G/protostrap/.github/workflows/deploy.yml@v0.1.3
+    with:
+      environment: prod
+      version: ${{ needs.plan.outputs.version }}
+      builds: ${{ needs.plan.outputs.builds }}
+      protostrap-ref: v0.1.3

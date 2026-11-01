@@ -37,9 +37,11 @@ internal sealed class SqsMessageQueue : IMessageQueue, IDisposable
         _sqs = CreateClient(options);
     }
 
-    public string Name => _options.QueueName;
+    public string Name => string.IsNullOrEmpty(_options.QueueUrl)
+        ? _options.QueueName
+        : _options.QueueUrl[(_options.QueueUrl.TrimEnd('/').LastIndexOf('/') + 1)..].TrimEnd('/');
 
-    private bool IsFifo => _options.QueueName.EndsWith(".fifo", StringComparison.Ordinal);
+    private bool IsFifo => Name.EndsWith(".fifo", StringComparison.Ordinal);
 
     public async Task SendAsync<T>(T message, string groupId, CancellationToken ct = default)
     {
@@ -93,7 +95,7 @@ internal sealed class SqsMessageQueue : IMessageQueue, IDisposable
             catch (JsonException e)
             {
                 // Left undeleted, so it reaches the dead-letter queue after the receive limit.
-                _logger.LogWarning(e, "Unreadable message {MessageId} on {Queue}", message.MessageId, _options.QueueName);
+                _logger.LogWarning(e, "Unreadable message {MessageId} on {Queue}", message.MessageId, Name);
                 continue;
             }
 
@@ -123,7 +125,9 @@ internal sealed class SqsMessageQueue : IMessageQueue, IDisposable
 
     // Only a successful lookup is cached, so a queue that did not exist yet is looked up again.
     private async Task<string> QueueUrlAsync(CancellationToken ct) =>
-        _queueUrl ??= (await _sqs.GetQueueUrlAsync(_options.QueueName, ct)).QueueUrl;
+        _queueUrl ??= string.IsNullOrEmpty(_options.QueueUrl)
+            ? (await _sqs.GetQueueUrlAsync(_options.QueueName, ct)).QueueUrl
+            : _options.QueueUrl;
 
     /// <summary>The redrive policy's receive limit, or null for a queue with no dead-letter queue.</summary>
     private async Task<int?> MaxReceiveCountAsync(CancellationToken ct)

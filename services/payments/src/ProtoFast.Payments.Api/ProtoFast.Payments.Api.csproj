@@ -5,8 +5,6 @@
     <RootNamespace>ProtoFast.Payments.Api</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ContainerRepository>protofast-payments</ContainerRepository>
-    <ContainerFamily>noble-chiseled</ContainerFamily>
   </PropertyGroup>
 
   <ItemGroup>

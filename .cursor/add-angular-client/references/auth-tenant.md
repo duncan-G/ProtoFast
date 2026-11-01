@@ -1,92 +1,104 @@
-# Register a new client with the auth BFF (tenant wiring)
+# Sign-in for a new client
 
-Skip this reference if the project has no auth BFF (`services/auth/`).
+Once the host is in `clientHosts`, the edge routes its sign-in paths to auth: `/signin` (which
+also matches `/signin-oidc`), `/signup`, `/signout`, `/reset`, `/add-passkey` and `/account/`.
+auth then picks the realm and client from the request's Host, and answers 404 for a host it
+has no tenant for. Keycloak, configured by keycloak-config, must know the client, its secret
+and its redirect URI. docs/05-identity.md explains the parts. `<name>`, `<NAME>` and `<Name>`
+are as in the skill; `<realm>` is the realm it signs in to.
 
-Envoy routes the browser auth paths (`/signin`, `/signup`, `/signin-oidc`,
-`/signout`, `/reset`, `/add-passkey`) to the auth service on **every**
-client vhost automatically (`proxy/envoy.vhost.yaml.tmpl`). But the auth
-service resolves the tenant from the request's `Host` header and returns
-**404 for any host not in its tenant map** (`AuthFlow` →
-`TenantResolver`). A new client whose tenant is not registered will serve
-its pages fine and 404 on `/signup` — the failure only shows up in the
-environment whose map you forgot.
+## 1. The tenant
 
-Decide first: does the client join an **existing realm** (like `admin`
-sharing `protofast`) or get its **own realm** (like `theplot`)? Every step
-below applies either way; a new realm additionally needs the realm import
-(step 3).
+In `services/auth/src/ProtoFast.Auth.Api/appsettings.json`, under `Tenants:ByHost`, keyed by
+the host's name, not a hostname: `TenantResolver` turns the name into each environment's
+hostname with `HOST_<NAME>`, so one entry serves every environment.
 
-## 1. Dev tenant map
-
-`services/auth/src/ProtoFast.Auth.Api/appsettings.Development.json` →
-`Tenants:ByHost`. The key is the client's dev hostname,
-`«clientname».dev.localhost` (set by `WithClient`). Do not key it by
-port: cookies ignore ports, so clients told apart only by port share one
-session cookie.
-
-```jsonc
-"«clientname».dev.localhost": {
-  "Realm": "«realm»",
-  "ClientId": "«clientname»-web"
+```json
+"<name>": {
+  "Realm": "<realm>",
+  "ClientId": "<name>-web"
 }
 ```
 
-## 2. Client-secret plumbing (confidential client)
+## 2. The client secret in auth and the AppHost
 
-- `services/auth/src/ProtoFast.Auth.Api/Configuration/KeycloakOptions.cs`:
-  add a `ClientSecret«ClientName»Web` property and its arm in the
-  `GetClientSecret` switch.
-- `deploy/deploy.sh` `ensure_secret_files`: add the seeding line that
-  copies `Auth_Keycloak__ClientSecret«ClientName»Web` from the
-  `«project»/app` Secrets Manager secret into `.env` as
-  `«CLIENTNAME»_WEB_CLIENT_SECRET` (mirror the existing lines).
-- Add the `Auth_Keycloak__ClientSecret«ClientName»Web` key **to the SM
-  secret itself** before the first deploy — the seeding line is
-  best-effort and silently leaves the var empty when the key is absent,
-  which breaks the `/signin-oidc` code exchange while the redirect
-  appears to work.
+- `services/auth/src/ProtoFast.Auth.Api/Configuration/KeycloakOptions.cs`: a
+  `ClientSecret<Name>Web` property, and `"<name>-web" => ClientSecret<Name>Web,` in
+  `GetClientSecret`.
+- `apphost/Program.cs`: `var <name>WebSecret = Generated("<name>-web-client-secret");` beside
+  the other client secrets, and `.WithEnvironment("Keycloak__ClientSecret<Name>Web", <name>WebSecret)`
+  on both `auth` and `keycloakConfig`. Locally the value is generated once and kept in the
+  AppHost's user secrets; the spec lists `Keycloak__ClientSecret<Name>Web` in both components'
+  `secrets`.
 
-## 3. Keycloak realm import (own-realm clients only)
+## 3. The realm client
 
-- Realm JSON in `deploy/keycloak/realms/«realm»-realm.json` **and** the
-  `infra/keycloak/realms/` copy, using `${env.*}` placeholders like the
-  existing realms. The dev redirect URI is exact:
-  `https://«clientname».dev.localhost:«port»/signin-oidc` (the port is the
-  client's listener port, 20000 + its `WithClient` index). A client
-  joining an existing realm needs the same entry added to that realm's
-  client. The dev AppHost's `dev-client-urls` resource pushes client
-  URLs into realms that already exist on every start.
-- The **keycloak** service env in `deploy/docker-compose.host-services.yml`:
-  the `«CLIENTNAME»_WEB_CLIENT_SECRET` and `«CLIENTNAME»_WEB_BASE_URL`
-  placeholder values the import substitutes.
+In `services/keycloak-config/realms/`:
 
-## 4. Auth service production env — the easy one to miss
+- **An existing realm:** a client in its `clients` array, copied from `theplot-web` in
+  `theplot-realm.json`: `clientId` `<name>-web`, `secret` `$(env:Keycloak__ClientSecret<Name>Web)`,
+  and `$(env:ORIGIN_<NAME>)` in `baseUrl`, `redirectUris` (`$(env:ORIGIN_<NAME>)/signin-oidc`),
+  `webOrigins` and `post.logout.redirect.uris` (`$(env:ORIGIN_<NAME>)/*`). Keep
+  `backchannel.logout.url` at `$(env:AUTH_URL)/backchannel-logout` and PKCE `S256`.
+- **A realm of its own:** a copy of `theplot-realm.json` as `<realm>-realm.json`, with its
+  realm name, that client, its own `account-admin` client and service-account user (the
+  secret stays `$(env:Keycloak__AdminClientSecret)`), and
+  `webAuthnPolicyPasswordlessRpId` `$(env:<REALM>_WEBAUTHN_RP_ID)`. Then:
+  - `<realm>` in the `realms` array in `apphost/Program.cs`, which routes the realm's sign-in
+    pages on the auth host;
+  - `set_default <REALM>_WEBAUTHN_RP_ID "$auth"` in `set_webauthn_rp_ids` in
+    `services/keycloak-config/entrypoint.sh`, so its passkeys stay out of the other realms'
+    pickers;
+  - `loginTheme` and `emailTheme` name a theme under `services/keycloak/themes/`; a new
+    theme is a change to the keycloak image. Which theme is the developer's call.
 
-In `deploy/docker-compose.host-services.yml`, the **auth** service's
-`environment` (a different block from keycloak's — updating one does not
-update the other):
+## 4. keycloak-config's entrypoint and its tests
 
-```yaml
-Auth_Keycloak__ClientSecret«ClientName»Web: "${«CLIENTNAME»_WEB_CLIENT_SECRET}"
-# ...
-Tenants__ByHost__«clientdomain»__Realm: «realm»
-Tenants__ByHost__«clientdomain»__ClientId: «clientname»-web
-```
+`services/keycloak-config/entrypoint.sh` fails a run that lacks a variable the realms need:
 
-Without the `Tenants__ByHost` pair, production `/signup` on the new
-domain 404s (dev keeps working off `appsettings.Development.json`, so
-nothing catches it before deploy). Without the secret line, the redirect
-works but the callback's token exchange fails.
+- `ORIGIN_<NAME>` and `Keycloak__ClientSecret<Name>Web` in `configure_login`'s `require`
+  list, and in the header comment's point 3;
+- `ORIGIN_<NAME>` in `trim_urls`.
 
-## 5. Docs
+`services/keycloak-config/test/entrypoint_test.sh` lists the same names: the `required`
+array, the "what it requires" loop, the "every missing variable is named at once" message, the
+two full runs at the end (and their secret files), and the two lists in "the real realm files
+substitute only what the entrypoint requires". A new realm's `<REALM>_WEBAUTHN_RP_ID` goes in
+those two lists too.
 
-Record the tenant in `docs/05-identity.md` alongside the existing ones.
+ProtoStrap sets `ORIGIN_<NAME>` in every replica, and the AppHost does under `aspire run` once
+the host exists. keycloak-config reads its keys as secret files, so a key it lists that the
+environment's secret lacks fails the task.
 
-## Verify
+## 5. The secret in prod
 
-Dev: sign-up/sign-in through the client's Envoy listener URL lands on the
-right realm's login page. Prod, after the services host redeploys:
+Add `ClientSecret<Name>Web` to the `for client in ...` loop in `scripts/set-secrets.sh`, and
+the count in its header's `clients` group. An Org Admin runs `scripts/set-secrets.sh prod`
+before the release merges: it adds only the keys the secret lacks, here
+`Shared_Keycloak__ClientSecret<Name>Web`.
 
-```bash
-curl -sI https://«clientdomain»/signup | head -1   # expect 302 to the auth domain, not 404
-```
+## 6. Docs
+
+- docs/05-identity.md: the tenants table, the realm clients, keycloak-config's variables
+  (and the realms, for a new one).
+- docs/04-edge.md: the auth host's row, for a new realm.
+- docs/06-secrets.md: the client-secret keys, keycloak-config's secret files, the `clients`
+  rotate group.
+- docs/09-reference.md: auth's and keycloak-config's variables.
+- docs/02-local-development.md: the generated `<name>-web-client-secret` in the local secrets.
+- services/keycloak-config/README.md: its variables table.
+
+## Check it
+
+Locally, after restarting `aspire run` (keycloak-config's image holds the realm files):
+`/signin` on `http://<name>.dev.localhost:20000` redirects to
+`http://auth.dev.localhost:20000/realms/<realm>/protocol/openid-connect/auth`, the code
+arrives in smtp4dev, and `/signin-oidc` sets `pf_session` and returns to the app.
+
+- A 404 from `/signin` is a missing tenant.
+- Keycloak refusing the `redirect_uri` is the realm client's `redirectUris`.
+- A redirect that works and a callback that fails is the client secret: auth's and the realm
+  client's differ.
+- keycloak-config failing with `entrypoint: missing ...` names what step 4 or 2 left out.
+
+In prod, after the release: `curl -sI https://<hostname>/signin | head -1` answers 302, not 404.

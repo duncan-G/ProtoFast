@@ -1,187 +1,146 @@
 ---
 name: add-angular-client
 description: >-
-  Adds a new Angular SSR client to an existing Aspire-orchestrated project:
-  scaffolds under clients/, installs Tailwind CSS v4, patches npm scripts
-  for Aspire's PORT, 0.0.0.0 binding, and HTTPS dev-server flags, registers
-  the client in the AppHost (dev server + per-client Envoy listener),
-  registers the client with the unified SSR host (clients/host) that serves
-  every client from one Node process in publish mode, creates a SERVER_URL
-  injection token with TransferState for resolving the backend URL in SSR
-  and browser contexts, wires buf + Connect proto codegen for gRPC-Web,
-  and registers the client's tenant with the auth BFF (dev + production
-  host→realm maps and client-secret plumbing).
-  Use when the user asks to add a new Angular client, frontend app, web UI,
-  or SPA — either during initial bootstrap or after the project is already
-  running.
+  Adds an Angular SSR client to ProtoFast on a host of its own: the app under clients/, its
+  dev server and host in apphost/Program.cs, the clients image, browser telemetry, sign-in
+  through auth and Keycloak, prod's hostname, CI and the docs. Use when asked to add a new
+  frontend, web app or site; an app's admin console uses scripts/scaffold-admin-console.py.
 disable-model-invocation: true
 ---
 
-# Add Angular Client
+# Add an Angular client
 
-Adds a single Angular SSR client to an Aspire-orchestrated project. Works
-in two contexts:
+A client is its own Angular SSR project under `clients/`, on a host of its own: cookies ignore
+ports, so clients on one host would share a session. Under `aspire run` it is an `ng serve`
+behind ProtoStrap's local edge at `http://<name>.dev.localhost:20000`; in an account the Node
+host in the `clients` image (`clients/host`) serves every client in `CLIENTS`, each on its
+`HOST_<NAME>`. Pages, gRPC-Web, auth's sign-in paths and browser telemetry share the client's
+origin. theplot is the model: a product client with a realm of its own.
 
-- **During bootstrap** — called by `bootstrap-project`. Envoy does not
-  exist yet; the orchestrator creates it later with the full route set.
-- **Standalone** — called directly on an already-bootstrapped project.
-  Envoy exists and this skill registers the client with it.
+ProtoStrap's general rules are in its skills: protostrap-aspire, protostrap-telemetry
+("Telemetry from browsers"), protostrap-secrets, protostrap-deploy. The layout this skill fills
+in is explained in docs/03-services-and-clients.md and docs/04-edge.md.
 
-## Architecture
+## Names
 
-- **Dev:** each client runs its own `ng serve` (HMR), but the browser
-  enters through a **per-client Envoy listener** — pages and API share
-  one origin per client, on its own hostname
-  (`https://«clientname».dev.localhost:«port»` — cookies ignore ports, so
-  clients sharing `localhost` would share one session cookie).
-  `proxy.WithClient(builder, "«clientname»")` creates the listener and
-  returns that origin, which becomes the client's `SERVER_URL`.
-- **Publish:** a single **unified SSR host** container
-  (`clients/host/`) serves every client's SSR bundle from one Node
-  process. Envoy matches the client's subdomain and tags requests with
-  an `x-client` header; the host dispatches to the matching bundle.
-- **Dev smoke test:** running the AppHost with `SsrHost__Dev=true`
-  (launch profile `https-ssr-host`) runs the unified host locally
-  instead of the per-client dev servers, behind the same Envoy
-  listener URLs.
+- `<name>`: the client, its host, its folder `clients/<name>`, its Angular project and its
+  resource, all one lowercase name (`studio`). The clients host serves client `<name>` on
+  `HOST_<NAME>`, so the client and host names must match.
+- `<NAME>`: the variable form, upper case with `-` as `_` (`ORIGIN_<NAME>`).
+- `<Name>`: PascalCase, for `ClientSecret<Name>Web`.
 
-## Placeholders
+## Decide first
 
-- `«ProjectName»` — PascalCase root namespace, detected from the AppHost
-  `.csproj` filename (e.g. `Nimbus.AppHost.csproj` → `Nimbus`).
-- `«clientname»` — lowercase folder, Aspire resource name, and Angular
-  project name (e.g. `app`, `portal`).
-- `«CLIENTNAME»` — uppercase env-var form (`-` becomes `_`).
+Ask when the request doesn't say. Each is the developer's call:
 
-## Prerequisites
+- **An app's admin console** (`admin-<app>`, at `/<app>/` on the admin host) isn't this
+  skill: run `scripts/scaffold-admin-console.py <app> "<Title>"` and follow what it prints,
+  then add `admin-<app>` to ci.yml's `clients` matrix, which its list leaves out.
+- **Realm:** one of its own, as theplot has, or a second client in an existing realm.
+- **Prod hostname:** `<name>.protofast.dev` unless told otherwise; it must be in the
+  Cloudflare zone.
+- **Which services it calls:** the buf inputs, and whether its host routes to them.
+- **Default client:** stays `protofast`, the client for a host no client is named for.
 
-- `apphost/` exists with a working `.csproj` and `Program.cs`.
-- `clients/` directory exists.
-- `node`, `npm`, and `dotnet` are available.
-- At least one .NET gRPC service exists under `services/` (for proto
-  codegen to have inputs).
+## Steps
 
-## Step 1 — Gather inputs
+1. **Scaffold** with the Angular CLI major the other clients use (`@angular/cli` in
+   `clients/theplot/package.json`):
 
-Detect `«ProjectName»` from the AppHost `.csproj`:
+   ```bash
+   npx @angular/cli@<major> new <name> --directory clients/<name> --style scss --routing --ssr \
+     --skip-git --package-manager npm --defaults
+   ```
 
-```bash
-ls apphost/*.csproj
-```
+2. **Bring it to theplot's shape.**
+   - `package.json` scripts as theplot's: `generate:grpc` (`buf generate`), `start`
+     (`npm run generate:grpc && ng serve --host 0.0.0.0 --port ${PORT:-4200} --allowed-hosts`),
+     `build` (`ng build`, without codegen: the image has no protos) and `test`. Dependencies:
+     theplot's `@bufbuild/*`, `@connectrpc/*`, `@opentelemetry/*`, Tailwind and Express
+     entries, at its versions. `npm install` writes `package-lock.json`, which CI's `npm ci`
+     needs.
+   - `.postcssrc.json` and `@import "tailwindcss";` in `src/styles.scss`, as theplot's.
+   - `angular.json` build options as theplot's: `"outputMode": "server"`, `ssr.entry`, and
+     `"security": { "allowedHosts": [] }`.
+   - Copy unchanged from `clients/theplot`: `src/server.ts`, `src/main.ts`,
+     `src/lib/telemetry.ssr.ts`, `src/lib/grpc-trace.interceptor.ts`, `src/app/server-url.ts`,
+     `src/app/app.config.ts`, `src/app/app.config.server.ts`, `src/app/grpc-transport.ts`,
+     `src/app/auth/`.
+   - Copy and rename the service names: `src/telemetry.server.ts` (`<name>-client-server`)
+     and `src/lib/telemetry.browser.ts` (`<name>-client`). Keep the
+     `__nodeOtelSdkStarted` guard: in the clients image the host starts the SDK.
+   - In `src/server.ts`, `PROTECTED_PREFIXES`: the paths only a signed-in user sees.
 
-The name before `.AppHost.csproj` is the project name.
+   What these do: `server.ts` passes `NG_ALLOWED_HOSTS` (the clients host sets it to every
+   `HOST_<NAME>`) to Angular, trusts `x-forwarded-for` and `x-forwarded-proto`, and redirects
+   a protected path without `x-user-id` to `/signin`. `SERVER_URL` reaches the browser through
+   `TransferState`, and the browser falls back to its own origin.
 
-### Ask the user
+3. **Generate the gRPC code** and wire the transport: `references/proto-codegen.md`.
 
-1. **Client name** — short, lowercase (e.g. `app`, `portal`).
-2. **Which services' protos to generate TS for** — defaults to all
-   services whose API project contains a `Protos/` folder (i.e.
-   `services/*/src/*/Protos/`).
-3. **Production domain** — the subdomain this client will answer on in
-   publish mode (e.g. `portal.example.com`). Defaults to
-   `«clientname».example.com`; it is wired as the Aspire parameter
-   `«clientname»-domain` and can be changed at deploy time.
-4. **Should this client become the default?** — the default client
-   answers for unmatched hosts and missing `x-client` headers. Usually
-   "no" (keep the existing default).
+4. **Accept its browser telemetry.** Add `<name>-client` to both conditions of `filter/clients`
+   in `services/otel-collector/config.yaml`: the collector drops every other `service.name`.
 
-## Step 2 — Scaffold and configure the Angular app
+5. **Describe it in `apphost/Program.cs`.**
+   - `.WithHost("<name>", "<name>.protofast.dev", local: "<name>.dev.localhost")` on the
+     environment. Every resource then gets `HOST_<NAME>` and `ORIGIN_<NAME>`.
+   - `"<name>"` in `clientHosts`, which gives the host auth's sign-in routes (`/signin`,
+     `/signup`, `/signout`, `/reset`, `/add-passkey`, `/account/`), the api's and payments'
+     package routes and the clients' `<name>/` route.
+   - `.Route("<name>/otlp/", rate: 20)` on `otel-collector`.
+   - `<name>` in the `CLIENTS` of `ClientsHost("clients", "admin,protofast,theplot", ...)`.
+     `DEFAULT_CLIENT` changes only if decided.
+   - `DevServer("<name>", "<name>.dev.localhost", ["<name>/"]);` beside the others.
+     `AddClientApp` (apphost/ClientApp) runs `npm run start` in `clients/<name>` with `PORT`,
+     `SERVER_URL` (`http://<name>.dev.localhost:20000`) and OTLP to the dashboard.
 
-**Load `references/angular-setup.md`** and follow Steps 2a–2f.
-Scaffolds the Angular SSR project into `clients/«clientname»/`, installs
-Tailwind CSS v4, verifies SSR, patches npm scripts for Aspire's `PORT`
-env var and `0.0.0.0` binding, guards OTel instrumentation against
-double-init in the unified host, and registers the client in
-`apphost/Program.cs` (per-client Envoy listener + dev server).
+6. **Add it to the clients image.** In `clients/Dockerfile`, a build stage as theplot's, its
+   `COPY --from=<name> /src/<name>/dist/<name> ./<name>/dist/<name>` in the last stage, and
+   the header's list of apps. `clients/host` needs no change: it loads
+   `../<name>/dist/<name>/server/server.mjs` for each name in `CLIENTS`.
 
-## Step 3 — Wire proto codegen (buf + Connect)
+7. **Sign-in:** the tenant, the realm client, its secret and keycloak-config's entrypoint, in
+   `references/auth-tenant.md`.
 
-**Load `references/proto-codegen.md`** and follow Steps 3a–3e. Installs
-buf + Connect dependencies, creates `buf.gen.yaml` selecting service
-protos, runs initial generation, creates the gRPC transport provider,
-and adds generated code to `.gitignore`.
+8. **Give it prod's hostname.** Add `<name>` to `hosts` in
+   `infra/bootstrap/terraform.tfvars.example` and to the `hosts` descriptions in
+   `infra/bootstrap/main.tf` and `infra/prod/main.tf`. An Org Admin adds it to their
+   `infra/bootstrap/terraform.tfvars`, which is gitignored, and applies bootstrap again before
+   the release merges: that writes prod-infra's `TF_VAR_hosts`, and the platform's `hosts` must
+   name every host the spec has. The release's infra job then applies the platform.
+   protostrap-deploy has the order.
 
-## Step 4 — Register with the unified SSR host
+9. **CI.** Add `<name>` to the `clients` matrix in `.github/workflows/ci.yml`: `npm ci`, the
+   check that `src/lib/gen` is what the protos make, `npm test` and `ng build`. The `images`
+   job already builds `clients`.
 
-**Load `references/update-envoy.md`** and follow it. The unified host is
-generic — it bakes in no client assets and has no per-client loader map,
-so you do **not** edit `clients/host/server.mjs` or
-`clients/host/Dockerfile`. Instead you: (1) add a
-`.github/workflows/deploy-client-«clientname».yml` workflow (each client
-builds to S3 and deploys independently), and (2) register `«clientname»`
-in the `CLIENTS` env var (the instance seed in `infra/`; the first deploy
-also self-registers it on a running box). The host discovers clients from
-`CLIENTS` and pulls each pinned build from S3 at start
-(docs/03-services-and-clients.md, "The unified SSR host").
+10. **Write the spec.** `aspire do protostrap-spec` and commit `protostrap.yaml`. Its diff
+    shows the host, the new routes, `CLIENTS` and the client secret in `auth`'s and
+    `keycloak-config`'s `secrets`.
 
-If `clients/host/` does not exist yet (mid-bootstrap), skip this step —
-the orchestrator creates the unified host with the full client set.
+11. **Docs.** Add the client where its peers are listed:
+    - docs/01-topology.md: the `clients` row, the hosts table, the local diagram.
+    - docs/02-local-development.md: the "Open" table, the dev servers' row.
+    - docs/03-services-and-clients.md: the browser service names, the clients host's
+      `CLIENTS` and its list of apps, the collector's hosts and names.
+    - docs/04-edge.md: the routes table.
+    - docs/08-infrastructure.md: "Hosts and mail".
+    - docs/09-reference.md: the clients' variables, the file map, `clients/Dockerfile`.
+    - services/otel-collector/README.md and README.md.
+    - The sign-in docs are listed in `references/auth-tenant.md`.
 
-## Step 5 — Wire OpenTelemetry into the client
+## Check it works
 
-If the project has OpenTelemetry set up (`apphost/OpenTelemetryCollector/`
-exists and `AddOpenTelemetryCollector` appears in `apphost/Program.cs`),
-**load `../add-opentelemetry/references/client-otel.md`** and follow it
-for the new client. It installs the OTel npm packages, creates browser
-telemetry (`src/lib/telemetry.browser.ts`), the ConnectRPC trace
-interceptor (`src/lib/grpc-trace.interceptor.ts`), and Node SSR
-instrumentation (`src/telemetry.server.ts`), and wires them into
-`src/main.ts`, `src/server.ts`, and `src/app/grpc-transport.ts`.
-
-When registering the client in `apphost/Program.cs`, pass the
-collector's HTTP endpoint for both OTel parameters:
-
-```csharp
-var «clientname»Dev = builder.AddClientApp(
-    "«clientname»", "../clients/«clientname»", «clientname»Web, otelHttp, otelHttp);
-```
-
-If another client under `clients/` is already instrumented, mirror its
-telemetry files (and OTel package versions) instead of the reference
-verbatim — the existing client reflects the project's current
-conventions and any fixes applied since the reference was written.
-
-If the project does not have OTel yet, skip this step — the
-`add-opentelemetry` skill wires every client when it runs.
-
-## Step 6 — Register the client with the auth BFF
-
-If the project has an auth BFF (`services/auth/` exists), **load
-`references/auth-tenant.md`** and follow it. The auth service resolves
-the tenant from the request `Host` and 404s unknown hosts, so a client
-missing from the tenant map serves pages fine but 404s on
-`/signup`/`/signin` — and the dev and production maps live in different
-files (`appsettings.Development.json` vs the auth service env in
-`deploy/docker-compose.host-services.yml`), so a working dev sign-in
-does not prove the production wiring exists.
-
-If the project has no auth BFF, skip this step.
-
-## Guardrails
-
-- In **dev mode** Aspire assigns the dev-server port dynamically via
-  the `PORT` env var — never hardcode it. Per-client Envoy listener
-  ports are fixed internal targets (20000, 20001, …) assigned in
-  registration order by `WithClient`; do not pick them manually. The
-  hostname is always `«clientname».dev.localhost`.
-- The dev server runs HTTPS using Aspire's developer certificate.
-  `AddClientApp` injects `SSL_CERT` and `SSL_KEY` env vars via
-  `WithHttpsCertificateConfiguration`; the `start` script passes them
-  to `ng serve --ssl --ssl-cert --ssl-key`.
-- There is **no dev-server proxy config** (`proxy.conf.mjs`) and no
-  per-client Dockerfile. The browser enters through the client's Envoy
-  listener; the `SERVER_URL` injection token (resolved via Angular
-  `TransferState`) carries that listener's URL to the gRPC transport
-  and browser telemetry. In publish mode `SERVER_URL` is unset and the
-  browser falls back to `window.location.origin` (same-origin).
-- Each client under `clients/` is its own standalone Angular project,
-  not a multi-project workspace. Only the built SSR bundles are
-  combined — by the unified host at image build time.
-- Each client has its own `buf.gen.yaml` selecting which service protos
-  to codegen. This is where per-client selectivity lives.
-- The `--host 0.0.0.0` and `--allowed-hosts` flags are required for
-  containers (Envoy) to reach the dev server.
-- The client's `src/telemetry.server.ts` (named `src/instrumentation.ts`
-  in the oldest client) must keep the `globalThis.__nodeOtelSdkStarted`
-  guard — in the unified host every bundle shares one process and only
-  the first may start the Node SDK.
+- `aspire run`, then open `http://<name>.dev.localhost:20000`. The `<name>` dev server shows
+  unhealthy on the dashboard until `ng serve` answers, which it doesn't after a failed build.
+- The dashboard shows the page load as `<name>-client`, in the same trace as its render.
+- `/signin` on the host goes to Keycloak's page for the realm on `http://auth.dev.localhost:20000`,
+  and the code arrives in smtp4dev at http://localhost:8025. A 404 is a missing tenant.
+- The `protostrap-edge` console logs each request with the service it went to: `NR` is no
+  route, `UH` no ready replica.
+- `SsrHost__Dev=true aspire run` serves the same URL from the clients image.
+- In `clients/<name>`: `npm test -- --watch=false` and
+  `npm run generate:grpc && git diff --exit-code -- .`. Then `node --test` in `clients/host`,
+  `bash services/keycloak-config/test/entrypoint_test.sh` and `dotnet test ProtoFast.slnx`.
+- `aspire do protostrap-spec` leaves `git status -- protostrap.yaml` clean once committed;
+  CI fails a spec that differs from what the AppHost writes.

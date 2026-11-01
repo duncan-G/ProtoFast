@@ -5,9 +5,6 @@ import { parseRoles } from '../access/auth-identity';
 import { ssrRequestContext, ssrTraceMiddleware } from '../telemetry/ssr';
 import { consoleRolesFromEnv } from './console-roles';
 
-/** Envoy sets it when a console path was requested without that console's role. */
-const CONSOLE_DENIED_HEADER = 'x-console-denied';
-
 export interface AdminServerOptions {
   browserDistFolder: string;
   /** The console's base href, e.g. `/theplot/`. */
@@ -27,17 +24,14 @@ export function createAdminServer(options: AdminServerOptions): express.Express 
 
   const app = express();
   const angularApp = new AngularNodeAppEngine({
-    // Browser-facing hostnames, injected by the deployment; Angular's SSRF guard rejects others.
+    // Browser-facing hostnames: the clients host sets NG_ALLOWED_HOSTS to every HOST_<NAME>
+    // before loading this bundle. Angular's SSRF guard renders for no other `Host`.
     allowedHosts: (process.env['NG_ALLOWED_HOSTS'] ?? '')
       .split(',')
       .map((host) => host.trim())
       .filter((host) => host.length > 0),
-    trustProxyHeaders: [
-      'x-forwarded-host',
-      'x-forwarded-proto',
-      'x-forwarded-port',
-      'x-forwarded-prefix',
-    ],
+    // Of the proxy headers, trust the two the edge sets; Angular drops (and warns about) others.
+    trustProxyHeaders: ['x-forwarded-for', 'x-forwarded-proto'],
   });
 
   app.use(
@@ -67,7 +61,7 @@ export function createAdminServer(options: AdminServerOptions): express.Express 
     }
 
     const roles = parseRoles(header(req.headers['x-roles']));
-    if (req.headers[CONSOLE_DENIED_HEADER] || !admits(required, roles)) {
+    if (!admits(required, roles)) {
       res.redirect(302, FORBIDDEN_PATH);
       return;
     }

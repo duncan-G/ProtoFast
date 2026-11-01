@@ -37,11 +37,19 @@
     <Project Path="services/payments/src/ProtoFast.Payments.Api/ProtoFast.Payments.Api.csproj" />
   </Folder>
   <Folder Name="/services/payments/tests/" />
+  <Folder Name="/services/postgres_config/" />
+  <Folder Name="/services/postgres_config/src/">
+    <Project Path="services/postgres_config/src/ProtoFast.PostgresConfig/ProtoFast.PostgresConfig.csproj" />
+  </Folder>
+  <Folder Name="/services/postgres_config/tests/">
+    <Project Path="services/postgres_config/tests/ProtoFast.PostgresConfig.UnitTests/ProtoFast.PostgresConfig.UnitTests.csproj" />
+  </Folder>
   <Folder Name="/services/shared/">
     <Project Path="services/shared/Database.Abstractions/Database.Abstractions.csproj" />
     <Project Path="services/shared/Database/Database.csproj" />
     <Project Path="services/shared/Exceptions/Exceptions.csproj" />
     <Project Path="services/shared/Grpc/Grpc.csproj" />
+    <Project Path="services/shared/ProtoStrap/ProtoStrap.csproj" />
     <Project Path="services/shared/ServiceDefaults/ServiceDefaults.csproj" />
     <Project Path="services/shared/Storage.Abstractions/Storage.Abstractions.csproj" />
     <Project Path="services/shared/Storage/Storage.csproj" />

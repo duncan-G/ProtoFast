@@ -11,7 +11,8 @@ import { W3CTraceContextPropagator } from '@opentelemetry/core';
 
 /**
  * Initialize OpenTelemetry for the browser.
- * Exports traces and logs to the OTel collector via Envoy's /otlp/v1/ passthrough route.
+ * Exports traces and logs to the app's OTel collector, which the edge routes `/otlp/` to on
+ * the page's own origin.
  * Instruments page-load timing and all fetch() calls with distributed trace propagation.
  *
  * The `documentLoad` span joins the trace of the SSR render that produced the page: the
@@ -79,8 +80,8 @@ export function initBrowserTelemetry(serviceName: string): void {
 
 /**
  * Reads SERVER_URL from Angular's SSR transfer state script tag before
- * Angular bootstraps, so OTLP exports target the Envoy proxy (which has
- * the /otlp/v1/ route) instead of the Node SSR server.
+ * Angular bootstraps, so OTLP exports go to the edge's origin (which routes
+ * /otlp/ to the collector).
  */
 function getServerUrlFromTransferState(): string | null {
   try {

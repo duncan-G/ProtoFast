@@ -5,21 +5,16 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry;
-using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using ProtoFast.ProtoStrap;
 using ProtoFast.ServiceDefaults.Telemetry;
 
 namespace ProtoFast.ServiceDefaults;
 
 public static class Extensions
 {
-    private const string HealthEndpointPath = "/health";
-    private const string AlivenessEndpointPath = "/alive";
-    // gRPC Health service path hit every 10s by grpc_health_probe (the production
-    // healthcheck). StartsWithSegments matches both /Check and /Watch under it.
-    private const string GrpcHealthEndpointPath = "/grpc.health.v1.Health";
     // OIDC callback (auth service only). Keycloak's redirect starts a fresh request here, which the
     // framework would trace as a new root — a second, disconnected trace for the sign-in flow. The
     // auth service instead opens its own span parented to the /signin trace (AuthFlow.CallbackAsync),
@@ -27,11 +22,23 @@ public static class Extensions
     private const string OidcCallbackPath = "/signin-oidc";
     private const string ActivitySourceName = "ProtoFast.*";
 
-    public static IHostApplicationBuilder AddServiceDefaults(this IHostApplicationBuilder builder)
+    /// <summary>
+    /// AddServiceDefaults gives a component what ProtoStrap's application contract asks of it:
+    /// its keys from the environment's secret, telemetry from the OTEL_ variables, readiness,
+    /// and a drain on SIGTERM. <paramref name="stop"/> is how long stopping may take, inside
+    /// the spec's <c>stop</c>: the drain plus the longest request or job. Without it, 8 s,
+    /// inside ProtoStrap's default stop of 10 s.
+    /// </summary>
+    public static IHostApplicationBuilder AddServiceDefaults(this IHostApplicationBuilder builder, TimeSpan? stop = null)
     {
+        builder.Configuration.AddProtoStrapSecret();
+
         builder.ConfigureOpenTelemetry();
 
-        builder.AddDefaultHealthChecks();
+        builder.Services.AddSingleton<DrainState>();
+        builder.Services.AddHostedService<Drain>();
+        builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = stop ?? TimeSpan.FromSeconds(8));
+        builder.Services.AddReadiness();
 
         builder.Services.AddServiceDiscovery();
 
@@ -45,6 +52,12 @@ public static class Extensions
 
     public static IHostApplicationBuilder ConfigureOpenTelemetry(this IHostApplicationBuilder builder)
     {
+        // Under ProtoStrap logs leave by OTLP alone: a console logger would send each line twice.
+        if (Replica.UnderProtoStrap)
+        {
+            builder.Logging.ClearProviders();
+        }
+
         builder.Logging.AddOpenTelemetry(logging =>
         {
             logging.IncludeFormattedMessage = true;
@@ -52,11 +65,8 @@ public static class Extensions
         });
 
         builder.Services.AddOpenTelemetry()
-            // Set service.name on the resource so telemetry is attributed to this service
-            // in every environment. In dev the Aspire AppHost injects OTEL_SERVICE_NAME per
-            // project, but in production (plain docker-compose, no AppHost) nothing sets it,
-            // so without this the SDK falls back to "unknown_service:dotnet". An explicit
-            // OTEL_SERVICE_NAME env var still overrides this value.
+            // A fallback service.name for a run with neither ProtoStrap nor the AppHost, which
+            // both set OTEL_SERVICE_NAME; the variable still wins.
             .ConfigureResource(resource => resource.AddService(builder.Environment.ApplicationName))
             .WithMetrics(metrics =>
             {
@@ -76,14 +86,13 @@ public static class Extensions
                     .AddAspNetCoreInstrumentation(tracing =>
                         // Don't trace requests to the health endpoint to avoid filling the dashboard with noise
                         tracing.Filter = httpContext =>
-                            !(httpContext.Request.Path.StartsWithSegments(HealthEndpointPath)
-                              || httpContext.Request.Path.StartsWithSegments(AlivenessEndpointPath)
-                              || httpContext.Request.Path.StartsWithSegments(GrpcHealthEndpointPath)
+                            !(httpContext.Request.Path.StartsWithSegments(Readiness.Path)
+                              || httpContext.Request.Path.StartsWithSegments(Readiness.GrpcPath)
                               || httpContext.Request.Path.StartsWithSegments(OidcCallbackPath))
                     )
                     .AddHttpClientInstrumentation(options =>
                         options.FilterHttpRequestMessage = req =>
-                            !string.Equals(req.RequestUri?.AbsolutePath, "/health", StringComparison.OrdinalIgnoreCase)
+                            !string.Equals(req.RequestUri?.AbsolutePath, Readiness.Path, StringComparison.OrdinalIgnoreCase)
                             && !IsSqsReceive(req)
                     );
             });
@@ -99,55 +108,32 @@ public static class Extensions
         request.Headers.TryGetValues("X-Amz-Target", out var targets)
         && targets.Contains("AmazonSQS.ReceiveMessage", StringComparer.Ordinal);
 
+    // The exporter reads OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_EXPORTER_OTLP_PROTOCOL itself:
+    // http/protobuf to ProtoStrap's collector in an account, gRPC to the dashboard locally.
     private static IHostApplicationBuilder AddOpenTelemetryExporters(this IHostApplicationBuilder builder)
     {
-        if (builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"] is not { } endpoint)
+        if (string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))
         {
-            Console.WriteLine("OTEL_EXPORTER_OTLP_ENDPOINT is not set, skipping OpenTelemetry exporters");
             return builder;
         }
 
-
         builder.Services
             .AddOpenTelemetry()
-            .UseOtlpExporter(OtlpExportProtocol.Grpc, new Uri(endpoint));
+            .UseOtlpExporter();
 
         return builder;
     }
 
-    public static IHostApplicationBuilder AddDefaultHealthChecks(this IHostApplicationBuilder builder)
+    /// <summary>
+    /// MapDefaultEndpoints maps the readiness check, GET /healthz, and for a gRPC service
+    /// (<paramref name="grpc"/>) gRPC's health service too.
+    /// </summary>
+    public static WebApplication MapDefaultEndpoints(this WebApplication app, bool grpc = false)
     {
-        builder.Services.AddHealthChecks()
-            // Add a default liveness check to ensure app is responsive
-            .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
-
-        // Surface the same health checks over the standard gRPC Health protocol so the
-        // production deploy script can probe these gRPC services with grpc_health_probe.
-        builder.Services.AddGrpcHealthChecks();
-
-        return builder;
-    }
-
-    public static WebApplication MapDefaultEndpoints(this WebApplication app)
-    {
-        // The gRPC Health service is the production probe (consumed by grpc_health_probe in
-        // the deploy health-check loop), so it is mapped in all environments. It only exposes
-        // SERVING/NOT_SERVING status, not the detailed HTTP health report below.
-        app.MapGrpcHealthChecksService();
-
-        // The detailed HTTP /health + /alive endpoints have security implications in
-        // non-development environments (they can leak check names/details).
-        // See https://aka.ms/dotnet/aspire/healthchecks before enabling them in production.
-        if (app.Environment.IsDevelopment())
+        app.MapReadiness();
+        if (grpc)
         {
-            // All health checks must pass for app to be considered ready to accept traffic after starting
-            app.MapHealthChecks(HealthEndpointPath);
-
-            // Only health checks tagged with the "live" tag must pass for app to be considered alive
-            app.MapHealthChecks(AlivenessEndpointPath, new HealthCheckOptions
-            {
-                Predicate = r => r.Tags.Contains("live")
-            });
+            app.MapGrpcReadiness();
         }
 
         return app;

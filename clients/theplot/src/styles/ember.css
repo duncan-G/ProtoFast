@@ -14,7 +14,7 @@
   Structurally a sibling of Protofast's Nocturne: the same class contract —
   .btn, .surface-card, .panel, .rise and friends — over this token block, so
   pages and shared components port between the two systems by swapping the
-  sheet. The Keycloak login theme (infra/keycloak/themes/theplot) carries a
+  sheet. The Keycloak login theme (services/keycloak/themes/theplot) carries a
   verbatim copy of the `:root` block below; retune it here and re-copy it
   there.
 */

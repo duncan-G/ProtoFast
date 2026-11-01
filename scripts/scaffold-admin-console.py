@@ -3,9 +3,10 @@
 
     scripts/scaffold-admin-console.py APP "Title"
 
-APP is the app's realm name; the console mounts at admin.protofast.dev/APP/. Writes the parts that
-are files of their own — the console project, its proto folder, its pipeline, its CODEOWNERS
-entries and its card on the platform console — and prints the platform wiring still to do by hand.
+APP is the app's realm name; the console mounts at /APP/ on the admin host. Writes the parts that
+are files of their own — the console project, its proto folder and its card on the platform
+console — and prints the platform wiring still to do by hand. ProtoStrap deploys it with
+everything else; there is no pipeline of its own.
 """
 
 import re
@@ -67,18 +68,11 @@ def main():
     (protos / f"{app.replace('-', '_')}_admin.proto").write_text(
         PROTO.replace("{pascal}", pascal).replace("{app}", app).replace("{package}", app.replace("-", "_")))
 
-    workflow = ROOT / ".github" / "workflows" / f"deploy-client-admin-{app}.yml"
-    workflow.write_text(rename((ROOT / ".github" / "workflows" / "deploy-client-admin-theplot.yml").read_text()))
-
-    with (ROOT / ".github" / "CODEOWNERS").open("a") as owners:
-        owners.write(f"\n/clients/admin-{app}/{' ' * max(1, 22 - len(app))}@duncan-G\n"
-                     f"/clients/admin-{app}/src/admin-kit{' ' * max(1, 9 - len(app))}@duncan-G\n")
-
     consoles = ROOT / "clients" / "admin" / "src" / "app" / "consoles.ts"
     consoles.write_text(consoles.read_text().replace(
         "];", f"  {{ app: '{app}', title: '{title}', path: '/{app}/' }},\n];"))
 
-    print(f"Scaffolded clients/admin-{app}, its proto folder, pipeline, CODEOWNERS and console card.")
+    print(f"Scaffolded clients/admin-{app}, its proto folder and console card.")
     print(CHECKLIST.replace("{app}", app).replace("{APP}", app.upper().replace("-", "_"))
           .replace("{pascal}", pascal))
 
@@ -142,17 +136,19 @@ service {pascal}Admin {
 CHECKLIST = """
 Still to do by hand (platform-owned):
   1. services/shared/Grpc/AdminAccess.cs KnownApps and scripts/keycloak-grant-admin.py KNOWN_APPS: add "{app}".
-  2. Operators realm (infra/ and deploy/ copies): an admin-{app} role. Tenants RequiredRoles on the admin
-     host (auth appsettings.Development.json, deploy/docker-compose.host-services.yml): add admin-{app}.
+  2. services/keycloak-config/realms/operators-realm.json: an admin-{app} role. In auth's appsettings.json,
+     the admin tenant: RequiredRoles += admin-{app}, Consoles += "{app}": "admin-{app}" (auth's answer to
+     the edge then turns away anyone without the role).
   3. services/api: implement {pascal}Admin (or drop the empty service from the proto, which the csproj
      must list), then fill src/app/{app}-admin.ts with its client.
-  4. apphost/Program.cs: AddClientApp("admin-{app}", ...) with ADMIN_CONSOLE_ROLES=admin-{app} and
-     proxy.WithConsole("admin", "{app}", ...); the same pair for the SSR-host branch.
-  5. deploy/docker-compose.host-edge.yml: a clients-admin-{app} service (copy clients-admin-theplot), and on
-     envoy CLIENT_ADMIN_CONSOLES += {app}, CONSOLE_{APP}_HOST=clients-admin-{app}, CONSOLE_{APP}_PORT=4000.
-  6. deploy/deploy.sh host_bringup_sets: clients-admin-{app}:CLIENT_ADMIN_{APP}_TAG.
-  7. cd clients/admin-{app} && npm install && npm run generate:grpc && npm test -- --watch=false
-     && python3 ../../scripts/check-admin-console.py clients/admin-{app}
+  4. apphost/Program.cs: a DevServer("admin-{app}", "admin.dev.localhost", ["admin/{app}/"], ...) with
+     ADMIN_CONSOLE_ROLES=admin-{app}, and a ClientsHost("clients-admin-{app}", "admin-{app}", ...) routed
+     at admin/{app}/, both Authorized, as admin-theplot's are.
+  5. clients/Dockerfile: a build stage for admin-{app} and the COPY of its dist; clients/host/host.mjs:
+     CONSOLE_PATHS += '{app}'.
+  6. cd clients/admin-{app} && npm install && npm run generate:grpc && npm test -- --watch=false
+     && python3 ../../scripts/check-admin-console.py clients/admin-{app}   (commit src/lib/gen)
+  7. aspire do protostrap-spec; commit the spec.
 Then hand clients/admin-{app}/ to {app}'s agent.
 """
 

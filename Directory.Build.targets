@@ -1,0 +1,10 @@
+<Project>
+  <!-- Every .NET image is built from a base image pinned by its multi-platform digest, so prod
+       builds what dev tested, for Graviton (arm64) as on a laptop. A patched base image is a
+       commit here. Every executable, the tasks and the worker included, uses ASP.NET's chiseled
+       runtime, since ServiceDefaults needs ASP.NET. ProtoStrap counts this file in each .NET
+       component's sources, so changing it rebuilds every .NET image. -->
+  <PropertyGroup Condition="'$(ContainerBaseImage)' == '' and ('$(OutputType)' == 'Exe' or '$(UsingMicrosoftNETSdkWeb)' == 'true')">
+    <ContainerBaseImage>mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:c89a6a61f494f20a5ae302990e814627a8d91b332fd4a8e7c1707c2d4da9555d</ContainerBaseImage>
+  </PropertyGroup>
+</Project>

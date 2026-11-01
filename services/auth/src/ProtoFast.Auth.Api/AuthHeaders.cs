@@ -1,8 +1,9 @@
 namespace ProtoFast.Auth.Api;
 
 /// <summary>
-/// Identity headers the ext_authz <c>Check</c> injects on authenticated requests and strips
-/// from every inbound request (anti-spoofing). Backends trust only
+/// Identity headers the edge's authorizer answers (<see cref="Endpoints.ExtAuthzEndpoint"/>) for
+/// the edge to add to a request. The edge removes the client's own copies of every one of them
+/// first, which is why the spec's <c>authorize.headers</c> lists them all. Backends trust only
 /// <see cref="InternalJwt"/>; the others are conveniences for SSR personalization.
 /// </summary>
 public static class AuthHeaders
@@ -13,8 +14,7 @@ public static class AuthHeaders
     public const string InternalJwt = "x-internal-jwt";
     public const string Authenticated = "x-authenticated";
 
-    /// <summary>The injected identity headers (everything except the <see cref="Authenticated"/>
-    /// flag). On anonymous requests these are removed so a client can't smuggle them; on
-    /// authenticated requests they are overwritten with trusted values.</summary>
-    public static readonly string[] Identity = [UserId, Tenant, Roles, InternalJwt];
+    /// <summary>Every header the authorizer answers, as the spec's <c>authorize.headers</c>
+    /// lists them.</summary>
+    public static readonly string[] All = [UserId, Tenant, Roles, InternalJwt, Authenticated];
 }

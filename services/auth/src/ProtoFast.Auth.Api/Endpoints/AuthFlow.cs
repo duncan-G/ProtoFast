@@ -10,6 +10,7 @@ using ProtoFast.Auth.Api.Telemetry;
 using ProtoFast.Auth.Api.Tenancy;
 using ProtoFast.Auth.Data;
 using ProtoFast.Auth.Data.Entities;
+using ProtoFast.ProtoStrap;
 
 namespace ProtoFast.Auth.Api.Endpoints;
 
@@ -51,7 +52,7 @@ public sealed class AuthFlow(
         bool skipIfAuthenticated = true,
         string? kcAction = null)
     {
-        // These endpoints run with ext_authz OFF, so identity isn't injected — but the session
+        // The edge doesn't ask the authorizer about these, so identity isn't injected — but the session
         // cookie still rides along. If it resolves to a live session the user is already signed in;
         // bounce them to the return target (defaults to /app) rather than looping back to Keycloak.
         if (skipIfAuthenticated && await IsSignedInAsync(ctx, ct))
@@ -446,9 +447,12 @@ public sealed class AuthFlow(
     private void ClearSessionCookie(HttpContext ctx) =>
         SessionCookie.Clear(ctx, _session);
 
-    // The public origin is always HTTPS here (TLS terminates at Cloudflare; Envoy overwrites the
-    // internal :scheme to http). Build redirect/post-logout URLs from the preserved Host.
-    private static string Origin(HttpContext ctx) => $"https://{ctx.Request.Host.Value}";
+    // The browser's origin for this host, as ProtoStrap gives it (ORIGIN_<NAME>): https in an
+    // account, where TLS ends at Cloudflare and the edge speaks http to auth, and the local edge's
+    // http origin under `aspire run`. The realms' redirect URIs are exactly these. A host that
+    // isn't one of the spec's is assumed public and https.
+    private static string Origin(HttpContext ctx) =>
+        Replica.OriginFor(ctx.Request.Host.Value) ?? $"https://{ctx.Request.Host.Value}";
 
     private static string SafeReturnUrl(string? raw) =>
         !string.IsNullOrEmpty(raw) && raw.StartsWith('/') && !raw.StartsWith("//") ? raw : "/app";

@@ -1,5 +1,5 @@
-"""Size, page, time and subprocess guards. The container's memory cap and read-only rootfs are the
-backstop; these turn the common cases into an error a person can act on."""
+"""Size, page, time and subprocess guards. The replica's memory limit and an unprivileged user
+are the backstop; these turn the common cases into an error a person can act on."""
 
 from __future__ import annotations
 

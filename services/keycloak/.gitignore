@@ -1,0 +1,2 @@
+# Maven's output, when a provider is built outside Docker.
+providers/*/target/

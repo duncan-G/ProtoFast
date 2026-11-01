@@ -1,0 +1,4 @@
+# The image is built from the Dockerfile's COPY sources alone.
+**/target
+test
+README.md

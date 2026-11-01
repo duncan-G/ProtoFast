@@ -7,7 +7,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
  * the wordmark IS the logo.
  *
  * The same lockup is drawn by the Keycloak theme's pfBrandLockup
- * (infra/keycloak/themes/theplot/login/template.ftl) — if one changes,
+ * (services/keycloak/themes/theplot/login/template.ftl) — if one changes,
  * change both.
  *
  * Sizing is in `em`, so the lockup scales with whatever font-size the caller

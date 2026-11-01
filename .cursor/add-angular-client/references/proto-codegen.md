@@ -1,213 +1,68 @@
-# Proto codegen (buf + Connect)
+# gRPC code and transport for a client
 
-Wires TypeScript gRPC client generation for an Angular client. Each
-client under `clients/` gets its own `buf.gen.yaml` selecting which
-service protos to generate. `«clientname»` is the lowercase client name.
+Each client has its own `buf.gen.yaml`, naming the protos it calls. `protoc-gen-es` writes
+TypeScript to `src/lib/gen`, which is committed: the clients image is built from `clients/`
+alone, without `services/`. `<name>` is the client.
 
----
+## 1. Dependencies
 
-## 3a. Install dependencies
+Copied from theplot's `package.json` in the skill's step 2: `@bufbuild/protobuf`,
+`@connectrpc/connect` and `@connectrpc/connect-web` at run time, `@bufbuild/buf` and
+`@bufbuild/protoc-gen-es` as dev dependencies.
 
-From `clients/«clientname»/`:
+## 2. `clients/<name>/buf.gen.yaml`
 
-```bash
-npm install --save @connectrpc/connect @connectrpc/connect-web @bufbuild/protobuf
-npm install --save-dev @bufbuild/buf @bufbuild/protoc-gen-es
-```
-
-Runtime deps:
-- `@bufbuild/protobuf` — protobuf runtime for generated types.
-- `@connectrpc/connect` — Connect RPC framework.
-- `@connectrpc/connect-web` — gRPC-Web browser transport.
-
-Dev deps:
-- `@bufbuild/buf` — the buf CLI (runs `protoc-gen-es`).
-- `@bufbuild/protoc-gen-es` — generates TypeScript from `.proto` files.
-  In Connect v2, this single plugin generates both message types and
-  service client stubs.
-
-## 3b. Create `clients/«clientname»/buf.gen.yaml`
-
-Each `inputs` entry points at a service's `Protos/` directory inside the
-API project. After the standard layout refactor, proto files live at
-`services/«servicename»/src/«ProjectName».«ServiceName».Api/Protos/`. To
-narrow to specific files within a service, add `paths:` under that entry.
+As theplot's, with an input per service whose protos the client calls:
 
 ```yaml
 version: v2
 inputs:
-  - directory: ../../services/«servicename1»/src/«ProjectName».«ServiceName1».Api/Protos
-  - directory: ../../services/«servicename2»/src/«ProjectName».«ServiceName2».Api/Protos
+  - directory: ../../services/payments/src/ProtoFast.Payments.Api/Protos
+  - directory: ../../services/api/src/ProtoFast.Api/Protos
+    # Admin RPCs belong to the admin consoles only (docs/design/admin-consoles.md §3).
+    exclude_paths:
+      - ../../services/api/src/ProtoFast.Api/Protos/Admin
 plugins:
   - local: protoc-gen-es
     out: src/lib/gen
     opt: target=ts
+clean: true
 ```
 
-Replace `«servicename1»`, `«servicename2»`, etc. with the actual service
-folder names and `«ServiceName1»`, `«ServiceName2»` with their
-PascalCase forms. To discover all services with protos:
+- Keep `Protos/Admin` out of any client that isn't an admin console.
+- auth is never an input: browsers reach it over plain HTTP.
+- `paths:` under an input narrows it to some files, as `clients/admin/buf.gen.yaml` does.
+
+## 3. Generate and commit
 
 ```bash
-find services/*/src/*/Protos -maxdepth 0 -type d 2>/dev/null
+cd clients/<name> && npm run generate:grpc
 ```
 
-To narrow to specific proto files within a service:
+Commit `src/lib/gen`. `npm start` runs the generation first; `npm run build` doesn't. CI runs
+it again and fails when the result differs from what is committed, so run it after every
+change to a proto the client reads, in each client that reads it.
 
-```yaml
-inputs:
-  - directory: ../../services/api/src/«ProjectName».Api/Protos
-    paths:
-      - greet.proto
-```
+## 4. The transport
 
-## 3c. Run initial generation
+`src/app/grpc-transport.ts`, copied from theplot, provides `GRPC_TRANSPORT`:
+`createGrpcWebTransport({ baseUrl: inject(SERVER_URL), interceptors })`.
 
-```bash
-cd clients/«clientname»
-npx buf generate
-```
+- The base URL has no path. Browsers call `/<package>.<Service>/<Method>` on the page's own
+  origin, and the edge routes each package to the service that serves it
+  (`PackageRoutes` in `apphost/Program.cs`). There is no CORS and no prefix to strip.
+- `SERVER_URL` is the AppHost's `http://<name>.dev.localhost:20000` under `ng serve`, handed
+  to the browser through `TransferState`; in the clients image it is unset and the browser
+  uses its own origin.
+- `traceInterceptor` (`src/lib/grpc-trace.interceptor.ts`) makes a span for each call, and
+  the browser's fetch instrumentation sends its `traceparent`. In the browser, a call answered
+  `Unauthenticated` sends the page to `/signin`.
 
-Verify output exists in `clients/«clientname»/src/lib/gen/`. For the
-default `greet.proto`, this produces `greet_pb.ts` with typed schemas
-and a `Greeter` service descriptor.
+A service client is `createClient(<Service>, inject(GRPC_TRANSPORT))`, with `<Service>` from
+`src/lib/gen/<file>_pb`, as in theplot's `src/app/stories/connect-story-api.ts`.
 
-## 3d. Create the gRPC transport provider
+## 5. The host's routes
 
-Create `clients/«clientname»/src/app/grpc-transport.ts`:
-
-```typescript
-import { inject, InjectionToken } from '@angular/core';
-import { type Transport } from '@connectrpc/connect';
-import { createGrpcWebTransport } from '@connectrpc/connect-web';
-import { SERVER_URL } from './server-url';
-
-export const GRPC_TRANSPORT = new InjectionToken<Transport>('grpc-transport', {
-  providedIn: 'root',
-  factory: () =>
-    createGrpcWebTransport({
-      baseUrl: `${inject(SERVER_URL)}/«routeprefix»`,
-    }),
-});
-```
-
-Replace `«routeprefix»` with the Envoy route prefix for the primary
-backend this client talks to (e.g. `api` for the `/api/` route). For
-clients that call multiple services behind different prefixes, create
-additional transport tokens with those base URLs.
-
-The transport uses `inject(SERVER_URL)` to resolve the backend URL.
-On the server (SSR), `SERVER_URL` is the Envoy HTTPS endpoint from
-the env var. In the browser, it's read from Angular's `TransferState`
-(falling back to `window.location.origin`). This pattern requires the
-`SERVER_URL` injection token from `server-url.ts` created in Step 2d
-of `references/angular-setup.md`.
-
-## 3e. Add generated code to `.gitignore`
-
-If not already present, append to the repo-root `.gitignore`:
-
-```
-# --- Proto codegen (buf + Connect) ---
-clients/*/src/lib/gen/
-```
-
-The glob covers all clients so this entry only needs to appear once.
-
----
-
-## Example: wiring a Greeter component (bootstrap only)
-
-During initial bootstrap, the `admin` client gets a proof-of-concept
-Greeter form. This is optional for clients added post-bootstrap — the
-user wires their own components.
-
-Replace `clients/«clientname»/src/app/app.ts`:
-
-```typescript
-import { Component, inject, signal } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
-import { createClient } from '@connectrpc/connect';
-import { Greeter } from '../lib/gen/greet_pb';
-import { GRPC_TRANSPORT } from './grpc-transport';
-
-@Component({
-  selector: 'app-root',
-  imports: [RouterOutlet],
-  templateUrl: './app.html',
-  styleUrl: './app.scss',
-})
-export class App {
-  private readonly greeter = createClient(Greeter, inject(GRPC_TRANSPORT));
-
-  protected readonly name = signal('');
-  protected readonly reply = signal('');
-  protected readonly error = signal('');
-  protected readonly loading = signal(false);
-
-  async greet(event: Event) {
-    event.preventDefault();
-    this.reply.set('');
-    this.error.set('');
-    this.loading.set(true);
-
-    try {
-      const res = await this.greeter.sayHello({ name: this.name() });
-      this.reply.set(res.message);
-    } catch (err) {
-      this.error.set(err instanceof Error ? err.message : String(err));
-    } finally {
-      this.loading.set(false);
-    }
-  }
-}
-```
-
-Replace `clients/«clientname»/src/app/app.html` with:
-
-```html
-<main class="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-  <div class="w-full max-w-md bg-white rounded-2xl shadow-lg p-8 space-y-6">
-    <h1 class="text-2xl font-bold text-gray-900 text-center">«ProjectName» Admin</h1>
-
-    <form (submit)="greet($event)" class="space-y-4">
-      <div>
-        <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name</label>
-        <input
-          id="name"
-          type="text"
-          [value]="name()"
-          (input)="name.set($any($event.target).value)"
-          placeholder="Enter a name"
-          class="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900
-                 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none
-                 transition" />
-      </div>
-      <button
-        type="submit"
-        [disabled]="loading()"
-        class="w-full rounded-lg bg-indigo-600 px-4 py-2 text-white font-medium
-               hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed
-               transition">
-        {{ loading() ? 'Sending…' : 'Greet' }}
-      </button>
-    </form>
-
-    @if (reply()) {
-      <p class="rounded-lg bg-green-50 border border-green-200 p-4 text-green-800">
-        {{ reply() }}
-      </p>
-    }
-    @if (error()) {
-      <p class="rounded-lg bg-red-50 border border-red-200 p-4 text-red-800">
-        {{ error() }}
-      </p>
-    }
-  </div>
-</main>
-
-<router-outlet />
-```
-
-Replace `«ProjectName» Admin` with the appropriate heading for the
-client being created.
+A client calls only what its host routes. A host in `clientHosts` gets the api's and
+payments' packages. A new service's package is routed by that service's own registration
+(the add-dotnet-service skill).

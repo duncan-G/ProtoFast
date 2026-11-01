@@ -20,6 +20,7 @@
   <ItemGroup>
     <ProjectReference Include="..\ProtoFast.DocumentImport.Engine\ProtoFast.DocumentImport.Engine.csproj" />
     <ProjectReference Include="..\ProtoFast.DocumentImport.Storage\ProtoFast.DocumentImport.Storage.csproj" />
+    <ProjectReference Include="..\..\..\shared\Storage\Storage.csproj" />
     <ProjectReference Include="..\..\..\shared\Storage.Abstractions\Storage.Abstractions.csproj" />
   </ItemGroup>
 
