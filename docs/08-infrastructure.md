@@ -6,7 +6,7 @@ which knobs matter. Self-contained.*
 ## Three kinds of root
 
 ProtoFast's Terraform is a few small roots, each calling one of ProtoStrap's modules at
-`?ref=v0.1.0` ([ProtoStrap's infra](https://github.com/duncan-G/protostrap/blob/v0.1.0/infra/README.md)).
+`?ref=v0.1.2` ([ProtoStrap's infra](https://github.com/duncan-G/protostrap/blob/v0.1.2/infra/README.md)).
 Everything about the application comes from its spec; the roots hold only the account's own
 settings. Prod is the one deployed environment, in ProtoFast's one account, which also holds
 Identity Center and dev's secret, `protofast/dev`. Dev is the local run: nothing is
@@ -27,7 +27,7 @@ stays there, gitignored, and everything in it can be imported again.
 ## People
 
 `infra/people` gives three groups their permission sets
-([people](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/identity.md#people)). People
+([people](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/identity.md#people)). People
 sign in through IAM Identity Center with MFA; there are no IAM users and no access keys.
 
 | Group             | Can                                                        | Where       |
@@ -48,7 +48,7 @@ The account's bootstrap root takes `terraform.tfvars` (copy `terraform.tfvars.ex
 | Variable                      | Meaning                                                          |
 | ----------------------------- | ---------------------------------------------------------------- |
 | `github_repository`           | `owner/repo`, for the OIDC trust and the GitHub environments     |
-| `region`                      | default `us-east-1`                                              |
+| `region`                      | default `us-west-2`                                              |
 | `cloudflare_account_id`, `cloudflare_zone` | the zone the hosts and mail records go in (`protofast.dev`) |
 | `hosts`                       | each of the spec's hosts' hostname in this account               |
 | `email_domains`               | the domains this account sends mail from                          |
@@ -91,7 +91,7 @@ and the inputs bootstrap wrote. State is in the bootstrap's bucket, key
 region at init.
 
 From the spec the module creates
-([infra workflow](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/protostrap.md#infra-workflow)):
+([infra workflow](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/protostrap.md#infra-workflow)):
 
 - **Network:** a VPC (`10.20.0.0/16` by default, in one zone) and its subnets. Only the
   ingress VMs have public IPs, and nothing is admitted from the internet: the tunnel is an
@@ -123,7 +123,6 @@ defaults:
 | `log_retention_days`    | 90 (default 30)                              |
 | `backup_retention_days` | 35 (default)                                 |
 | `snapshot_retention`    | 14 (default 7)                               |
-| `client_rate_limit`     | 0 (default): no Cloudflare rate limit yet. Size it from real traffic before go-live (requests per client per 10 s) |
 
 It doesn't set `zones`, `vpc_cidr` (it can't change later), `email_dmarc` (so no DMARC record
 is published) or `operator_hosts`.
@@ -136,7 +135,8 @@ is published) or `operator_hosts`.
 | `deploy.yml`       | its `infra` job applies the root when a release's plan says the infrastructure changed |
 
 Both run in the `prod-infra` GitHub environment with the Infra role, and need
-`CLOUDFLARE_API_TOKEN` there.
+`CLOUDFLARE_API_TOKEN` there. For the spec's `cdn` the token needs Zone WAF Edit and Cache
+Rules Edit on the zone, beside what the tunnel and DNS records take.
 
 ```bash
 gh secret set CLOUDFLARE_API_TOKEN --env prod-infra
@@ -157,7 +157,8 @@ The [README](../README.md#deploying) has the steps.
 | ---------------------------------------------------------- | ---------------------------------- | ---------------------------------------- |
 | VM types, pool sizes, spare VMs, replica counts, a component's request, `stop`, scaling, routes, volume size | `apphost/Program.cs` | prod, through the spec         |
 | Hostnames, email domains, alert emails, the Cloudflare zone | `infra/bootstrap/terraform.tfvars`, then bootstrap again | the platform root's `TF_VAR_*` |
-| Retention, destroy protection, the per-client rate limit   | `infra/prod/main.tf`               | prod                                     |
+| Cloudflare's WAF and cache rules, its rate limit           | `AddCloudflareCdn` in `apphost/Program.cs` | prod, through the spec          |
+| Retention, destroy protection                              | `infra/prod/main.tf`               | prod                                     |
 | What the Infra role or a component role may ever do        | bootstrap's `extra_infra_actions`, `extra_role_actions` (an Org Admin) | the boundaries |
 
 ## Safety rails worth remembering

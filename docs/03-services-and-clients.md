@@ -9,9 +9,9 @@ A component reads four kinds of setting, by the same names locally and in an acc
 
 | Kind                    | In an account                                                      | Locally                                       |
 | ----------------------- | ------------------------------------------------------------------ | --------------------------------------------- |
-| ProtoStrap's variables  | set by ProtoStrap in every replica: `HOST_<NAME>`, `ORIGIN_<NAME>`, `BUCKET_<NAME>`, `QUEUE_<NAME>_URL`, `OTEL_*`, `PROTOSTRAP_*`, `SECRET_ID`, `SECRET_PREFIX`, `AWS_REGION`, the role's credentials | set by the AppHost and ProtoStrap.Hosting: hosts and origins, LocalStack's bucket and queues, Aspire's `OTEL_*` |
+| ProtoStrap's variables  | set by ProtoStrap in every replica: `HOST_<NAME>`, `ORIGIN_<NAME>`, `BUCKET_<NAME>`, `QUEUE_<NAME>_URL`, `OTEL_*`, `PROTOSTRAP_*`, `SECRET_ID`, `SECRET_PREFIX`, `AWS_REGION`, the role's credentials | set by the AppHost and ProtoStrap.Hosting: hosts and origins, LocalStack's bucket and queues, Aspire's `OTEL_*`, and `SECRET_ID`, `SECRET_PREFIX`, `AWS_REGION`, with `AWS_PROFILE`, the developer's sign-in, for the role's credentials |
 | Plain settings          | the spec's `env`, from the AppHost's `WithEnvironment`             | the same `WithEnvironment` call               |
-| Secrets                 | the environment's secret, read at startup or as secret files      | environment variables the AppHost sets        |
+| Secrets                 | the environment's secret, read at startup or as secret files      | the same, from `protofast/dev`; Keycloak's are Aspire's |
 | Defaults                | `appsettings.json` in the image                                    | the same, plus `appsettings.Development.json` |
 
 Secrets are named like .NET configuration keys:
@@ -29,7 +29,7 @@ Shared_ConnectionStrings__auth
   account. The spec lists each component's keys without it (`secrets:`).
 - [Layer 06](06-secrets.md) has every key and who reads it.
 
-ProtoStrap's [application contract](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/protostrap.md#application-contract)
+ProtoStrap's [application contract](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/protostrap.md#application-contract)
 lists everything it sets. What ProtoFast reads of it:
 
 | Variable                                  | Read by                                                        |
@@ -102,8 +102,9 @@ auth holds an EC P-256 **private** key and signs a short-lived JWT for each auth
 request, which it hands the edge in `x-internal-jwt`; the api and payments hold only the
 matching **public** key and reject any call without a valid one, in a gRPC interceptor. So a
 compromised backend can read identity but can't mint it. In an account the pair is in the
-environment's secret (`Auth_InternalJwt__PrivateKeyPem`, `Shared_InternalJwt__PublicKeyPem`,
-`Auth_InternalJwt__KeyId`); locally the AppHost makes a fresh pair on every run.
+environment's secret (`Auth_InternalJwt__PrivateKeyPem` and `Auth_InternalJwt__KeyId`, and a
+copy of the public key for each verifier, `Api_InternalJwt__PublicKeyPem` and
+`Payments_InternalJwt__PublicKeyPem`); locally in `protofast/dev`.
 
 ### The bucket and the queues
 
@@ -125,7 +126,7 @@ queue:
 
 | Setting                                  | From                                               |
 | ---------------------------------------- | -------------------------------------------------- |
-| `Providers:<name>:ApiKey` (deepseek, gemini, anthropic) | the secret, `DocumentImport_Providers__<name>__ApiKey`; locally user secrets |
+| `Providers:<name>:ApiKey` (deepseek, gemini, anthropic) | the secret, `DocumentImport_Providers__<name>__ApiKey`, `protofast/dev`'s locally |
 | `Providers:Default`, `Providers:Fallback` | `appsettings.json`: deepseek, then gemini         |
 | `Conversion:BaseUrl`                     | the spec's `env`, `http://conversion:8090`; locally conversion's endpoint |
 | `Consumer:MaxConcurrentImports`          | 2 (`appsettings.json`), 8 locally                  |

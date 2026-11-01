@@ -8,8 +8,7 @@ namespace ProtoFast.ProtoStrap;
 /// <summary>
 /// ProtoStrapSecret reads a component's keys from the environment's secret, SECRET_ID
 /// (ProtoStrap's docs/secrets.md): the Shared_ keys, then its own under SECRET_PREFIX, which
-/// win. Under <c>aspire run</c> there is no SECRET_ID, and the AppHost sets the same keys,
-/// without prefixes, as environment variables.
+/// win. Under <c>aspire run</c> SECRET_ID is dev's secret, protofast/dev, read the same way.
 /// </summary>
 public static class ProtoStrapSecret
 {
@@ -56,7 +55,8 @@ public static class ProtoStrapSecret
             .ToList();
     }
 
-    // Read uses the SDK's default credentials, which ProtoStrap's agent serves, and AWS_REGION.
+    // Read uses the SDK's default credentials and AWS_REGION: the role ProtoStrap's agent serves, or
+    // under aspire run the developer's AWS_PROFILE.
     private static string Read(string secretId)
     {
         using var client = new AmazonSecretsManagerClient();

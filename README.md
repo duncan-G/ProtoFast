@@ -3,7 +3,7 @@
 ProtoFast is a small platform: Angular SSR clients (the protofast product site, ThePlot, and an
 admin host with a console per app), .NET services (auth, the api, payments, document-import),
 a Python conversion service, Keycloak, PostgreSQL and Redis. It deploys with
-[ProtoStrap](https://github.com/duncan-G/protostrap) 0.1.0 to one AWS account, prod. Dev is
+[ProtoStrap](https://github.com/duncan-G/protostrap) 0.1.2 to one AWS account, prod. Dev is
 the local run, `aspire run`.
 
 ```mermaid
@@ -74,7 +74,7 @@ the version ProtoStrap's `go.mod` names, with a ProtoStrap checkout beside this 
 (`../ProtoStrap`): the AppHost builds ProtoStrap.Hosting and the `protostrap` CLI, which
 renders the local edge, from it. On Ubuntu, `bash scripts/setup-dev-dependencies.sh`
 installs Docker, Node's current LTS and the latest Aspire CLI when they're missing; the .NET
-SDK and Go are yours to install. No AWS account or profile is needed.
+SDK and Go are yours to install. The services read dev's secret with an AWS SSO profile, below.
 
 ```bash
 aspire run
@@ -92,9 +92,12 @@ aspire run
 The clients run as Angular dev servers behind the edge; `SsrHost__Dev=true aspire run` (the
 `https-ssr-host` profile) runs the production clients image instead. Admin operators
 `protofast@admin.test` and `theplot@admin.test` sign in with the code smtp4dev receives.
-Imports need a model API's key in the AppHost's user secrets, such as
-`dotnet user-secrets --project apphost set Parameters:deepseek-api-key <key>`; without one,
-everything runs and imports fail at the model call.
+The services read dev's secret, `protofast/dev`, as they read prod's, with the `developer` AWS
+SSO profile: run `aws sso login --profile developer` first
+([layer 02](docs/02-local-development.md#local-secrets-and-keys)). Imports need a model API's
+key in it, such as `../ProtoStrap/scripts/set-secret.sh protofast/dev
+DocumentImport_Providers__deepseek__ApiKey=-`; without one, everything runs and imports fail at
+the model call.
 
 To run beside another AppHost that holds port 20000 or 8025:
 `aspire run -- --LocalEdge:Port 20100 --Smtp4dev:Port 8125`.
@@ -152,7 +155,7 @@ in order:
 8. `gh workflow run deploy.yml`, and approve it. From then on every push to `main` deploys to
    prod once approved.
 
-The account also holds dev's secret, `protofast/dev`, beside prod's. Developers make it once
-and fill it with their Identity Center sign-in
-([layer 06](docs/06-secrets.md#one-secret-per-environment)). Nothing is deployed for dev, and
-no workflow touches its secret: dev is the local run.
+The account also holds dev's secret, `protofast/dev`, beside prod's, which `aspire run` reads.
+A Developer makes it once and fills it with `scripts/set-secrets.sh dev`, with their Identity
+Center sign-in ([layer 06](docs/06-secrets.md#dev)). Nothing is deployed for dev, and no
+workflow touches its secret: dev is the local run.

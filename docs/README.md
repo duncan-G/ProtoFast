@@ -3,7 +3,7 @@
 ProtoFast is a small platform: four Angular SSR clients served by one Node host, four .NET
 services (auth, the api, payments, document-import), a Python conversion service, Keycloak,
 PostgreSQL and Redis. It deploys with [ProtoStrap](https://github.com/duncan-G/protostrap)
-0.1.0, to one AWS account, prod. Dev is the local run, `aspire run`.
+0.1.2, to one AWS account, prod. Dev is the local run, `aspire run`.
 
 ## The one idea that holds it together
 
@@ -22,7 +22,7 @@ A component never asks where it runs. It reads its hostnames from `HOST_<NAME>` 
 telemetry endpoint from the `OTEL_` variables, and its secrets by their names
 (`ConnectionStrings__auth`, `InternalJwt__PublicKeyPem`, ...). In an account ProtoStrap sets
 these and the component reads its secrets from `protofast/<environment>`; locally the AppHost
-sets the same names as environment variables. The few places that check
+sets the same names, and a service reads its secrets from `protofast/dev`. The few places that check
 `PROTOSTRAP_REPLICA` (mail sender, log output, drain time) are named in the layers.
 
 ## The layers
@@ -45,7 +45,7 @@ sets the same names as environment variables. The few places that check
   LocalStack, Keycloak, smtp4dev, the services, the four Angular dev servers and ProtoStrap's
   local edge. Browsers use `http://protofast.dev.localhost:20000`,
   `http://theplot.dev.localhost:20000`, `http://admin.dev.localhost:20000` and
-  `http://auth.dev.localhost:20000`. No AWS account is needed.
+  `http://auth.dev.localhost:20000`. The services read `protofast/dev` with your AWS SSO sign-in.
 - **In an account**: ProtoStrap's VMs. An ingress VM runs the edge (cloudflared and Envoy),
   the general pool runs the services and clients, conversion and document-import start in the
   general VMs' spare room and get Spot compute VMs when they outgrow it, and data-1 runs
@@ -55,9 +55,9 @@ sets the same names as environment variables. The few places that check
   written by the AppHost. The AppHost names prod's hostnames too; bootstrap's `hosts` is what
   prod's platform root uses.
 - **Secrets** live in one AWS Secrets Manager secret, `protofast/prod`, with keys prefixed by
-  who reads them. An Org Admin fills it with `scripts/set-secrets.sh`. Locally the AppHost
-  generates its own values. Dev's secret, `protofast/dev`, is beside prod's in the same
-  account; Developers manage it, and the AppHost doesn't read it yet.
+  who reads them. An Org Admin fills it with `scripts/set-secrets.sh`. Locally the
+  services read dev's secret, `protofast/dev`, the same way, with the developer's sign-in:
+  it is beside prod's in the same account, and Developers manage it.
 - **Deploys** go through ProtoStrap's reusable workflows: every push to `main` deploys to prod
   once someone approves. Each image is tagged from its own sources, so an unchanged
   component isn't rebuilt or restarted. A rollback is deploying an earlier commit again.
@@ -72,17 +72,17 @@ These docs say what ProtoFast does with ProtoStrap, not how ProtoStrap works. Fo
 
 | Topic                                      | ProtoStrap doc                                                                                        |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| The spec, the edge, the scheduler, the contract every component keeps | [protostrap.md](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/protostrap.md) |
-| The AppHost, the spec generator and the local edge | [protostrap-aspire.md](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/protostrap-aspire.md) |
-| The environment's secret                   | [secrets.md](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/secrets.md)                       |
-| Configure tasks (keycloak-config, postgres-config) | [config.md](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/config.md)                 |
-| Email through SES                          | [email.md](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/email.md)                           |
-| Telemetry, Grafana                         | [telemetry.md](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/telemetry.md)                   |
-| VMs, pools, data-1                         | [vms.md](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/vms.md)                               |
-| Network, Cloudflare, the tunnel            | [network.md](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/network.md)                       |
-| Roles and people                           | [identity.md](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/identity.md)                     |
-| Going to production, rolling back          | [production.md](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/production.md)                 |
-| The Terraform modules                      | [infra/README.md](https://github.com/duncan-G/protostrap/blob/v0.1.0/infra/README.md)                 |
+| The spec, the edge, the scheduler, the contract every component keeps | [protostrap.md](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/protostrap.md) |
+| The AppHost, the spec generator and the local edge | [protostrap-aspire.md](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/protostrap-aspire.md) |
+| The environment's secret                   | [secrets.md](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/secrets.md)                       |
+| Configure tasks (keycloak-config, postgres-config) | [config.md](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/config.md)                 |
+| Email through SES                          | [email.md](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/email.md)                           |
+| Telemetry, Grafana                         | [telemetry.md](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/telemetry.md)                   |
+| VMs, pools, data-1                         | [vms.md](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/vms.md)                               |
+| Network, Cloudflare, the tunnel            | [network.md](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/network.md)                       |
+| Roles and people                           | [identity.md](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/identity.md)                     |
+| Going to production, rolling back          | [production.md](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/production.md)                 |
+| The Terraform modules                      | [infra/README.md](https://github.com/duncan-G/protostrap/blob/v0.1.2/infra/README.md)                 |
 
 ProtoStrap's Claude Code skills (`protostrap-spec`, `protostrap-secrets`, `protostrap-operate`,
 ...) are pinned to the same version in [`.claude/settings.json`](../.claude/settings.json).

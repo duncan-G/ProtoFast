@@ -8,7 +8,7 @@ one. Self-contained.*
 Each deployed environment's account holds every runtime secret in one AWS Secrets Manager
 secret, `protofast/<environment>`: `protofast/prod` in prod. It is one JSON object of keys,
 each starting with who reads it
-([ProtoStrap's secrets](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/secrets.md)):
+([ProtoStrap's secrets](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/secrets.md)):
 
 | Prefix                 | Read by                                                          |
 | ---------------------- | ---------------------------------------------------------------- |
@@ -31,9 +31,8 @@ ProtoFast's keys:
 | `Keycloak_KC_BOOTSTRAP_ADMIN_CLIENT_SECRET`            | keycloak, keycloak-config (secret files): the `protofast-admin` client in `master` | yes, once |
 | `Shared_Keycloak__ClientSecretProtofastWeb`, `…ClientSecretTheplotWeb`, `…ClientSecretAdmin` | auth, keycloak-config (secret files) | yes |
 | `Shared_Keycloak__AdminClientSecret`                   | auth, keycloak-config: every realm's `account-admin` client | yes       |
-| `Keycloak_GOOGLE_CLIENT_ID`, `…_SECRET`, `Keycloak_APPLE_CLIENT_ID`, `…_TEAM_ID`, `…_KEY_ID`, `…_PRIVATE_KEY` | keycloak-config (secret files): social sign-in, empty until enabled | yes, empty |
 | `Auth_InternalJwt__PrivateKeyPem`, `Auth_InternalJwt__KeyId` | auth                                   | yes                      |
-| `Shared_InternalJwt__PublicKeyPem`                     | api, payments                                | yes                      |
+| `Api_InternalJwt__PublicKeyPem`, `Payments_InternalJwt__PublicKeyPem` | api, payments: a copy each, so a rotation replaces both | yes |
 | `DocumentImport_Providers__deepseek__ApiKey`, `…gemini__ApiKey`, `…anthropic__ApiKey` | document-import | no: set the ones the environment uses |
 | `Edge_TUNNEL_TOKEN`                                    | ProtoStrap's edge                            | no: ProtoStrap's `set-edge-token.sh` |
 
@@ -45,12 +44,38 @@ password.
 **Terraform creates the secret empty and never writes a value**, so no value passes through
 Terraform's state, CI or an image. An Org Admin fills it in from their own machine.
 
+## Dev
+
 Dev is the local run, with no account of its own. Its secret, `protofast/dev`, sits beside
-`protofast/prod` in ProtoFast's one account, named like it. No Terraform makes it: Developers
-make it once (`aws secretsmanager create-secret --name protofast/dev`) and fill it with
-ProtoStrap's `scripts/set-secret.sh` and their own sign-in. The AppHost doesn't read it yet:
-it makes the local values and keeps the third-party keys in user secrets
-([below](#how-a-value-reaches-a-process)).
+`protofast/prod` in ProtoFast's one account, named like it. The services read it as they read
+prod's: under `aspire run` ProtoStrap.Hosting's environment gives each .NET process
+`SECRET_ID=protofast/dev`, its `SECRET_PREFIX`, `AWS_REGION` and `AWS_PROFILE=developer`, and
+`AddProtoStrapSecret` reads it with the SDK's default chain, which finds your SSO profile where
+a replica finds its role ([ProtoStrap's dev
+secret](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/secrets.md#dev),
+[layer 02](02-local-development.md#local-secrets-and-keys)).
+
+It holds only what the processes read: the internal JWT and the model APIs' keys. The local
+resources' keys are Aspire's, generated and kept in the AppHost's user secrets: the connection
+strings, PostgreSQL's and Redis's passwords, and Keycloak's bootstrap client, `admin` password
+and client secrets, which keycloak and keycloak-config can't read from Secrets Manager. A
+Keycloak client secret left in `protofast/dev` would reach auth over Aspire's, so
+`scripts/set-secrets.sh dev` removes any it finds.
+
+No Terraform makes it. A Developer makes it once for the team and fills it, with the
+Developer permission set:
+
+```bash
+aws secretsmanager create-secret --region us-west-2 --name protofast/dev
+```
+
+```bash
+AWS_PROFILE=developer AWS_REGION=us-west-2 scripts/set-secrets.sh dev
+```
+
+The model API keys are empty until someone sets theirs. Don't tag it `protostrap:app`: the
+Developer permission set can't read a secret with that tag, which is how it keeps Developers
+out of prod's.
 
 ## Filling an environment's secret
 
@@ -114,19 +139,19 @@ that's missing fails the replica.
 | `postgres`        | `POSTGRES_PASSWORD`                                                | `POSTGRES_PASSWORD_FILE`, on an empty data directory |
 | `redis`           | `REDIS_PASSWORD`                                                   | its command: `--requirepass "$(cat /run/secrets/REDIS_PASSWORD)"` |
 | `keycloak`        | `ConnectionStrings__keycloak`, `KC_BOOTSTRAP_ADMIN_CLIENT_SECRET`  | its entrypoint, which turns them into `KC_DB_*` and the bootstrap client ([layer 05](05-identity.md#2-its-entrypoint-and-variables)) |
-| `keycloak-config` | `KC_BOOTSTRAP_ADMIN_CLIENT_SECRET`, `Keycloak__ClientSecretProtofastWeb`, `…TheplotWeb`, `…Admin`, `Keycloak__AdminClientSecret`, `GOOGLE_*`, `APPLE_*` | its entrypoint, as variables the realm files substitute |
+| `keycloak-config` | `KC_BOOTSTRAP_ADMIN_CLIENT_SECRET`, `Keycloak__ClientSecretProtofastWeb`, `…TheplotWeb`, `…Admin`, `Keycloak__AdminClientSecret` | its entrypoint, as variables the realm files substitute |
 
-**3. Locally, environment variables.** There is no secret under `aspire run`. The AppHost sets
-each component's keys, with the same names and no prefix, as environment variables:
-generated values kept in its user secrets, a fresh internal JWT pair each run, and the model
-APIs' keys if you set them ([layer 02](02-local-development.md#local-secrets-and-keys)).
+**3. Locally, the services the same way, from dev's secret.** Under `aspire run`, `SECRET_ID`
+is `protofast/dev` and `AWS_PROFILE` your sign-in. The containers with `secret_files` are local
+resources there, and take Aspire's parameters as variables, which their entrypoints read
+before any file ([Dev](#dev), [layer 02](02-local-development.md#local-secrets-and-keys)).
 
 ## Changing a value
 
 Write the new value with `set-secrets.sh --rotate <group>` or ProtoStrap's `set-secret.sh`.
 ProtoStrap notices within a minute, waits two minutes for the secret to settle, then applies
 it, in `depends_on` order
-([changing a value](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/secrets.md#changing-a-value)):
+([changing a value](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/secrets.md#changing-a-value)):
 
 | Component           | Takes a new key by                                                    |
 | ------------------- | --------------------------------------------------------------------- |
@@ -134,7 +159,7 @@ it, in `depends_on` order
 | redis               | its command: `CONFIG SET requirepass`, logged in with the old password if the new one fails |
 | postgres-config     | it runs again (a configure task's keys changed), giving each database's user the password in its new connection string, before the services that connect get it |
 | keycloak-config     | it runs again, setting the new client secrets on the realms before auth gets them |
-| keycloak            | its replicas are replaced on a change to any `Keycloak_` key, the social sign-in keys included: its own prefix, from its name, is the one keycloak-config's keys use |
+| keycloak            | its replicas are replaced on a change to any `Keycloak_` key: its own prefix, from its name, is the one keycloak-config's keys use |
 | everything else     | its replicas are replaced, a quarter at a time                         |
 
 There is no going back to an old value: once PostgreSQL has a new password, the old one no
@@ -144,10 +169,10 @@ longer works. A wrong value is fixed by writing the right one.
 
 |        | Private key                                                  | Public key                                       |
 | ------ | ------------------------------------------------------------ | ------------------------------------------------ |
-| Locally | made by the AppHost each run, set on auth as `InternalJwt__PrivateKeyPem`, key id `local` | the same run's, set on the api and payments as `InternalJwt__PublicKeyPem` |
-| In an account | `Auth_InternalJwt__PrivateKeyPem`, read in-process by auth only | `Shared_InternalJwt__PublicKeyPem`, read in-process by the api and payments |
+| Locally | `protofast/dev`'s `Auth_InternalJwt__PrivateKeyPem`, read in-process by auth only | `protofast/dev`'s `Api_InternalJwt__PublicKeyPem` and `Payments_InternalJwt__PublicKeyPem`, read in-process by the api and payments |
+| In an account | `Auth_InternalJwt__PrivateKeyPem`, read in-process by auth only | `Api_InternalJwt__PublicKeyPem` and `Payments_InternalJwt__PublicKeyPem`, read in-process by the api and payments |
 
-A rotation writes the private key, the public key and a new key id in one run. Tokens live
+A rotation writes the private key, both copies of the public key and a new key id in one run. Tokens live
 five minutes.
 
 ## Who can read it
@@ -155,7 +180,7 @@ five minutes.
 Secrets Manager can't grant one key alone: every component's role can read every key in the
 environment's secret, and so can the edge's role and data-1's. Platform Admins and Developers
 can't read it; Org Admins set it. ProtoStrap names this an accepted risk
-([who can read it](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/secrets.md#who-can-read-it)),
+([who can read it](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/secrets.md#who-can-read-it)),
 which is why each database has its own user rather than every service holding the
 superuser's password.
 
@@ -168,15 +193,17 @@ superuser's password.
 
 ## Adding a secret
 
-1. **Give the component the value locally.** In the AppHost, add a parameter (generated with
-   `GenerateParameterDefault`, or `AddLocalSecret` for one a developer keeps in user secrets)
-   and pass it with `WithEnvironment("Section__Key", parameter)`. A secret parameter lands in
-   the spec's `secrets` for that component, without a prefix.
-2. **Write the spec** (`aspire do protostrap-spec`).
-3. **Set it in each deployed environment** under the right prefix: the component's own for one
-   reader, `Shared_` when several must agree. A key every environment needs and that can be made
-   belongs in `scripts/set-secrets.sh`; otherwise `set-secret.sh protofast/<environment>
-   Prefix_Section__Key=-`.
+1. **A .NET component's key needs nothing in the AppHost.** It reads every key under its own
+   prefix, and a change to one replaces its replicas. Give each reader its own copy, under its
+   prefix, rather than a `Shared_` key: a `Shared_` key reaches only the components whose spec
+   lists it, as references list the connection strings.
+2. **A key for keycloak or keycloak-config goes in the AppHost.** Pass `Generated("name")` with
+   `WithEnvironment("KEY", parameter)`: in the spec it names the component's secret file, and
+   under `aspire run` it is Aspire's value, kept out of `protofast/dev`. Then write the spec
+   (`aspire do protostrap-spec`).
+3. **Set it in each environment's secret** under the reader's prefix, and in `protofast/dev`
+   for a .NET component. A key that can be made belongs in `scripts/set-secrets.sh`; otherwise
+   `set-secret.sh protofast/<environment> Prefix_Section__Key=-`.
 4. **Set it before the release that reads it.** A .NET service reads whatever it finds; a
    component with `secret_files` fails if a listed key is missing.
 

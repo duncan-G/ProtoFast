@@ -25,7 +25,8 @@ Prerequisites:
 
 On Ubuntu, `bash scripts/setup-dev-dependencies.sh` installs Docker, Node's current LTS and
 the latest Aspire CLI when they're missing, not the versions above; the .NET SDK and Go are
-yours to install. No AWS account, profile or secret is needed.
+yours to install. The .NET services read `protofast/dev` with an AWS SSO profile in ProtoFast's
+account ([Local secrets and keys](#local-secrets-and-keys)).
 
 | Open                                 | For                                                    |
 | ------------------------------------ | ------------------------------------------------------ |
@@ -50,9 +51,9 @@ yours to install. No AWS account, profile or secret is needed.
 | `smtp4dev`                       | container           | mail catcher on port 8025 (web) and its SMTP port                        |
 | `auth-migrations`, `protofast-migrations` | projects   | run to completion before auth, and before the api and document-import; each has a **Rebuild** command that drops its schema and migrates again |
 | `auth`                           | project             | `Keycloak__Authority` to Keycloak's own URL, the client secrets, the internal JWT's private key, `Smtp__Host/Port` to smtp4dev with `Smtp__StartTls=false` |
-| `api`, `payments`                | projects            | the internal JWT's public key; the api also LocalStack's test credentials |
+| `api`, `payments`                | projects            | the internal JWT's public key, from `protofast/dev`                       |
 | `conversion`                     | Dockerfile          | LocalStack's bucket and test credentials, OTLP to the dashboard          |
-| `document-import`                | project             | `Conversion__BaseUrl` to conversion, the model APIs' keys (empty unless set) |
+| `document-import`                | project             | `Conversion__BaseUrl` to conversion; the model APIs' keys from `protofast/dev` |
 | `otel-collector`                 | Dockerfile          | exports browsers' telemetry to the dashboard, with its key in `ASPIRE_OTLP_API_KEY` |
 | `protofast`, `theplot`, `admin`, `admin-theplot` | `ng serve` | `PORT`, `SERVER_URL` (the host's local origin), OTLP to the dashboard; the admin ones `ADMIN_CONSOLE_ROLES` |
 
@@ -72,7 +73,7 @@ Things worth knowing because they explain otherwise odd behaviour:
 - **A resource's own URL on the dashboard skips the edge,** its routes and the authorizer. Go
   through `http://«host».dev.localhost:20000` to see what a browser sees.
 - **The local edge reaches projects at `host.docker.internal`** on their port and containers by
-  name on Aspire's network ([ProtoStrap's local edge](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/protostrap-aspire.md#the-local-edge)).
+  name on Aspire's network ([ProtoStrap's local edge](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/protostrap-aspire.md#the-local-edge)).
   When the ProtoStrap checkout changes, `protostrap-build` says `Behind`; its **Rebuild**
   command rebuilds `protostrap` and restarts the edge.
 - **Readiness skips the host test locally.** Services answer `/healthz` for any Host when
@@ -82,20 +83,38 @@ Things worth knowing because they explain otherwise odd behaviour:
 
 ## Local secrets and keys
 
-Nothing is read from AWS. The AppHost sets each component's secrets as environment variables,
-with the names a component reads from the environment's secret but without the prefix
-(`Keycloak__ClientSecretAdmin`, `InternalJwt__PrivateKeyPem`, ...).
+The services read dev's secret, `protofast/dev`, in ProtoFast's account beside prod's, as they
+read prod's ([layer 06](06-secrets.md#dev)). Each .NET process gets `SECRET_ID=protofast/dev`,
+its `SECRET_PREFIX`, `AWS_REGION` (the launch profile's `us-west-2`, LocalStack's too) and
+`AWS_PROFILE=developer`, and reads its keys at startup with your sign-in, which also signs its
+calls to LocalStack. A component reads them when it starts: restart one to take a new value.
 
-| Value                                                     | Where it comes from                                         |
-| --------------------------------------------------------- | ----------------------------------------------------------- |
-| Keycloak's bootstrap admin client secret, the four realm client secrets, Keycloak's `admin` password | generated once and kept in the AppHost's user secrets (`protofast-apphost-dev`), as `Parameters:keycloak-admin-secret`, `protofast-web-client-secret`, `theplot-web-client-secret`, `admin-client-secret`, `account-admin-client-secret`, `keycloak-password` |
-| PostgreSQL's and Redis's passwords, connection strings    | Aspire's own parameters and references, also kept across runs |
-| The internal JWT's key pair                               | made fresh on every run (EC P-256), key id `local`; tokens live five minutes |
-| The model APIs' keys                                      | `Parameters:deepseek-api-key`, `gemini-api-key`, `anthropic-api-key` in user secrets if you set them; empty otherwise, and imports fail at the model call |
-| Social sign-in's credentials                              | `Parameters:google-client-id`, `google-client-secret`, `apple-client-id`, `apple-team-id`, `apple-key-id`, `apple-private-key` in user secrets if you set them, for keycloak-config; empty otherwise, and the providers stay disabled |
+Once per machine, make the profile in ProtoFast's account with the Developer permission set:
 
 ```bash
-dotnet user-secrets --project apphost set Parameters:deepseek-api-key <key>
+aws configure sso --profile developer
+```
+
+Then sign in before each `aspire run`, and again when the session expires. Without a session,
+the .NET services fail at startup with the SDK's SSO error:
+
+```bash
+aws sso login --profile developer
+```
+
+| Value                                                     | From                                                          |
+| --------------------------------------------------------- | ------------------------------------------------------------- |
+| The internal JWT's key pair and key id                    | `protofast/dev`: `Auth_InternalJwt__PrivateKeyPem`, `Auth_InternalJwt__KeyId`, and the public key under `Api_` and `Payments_` |
+| The model APIs' keys                                      | `protofast/dev`: `DocumentImport_Providers__{deepseek,gemini,anthropic}__ApiKey`; empty until set, and imports fail at the model call |
+| PostgreSQL's and Redis's passwords, the connection strings | Aspire, generated and kept in the AppHost's user secrets      |
+| Keycloak's bootstrap admin client secret, the four realm client secrets, its local `admin` password | Aspire, generated and kept in the AppHost's user secrets: keycloak and keycloak-config can't read Secrets Manager |
+
+`scripts/set-secrets.sh dev` fills `protofast/dev` once for the team, and removes the local
+resources' keys if it finds any ([layer 06](06-secrets.md#dev)). Set a model API's key with
+ProtoStrap's script, typed without echo:
+
+```bash
+../ProtoStrap/scripts/set-secret.sh protofast/dev DocumentImport_Providers__deepseek__ApiKey=-
 ```
 
 Keeping the generated values matters because the data volumes keep their passwords: a new
@@ -122,8 +141,8 @@ has.
   services, the dev servers and otel-collector, which skips the check, and so browsers'
   telemetry, arrive.
 - **The local edge isn't Cloudflare:** no TLS and no cache. Route rates and the authorizer
-  apply in both; prod sets no per-client rate limit at Cloudflare yet
-  ([layer 08](08-infrastructure.md#the-platform-root)).
+  apply in both; Cloudflare's WAF and cache rules apply only in an account
+  ([layer 04](04-edge.md#tls-and-forwarded-headers)).
 
 ## Variations
 
@@ -176,10 +195,10 @@ This picks up the client's `.nvmrc` through `nvm`/`fnm` and runs `ng serve`.
 
 ```
 apphost/Program.cs                        ← the application, for aspire run and the spec
-apphost/LocalExtensions.cs                ← what only aspire run adds (LocalStack credentials, OTLP, local secrets)
+apphost/LocalExtensions.cs                ← what only aspire run adds (LocalStack credentials, OTLP)
 apphost/ClientApp/, apphost/Postgres/     ← the dev servers; the migrations resources and their Rebuild command
 apphost/Properties/launchSettings.json    ← dashboard URLs, ASPNETCORE_ENVIRONMENT, the https-ssr-host profile
-apphost user secrets (protofast-apphost-dev) ← generated passwords and client secrets, model API keys
+protofast/dev (Secrets Manager)           ← the services' local secrets, read as prod's are
 services/*/…/appsettings.Development.json ← per-service local defaults
 services/keycloak-config/realms/          ← the realms, applied on every start
 services/keycloak/themes/                 ← login and email themes, bind-mounted

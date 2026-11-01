@@ -1,5 +1,5 @@
 github_repository     = "duncan-G/ProtoFast"
-region                = "us-east-1"
+region                = "us-west-2"
 cloudflare_account_id = "0123456789abcdef0123456789abcdef"
 cloudflare_zone       = "protofast.dev"
 hosts = {

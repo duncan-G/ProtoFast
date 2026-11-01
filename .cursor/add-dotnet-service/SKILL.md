@@ -91,7 +91,6 @@ Ask when the request doesn't say. Each is the developer's call:
 
    ```csharp
    builder.AddProject<Projects.ProtoFast_<Name>_Api>("<name>")
-       .WithEnvironment("InternalJwt__PublicKeyPem", internalJwtPublicKey)
        .PublishAsProtoStrapService(s => Authorized(s
            .Request(cpu: "100m", memory: "128Mi")
            .Ready(Readiness.Grpc)
@@ -102,17 +101,20 @@ Ask when the request doesn't say. Each is the developer's call:
    - `Ready(Readiness.Grpc)` makes it a `grpc` service: the edge speaks gRPC to it and
      translates gRPC-Web. `PackageRoutes` routes `<host>/<package>.` on each host, and
      `Authorized` has the edge ask auth first and pass on `x-internal-jwt` and four more headers.
+     It verifies the JWT with its own copy of the public key, `<Name>_InternalJwt__PublicKeyPem`
+     (step 8).
    - `Request` is required. Add `.Pool(Pool.Compute)` and
      `.Scale(min: 2, max: 4, demand => demand.Cpu(0.70))` as decided.
    - Overlay only: no `Routes`, no `Authorized`; give each caller
      `WithEnvironment("<Name>__BaseUrl", <name>.GetEndpoint("http"))`, as document-import gets
      conversion's. No gRPC service is called that way yet: agree with the user how it
      authenticates callers.
-   - A bucket or queue: `.WithReference(...)` and `.WithLocalStackCredentials()`; a new one is
-     `AddProtoStrapBucket` or `AddProtoStrapQueue`.
-   - A key of its own: a parameter (`Generated("...")`, or `builder.AddLocalSecret("...")` for
-     one a developer keeps in user secrets) passed with `WithEnvironment("Section__Key", ...)`.
-     In an account it is `<Name>_Section__Key`, or `Shared_` when several components read it.
+   - A bucket or queue: `.WithReference(...)`; a new one is `AddProtoStrapBucket` or
+     `AddProtoStrapQueue`. A process signs its LocalStack calls with `AWS_PROFILE`: never give it
+     `.WithLocalStackCredentials()`.
+   - A key of its own needs nothing here: it reads `<Name>_Section__Key` from the secret,
+     `protofast/dev` locally. A key several components read is a copy under each one's prefix,
+     not `Shared_` (docs/06-secrets.md, "Adding a secret").
 
 7. **A database of its own,** if decided:
    - `var <name>Db = postgres.AddDatabase("<name>-db", databaseName: "<db>");`; on
@@ -132,8 +134,9 @@ Ask when the request doesn't say. Each is the developer's call:
 
 8. **Prod's keys.** A key that can be generated goes in `scripts/set-secrets.sh`; an Org Admin
    sets any other with ProtoStrap's `scripts/set-secret.sh protofast/prod <Name>_Section__Key=-`,
-   before the release that reads it (docs/06-secrets.md, "Adding a secret").
-   `Shared_InternalJwt__PublicKeyPem` is there already.
+   before the release that reads it (docs/06-secrets.md, "Adding a secret"). For the internal
+   JWT, add `<Name>_InternalJwt__PublicKeyPem` to set-secrets.sh's internal JWT block, its `has`
+   and its `put`, beside the api's and payments'.
 
 9. **Tests,** written before the code: `services/<folder>/tests/ProtoFast.<Name>.UnitTests`,
    with the xunit.v3 packages of
@@ -157,7 +160,7 @@ Ask when the request doesn't say. Each is the developer's call:
     "Serves"), docs/02-local-development.md (what the AppHost starts),
     docs/03-services-and-clients.md (the .NET services, the internal JWT's readers,
     `Protocols: Http2`), docs/04-edge.md (routes, authorized services), docs/06-secrets.md
-    (its keys, `Shared_InternalJwt__PublicKeyPem`'s readers), docs/07-deployment.md (the .NET
+    (its keys, the public key's copies), docs/07-deployment.md (the .NET
     images), docs/09-reference.md (its variables, the file map, port 8080) and README.md.
 
 ## Check it works

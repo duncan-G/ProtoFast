@@ -39,7 +39,7 @@ process, built on a platform layer we own and the agent cannot change.
 | The console gate: auth's answer to the edge redirects anyone without the console's role | `Tenants:ByHost:admin:Consoles` in auth's `appsettings.json`, [ExtAuthzEndpoint](../../services/auth/src/ProtoFast.Auth.Api/Endpoints/ExtAuthzEndpoint.cs) |
 | The route and the CSP | `admin/theplot/` in `apphost/Program.cs`; `ADMIN_CSP` in `clients/host/host.mjs` and the dev servers' `angular.json` |
 | Its own component in an account (`clients-admin-theplot`), its own dev server locally | `apphost/Program.cs` |
-| Isolation checks in CI; CODEOWNERS | `scripts/check-admin-console.py` (the `clients` job of `ci.yml`), `.github/CODEOWNERS` |
+| Isolation checks in CI | `scripts/check-admin-console.py` (the `clients` job of `ci.yml`) |
 | Grant script and console scaffold | `scripts/keycloak-grant-admin.py`, `scripts/scaffold-admin-console.py` |
 
 ## 2. One host, a process per console
@@ -69,9 +69,9 @@ both consoles' code on that origin, so app 1's console could call app 2's admin 
 operator's session. Operators who hold one role, which is the expected case, are unaffected.
 Grant more than one console role only to people we would trust with both apps anyway.
 
-ProtoStrap's edge never lets a request through unasked: while auth is down or slower than two
-seconds, the admin host answers 503. The edge always removes a client-supplied `x-roles`
-first, so only auth's can reach a console's SSR process.
+While auth is down or slower than half a second, the edge sends a console's requests on
+anonymous, and the console's own server sends the browser to sign in. The edge always removes
+a client-supplied `x-roles` first, so only auth's can reach a console's SSR process.
 
 ## 3. Platform and app split
 
@@ -138,8 +138,8 @@ A revoke takes effect at the operator's next access-token refresh, within one to
 
 ## 5. The agent's boundary
 
-- **Write scope**: `clients/admin-{app}/` only; CODEOWNERS covers everything else, including the
-  kit symlink inside that folder.
+- **Write scope**: `clients/admin-{app}/` only, not the kit symlink inside that folder; review on
+  `main`'s ruleset covers everything else.
 - **Imports and dependencies**: `scripts/check-admin-console.py` (run for each console in CI)
   allows only relative imports, `@angular/*`, `@connectrpc/*`, `@bufbuild/*`, `@opentelemetry/*`,
   `rxjs`, `tslib`, `express`, `node:*` and the reviewed exceptions `highlight.js` and `marked`,
@@ -156,7 +156,7 @@ through platform RPCs.
 ## 6. Adding a client app's console
 
 `scripts/scaffold-admin-console.py APP "Title"` writes the console project (from theplot's), its
-proto folder, CODEOWNERS entries and its card on the console list, then prints the platform wiring
+proto folder and its card on the console list, then prints the platform wiring
 still done by hand: `KnownApps` (and the grant script's list), the `admin-{app}` role in the
 operators realm file, `RequiredRoles` and `Consoles` in auth's admin tenant, the RPCs, the
 AppHost's dev server and `clients-admin-{app}` component, a build stage in `clients/Dockerfile`,

@@ -8,8 +8,8 @@ ProtoFast runs no proxy of its own. In an account the edge is ProtoStrap's: one 
 zone on the ingress VM, holding cloudflared, which runs the Cloudflare tunnel, and Envoy.
 Locally `aspire run` runs the same Envoy as the `protostrap-edge` container on port 20000,
 rendered by the same code from the same routes
-([ProtoStrap's edge](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/protostrap.md#edge),
-[the local edge](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/protostrap-aspire.md#the-local-edge)).
+([ProtoStrap's edge](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/protostrap.md#edge),
+[the local edge](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/protostrap-aspire.md#the-local-edge)).
 
 There is no Envoy config in this repository. The routes are each service's `Routes(...)` in
 [`apphost/Program.cs`](../apphost/Program.cs), written into the spec's `routes`, and the
@@ -58,7 +58,7 @@ Three things about this table are load-bearing:
   the account console, the token endpoint and the `master` realm aren't reachable from the
   internet at all; auth and keycloak-config reach Keycloak at `http://keycloak:8080` on the
   overlay.
-- **Every client route is authorized, static assets included.** See below.
+- **Every client route is authorized, except static files.** See below.
 
 ## auth's answer to every request
 
@@ -71,17 +71,23 @@ authorize:
   headers: [x-user-id, x-tenant, x-roles, x-internal-jwt, x-authenticated]
   forward: [cookie]
   respond: [set-cookie]
+  open: true
+  timeout: 500ms
+  skip: [/assets/, "*.js", "*.css", ...]   # the clients and the dev servers, not the theplot console
 ```
 
 For each request on one of their routes, the edge:
 
-1. removes the client's own copies of the five `headers`, so a browser can't send them;
-2. asks auth at `/ext-authz` followed by the request's path and query, with its method, Host,
+1. normalises its path (`..`, `%2e%2e`, `//`), so the route it takes and the path auth is asked
+   about are the same;
+2. removes the client's own copies of the five `headers`, so a browser can't send them;
+3. sends a static file (`skip`) on as it is, without asking;
+4. asks auth at `/ext-authz` followed by the request's path and query, with its method, Host,
    cookie and any `Authorization` header (Envoy always sends that one), but not its body
    ([`ExtAuthzEndpoint`](../services/auth/src/ProtoFast.Auth.Api/Endpoints/ExtAuthzEndpoint.cs));
-3. on a 2xx, adds auth's five headers to the request and sends it on, then adds auth's
+5. on a 200, adds auth's five headers to the request and sends it on, then adds auth's
    `set-cookie`, if any, to the response;
-4. on anything else, gives the browser auth's answer as it is.
+6. on any other answer, gives the browser auth's answer as it is.
 
 auth's answers:
 
@@ -96,13 +102,16 @@ auth's answers:
 So it **annotates and doesn't authorize**, apart from the consoles. Enforcement is downstream:
 the api and payments accept only a valid internal JWT, and the SSR servers redirect anonymous
 requests for protected pages. The consoles are mapped in auth's tenant config
-(`Tenants:ByHost:admin:Consoles`, `theplot` → `admin-theplot`), so only holders of the role
-reach `clients-admin-theplot`'s process at all, assets included
+(`Tenants:ByHost:admin:Consoles`, `theplot` → `admin-theplot`), so auth lets only holders of
+the role through to `clients-admin-theplot`'s process, assets included
 ([design](design/admin-consoles.md)).
 
-If auth doesn't answer within 2 seconds, or has no ready replica, the edge answers 503: it
-never lets a request through unasked. auth's sign-in routes aren't authorized, so they don't
-depend on that question; they resolve the session themselves.
+If auth doesn't answer within half a second, or has no ready replica, the edge sends the
+request on without auth's headers (`open`): it arrives anonymous. The api and payments refuse
+it for want of the internal JWT, the SSR servers treat the browser as signed out, and a
+console's own server sends it to sign in. auth's readiness doesn't check PostgreSQL, which
+answering the edge never reads. auth's sign-in routes aren't authorized, so they don't depend
+on that question; they resolve the session themselves.
 
 ## What isn't at the edge
 
@@ -117,9 +126,13 @@ depend on that question; they resolve the session themselves.
 - **In an account** Cloudflare terminates TLS and redirects plain HTTP to HTTPS; cloudflared
   sends each request to Envoy in the same container, and Envoy to the services over the
   overlay, all plain HTTP inside the VPC
-  ([Requests in](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/network.md#requests-in)).
-  Cloudflare caches static assets. Its per-client rate limit (`client_rate_limit` in the
-  platform root) is off so far, at 0.
+  ([Requests in](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/network.md#requests-in)).
+- **Cloudflare's own rules** are the AppHost's `AddCloudflareCdn`: a WAF rule blocks
+  scanners' probes (`/wp-admin/`, `/.env`, `/.git/` and the like), and a cache rule keeps the
+  ThePlot console (`/theplot/` on the admin host) out of Cloudflare's cache: its bundles are
+  behind its role, yet sent with `max-age=1y`. Other static files cache by Cloudflare's
+  default, for their own `max-age`. There's no per-client rate limit yet (`WithRateLimit`): it waits on real
+  traffic, and a Free-plan zone refuses one, as ProtoStrap scopes it by host.
 - **Locally** everything is plain HTTP on port 20000.
 - Keycloak (`KC_PROXY_HEADERS=xforwarded`), the SSR servers (`x-forwarded-for`,
   `x-forwarded-proto`) and the .NET services (`ASPNETCORE_FORWARDEDHEADERS_ENABLED`) trust the
@@ -132,10 +145,6 @@ depend on that question; they resolve the session themselves.
 
 - **Unverified in an account.** Nothing has run on AWS yet, in particular what
   `x-forwarded-proto` Keycloak and the SSR servers see behind Cloudflare and cloudflared.
-- **Static assets pass through the authorizer.** Every request on a client route, each
-  script, stylesheet and image included, costs a call to auth and a Redis lookup when it
-  carries a cookie, and fails with 503 while auth is down. Cloudflare's cache spares the edge
-  only what it serves itself.
 - **The browsers' collector route is open.** Anyone can post to `/otlp/`; its rate, size limit
   and `service.name` filter are what bound it.
 

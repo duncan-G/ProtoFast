@@ -12,7 +12,7 @@ Self-contained: no reading order required.*
 | Something only `aspire run` does (LocalStack credentials, smtp4dev, `start-dev`, `DEV_OPERATORS`, the dev servers) | `apphost/Program.cs` (`if (run)`), `apphost/LocalExtensions.cs`, `apphost/ClientApp/` | restart `aspire run` |
 | The local edge's or smtp4dev's port | `--LocalEdge:Port`, `--Smtp4dev:Port` (or user secrets) | restart `aspire run` |
 | A secret value in an account | `scripts/set-secrets.sh prod [--rotate <group>]`, or ProtoStrap's `scripts/set-secret.sh protofast/prod Key=-` | nothing: ProtoStrap applies it in about three minutes |
-| A local secret value | the AppHost's user secrets (`dotnet user-secrets --project apphost set Parameters:<name> …`) | restart `aspire run` |
+| A local secret value | dev's secret: `scripts/set-secrets.sh dev [--rotate <group>]`, or ProtoStrap's `scripts/set-secret.sh protofast/dev Key=-` | restart the components that read it: `aspire resource <name> restart` |
 | Edge routing | `Routes(...)`, `Route(...)` and `Authorize(...)` in `apphost/Program.cs` | write the spec, merge |
 | Who reaches an admin console | `Tenants:ByHost:admin:Consoles` and `RequiredRoles` in auth's `appsettings.json`; `ADMIN_CONSOLE_ROLES` in the AppHost | deploy auth and the clients (a merge) |
 | The admin consoles' CSP | `ADMIN_CSP` in `clients/host/host.mjs`; the admin dev servers' `angular.json` headers | merge |
@@ -27,7 +27,8 @@ Self-contained: no reading order required.*
 | A client's runtime behaviour | `clients/<name>/src/server.ts`, `app.config.ts` | merge |
 | The browsers' collector | `services/otel-collector/config.yaml` | merge |
 | Hostnames or email domains in an account | `infra/bootstrap/terraform.tfvars` | apply bootstrap again, then the platform (`infra.yml`) |
-| Retention, destroy protection, rate limit | `infra/prod/main.tf` | merge: the infra workflow applies it |
+| Cloudflare's WAF and cache rules, its rate limit | `AddCloudflareCdn` in `apphost/Program.cs` | write the spec, merge: the infra workflow applies it |
+| Retention, destroy protection | `infra/prod/main.tf` | merge: the infra workflow applies it |
 | CI | `.github/workflows/ci.yml` | merge |
 | The deploy pipeline | `.github/workflows/deploy.yml` | merge |
 | ProtoStrap's version | `WithVersion` in the AppHost, every workflow's `@v…` and `protostrap-ref`, `ci.yml`'s checkout, every root's `?ref=`, `.claude/settings.json` | one pull request |
@@ -46,24 +47,24 @@ Locally the AppHost sets the same names.
 | `Keycloak__Authority` | Keycloak's endpoint | spec: `http://keycloak:8080` |
 | `Keycloak__PublicAuthority` | unset: `ORIGIN_AUTH` | unset: `ORIGIN_AUTH` |
 | `Keycloak__ClientSecretProtofastWeb`, `…TheplotWeb`, `…Admin`, `Keycloak__AdminClientSecret` | generated parameters | secret `Shared_Keycloak__*` |
-| `InternalJwt__PrivateKeyPem`, `InternalJwt__KeyId` | a fresh pair each run; `local` | secret `Auth_InternalJwt__*` |
+| `InternalJwt__PrivateKeyPem`, `InternalJwt__KeyId` | `protofast/dev`'s `Auth_InternalJwt__*` | secret `Auth_InternalJwt__*` |
 | `Smtp__Host`, `Smtp__Port`, `Smtp__StartTls` | smtp4dev, `false` | unset (SES) |
 | `Smtp__From` | `no-reply@protofast.dev` (`appsettings.Development.json`) | unset: `no-reply@<HOST_PROTOFAST>` |
 | `Tenants__ByHost__*` | `appsettings.json` | `appsettings.json` |
 | `HOST_PROTOFAST`, `HOST_THEPLOT`, `HOST_ADMIN`, `ORIGIN_AUTH` | the local hostnames and origin | ProtoStrap |
 | `HTTP_PORTS`, `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | Aspire | spec: `8080`, `true` |
 | `PROTOSTRAP_REPLICA` | unset: SMTP, console logs | ProtoStrap: SES, logs by OTLP only |
-| `SECRET_ID`, `SECRET_PREFIX`, `AWS_REGION`, `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` | unset | ProtoStrap (`Auth_`) |
+| `SECRET_ID`, `SECRET_PREFIX`, `AWS_REGION`, and the role's credentials | `protofast/dev`, `Auth_`, `us-west-2`, and `AWS_PROFILE=developer` | ProtoStrap (`Auth_`, `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI`) |
 
 ### `api`
 
 | Variable | Locally | In an account |
 |---|---|---|
 | `ConnectionStrings__protofast`, `ConnectionStrings__redis` | Aspire references | secret `Shared_ConnectionStrings__protofast`, `Shared_ConnectionStrings__redis` |
-| `InternalJwt__PublicKeyPem` | the run's public key | secret `Shared_InternalJwt__PublicKeyPem` |
+| `InternalJwt__PublicKeyPem` | `protofast/dev`'s `Api_InternalJwt__PublicKeyPem` | secret `Api_InternalJwt__PublicKeyPem` |
 | `BUCKET_DOCUMENTS`, `QUEUE_DOCUMENT_UPLOAD_URL` | LocalStack's | ProtoStrap |
 | `AWS_ENDPOINT_URL_S3`, `AWS_ENDPOINT_URL_SQS` | LocalStack | unset |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | `test` | unset: the role |
+| `AWS_PROFILE` | `developer`, which signs its LocalStack calls too | unset: the role |
 | `S3__UploadUrlTtl`, `S3__DownloadUrlTtl` | `appsettings.json`: 5 min | the same |
 | `HTTP_PORTS`, `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | Aspire | spec: `8080`, `true` |
 
@@ -71,7 +72,7 @@ Locally the AppHost sets the same names.
 
 | Variable | Locally | In an account |
 |---|---|---|
-| `InternalJwt__PublicKeyPem` | the run's public key | secret `Shared_InternalJwt__PublicKeyPem` |
+| `InternalJwt__PublicKeyPem` | `protofast/dev`'s `Payments_InternalJwt__PublicKeyPem` | secret `Payments_InternalJwt__PublicKeyPem` |
 | `HTTP_PORTS`, `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | Aspire | spec: `8080`, `true` |
 
 ### `document-import`
@@ -79,10 +80,10 @@ Locally the AppHost sets the same names.
 | Variable | Locally | In an account |
 |---|---|---|
 | `ConnectionStrings__protofast` | Aspire reference | secret `Shared_ConnectionStrings__protofast` |
-| `Providers__deepseek__ApiKey`, `…gemini__ApiKey`, `…anthropic__ApiKey` | user secrets `Parameters:<name>-api-key`, or empty | secret `DocumentImport_Providers__*__ApiKey` |
+| `Providers__deepseek__ApiKey`, `…gemini__ApiKey`, `…anthropic__ApiKey` | `protofast/dev`'s `DocumentImport_Providers__*__ApiKey`, empty until set | secret `DocumentImport_Providers__*__ApiKey` |
 | `Conversion__BaseUrl` | conversion's endpoint | spec: `http://conversion:8090` |
 | `BUCKET_DOCUMENTS`, `QUEUE_DOCUMENT_UPLOAD_URL`, `QUEUE_WORKFLOW_OUTCOMES_URL` | LocalStack's | ProtoStrap |
-| `AWS_ENDPOINT_URL_S3`, `AWS_ENDPOINT_URL_SQS`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | LocalStack, `test` | unset |
+| `AWS_ENDPOINT_URL_S3`, `AWS_ENDPOINT_URL_SQS`, `AWS_PROFILE` | LocalStack, `developer` | unset: the role |
 | `Consumer__MaxConcurrentImports` | 8 | 2 |
 
 ### The tasks
@@ -167,7 +168,7 @@ Locally both are Aspire's containers with Aspire's generated passwords.
 `QUEUE_<NAME>_URL`, `BUCKET_<NAME>`, `FILES_BUCKET`, `HOST_<NAME>`, `ORIGIN_<NAME>`,
 `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_SERVICE_NAME` and
 `OTEL_RESOURCE_ATTRIBUTES`
-([application contract](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/protostrap.md#application-contract)).
+([application contract](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/protostrap.md#application-contract)).
 `DRAIN_SECONDS` isn't among them: each component defaults it itself, 10 s when
 `PROTOSTRAP_REPLICA` is set and 0 otherwise.
 
@@ -211,7 +212,7 @@ infra/prod/                 prod's platform (the infra workflow)
 scripts/set-secrets.sh      fills or rotates a deployed environment's secret
 scripts/                    dev helpers, admin console scaffold and checks, the operator grant script
 .github/workflows/          ci, deploy, infra
-.claude/settings.json       ProtoStrap's skills, pinned to v0.1.0
+.claude/settings.json       ProtoStrap's skills, pinned to v0.1.2
 ```
 
 ## Ports

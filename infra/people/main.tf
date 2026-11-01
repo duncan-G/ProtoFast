@@ -31,7 +31,7 @@ terraform {
 variable "region" {
   description = "Identity Center's region."
   type        = string
-  default     = "us-east-1"
+  default     = "us-west-2"
 }
 variable "accounts" {
   description = "ProtoFast's one AWS account, by deployed environment: { prod = \"111111111111\" }. Dev, the local run, has no account: its secret is in this one."
@@ -43,7 +43,7 @@ provider "aws" {
 }
 
 module "people" {
-  source = "github.com/duncan-G/protostrap//infra/people?ref=v0.1.0"
+  source = "github.com/duncan-G/protostrap//infra/people?ref=v0.1.2"
 
   accounts = var.accounts
 }

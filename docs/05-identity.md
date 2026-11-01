@@ -65,8 +65,9 @@ to the edge lets only holders of its role reach it, and each admin RPC checks
 
 ## Configuring auth
 
-Plain settings come from `appsettings.json` and the spec's `env`, secrets from the
-environment's secret; locally the AppHost sets both ([layer 03](03-services-and-clients.md)).
+Plain settings come from `appsettings.json` and the spec's `env`, which the AppHost sets
+locally, and secrets from the environment's secret, `protofast/dev` locally; locally Keycloak's
+client secrets are Aspire's, as keycloak-config's are ([layer 03](03-services-and-clients.md)).
 
 | Key | Locally | In an account |
 |---|---|---|
@@ -159,7 +160,7 @@ and adds a bootstrap admin user, `admin`, for keycloak-config to log in as.
 The realms aren't imported at startup. [`services/keycloak-config`](../services/keycloak-config)
 is keycloak's configure task: ProtoStrap runs it once Keycloak is ready, and again whenever
 the task's image, one of its keys, Keycloak's release or a hostname changes
-([configure tasks](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/config.md#configure-tasks)).
+([configure tasks](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/config.md#configure-tasks)).
 It runs keycloak-config-cli, which makes `protofast`, `theplot` and `operators` match
 `realms/*.json` through Keycloak's admin API, creating a realm that's missing, and exits 0
 only when all of it is applied. Locally it runs once each `aspire run`, after Keycloak is
@@ -243,7 +244,7 @@ watch the run.
 | From | `no-reply@protofast.dev` (auth), `no-reply@protofast.dev.localhost` (realms) | `no-reply@<HOST_PROTOFAST>`: `no-reply@protofast.dev` in prod |
 
 ProtoStrap creates an SES identity, DKIM and a MAIL FROM domain for each of the account's
-`email_domains` ([email](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/email.md)).
+`email_domains` ([email](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/email.md)).
 Only components with `email` in their `uses`, auth and keycloak, may send, and only from those
 domains.
 
@@ -255,10 +256,10 @@ domains.
   `scripts/keycloak-grant-admin.py` for this, but the script needs Keycloak's admin API, which
   the edge doesn't route and only the overlay reaches. `DEV_OPERATORS` is local only. How an Org
   Admin makes the first operator in an account is still to be decided.
-- **Google and Apple.** keycloak-config reads `GOOGLE_*` and `APPLE_*` as secret files, so
-  each `Keycloak_GOOGLE_*`/`Keycloak_APPLE_*` key must exist in the secret, even empty, as
-  `scripts/set-secrets.sh` makes them. The providers stay disabled in the realm files until
-  someone enables them.
+- **Google and Apple.** Nothing passes `GOOGLE_*` or `APPLE_*` to keycloak-config, so the realm
+  files substitute empty values and the providers stay disabled. Enabling one takes its keys
+  passed to keycloak-config in the AppHost, which makes them its secret files, and set as
+  `Keycloak_GOOGLE_*`/`Keycloak_APPLE_*` in the secret.
 - **Keycloak's readiness doesn't test the Host.** `9000/health/ready` is Keycloak's own and
   can't be told to answer only for `keycloak`, as ProtoStrap's contract asks.
 - **SES sandbox.** A new account's SES sends only to verified addresses, 200 a day, until an

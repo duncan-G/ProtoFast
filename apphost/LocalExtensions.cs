@@ -9,8 +9,10 @@ namespace ProtoFast.AppHost;
 internal static class LocalExtensions
 {
     /// <summary>
-    /// WithLocalStackCredentials gives a component that uses a queue or a bucket LocalStack's
-    /// test credentials, so the AWS SDK neither fails to find credentials nor signs with yours.
+    /// WithLocalStackCredentials gives a container that uses a queue or a bucket LocalStack's
+    /// test credentials, since it has no AWS sign-in. A process signs with the developer's
+    /// AWS_PROFILE instead, which LocalStack takes as its one account, and must not get these:
+    /// environment keys would win over the profile it reads protofast/dev with.
     /// </summary>
     public static IResourceBuilder<T> WithLocalStackCredentials<T>(this IResourceBuilder<T> builder)
         where T : IResourceWithEnvironment =>
@@ -36,12 +38,4 @@ internal static class LocalExtensions
             ? builder.WithOtlpExporter(OtlpProtocol.HttpProtobuf)
                 .WithEnvironment("ASPIRE_OTLP_API_KEY", configuration["AppHost:OtlpApiKey"] ?? "")
             : builder;
-
-    /// <summary>
-    /// LocalSecret is a secret parameter whose value the developer may keep in the AppHost's user
-    /// secrets (<c>dotnet user-secrets set Parameters:&lt;name&gt; …</c>), and which is empty
-    /// otherwise, so a run never stops to ask for it. In the spec it is only its key's name.
-    /// </summary>
-    public static IResourceBuilder<ParameterResource> AddLocalSecret(this IDistributedApplicationBuilder builder, string name) =>
-        builder.AddParameter(name, builder.Configuration[$"Parameters:{name}"] ?? "", secret: true);
 }

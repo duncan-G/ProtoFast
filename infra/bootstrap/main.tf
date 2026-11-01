@@ -19,7 +19,7 @@ terraform {
 
 variable "region" {
   type    = string
-  default = "us-east-1"
+  default = "us-west-2"
 }
 variable "environment" {
   type    = string
@@ -58,8 +58,8 @@ provider "github" {
 }
 
 module "bootstrap" {
-  # The same version as the spec's protostrap: and the workflows' @v0.1.0.
-  source = "github.com/duncan-G/protostrap//infra/bootstrap?ref=v0.1.0"
+  # The same version as the spec's protostrap: and the workflows' @v0.1.2.
+  source = "github.com/duncan-G/protostrap//infra/bootstrap?ref=v0.1.2"
 
   app                         = "protofast" # the spec's app; the secret is protofast/<environment>
   environment                 = var.environment

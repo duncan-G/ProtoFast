@@ -11,6 +11,9 @@
 
   <ItemGroup>
     <PackageReference Include="AWSSDK.SecretsManager" Version="4.0.100.2" />
+    <!-- The SDK loads these to sign in with an SSO profile: AWS_PROFILE under aspire run. -->
+    <PackageReference Include="AWSSDK.SSO" Version="4.0.100.2" />
+    <PackageReference Include="AWSSDK.SSOOIDC" Version="4.0.100.2" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
   </ItemGroup>
 

@@ -1,50 +1,48 @@
-// ProtoFast's AppHost is the whole application, written once (docs/01-topology.md):
-//
-//   aspire run                       runs it here, behind the same edge ProtoStrap runs in an
-//                                    account, at http://protofast.dev.localhost:20000 and the
-//                                    theplot, admin and auth hosts beside it
-//   aspire do protostrap-spec        writes ../protostrap.yaml, prod's spec
-//
-// Everything ProtoStrap-only (pools, requests, routes, scaling) is in the PublishAsProtoStrap*
-// callbacks. Resources only for `aspire run` are added when run is true.
-
-using System.Security.Cryptography;
 using ProtoFast.AppHost;
 using ProtoFast.AppHost.ClientApp;
 using ProtoFast.AppHost.Postgres;
 
 var builder = DistributedApplication.CreateBuilder(args);
-var run = builder.ExecutionContext.IsRunMode;
+var isRunMode = builder.ExecutionContext.IsRunMode;
 
-// Each component reads only its connection strings, so the environment's secret holds one key
-// per connection (docs/06-secrets.md).
+// Each component reads only its connection strings, so the environment's secret holds one key per connection.
 const ReferenceEnvironmentInjectionFlags connectionStringOnly =
     ReferenceEnvironmentInjectionFlags.ConnectionString | ReferenceEnvironmentInjectionFlags.ServiceDiscovery;
 
-// The local edge's port, and so every local origin's. Override it to run beside another AppHost
-// that holds 20000: dotnet user-secrets set LocalEdge:Port 20100 (or --LocalEdge:Port).
+// The local gateway's port, and so every local origin's. Override it to run beside another
+// AppHost that holds 20000: dotnet user-secrets set LocalEdge:Port 20100 (or --LocalEdge:Port).
 var edgePort = int.TryParse(builder.Configuration["LocalEdge:Port"], out var port) ? port : 20000;
 string LocalOrigin(string local) => $"http://{local}:{edgePort}";
 
-// The spec's top. The four hosts' prod hostnames are here and in bootstrap's hosts, which prod's
-// Terraform root uses (infra/prod); the version matches the workflows' @v0.1.0 and the roots'
-// ?ref=v0.1.0. The pools take the smallest VMs, t4g.small and t4g.medium: auth, the api and the
-// clients in pairs across the general VMs; conversions and imports on compute, which starts in
-// the general VMs' spare room and adds Spot VMs when they outgrow it.
-builder.AddProtoStrapEnvironment("protostrap", app: "protofast")
-    .WithVersion("0.1.0")
+var protostrap = builder.AddProtoStrapEnvironment("protostrap", app: "protofast")
+    .WithVersion("0.1.2")
+    .WithIngressPool(vm: "t4g.small")
+    .WithGeneralPool(vm: ["t4g.medium"], min: 1, max: 4, spare: 1)
+    .WithComputePool(vm: ["t4g.small"], min: 0, max: 3)
+    .WithDataPool(vm: "t4g.medium");
+
+// ProtoStrap's own components: the gateway answers the hosts and sends their requests to the
+// upstreams registered below, the tunnel brings them in from Cloudflare, the CDN filters them
+// at Cloudflare first, and telemetry keeps the logs, traces and metrics. Under `aspire run`
+// only the gateway runs.
+var gateway = protostrap.AddEnvoyGateway("gateway")
     .WithHost("protofast", "protofast.dev", local: "protofast.dev.localhost")
     .WithHost("theplot", "theplot.protofast.dev", local: "theplot.dev.localhost")
     .WithHost("admin", "admin.protofast.dev", local: "admin.dev.localhost")
     .WithHost("auth", "auth.protofast.dev", local: "auth.dev.localhost")
-    .WithLocalEdge(port: edgePort)
-    .WithIngressPool(vm: "t4g.small")
-    .WithGeneralPool(vm: ["t4g.medium"], min: 1, max: 4, spare: 1)
-    .WithComputePool(vm: ["t4g.medium"], min: 0, max: 3)
-    .WithDataPool(vm: "t4g.medium");
+    .WithLocalPort(edgePort);
+var tunnel = protostrap.AddCloudflareTunnel("tunnel", gateway);
+// No WithRateLimit until it is sized from real traffic: the gateway applies each route's rate.
+protostrap.AddCloudflareCdn("cdn", tunnel)
+    // Probes for paths ProtoFast never has, each of which would cost an SSR render of not-found.
+    .WithWafRule("scanners", r => r.Paths("/wp-admin/", "/wp-login.php", "/xmlrpc.php", "/.env", "/.git/").Block())
+    // The ThePlot console's bundles are behind its role, but sent with a year's public max-age:
+    // cached at Cloudflare, they would reach anyone. Other static files cache by default.
+    .WithCacheRule("theplot-console", r => r.Hosts("admin").Paths("/theplot/").Bypass());
+protostrap.AddTelemetry("telemetry");
 
-// Secrets that only exist locally are generated once and kept in the AppHost's user secrets.
-// In an account an Org Admin sets them in the environment's secret (scripts/set-secrets.sh).
+// keycloak and keycloak-config are containers that can't read protofast/dev, so locally Aspire
+// generates their keys. Keep them out of protofast/dev: auth would take that copy.
 IResourceBuilder<ParameterResource> Generated(string name) =>
     builder.AddParameter(name, new GenerateParameterDefault { MinLength = 32, Special = false }, secret: true, persist: true);
 var keycloakAdminSecret = Generated("keycloak-admin-secret");
@@ -52,25 +50,6 @@ var protofastWebSecret = Generated("protofast-web-client-secret");
 var theplotWebSecret = Generated("theplot-web-client-secret");
 var adminClientSecret = Generated("admin-client-secret");
 var accountAdminSecret = Generated("account-admin-client-secret");
-
-// The internal JWT's key pair: auth signs with the private key, payments and the api verify
-// with the public one. Locally it is made fresh each run, since tokens live five minutes.
-using var internalJwtKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-var internalJwtPrivateKey = builder.AddParameter("internal-jwt-private-key", internalJwtKey.ExportPkcs8PrivateKeyPem(), secret: true);
-var internalJwtPublicKey = builder.AddParameter("internal-jwt-public-key", internalJwtKey.ExportSubjectPublicKeyInfoPem(), secret: true);
-var internalJwtKeyId = builder.AddParameter("internal-jwt-key-id", "local", secret: true);
-
-// The model APIs' keys, which document-import calls. Locally they are whatever the developer
-// keeps in user secrets (Parameters:deepseek-api-key, ...); without them imports fail at the
-// model call, and everything else still runs.
-var deepseekApiKey = builder.AddLocalSecret("deepseek-api-key");
-var geminiApiKey = builder.AddLocalSecret("gemini-api-key");
-var anthropicApiKey = builder.AddLocalSecret("anthropic-api-key");
-
-// Social sign-in's credentials, which keycloak-config writes into the realms. The providers ship
-// disabled, so empty values (the default here, and in scripts/set-secrets.sh) change nothing.
-string[] socialKeys = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "APPLE_CLIENT_ID", "APPLE_TEAM_ID", "APPLE_KEY_ID", "APPLE_PRIVATE_KEY"];
-var socialSecrets = socialKeys.ToDictionary(key => key, key => builder.AddLocalSecret(key.ToLowerInvariant().Replace('_', '-')));
 
 // PostgreSQL holds Keycloak's, auth's and ThePlot's databases, each with a user of its own,
 // which postgres-config makes from the connection strings. Redis is a cache: memory only. With
@@ -117,7 +96,7 @@ var email = builder.AddProtoStrapEmail("email", "protofast.dev");
 
 // Keycloak is built from its own Dockerfile: its providers (the email-code authenticator, the
 // Apple identity provider, the SES email sender) and themes are in the image. Browsers reach
-// only its sign-in pages, through the edge on the auth host; auth and keycloak-config reach it
+// only its sign-in pages, through the gateway on the auth host; auth and keycloak-config reach it
 // on the overlay. keycloak-config applies its realms once it is ready, and again on any change.
 string[] realms = ["protofast", "theplot", "operators"];
 var keycloakRoutes = realms
@@ -144,11 +123,11 @@ var keycloak = builder.AddDockerfile("keycloak", "../services/keycloak")
     .PublishAsProtoStrapService(s => s
         .Request(cpu: "500m", memory: "1Gi")
         .Ready(Readiness.Http("/health/ready").On(9000))
-        .Routes(keycloakRoutes)
         .Stop(TimeSpan.FromSeconds(30))
         .SecretFiles());
+gateway.WithUpstream(keycloak, u => u.Routes(keycloakRoutes));
 
-// auth is the BFF: it signs people in, keeps their sessions in Redis, and answers the edge's
+// auth is the BFF: it signs people in, keeps their sessions in Redis, and answers the gateway's
 // question about every request to the clients, the api and payments (ExtAuthzEndpoint).
 var authMigrations = builder.AddSchemaMigrations<Projects.ProtoFast_Auth_SchemaMigrations>("auth-migrations", authDb, connectionStringOnly)
     .PublishAsProtoStrapTask(t => t.Request(cpu: "100m", memory: "128Mi"));
@@ -169,22 +148,20 @@ var auth = builder.AddProject<Projects.ProtoFast_Auth_Api>("auth")
     .WithEnvironment("Keycloak__ClientSecretTheplotWeb", theplotWebSecret)
     .WithEnvironment("Keycloak__ClientSecretAdmin", adminClientSecret)
     .WithEnvironment("Keycloak__AdminClientSecret", accountAdminSecret)
-    .WithEnvironment("InternalJwt__PrivateKeyPem", internalJwtPrivateKey)
-    .WithEnvironment("InternalJwt__KeyId", internalJwtKeyId)
     .WaitFor(keycloak)
     .WaitForCompletion(authMigrations)
     // On the http endpoint, as in an account: left to Aspire, the check would take the launch
-    // profile's https one, which the local edge would then probe with plain HTTP.
+    // profile's https one, which the local gateway would then probe with plain HTTP.
     .WithHttpHealthCheck("/healthz", endpointName: "http")
     .PublishAsProtoStrapService(s => s
         .Request(cpu: "250m", memory: "256Mi")
-        .Routes(authRoutes)
         .Stop(TimeSpan.FromSeconds(20))
         .Scale(min: 2, max: 4, demand => demand.Cpu(0.70)));
+gateway.WithUpstream(auth, u => u.Routes(authRoutes));
 
 var keycloakConfig = builder.AddDockerfile("keycloak-config", "../services/keycloak-config")
     .WithEnvironment("KEYCLOAK_URL", keycloak.GetEndpoint("http"))
-    // Where Keycloak posts logout tokens: auth on the overlay, never through the edge.
+    // Where Keycloak posts logout tokens: auth on the overlay, never through the gateway.
     .WithEnvironment("AUTH_URL", auth.GetEndpoint("http"))
     .WithEnvironment("KC_BOOTSTRAP_ADMIN_CLIENT_ID", "protofast-admin")
     .WithEnvironment("KC_BOOTSTRAP_ADMIN_CLIENT_SECRET", keycloakAdminSecret)
@@ -197,54 +174,51 @@ var keycloakConfig = builder.AddDockerfile("keycloak-config", "../services/keycl
         // It reads keycloak's own keys: the bootstrap admin client's secret is one value for both.
         .SecretPrefix("Keycloak_")
         .SecretFiles());
-foreach (var (key, secret) in socialSecrets)
-{
-    keycloakConfig.WithEnvironment(key, secret);
-}
-
 keycloak.WithProtoStrapConfigure(keycloakConfig);
 
-// The edge asks auth about each request to these services first, and passes on what it answers.
+// The gateway asks auth about each request to these services first, and passes on what it answers.
+// A request auth can't answer within half a second goes on anonymous, and static files skip
+// auth; either way the client's own identity headers are removed.
 string[] identityHeaders = ["x-user-id", "x-tenant", "x-roles", "x-internal-jwt", "x-authenticated"];
-ProtoStrapService Authorized(ProtoStrapService service) =>
-    service.Authorize(auth, path: "/ext-authz", headers: identityHeaders, forward: ["cookie"], respond: ["set-cookie"]);
+string[] staticFiles = ["/assets/", "*.js", "*.css", "*.map", "*.woff", "*.woff2", "*.ttf", "*.otf", "*.eot",
+    "*.png", "*.jpg", "*.jpeg", "*.gif", "*.svg", "*.ico", "*.webp", "*.avif"];
+ProtoStrapUpstream Authorized(ProtoStrapUpstream upstream, string[]? skip = null) =>
+    upstream.Authorize(auth, path: "/ext-authz", headers: identityHeaders, forward: ["cookie"], respond: ["set-cookie"],
+        open: true, timeout: TimeSpan.FromMilliseconds(500), skip: skip);
 
-// payments and the api speak gRPC, which the edge translates from browsers' gRPC-Web. Browsers
+// payments and the api speak gRPC, which the gateway translates from browsers' gRPC-Web. Browsers
 // call /<package>.<Service>/<Method> on their own origin, so each service is routed by its
 // protos' packages. They trust only the internal JWT that auth's answer carries.
 string[] PackageRoutes(IEnumerable<string> hosts, params string[] packages) =>
     hosts.SelectMany(host => packages.Select(package => $"{host}/{package}.")).ToArray();
 
-builder.AddProject<Projects.ProtoFast_Payments_Api>("payments")
-    .WithEnvironment("InternalJwt__PublicKeyPem", internalJwtPublicKey)
-    .PublishAsProtoStrapService(s => Authorized(s
+var payments = builder.AddProject<Projects.ProtoFast_Payments_Api>("payments")
+    .PublishAsProtoStrapService(s => s
         .Request(cpu: "100m", memory: "128Mi")
         .Ready(Readiness.Grpc)
-        .Routes(PackageRoutes(clientHosts, "greet"))
-        .Stop(TimeSpan.FromSeconds(15))));
+        .Stop(TimeSpan.FromSeconds(15)));
+gateway.WithUpstream(payments, u => Authorized(u.Routes(PackageRoutes(clientHosts, "greet"))));
 
 var protofastMigrations = builder.AddSchemaMigrations<Projects.ProtoFast_SchemaMigrations>("protofast-migrations", protofastDb, connectionStringOnly)
     .PublishAsProtoStrapTask(t => t.Request(cpu: "100m", memory: "256Mi"));
 
-builder.AddProject<Projects.ProtoFast_Api>("api")
+var api = builder.AddProject<Projects.ProtoFast_Api>("api")
     .WithReferenceEnvironment(connectionStringOnly)
     .WithReference(protofastDb, connectionName: "protofast").WaitFor(protofastDb)
     .WithReference(redis).WaitFor(redis)
     .WithReference(documents)
     .WithReference(documentUpload)
-    .WithEnvironment("InternalJwt__PublicKeyPem", internalJwtPublicKey)
-    .WithLocalStackCredentials()
     .WaitForCompletion(protofastMigrations)
-    .PublishAsProtoStrapService(s => Authorized(s
+    .PublishAsProtoStrapService(s => s
         .Request(cpu: "250m", memory: "512Mi")
         .Ready(Readiness.Grpc)
-        .Routes([
-            .. PackageRoutes(clientHosts, "document", "document_upload", "story"),
-            // The consoles' services, which check the operators realm and a console role again.
-            .. PackageRoutes(["admin"], "admin"),
-        ])
         .Stop(TimeSpan.FromSeconds(30))
-        .Scale(min: 2, max: 4, demand => demand.Cpu(0.70))));
+        .Scale(min: 2, max: 4, demand => demand.Cpu(0.70)));
+gateway.WithUpstream(api, u => Authorized(u.Routes([
+    .. PackageRoutes(clientHosts, "document", "document_upload", "story"),
+    // The consoles' services, which check the operators realm and a console role again.
+    .. PackageRoutes(["admin"], "admin"),
+])));
 
 // conversion turns uploads into Markdown (Python: MarkItDown, Tesseract), and document-import
 // drains the upload queue through it and the model APIs.
@@ -258,7 +232,7 @@ var conversion = builder.AddDockerfile("conversion", "../services/conversion")
         .Pool(Pool.Compute)
         // Measured: one 40-page scanned PDF peaks at 494 MiB, two at once at 960 MiB, and
         // document-import runs two imports per replica. The memory request is a hard limit.
-        .Request(cpu: "1000m", memory: "1536Mi")
+        .Request(cpu: "1000m", memory: "1Gi")
         // The drain, the longest conversion (CONVERSION_TIMEOUT_SECONDS, 480 s) and its writes:
         // services/conversion/README.md.
         .Stop(TimeSpan.FromSeconds(620))
@@ -271,10 +245,6 @@ builder.AddProject<Projects.ProtoFast_DocumentImport_Worker>("document-import")
     .WithReference(documentUpload)
     .WithReference(workflowOutcomes)
     .WithEnvironment("Conversion__BaseUrl", conversion.GetEndpoint("http"))
-    .WithEnvironment("Providers__deepseek__ApiKey", deepseekApiKey)
-    .WithEnvironment("Providers__gemini__ApiKey", geminiApiKey)
-    .WithEnvironment("Providers__anthropic__ApiKey", anthropicApiKey)
-    .WithLocalStackCredentials()
     .WaitForCompletion(protofastMigrations)
     .PublishAsProtoStrapWorker(w => w
         .Pool(Pool.Compute)
@@ -287,7 +257,7 @@ builder.AddProject<Projects.ProtoFast_DocumentImport_Worker>("document-import")
 
 // Browsers send their traces and logs to the application's own collector, on their own origin,
 // which passes them on to ProtoStrap's (ProtoStrap's telemetry, "Telemetry from browsers").
-builder.AddDockerfile("otel-collector", "../services/otel-collector")
+var otelCollector = builder.AddDockerfile("otel-collector", "../services/otel-collector")
     .WithHttpEndpoint(targetPort: 4318, name: "http")
     .WithHttpEndpoint(targetPort: 13133, name: "health")
     .WithHttpHealthCheck("/", endpointName: "health")
@@ -295,10 +265,11 @@ builder.AddDockerfile("otel-collector", "../services/otel-collector")
     .PublishAsProtoStrapService(s => s
         .Request(cpu: "100m", memory: "128Mi")
         .Ready(Readiness.Http("/").On(13133))
-        .Route("protofast/otlp/", rate: 20)
-        .Route("theplot/otlp/", rate: 20)
-        .Route("admin/otlp/", rate: 20)
         .Stop(TimeSpan.FromSeconds(15)));
+gateway.WithUpstream(otelCollector, u => u
+    .Route("protofast/otlp/", rate: 20)
+    .Route("theplot/otlp/", rate: 20)
+    .Route("admin/otlp/", rate: 20));
 
 // The clients. In an account one Node host serves every client's SSR bundle, choosing by the
 // host asked for, and each app console runs in a process of its own, reached only by holders of
@@ -306,7 +277,7 @@ builder.AddDockerfile("otel-collector", "../services/otel-collector")
 // set here, never by a console's own code.
 var platformConsole = new Dictionary<string, string> { ["ADMIN_CONSOLE_ROLES"] = "*" };
 var theplotConsole = new Dictionary<string, string> { ["ADMIN_CONSOLE_ROLES"] = "admin-theplot" };
-var clientsImage = !run || bool.TryParse(builder.Configuration["SsrHost:Dev"], out var ssrHost) && ssrHost;
+var clientsImage = !isRunMode || bool.TryParse(builder.Configuration["SsrHost:Dev"], out var ssrHost) && ssrHost;
 if (clientsImage)
 {
     // Set SsrHost__Dev=true (the https-ssr-host launch profile) to run this image under
@@ -328,33 +299,37 @@ if (clientsImage)
         return host;
     }
 
-    ClientsHost("clients", "admin,protofast,theplot", "protofast", platformConsole)
-        .PublishAsProtoStrapService(s => Authorized(s
+    var clients = ClientsHost("clients", "admin,protofast,theplot", "protofast", platformConsole)
+        .PublishAsProtoStrapService(s => s
             .Request(cpu: "250m", memory: "512Mi")
-            .Routes([.. clientHosts.Select(host => host + "/")])
             .Stop(TimeSpan.FromSeconds(20))
-            .Scale(min: 2, max: 4, demand => demand.Cpu(0.70))));
-    ClientsHost("clients-admin-theplot", "admin-theplot", "admin-theplot", theplotConsole)
-        .PublishAsProtoStrapService(s => Authorized(s
+            .Scale(min: 2, max: 4, demand => demand.Cpu(0.70)));
+    gateway.WithUpstream(clients, u => Authorized(u.Routes([.. clientHosts.Select(host => host + "/")]), staticFiles));
+    // No skip: the console's static files stay behind its role too.
+    var theplotConsoleHost = ClientsHost("clients-admin-theplot", "admin-theplot", "admin-theplot", theplotConsole)
+        .PublishAsProtoStrapService(s => s
             .Request(cpu: "100m", memory: "256Mi")
-            .Routes("admin/theplot/")
-            .Stop(TimeSpan.FromSeconds(20))));
+            .Stop(TimeSpan.FromSeconds(20)));
+    gateway.WithUpstream(theplotConsoleHost, u => Authorized(u.Routes("admin/theplot/")));
 }
 else
 {
     // Each client's own Angular dev server, behind the same routes and authorizer. Live reload
-    // doesn't pass the edge: refresh after a change.
-    void DevServer(string name, string local, string[] routes, IReadOnlyDictionary<string, string>? environment = null) =>
-        builder.AddClientApp(name, LocalOrigin(local), environment)
-            .PublishAsProtoStrapService(s => Authorized(s.Request(cpu: "250m", memory: "512Mi").Ready(Readiness.Tcp).Routes(routes)));
+    // doesn't pass the gateway: refresh after a change.
+    void DevServer(string name, string local, string[] routes, IReadOnlyDictionary<string, string>? environment = null, string[]? skip = null)
+    {
+        var devServer = builder.AddClientApp(name, LocalOrigin(local), environment)
+            .PublishAsProtoStrapService(s => s.Request(cpu: "250m", memory: "512Mi").Ready(Readiness.Tcp));
+        gateway.WithUpstream(devServer, u => Authorized(u.Routes(routes), skip));
+    }
 
-    DevServer("protofast", "protofast.dev.localhost", ["protofast/"]);
-    DevServer("theplot", "theplot.dev.localhost", ["theplot/"]);
-    DevServer("admin", "admin.dev.localhost", ["admin/"], platformConsole);
+    DevServer("protofast", "protofast.dev.localhost", ["protofast/"], skip: staticFiles);
+    DevServer("theplot", "theplot.dev.localhost", ["theplot/"], skip: staticFiles);
+    DevServer("admin", "admin.dev.localhost", ["admin/"], platformConsole, staticFiles);
     DevServer("admin-theplot", "admin.dev.localhost", ["admin/theplot/"], theplotConsole);
 }
 
-if (run)
+if (isRunMode)
 {
     // Mail goes to smtp4dev, at http://localhost:8025: auth sends with SMTP, and Keycloak with
     // its built-in sender rather than the image's SES one.

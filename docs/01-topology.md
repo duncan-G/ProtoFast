@@ -130,7 +130,7 @@ Key facts:
   general VMs' spare room, so they usually start there, on On-Demand VMs, and move to Spot
   compute VMs when they don't fit. data-1 holds PostgreSQL and Redis, each with its own EBS
   volume, and ProtoStrap's telemetry and scheduler
-  ([ProtoStrap's VMs](https://github.com/duncan-G/protostrap/blob/v0.1.0/docs/vms.md)).
+  ([ProtoStrap's VMs](https://github.com/duncan-G/protostrap/blob/v0.1.2/docs/vms.md)).
 - **Containers reach each other by component name** on ProtoStrap's overlay network:
   `http://keycloak:8080`, `http://auth:8080`, `http://conversion:8090`, `postgres:5432`,
   `redis:6379`. The connection strings in the secret use these names.
@@ -150,7 +150,7 @@ VMs, `t4g.small` and `t4g.medium`. The sizes are in
 | ------------------------- | ------------------------------------------------- |
 | Ingress VM                | `t4g.small`                                       |
 | General pool              | `t4g.medium`, 1–4 VMs, one spare                  |
-| Compute pool              | `t4g.medium`, 0–3 Spot VMs                        |
+| Compute pool              | `t4g.small`, 0–3 Spot VMs                         |
 | data-1                    | `t4g.medium`                                      |
 | auth, api, clients        | 2–4 replicas, so a VM's loss leaves one           |
 | keycloak, payments, otel-collector, clients-admin-theplot | 1 replica: a VM's loss stops it until it starts on another |

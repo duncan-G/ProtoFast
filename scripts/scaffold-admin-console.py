@@ -4,9 +4,9 @@
     scripts/scaffold-admin-console.py APP "Title"
 
 APP is the app's realm name; the console mounts at /APP/ on the admin host. Writes the parts that
-are files of their own — the console project, its proto folder, its CODEOWNERS entries and its
-card on the platform console — and prints the platform wiring still to do by hand. ProtoStrap
-deploys it with everything else; there is no pipeline of its own.
+are files of their own — the console project, its proto folder and its card on the platform
+console — and prints the platform wiring still to do by hand. ProtoStrap deploys it with
+everything else; there is no pipeline of its own.
 """
 
 import re
@@ -68,15 +68,11 @@ def main():
     (protos / f"{app.replace('-', '_')}_admin.proto").write_text(
         PROTO.replace("{pascal}", pascal).replace("{app}", app).replace("{package}", app.replace("-", "_")))
 
-    with (ROOT / ".github" / "CODEOWNERS").open("a") as owners:
-        owners.write(f"\n/clients/admin-{app}/{' ' * max(1, 22 - len(app))}@duncan-G\n"
-                     f"/clients/admin-{app}/src/admin-kit{' ' * max(1, 9 - len(app))}@duncan-G\n")
-
     consoles = ROOT / "clients" / "admin" / "src" / "app" / "consoles.ts"
     consoles.write_text(consoles.read_text().replace(
         "];", f"  {{ app: '{app}', title: '{title}', path: '/{app}/' }},\n];"))
 
-    print(f"Scaffolded clients/admin-{app}, its proto folder, CODEOWNERS and console card.")
+    print(f"Scaffolded clients/admin-{app}, its proto folder and console card.")
     print(CHECKLIST.replace("{app}", app).replace("{APP}", app.upper().replace("-", "_"))
           .replace("{pascal}", pascal))
 

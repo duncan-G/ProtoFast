@@ -40,7 +40,7 @@ provider "aws" {
 provider "cloudflare" {}
 
 module "protostrap" {
-  source = "github.com/duncan-G/protostrap//infra/platform?ref=v0.1.0"
+  source = "github.com/duncan-G/protostrap//infra/platform?ref=v0.1.2"
 
   spec                  = file("${path.module}/../../protostrap.yaml")
   environment           = "prod"
@@ -55,6 +55,6 @@ module "protostrap" {
   log_retention_days    = 90
   backup_retention_days = 35
   snapshot_retention    = 14
-  # Size from real traffic before go-live (docs/production.md): requests per client per 10 s.
-  client_rate_limit = 0
+  # The per-client rate limit is the AppHost's now: AddCloudflareCdn(...).WithRateLimit(...),
+  # sized from real traffic before go-live (docs/production.md).
 }

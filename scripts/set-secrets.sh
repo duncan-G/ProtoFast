@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
-# Fills in ProtoFast's keys in a deployed environment's secret, protofast/<environment>
-# (protofast/prod), before its first deploy (docs/06-secrets.md). An Org Admin runs it, on their
-# own machine: it makes every password and key itself, in a private temporary directory, and
-# hands them to ProtoStrap's set-secret.sh as files, so no value is shown, typed, logged or put
-# on a command line. Everything goes in one run, one version of the secret.
+# Fills in ProtoFast's keys in an environment's secret, protofast/<environment>
+# (docs/06-secrets.md): prod's before its first deploy, which an Org Admin runs, and dev's,
+# protofast/dev, which `aspire run` reads, once for the team, which a Developer runs. It runs on
+# their own machine: it makes every password and key itself, in a private temporary directory,
+# and hands them to ProtoStrap's set-secret.sh as files, so no value is shown, typed, logged or
+# put on a command line. Everything goes in one run, one version of the secret.
 #
 #   scripts/set-secrets.sh prod                       # sets every key the secret lacks
 #   scripts/set-secrets.sh prod --rotate redis        # makes new values for a group of keys
+#   scripts/set-secrets.sh dev                        # the keys the processes read under aspire run
+#
+# Dev's secret holds only what the processes read: the internal JWT, and every model API key,
+# empty until you set yours with set-secret.sh. The local resources' keys, the connection
+# strings and PostgreSQL's, Redis's and Keycloak's, are Aspire's, so a run on dev removes any it
+# finds: a process would take the secret's over Aspire's, as auth would Keycloak's client secrets.
 #
 # Groups for --rotate: postgres (the superuser), keycloak-db, auth-db, protofast-db, redis,
 # clients (the four Keycloak client secrets), internal-jwt (the key pair and its kid). Each
@@ -22,7 +29,7 @@
 # .protostrap, or ../ProtoStrap. Env: AWS_PROFILE, AWS_REGION. Needs jq, openssl and the AWS CLI.
 set -euo pipefail
 
-environment=${1:?usage: scripts/set-secrets.sh <deployed environment, such as prod> [--rotate group...]}
+environment=${1:?usage: scripts/set-secrets.sh <environment: prod, or dev for aspire run> [--rotate group...]}
 shift
 rotate=()
 if [[ ${1:-} == --rotate ]]; then
@@ -47,6 +54,7 @@ done
 have=$(aws secretsmanager get-secret-value --secret-id "$secret" --query SecretString --output text 2>/dev/null | jq -r 'keys[]' 2>/dev/null || true)
 has() { grep -qx "$1" <<<"$have"; }
 rotating() { local g; for g in "${rotate[@]}"; do [[ $g == "$1" ]] && return 0; done; return 1; }
+dev() { [[ $environment == dev ]]; }
 
 dir=$(mktemp -d)
 chmod 700 "$dir"
@@ -60,7 +68,7 @@ put() { args+=("$1=@$dir/$2"); }
 connection() { printf 'Host=postgres;Port=5432;Database=%s;Username=%s;Password=%s;GSS Encryption Mode=Disable' "$2" "$3" "$(cat "$dir/$4")" >"$dir/$1"; }
 
 # The superuser: PostgreSQL reads its password as a file, postgres-config logs in with it.
-if ! has Postgres_POSTGRES_PASSWORD || rotating postgres; then
+if ! dev && { ! has Postgres_POSTGRES_PASSWORD || rotating postgres; }; then
   password postgres
   put Postgres_POSTGRES_PASSWORD postgres
   connection postgres-cs postgres postgres postgres
@@ -70,6 +78,7 @@ fi
 # Each database's user: postgres-config gives it the password in its connection string, before
 # the components that use it get the new one.
 for db in keycloak auth protofast; do
+  dev && break
   key="Shared_ConnectionStrings__$db"
   if ! has "$key" || rotating "$db-db"; then
     password "$db"
@@ -78,30 +87,22 @@ for db in keycloak auth protofast; do
   fi
 done
 
-if ! has Redis_REDIS_PASSWORD || rotating redis; then
+if ! dev && { ! has Redis_REDIS_PASSWORD || rotating redis; }; then
   password redis
   put Redis_REDIS_PASSWORD redis
   printf 'redis:6379,password=%s' "$(cat "$dir/redis")" >"$dir/redis-cs"
   put Shared_ConnectionStrings__redis redis-cs
 fi
 
-if ! has Keycloak_KC_BOOTSTRAP_ADMIN_CLIENT_SECRET; then
+if ! dev && ! has Keycloak_KC_BOOTSTRAP_ADMIN_CLIENT_SECRET; then
   password keycloak-admin
   put Keycloak_KC_BOOTSTRAP_ADMIN_CLIENT_SECRET keycloak-admin
 fi
 
-# Social sign-in's credentials, which keycloak-config reads as files, so each must exist. The
-# providers ship disabled: empty until an Org Admin sets real ones with set-secret.sh.
-for social in GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET APPLE_CLIENT_ID APPLE_TEAM_ID APPLE_KEY_ID APPLE_PRIVATE_KEY; do
-  if ! has "Keycloak_$social"; then
-    : >"$dir/$social"
-    put "Keycloak_$social" "$social"
-  fi
-done
-
 # The realms' confidential clients: keycloak-config sets each on its client, and auth, which
 # waits for keycloak-config, signs in with it.
 for client in ClientSecretProtofastWeb ClientSecretTheplotWeb ClientSecretAdmin AdminClientSecret; do
+  dev && break
   key="Shared_Keycloak__$client"
   if ! has "$key" || rotating clients; then
     password "$client"
@@ -111,13 +112,33 @@ done
 
 # The internal JWT: auth signs with the private key, payments and the api verify with the
 # public one. A new pair gets a new kid, so the backends' cached key is never mistaken for it.
-if ! has Auth_InternalJwt__PrivateKeyPem || rotating internal-jwt; then
+# Each verifier has its own copy of the public key, so a rotation restarts it: a Shared_ key
+# restarts only the components whose spec lists it. A missing copy makes a new pair, since this
+# never reads a value.
+if ! has Auth_InternalJwt__PrivateKeyPem || ! has Api_InternalJwt__PublicKeyPem \
+  || ! has Payments_InternalJwt__PublicKeyPem || rotating internal-jwt; then
   openssl ecparam -name prime256v1 -genkey -noout 2>/dev/null | openssl pkcs8 -topk8 -nocrypt -out "$dir/jwt-private" 2>/dev/null
   openssl ec -in "$dir/jwt-private" -pubout -out "$dir/jwt-public" 2>/dev/null
   printf '%s-%s' "$environment" "$(date -u +%Y%m%d%H%M)" >"$dir/jwt-kid"
   put Auth_InternalJwt__PrivateKeyPem jwt-private
-  put Shared_InternalJwt__PublicKeyPem jwt-public
+  put Api_InternalJwt__PublicKeyPem jwt-public
+  put Payments_InternalJwt__PublicKeyPem jwt-public
   put Auth_InternalJwt__KeyId jwt-kid
+  has Shared_InternalJwt__PublicKeyPem && args+=("-Shared_InternalJwt__PublicKeyPem")
+fi
+
+if dev; then
+  while IFS= read -r key; do
+    case $key in Postgres_* | Redis_* | Keycloak_* | Shared_Keycloak__* | *ConnectionStrings__*) args+=("-$key") ;; esac
+  done <<<"$have"
+  # The model APIs' keys, empty until a Developer sets theirs.
+  for provider in deepseek gemini anthropic; do
+    key="DocumentImport_Providers__${provider}__ApiKey"
+    if ! has "$key"; then
+      : >"$dir/$key"
+      put "$key" "$key"
+    fi
+  done
 fi
 
 if [[ ${#args[@]} -eq 0 ]]; then

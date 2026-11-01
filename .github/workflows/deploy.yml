@@ -30,25 +30,25 @@ jobs:
 
   plan:
     needs: approve
-    uses: duncan-G/protostrap/.github/workflows/plan.yml@v0.1.0
+    uses: duncan-G/protostrap/.github/workflows/plan.yml@v0.1.2
     with:
       environment: prod
       apphost: apphost/ProtoFast.AppHost.csproj
-      protostrap-ref: v0.1.0
+      protostrap-ref: v0.1.2
 
   infra:
     needs: plan
     if: needs.plan.outputs.infra-changed == 'true'
-    uses: duncan-G/protostrap/.github/workflows/infra.yml@v0.1.0
-    with: { environment: prod, directory: infra/prod, action: apply, protostrap-ref: v0.1.0 }
+    uses: duncan-G/protostrap/.github/workflows/infra.yml@v0.1.2
+    with: { environment: prod, directory: infra/prod, action: apply, protostrap-ref: v0.1.2 }
     secrets: inherit
 
   deploy:
     needs: [plan, infra]
     if: always() && needs.plan.result == 'success' && (needs.infra.result == 'success' || needs.infra.result == 'skipped')
-    uses: duncan-G/protostrap/.github/workflows/deploy.yml@v0.1.0
+    uses: duncan-G/protostrap/.github/workflows/deploy.yml@v0.1.2
     with:
       environment: prod
       version: ${{ needs.plan.outputs.version }}
       builds: ${{ needs.plan.outputs.builds }}
-      protostrap-ref: v0.1.0
+      protostrap-ref: v0.1.2
