@@ -14,8 +14,8 @@ bootstrapped or deployed for it.
 
 | Root                                            | Module      | Applied by                                         | Creates                                       |
 | ----------------------------------------------- | ----------- | -------------------------------------------------- | --------------------------------------------- |
-| [`infra/people`](../infra/people/main.tf)       | `people`    | an Org Admin, once, with the account's admin credentials (it is its organization's management account), after enabling Identity Center in the console | Identity Center groups and permission sets |
 | [`infra/bootstrap`](../infra/bootstrap/main.tf) | `bootstrap` | an Org Admin, once, with the account's admin credentials | the state bucket, the deploy bucket, GitHub's OIDC provider, the Infra and Deploy roles and their boundaries, and the account's two GitHub environments |
+| [`infra/people`](../infra/people/main.tf)       | `people`    | an Org Admin, once, after bootstrap, with the account's admin credentials (it is its organization's management account), after enabling Identity Center in the console | Identity Center groups and permission sets |
 | [`infra/prod`](../infra/prod/main.tf) | `platform` | the infra workflow, and `deploy.yml` when a release changes the infrastructure, as the Infra role | every AWS and Cloudflare resource the spec needs |
 
 The split exists because the platform root runs in CI, and CI needs a state bucket and roles
@@ -39,7 +39,13 @@ sign in through IAM Identity Center with MFA; there are no IAM users and no acce
 Developers can't read `protofast/prod`, which the platform tags, or open the operator UI. The
 root's inputs are Identity Center's region and `accounts`, the one account's id as `prod`.
 Identity Center must be enabled in the console first: the apply fails without it. People are
-added to the groups in Identity Center.
+added to the groups in Identity Center. Its state is `people/terraform.tfstate` in bootstrap's
+state bucket, which the Infra role's boundary keeps CI out of; the bucket is given at init:
+
+```bash
+terraform -chdir=infra/people init -backend-config="bucket=$(terraform -chdir=infra/bootstrap output -raw state_bucket)" -backend-config=region=us-west-2
+terraform -chdir=infra/people apply
+```
 
 ## Bootstrap
 
@@ -87,7 +93,7 @@ GITHUB_TOKEN=$(gh auth token) terraform -chdir=infra/bootstrap apply
 
 `infra/prod` calls the platform module with the spec, `protostrap.yaml`, `environment = "prod"`,
 and the inputs bootstrap wrote. State is in the bootstrap's bucket, key
-`platform/terraform.tfstate` in the root's backend block; the workflow gives the bucket and
+`infra/terraform.tfstate` in the root's backend block; the workflow gives the bucket and
 region at init.
 
 From the spec the module creates
@@ -144,7 +150,7 @@ gh workflow run infra.yml -f action=plan
 gh workflow run infra.yml -f action=apply
 ```
 
-The first time, in order: `infra/people` (once for the organization), bootstrap, the
+The first time, in order: bootstrap, `infra/people` (once for the organization), the
 Cloudflare token, the GitHub settings in [layer 07](07-deployment.md#github-settings), the
 merge that brings the workflows to `main` (reject the runs it starts), the platform's plan and
 apply, the alert emails' SNS confirmations, then the secret

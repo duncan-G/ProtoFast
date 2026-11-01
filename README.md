@@ -132,12 +132,12 @@ request. GitHub has no check named `ci`: main's ruleset requires each of its job
 ProtoFast deploys to prod with ProtoStrap's reusable workflows. An Org Admin does these once,
 in order:
 
-1. Identity Center, in ProtoFast's one account, which is its organization's management
-   account: enable it in the console, then apply `infra/people` (see its `main.tf`) with the
-   account's id as `prod`.
-2. Copy `infra/bootstrap/terraform.tfvars.example` to `terraform.tfvars` and fill it in.
+1. Copy `infra/bootstrap/terraform.tfvars.example` to `terraform.tfvars` and fill it in.
    Then, with the account's admin credentials and `GITHUB_TOKEN=$(gh auth token)`:
    `terraform -chdir=infra/bootstrap init && terraform -chdir=infra/bootstrap apply`.
+2. Identity Center, in ProtoFast's one account, which is its organization's management
+   account: enable it in the console, then apply `infra/people` (see its `main.tf`) with the
+   account's id as `prod`. Its state goes in bootstrap's state bucket.
 3. `gh secret set CLOUDFLARE_API_TOKEN --env prod-infra`.
 4. The GitHub settings bootstrap doesn't make, before the workflows reach `main`: a
    `prod-approval` environment with required reviewers; required reviewers on `prod-infra`;

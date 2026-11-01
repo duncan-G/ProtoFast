@@ -12,17 +12,27 @@
 # and open Grafana to see their services' telemetry in prod; they can't read protofast/prod
 # or open the operator UI.
 #
-# An Org Admin applies it once, from their own machine with that account's admin
-# credentials, after enabling Identity Center in the console, and adds people to the groups
-# in Identity Center:
+# An Org Admin applies it once, after bootstrap, from their own machine with that account's
+# admin credentials, after enabling Identity Center in the console, and adds people to the
+# groups in Identity Center:
 #
 #   cp terraform.tfvars.example terraform.tfvars    # Then fill it in.
 #   export AWS_PROFILE=...
-#   terraform init && terraform apply
+#   terraform init -backend-config="bucket=$(terraform -chdir=../bootstrap output -raw state_bucket)" -backend-config=region=us-west-2
+#   terraform apply
 #
-# Its state stays on that machine (gitignored). It replaces the old identity-center root.
+# Its state is people/ in bootstrap's state bucket, which the Infra role can't read or write.
+# It replaces the old identity-center root.
 terraform {
   required_version = ">= 1.10"
+
+  # The bucket and region are given at init.
+  backend "s3" {
+    key          = "people/terraform.tfstate"
+    encrypt      = true
+    use_lockfile = true
+  }
+
   required_providers {
     aws = { source = "hashicorp/aws", version = "~> 5.60" }
   }
