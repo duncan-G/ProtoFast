@@ -10,21 +10,20 @@ namespace ProtoFast.DocumentImport.Worker;
 
 /// <summary>
 /// Drains the import queue, running up to <see cref="DocumentImportConsumerOptions.MaxConcurrentImports"/>
-/// imports at once. It receives only as many messages as it has free slots for, so each is held
-/// from its receive and kept off the queue for as long as its import runs. A message is deleted once the story is saved, the upload proves unreadable
+/// imports at once. A message is deleted once the story is saved, the upload proves unreadable
 /// or the discovery run fails on its own terms; any other failure comes back after its visibility
 /// timeout, resumes the run it interrupted or reuses the one it outlived, and dead-letters after the queue's receive limit,
 /// which is when its progress turns to failed. An import its owner cancels stops at the next poll, its message deleted and its run abandoned.
+/// One the replica's stop cancels goes back on the queue at once (<see cref="QueueConsumer{T}"/>).
 /// </summary>
 public sealed class DocumentImportConsumer(
     [FromKeyedServices(DocumentImportQueues.ImportQueueKey)] IMessageQueue queue,
     IServiceScopeFactory scopes,
     IRunLedger ledger,
     IOptions<DocumentImportConsumerOptions> options,
-    ILogger<DocumentImportConsumer> logger) : BackgroundService
+    IHostApplicationLifetime lifetime,
+    ILogger<DocumentImportConsumer> logger) : QueueConsumer<DocumentImportRequested>(queue, lifetime, logger)
 {
-    private static readonly TimeSpan ReceiveRetryDelay = TimeSpan.FromSeconds(5);
-
     private static readonly RunProgress Unreadable = new(
         RunPhase.Failed, Message: "This file couldn’t be read. Save it as a PDF, Word or text file and import it again.");
 
@@ -36,90 +35,21 @@ public sealed class DocumentImportConsumer(
     private static readonly RunProgress GaveUp = new(
         RunPhase.Failed, Message: "This file couldn’t be turned into a story. Import it again to retry.");
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        var maxImports = Math.Max(1, options.Value.MaxConcurrentImports);
-        using var slots = new SemaphoreSlim(maxImports, maxImports);
-        var running = new List<Task>();
-        logger.LogInformation("Waiting for document imports, up to {MaxImports} at once", maxImports);
-        try
-        {
-            while (!stoppingToken.IsCancellationRequested)
-            {
-                running.RemoveAll(import => import.IsCompleted);
-                await slots.WaitAsync(stoppingToken);
-                var free = 1;
-                while (free < maxImports && slots.Wait(0))
-                {
-                    free++;
-                }
+    protected override int Capacity => options.Value.MaxConcurrentImports;
 
-                IReadOnlyList<QueueMessage<DocumentImportRequested>> messages;
-                try
-                {
-                    messages = await queue.ReceiveAsync<DocumentImportRequested>(free, stoppingToken);
-                }
-                catch (Exception e) when (!stoppingToken.IsCancellationRequested)
-                {
-                    slots.Release(free);
-                    logger.LogError(e, "Receiving document imports failed");
-                    await Task.Delay(ReceiveRetryDelay, stoppingToken);
-                    continue;
-                }
-
-                if (free > messages.Count)
-                {
-                    slots.Release(free - messages.Count);
-                }
-
-                foreach (var message in messages)
-                {
-                    running.Add(Task.Run(() => ImportInSlotAsync(message, slots, stoppingToken), CancellationToken.None));
-                }
-            }
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-        }
-        finally
-        {
-            await Task.WhenAll(running);
-        }
-    }
-
-    private async Task ImportInSlotAsync(
-        QueueMessage<DocumentImportRequested> message, SemaphoreSlim slots, CancellationToken ct)
-    {
-        try
-        {
-            await ImportAsync(message, ct);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-        }
-        catch (Exception e)
-        {
-            logger.LogError(e, "Import of upload {UploadId} could not be settled", message.Body.UploadId);
-        }
-        finally
-        {
-            slots.Release();
-        }
-    }
-
-    private async Task ImportAsync(QueueMessage<DocumentImportRequested> message, CancellationToken ct)
+    protected override async Task HandleAsync(QueueMessage<DocumentImportRequested> message, MessageLease lease)
     {
         var request = message.Body;
-        using var activity = DocumentImportTelemetry.StartProcess(queue.Name, message.Parent);
+        var ct = lease.Token;
+        using var activity = DocumentImportTelemetry.StartProcess(Queue.Name, message.Parent);
         activity?.SetTag("document_import.upload_id", request.UploadId);
-        await using var lease = MessageLease.Hold(queue, message, logger, ct);
         await using var cancellation = ImportCancellation.Watch(
             ledger, request.UploadId, options.Value.CancellationPollInterval, logger, lease.Token);
         try
         {
             using var scope = scopes.CreateScope();
             var storyId = await scope.ServiceProvider.GetRequiredService<DocumentImportRunner>().RunAsync(request, cancellation.Token);
-            await queue.DeleteAsync(message.ReceiptHandle, ct);
+            await Queue.DeleteAsync(message.ReceiptHandle, ct);
             activity?.SetTag("document_import.story_id", storyId);
             if (storyId is null)
             {
@@ -134,14 +64,14 @@ public sealed class DocumentImportConsumer(
         catch (UnreadableSourceException e)
         {
             activity.Fail(e);
-            await queue.DeleteAsync(message.ReceiptHandle, ct);
+            await Queue.DeleteAsync(message.ReceiptHandle, ct);
             logger.LogError(e, "Import of upload {UploadId} abandoned", request.UploadId);
             await ReportAsync(request.UploadId, Unreadable, ct);
         }
         catch (DiscoveryFailedException e)
         {
             activity.Fail(e);
-            await queue.DeleteAsync(message.ReceiptHandle, ct);
+            await Queue.DeleteAsync(message.ReceiptHandle, ct);
             logger.LogError(e, "Import of upload {UploadId} failed in discovery; it is not retried", request.UploadId);
             await ReportAsync(request.UploadId, GaveUp, ct);
         }
@@ -153,7 +83,7 @@ public sealed class DocumentImportConsumer(
         }
         catch (OperationCanceledException) when (cancellation.IsCancelled)
         {
-            await queue.DeleteAsync(message.ReceiptHandle, ct);
+            await Queue.DeleteAsync(message.ReceiptHandle, ct);
             logger.LogInformation("Import of upload {UploadId} was cancelled by its owner", request.UploadId);
             await AbandonCancelledRunAsync(request.UploadId, ct);
         }
