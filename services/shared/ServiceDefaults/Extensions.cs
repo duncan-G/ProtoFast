@@ -66,8 +66,15 @@ public static class Extensions
 
         builder.Services.AddOpenTelemetry()
             // A fallback service.name for a run with neither ProtoStrap nor the AppHost, which
-            // both set OTEL_SERVICE_NAME; the variable still wins.
-            .ConfigureResource(resource => resource.AddService(builder.Environment.ApplicationName))
+            // both set OTEL_SERVICE_NAME. AddService would override the variable, and the
+            // service.instance.id in OTEL_RESOURCE_ATTRIBUTES with a GUID, so it runs only without it.
+            .ConfigureResource(resource =>
+            {
+                if (string.IsNullOrEmpty(builder.Configuration["OTEL_SERVICE_NAME"]))
+                {
+                    resource.AddService(builder.Environment.ApplicationName);
+                }
+            })
             .WithMetrics(metrics =>
             {
                 metrics.AddAspNetCoreInstrumentation()
