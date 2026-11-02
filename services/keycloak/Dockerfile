@@ -38,10 +38,10 @@ COPY themes /opt/keycloak/themes/
 # container: the entrypoint points them at OTEL_EXPORTER_OTLP_ENDPOINT, or turns the export
 # off at run time when there is none (`start --optimized` exits with status 2 when a
 # build-time option differs, so it can't turn them off). The sampler keeps a caller's
-# decision, so auth's back-channel calls, which arrive with a traceparent, join the
-# sign-in's trace, and samples the traces Keycloak starts itself at
-# KC_TRACING_SAMPLER_RATIO, a run-time option. At Keycloak's default ratio, 1.0, that is
-# parentbased_always_on; the entrypoint sets 0.0 when there is no collector.
+# decision, so the edge's requests and auth's back-channel calls, which arrive with a
+# traceparent, join their trace, and samples the traces Keycloak starts itself at
+# KC_TRACING_SAMPLER_RATIO, a run-time option, which the entrypoint sets to 0.0: those are
+# its background tasks, such as JGROUPS_PING writes.
 ENV KC_DB=postgres \
     KC_HEALTH_ENABLED=true \
     KC_FEATURES=opentelemetry-logs \
