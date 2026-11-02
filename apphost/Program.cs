@@ -19,7 +19,7 @@ var edgePort = int.TryParse(builder.Configuration["LocalEdge:Port"], out var por
 string LocalOrigin(string local) => $"http://{local}:{edgePort}";
 
 var protostrap = builder.AddProtoStrapEnvironment("protostrap", app: "protofast")
-    .WithVersion("0.1.7")
+    .WithVersion("0.1.8")
     .WithIngressPool(vm: "t4g.small")
     .WithGeneralPool(vm: ["t4g.medium"], min: 1, max: 4, spare: 0)
     .WithComputePool(vm: ["t4g.small"], min: 0, max: 3)
@@ -235,7 +235,6 @@ var conversion = builder.AddDockerfile("conversion", "../services/conversion")
     .WithLocalStackCredentials()
     .WithLocalOtlpExporter()
     .PublishAsProtoStrapService(s => s
-        .Pool(Pool.Compute)
         // Measured: one 40-page scanned PDF peaks at 494 MiB, two at once at 960 MiB, and
         // document-import runs two imports per replica. The memory request is a hard limit.
         .Request(cpu: "1000m", memory: "1Gi")

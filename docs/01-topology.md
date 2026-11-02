@@ -98,11 +98,11 @@ graph TD
         ApiG["api · payments"]
         KCG["keycloak"]
         OtelG["otel-collector"]
+        ConvG["conversion"]
         Tasks["tasks: migrations, keycloak-config, postgres-config"]
     end
 
     subgraph Compute["compute pool (Spot), or general's spare room"]
-        ConvC["conversion"]
         ImportC["document-import"]
     end
 
@@ -116,8 +116,8 @@ graph TD
     AuthG --> KCG & RedisD & PGD
     ApiG --> PGD & RedisD
     KCG --> PGD
-    ImportC --> ConvC & PGD
-    ApiG & ImportC & ConvC --> S3[("documents bucket, SQS queues")]
+    ImportC --> ConvG & PGD
+    ApiG & ImportC & ConvG --> S3[("documents bucket, SQS queues")]
     OtelG --> Tel
 ```
 
@@ -125,12 +125,12 @@ Key facts:
 
 - **The VMs are ProtoStrap's.** An ingress VM per zone runs the edge alone, and is its zone's
   NAT: every outbound call but S3's, to the model APIs, SES or other AWS APIs, leaves through
-  it. The general pool runs every service, worker and task, apart from conversion and
-  document-import, which are compute's. Compute keeps no VM of its own until they outgrow the
-  general VMs' spare room, so they usually start there, on On-Demand VMs, and move to Spot
-  compute VMs when they don't fit. data-1 holds PostgreSQL and Redis, each with its own EBS
+  it. The general pool runs every service, worker and task, apart from document-import, the
+  one worker, which is compute's. Compute keeps no VM of its own until document-import
+  outgrows the general VMs' spare room, so it usually starts there, on On-Demand VMs, and
+  moves to Spot compute VMs when it doesn't fit. data-1 holds PostgreSQL and Redis, each with its own EBS
   volume, and ProtoStrap's telemetry and scheduler
-  ([ProtoStrap's VMs](https://github.com/duncan-G/protostrap/blob/v0.1.7/docs/vms.md)).
+  ([ProtoStrap's VMs](https://github.com/duncan-G/protostrap/blob/v0.1.8/docs/vms.md)).
 - **Containers reach each other by component name** on ProtoStrap's overlay network:
   `http://keycloak:8080`, `http://auth:8080`, `http://conversion:8090`, `postgres:5432`,
   `redis:6379`. The connection strings in the secret use these names.
