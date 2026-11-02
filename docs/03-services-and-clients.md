@@ -29,7 +29,7 @@ Shared_ConnectionStrings__auth
   account. The spec lists each component's keys without it (`secrets:`).
 - [Layer 06](06-secrets.md) has every key and who reads it.
 
-ProtoStrap's [application contract](https://github.com/duncan-G/protostrap/blob/v0.1.9/docs/protostrap.md#application-contract)
+ProtoStrap's [application contract](https://github.com/duncan-G/protostrap/blob/v0.1.10/docs/protostrap.md#application-contract)
 lists everything it sets. What ProtoFast reads of it:
 
 | Variable                                  | Read by                                                        |

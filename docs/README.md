@@ -3,7 +3,7 @@
 ProtoFast is a small platform: four Angular SSR clients served by one Node host, four .NET
 services (auth, the api, payments, document-import), a Python conversion service, Keycloak,
 PostgreSQL and Redis. It deploys with [ProtoStrap](https://github.com/duncan-G/protostrap)
-0.1.9, to one AWS account, prod. Dev is the local run, `aspire run`.
+0.1.10, to one AWS account, prod. Dev is the local run, `aspire run`.
 
 ## The one idea that holds it together
 
@@ -72,17 +72,17 @@ These docs say what ProtoFast does with ProtoStrap, not how ProtoStrap works. Fo
 
 | Topic                                      | ProtoStrap doc                                                                                        |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| The spec, the edge, the scheduler, the contract every component keeps | [protostrap.md](https://github.com/duncan-G/protostrap/blob/v0.1.9/docs/protostrap.md) |
-| The AppHost, the spec generator and the local edge | [protostrap-aspire.md](https://github.com/duncan-G/protostrap/blob/v0.1.9/docs/protostrap-aspire.md) |
-| The environment's secret                   | [secrets.md](https://github.com/duncan-G/protostrap/blob/v0.1.9/docs/secrets.md)                       |
-| Configure tasks (keycloak-config, postgres-config) | [config.md](https://github.com/duncan-G/protostrap/blob/v0.1.9/docs/config.md)                 |
-| Email through SES                          | [email.md](https://github.com/duncan-G/protostrap/blob/v0.1.9/docs/email.md)                           |
-| Telemetry, Grafana                         | [telemetry.md](https://github.com/duncan-G/protostrap/blob/v0.1.9/docs/telemetry.md)                   |
-| VMs, pools, data-1                         | [vms.md](https://github.com/duncan-G/protostrap/blob/v0.1.9/docs/vms.md)                               |
-| Network, Cloudflare, the tunnel            | [network.md](https://github.com/duncan-G/protostrap/blob/v0.1.9/docs/network.md)                       |
-| Roles and people                           | [identity.md](https://github.com/duncan-G/protostrap/blob/v0.1.9/docs/identity.md)                     |
-| Going to production, rolling back          | [production.md](https://github.com/duncan-G/protostrap/blob/v0.1.9/docs/production.md)                 |
-| The Terraform modules                      | [infra/README.md](https://github.com/duncan-G/protostrap/blob/v0.1.9/infra/README.md)                 |
+| The spec, the edge, the scheduler, the contract every component keeps | [protostrap.md](https://github.com/duncan-G/protostrap/blob/v0.1.10/docs/protostrap.md) |
+| The AppHost, the spec generator and the local edge | [protostrap-aspire.md](https://github.com/duncan-G/protostrap/blob/v0.1.10/docs/protostrap-aspire.md) |
+| The environment's secret                   | [secrets.md](https://github.com/duncan-G/protostrap/blob/v0.1.10/docs/secrets.md)                       |
+| Configure tasks (keycloak-config, postgres-config) | [config.md](https://github.com/duncan-G/protostrap/blob/v0.1.10/docs/config.md)                 |
+| Email through SES                          | [email.md](https://github.com/duncan-G/protostrap/blob/v0.1.10/docs/email.md)                           |
+| Telemetry, Grafana                         | [telemetry.md](https://github.com/duncan-G/protostrap/blob/v0.1.10/docs/telemetry.md)                   |
+| VMs, pools, data-1                         | [vms.md](https://github.com/duncan-G/protostrap/blob/v0.1.10/docs/vms.md)                               |
+| Network, Cloudflare, the tunnel            | [network.md](https://github.com/duncan-G/protostrap/blob/v0.1.10/docs/network.md)                       |
+| Roles and people                           | [identity.md](https://github.com/duncan-G/protostrap/blob/v0.1.10/docs/identity.md)                     |
+| Going to production, rolling back          | [production.md](https://github.com/duncan-G/protostrap/blob/v0.1.10/docs/production.md)                 |
+| The Terraform modules                      | [infra/README.md](https://github.com/duncan-G/protostrap/blob/v0.1.10/infra/README.md)                 |
 
 ProtoStrap's Claude Code skills (`protostrap-spec`, `protostrap-secrets`, `protostrap-operate`,
 ...) are pinned to the same version in [`.claude/settings.json`](../.claude/settings.json).
