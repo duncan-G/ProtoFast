@@ -6,7 +6,7 @@ which knobs matter. Self-contained.*
 ## Three kinds of root
 
 ProtoFast's Terraform is a few small roots, each calling one of ProtoStrap's modules at
-`?ref=v0.1.4` ([ProtoStrap's infra](https://github.com/duncan-G/protostrap/blob/v0.1.4/infra/README.md)).
+`?ref=v0.1.5` ([ProtoStrap's infra](https://github.com/duncan-G/protostrap/blob/v0.1.5/infra/README.md)).
 Everything about the application comes from its spec; the roots hold only the account's own
 settings. Prod is the one deployed environment, in ProtoFast's one account, which also holds
 Identity Center and dev's secret, `protofast/dev`. Dev is the local run: nothing is
@@ -27,7 +27,7 @@ stays there, gitignored, and everything in it can be imported again.
 ## People
 
 `infra/people` gives three groups their permission sets
-([people](https://github.com/duncan-G/protostrap/blob/v0.1.4/docs/identity.md#people)). People
+([people](https://github.com/duncan-G/protostrap/blob/v0.1.5/docs/identity.md#people)). People
 sign in through IAM Identity Center with MFA; there are no IAM users and no access keys.
 
 | Group             | Can                                                        | Where       |
@@ -97,7 +97,7 @@ and the inputs bootstrap wrote. State is in the bootstrap's bucket, key
 region at init.
 
 From the spec the module creates
-([infra workflow](https://github.com/duncan-G/protostrap/blob/v0.1.4/docs/protostrap.md#infra-workflow)):
+([infra workflow](https://github.com/duncan-G/protostrap/blob/v0.1.5/docs/protostrap.md#infra-workflow)):
 
 - **Network:** a VPC (`10.20.0.0/16` by default, in one zone) and its subnets. Only the
   ingress VMs have public IPs, and nothing is admitted from the internet: the tunnel is an
