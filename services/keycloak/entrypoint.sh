@@ -15,8 +15,9 @@
 #      OTEL_EXPORTER_OTLP_PROTOCOL, the service name of OTEL_SERVICE_NAME, the resource
 #      attributes of OTEL_RESOURCE_ATTRIBUTES and the headers of
 #      OTEL_EXPORTER_OTLP_HEADERS; under ProtoStrap the console logger is turned off, so
-#      each line leaves once. Without it, nothing is exported: log export is off and
-#      traces Keycloak starts itself aren't sampled.
+#      each line leaves once. Either way, traces Keycloak starts itself, from its
+#      background tasks, aren't sampled; a request's trace is, when its caller's is.
+#      Without an endpoint, log export is off too.
 #   5. Under ProtoStrap (PROTOSTRAP_REPLICA), KC_CACHE_EMBEDDED_NETWORK_BIND_ADDRESS is the
 #      replica's address on the overlay, unless it is already set. A release runs the new
 #      replica beside the old one, often on another VM, and the default, SITE_LOCAL, may
@@ -195,9 +196,10 @@ apply_otlp_headers() {
 # endpoint itself, so it gets the endpoint as OpenTelemetry's variable gives it.
 apply_telemetry() {
     local endpoint=${OTEL_EXPORTER_OTLP_ENDPOINT-} protocol
+    # Keycloak's own roots are its background tasks: session loads, JGROUPS_PING writes.
+    set_default KC_TRACING_SAMPLER_RATIO 0.0
     if [[ -z $endpoint ]]; then
         set_default KC_TELEMETRY_LOGS_LEVEL off
-        set_default KC_TRACING_SAMPLER_RATIO 0.0
         return 0
     fi
     endpoint=${endpoint%/}

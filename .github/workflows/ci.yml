@@ -65,7 +65,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: duncan-G/protostrap
-          ref: v0.1.10
+          ref: v0.1.12
           path: .protostrap
 
       - uses: ./.protostrap/.github/actions/protostrap

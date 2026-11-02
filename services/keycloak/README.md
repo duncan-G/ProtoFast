@@ -73,7 +73,7 @@ another value.
 | Browsers' URL, the issuer    | `KC_HOSTNAME`                             | Run    | `ORIGIN_AUTH`, by the entrypoint |
 | Database connection          | `KC_DB_URL_HOST`, `_PORT`, `_DATABASE`, `KC_DB_USERNAME`, `KC_DB_PASSWORD` | Run | From `ConnectionStrings__keycloak`, by the entrypoint |
 | Where telemetry goes         | `KC_TRACING_ENDPOINT`, `KC_TRACING_PROTOCOL`, `KC_TELEMETRY_LOGS_ENDPOINT`, `KC_TELEMETRY_LOGS_PROTOCOL`, `KC_TELEMETRY_SERVICE_NAME`, `KC_TELEMETRY_RESOURCE_ATTRIBUTES`, `KC_TELEMETRY_HEADER_*` | Run | From the `OTEL_` variables, by the entrypoint |
-| Trace sampling ratio         | `KC_TRACING_SAMPLER_RATIO`                | Run    | Keycloak's `1.0`; `0.0` without a collector, by the entrypoint |
+| Trace sampling ratio         | `KC_TRACING_SAMPLER_RATIO`                | Run    | `0.0`, by the entrypoint: Keycloak's own traces are its background tasks |
 | Bootstrap admin client       | `KC_BOOTSTRAP_ADMIN_CLIENT_ID`, `_SECRET` | Run, first start only | None |
 
 - **`start --optimized` refuses a different build-time value.** It exits with status 2 and
@@ -103,7 +103,7 @@ another value.
 | `KC_BOOTSTRAP_ADMIN_CLIENT_ID`      | The spec's `env`: `protofast-admin`                                    | Itself  |
 | `KC_BOOTSTRAP_ADMIN_CLIENT_SECRET`  | The secret's `Keycloak_KC_BOOTSTRAP_ADMIN_CLIENT_SECRET`; a parameter locally | Itself  |
 | `KC_BOOTSTRAP_ADMIN_USERNAME`, `_PASSWORD` | Locally only: the AppHost, for a database whose master realm is new | Themselves |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`       | ProtoStrap (`http://telemetry:4318`). Unset locally: the JVM doesn't trust the dashboard's certificate, so Keycloak exports nothing | `KC_TRACING_ENDPOINT` and `KC_TELEMETRY_LOGS_ENDPOINT`, each unless set; without it, `KC_TELEMETRY_LOGS_LEVEL=off` and `KC_TRACING_SAMPLER_RATIO=0.0` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`       | ProtoStrap (`http://telemetry:4318`). Unset locally: the JVM doesn't trust the dashboard's certificate, so Keycloak exports nothing | `KC_TRACING_ENDPOINT` and `KC_TELEMETRY_LOGS_ENDPOINT`, each unless set; without it, `KC_TELEMETRY_LOGS_LEVEL=off` |
 | `OTEL_EXPORTER_OTLP_PROTOCOL`       | ProtoStrap (`http/protobuf`)                                         | `KC_TRACING_PROTOCOL` and `KC_TELEMETRY_LOGS_PROTOCOL`: `grpc` or `http/protobuf` (unset is `http/protobuf`; `http/json`, which Keycloak can't send, becomes `http/protobuf`) |
 | `OTEL_SERVICE_NAME`                 | ProtoStrap (`keycloak`)                                              | `KC_TELEMETRY_SERVICE_NAME` |
 | `OTEL_RESOURCE_ATTRIBUTES`          | ProtoStrap                                                           | `KC_TELEMETRY_RESOURCE_ATTRIBUTES` |
@@ -133,13 +133,13 @@ container, and the entrypoint decides where they go. With `OTEL_EXPORTER_OTLP_EN
 traces and logs go there. For `http/protobuf` Keycloak adds `/v1/traces` and `/v1/logs` to
 the endpoint itself, so it gets the endpoint as OpenTelemetry's variable gives it
 (`http://telemetry:4318`, with a trailing slash dropped); for `grpc` it uses it as it is.
-Traces follow a caller's sampling decision (auth's back-channel calls carry a
-`traceparent`, so they join the sign-in's trace) and sample every trace Keycloak starts
-itself, which at the default ratio, 1.0, is `parentbased_always_on`. Under ProtoStrap the
+Traces follow a caller's sampling decision (the edge's requests and auth's back-channel
+calls carry a `traceparent`, so they join the sign-in's trace). The traces Keycloak starts
+itself aren't sampled: they are its background tasks, such as loading offline sessions and
+writing `JGROUPS_PING`, each a root trace of its own. Under ProtoStrap the
 console logger is turned off once logs go by OTLP, so each line reaches Loki once;
 `docker logs` then shows only what Keycloak prints before its logging starts. Without an
-endpoint, log export is turned off and the traces Keycloak starts itself aren't sampled, so
-it doesn't try `localhost:4317` every few seconds.
+endpoint, log export is turned off too.
 
 The entrypoint prints no value, ever.
 

@@ -354,7 +354,7 @@ check_var KC_TELEMETRY_LOGS_PROTOCOL http/protobuf
 check_var KC_TELEMETRY_SERVICE_NAME keycloak
 check_var KC_TELEMETRY_RESOURCE_ATTRIBUTES 'service.instance.id=keycloak-1,service.version=r7,deployment.environment.name=prod'
 check_var KC_TELEMETRY_LOGS_LEVEL '<unset>'
-check_var KC_TRACING_SAMPLER_RATIO '<unset>'
+check_var KC_TRACING_SAMPLER_RATIO 0.0
 check output '' "$output"
 
 scenario "the endpoint's trailing slash is dropped: Keycloak adds /v1/traces and /v1/logs"

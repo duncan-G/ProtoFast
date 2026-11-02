@@ -58,6 +58,10 @@ public static class Extensions
             builder.Logging.ClearProviders();
         }
 
+        // Npgsql logs each command at Information, so the readiness check's SELECT 1 every few
+        // seconds; EF Core logs its own commands, and every command has a span.
+        builder.Logging.AddFilter("Npgsql.Command", LogLevel.Warning);
+
         builder.Logging.AddOpenTelemetry(logging =>
         {
             logging.IncludeFormattedMessage = true;

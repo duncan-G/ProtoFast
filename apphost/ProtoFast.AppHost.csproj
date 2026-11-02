@@ -18,7 +18,7 @@
          - .protostrap in this repository, where the workflows check ProtoStrap out, or
          - a ProtoStrap checkout beside this repository, ../ProtoStrap, on a laptop.
        Set ProtoStrapSource to use another. Once the package is published, this becomes
-       <PackageReference Include="ProtoStrap.Hosting" Version="0.1.10" />. -->
+       <PackageReference Include="ProtoStrap.Hosting" Version="0.1.12" />. -->
   <PropertyGroup>
     <ProtoStrapSource Condition="'$(ProtoStrapSource)' == '' and Exists('$(MSBuildThisFileDirectory)../.protostrap/hosting')">$(MSBuildThisFileDirectory)../.protostrap</ProtoStrapSource>
     <ProtoStrapSource Condition="'$(ProtoStrapSource)' == ''">$(MSBuildThisFileDirectory)../../ProtoStrap</ProtoStrapSource>
