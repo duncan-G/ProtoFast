@@ -14,8 +14,8 @@ Each row is one component of the spec, by its name there. The AppHost declares a
 | `auth`                  | service  | BFF: sign-in, sessions, account management, and the edge's authorizer | `services/auth`                      |
 | `api`                   | service  | gRPC: documents, uploads, stories, and the admin consoles' RPCs    | `services/api`                          |
 | `payments`              | service  | gRPC: the `greet` service so far                                    | `services/payments`                     |
-| `conversion`            | service  | Document to Markdown (MarkItDown, CPU OCR), HTTP, no routes        | `services/conversion`                   |
-| `document-import`       | worker   | Drains the `document-upload` queue through conversion and the model APIs | `services/document_import`        |
+| `conversion`            | worker   | Drains the `document-conversion` queue: document to Markdown (MarkItDown, CPU OCR) | `services/conversion`   |
+| `document-import`       | worker   | Drains the `document-upload` queue through the model APIs, sending uploads that need converting to conversion | `services/document_import` |
 | `keycloak`              | service  | Identity provider: realms `protofast`, `theplot`, `operators`      | `services/keycloak`                     |
 | `keycloak-config`       | task     | Keycloak's configure task: applies the three realms                | `services/keycloak-config`              |
 | `otel-collector`        | service  | Takes browsers' traces and logs on `/otlp/` and passes them on     | `services/otel-collector`               |
@@ -66,7 +66,8 @@ graph TD
     Edge -.->|"/ext-authz/…"| Auth
     Auth --> KC & Redis & PG["postgres"]
     Api --> PG & Redis & LS["protostrap-localstack (S3, SQS)"]
-    Import["document-import"] --> LS & Conv["conversion"] & PG
+    Import["document-import"] --> LS & PG
+    Conv["conversion"] --> LS
     Auth & KC --> Smtp["smtp4dev :8025"]
     Otel --> Dash["Aspire dashboard"]
 ```
@@ -98,12 +99,11 @@ graph TD
         ApiG["api · payments"]
         KCG["keycloak"]
         OtelG["otel-collector"]
-        ConvG["conversion"]
         Tasks["tasks: migrations, keycloak-config, postgres-config"]
     end
 
     subgraph Compute["compute pool (Spot), or general's spare room"]
-        ImportC["document-import"]
+        ImportC["document-import · conversion"]
     end
 
     subgraph Data1["data-1"]
@@ -125,14 +125,14 @@ Key facts:
 
 - **The VMs are ProtoStrap's.** An ingress VM per zone runs the edge alone, and is its zone's
   NAT: every outbound call but S3's, to the model APIs, SES or other AWS APIs, leaves through
-  it. The general pool runs every service, worker and task, apart from document-import, the
-  one worker, which is compute's. Compute keeps no VM of its own until document-import
-  outgrows the general VMs' spare room, so it usually starts there, on On-Demand VMs, and
+  it. The general pool runs every service and task. The workers, document-import and
+  conversion, are compute's. Compute keeps no VM of its own until they outgrow the general
+  VMs' spare room, so it usually starts there, on On-Demand VMs, and
   moves to Spot compute VMs when it doesn't fit. data-1 holds PostgreSQL and Redis, each with its own EBS
   volume, and ProtoStrap's telemetry and scheduler
   ([ProtoStrap's VMs](https://github.com/duncan-G/protostrap/blob/v0.1.12/docs/vms.md)).
 - **Containers reach each other by component name** on ProtoStrap's overlay network:
-  `http://keycloak:8080`, `http://auth:8080`, `http://conversion:8090`, `postgres:5432`,
+  `http://keycloak:8080`, `http://auth:8080`, `postgres:5432`,
   `redis:6379`. The connection strings in the secret use these names.
 - **No inbound ports.** Cloudflare terminates TLS and sends every host through the tunnel to
   the edge, which routes by host and path ([layer 04](04-edge.md)). Traffic inside the VPC
@@ -154,7 +154,7 @@ VMs, `t4g.small` and `t4g.medium`. The sizes are in
 | data-1                    | `t4g.medium`                                      |
 | auth, api, clients        | 1–4 replicas: a VM's loss stops one until it starts on another |
 | keycloak, payments, otel-collector, clients-admin-theplot | 1 replica: a VM's loss stops it until it starts on another |
-| conversion                | 1–4 replicas                                      |
+| conversion                | 0–4 replicas, from the queue                      |
 | document-import           | 0–4 replicas, from the queue                      |
 | PostgreSQL request        | 1 CPU, 1 GiB                                      |
 | Redis request, max memory | 250m CPU, 512 MiB; `--maxmemory 256mb`            |

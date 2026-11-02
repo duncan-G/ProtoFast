@@ -86,17 +86,17 @@ def test_it_runs_as_a_user_and_takes_no_build_arguments():
 
     assert users and users[-1] not in {"root", "0"}
     assert not re.search(r"^ARG\s", text, re.MULTILINE)
-    assert re.search(r"^EXPOSE\s+8090\b", text, re.MULTILINE)
+    # A worker: nothing calls it.
+    assert not re.search(r"^EXPOSE\s", text, re.MULTILINE)
 
 
-def test_logs_leave_by_one_path_and_readiness_is_not_traced():
+def test_logs_leave_by_one_path():
     text = "\n".join(
         line for line in dockerfile().splitlines() if not line.lstrip().startswith("#")
     )
 
     assert "OTEL_LOGS_EXPORTER=none" in text
     assert "OTEL_PYTHON_LOG_AUTO_INSTRUMENTATION=false" in text
-    assert re.search(r"OTEL_PYTHON_FASTAPI_EXCLUDED_URLS=\S*healthz", text)
     # The endpoint, protocol and service name are ProtoStrap's (or Aspire's) to set.
     for name in ("OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_PROTOCOL", "OTEL_SERVICE_NAME"):
         assert name not in text, name

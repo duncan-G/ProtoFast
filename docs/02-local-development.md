@@ -52,8 +52,8 @@ account ([Local secrets and keys](#local-secrets-and-keys)).
 | `auth-migrations`, `protofast-migrations` | projects   | run to completion before auth, and before the api and document-import; each has a **Rebuild** command that drops its schema and migrates again |
 | `auth`                           | project             | `Keycloak__Authority` to Keycloak's own URL, the client secrets, the internal JWT's private key, `Smtp__Host/Port` to smtp4dev with `Smtp__StartTls=false` |
 | `api`, `payments`                | projects            | the internal JWT's public key, from `protofast/dev`                       |
-| `conversion`                     | Dockerfile          | LocalStack's bucket and test credentials, OTLP to the dashboard          |
-| `document-import`                | project             | `Conversion__BaseUrl` to conversion; the model APIs' keys from `protofast/dev` |
+| `conversion`                     | Dockerfile          | LocalStack's bucket, queues and test credentials, OTLP to the dashboard  |
+| `document-import`                | project             | LocalStack's bucket and queues; the model APIs' keys from `protofast/dev` |
 | `otel-collector`                 | Dockerfile          | exports browsers' telemetry to the dashboard, with its key in `ASPIRE_OTLP_API_KEY` |
 | `protofast`, `theplot`, `admin`, `admin-theplot` | `ng serve` | `PORT`, `SERVER_URL` (the host's local origin), OTLP to the dashboard; the admin ones `ADMIN_CONSOLE_ROLES` |
 

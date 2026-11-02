@@ -7,7 +7,7 @@ from typing import Any
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import BotoCoreError, ClientError
+from botocore.exceptions import ClientError
 
 from .config import Settings
 
@@ -26,21 +26,6 @@ class Storage:
     @property
     def bucket(self) -> str:
         return self._settings.bucket
-
-    def bucket_answers(self) -> bool:
-        """Whether the bucket can be reached with this replica's credentials, for readiness."""
-        try:
-            self._s3.head_bucket(Bucket=self.bucket)
-        except (BotoCoreError, ClientError) as error:
-            # The error's code, never its message: S3's messages can name objects.
-            code = (
-                error.response.get("Error", {}).get("Code", "error")
-                if isinstance(error, ClientError)
-                else type(error).__name__
-            )
-            logger.warning("the documents bucket doesn't answer error=%s", code)
-            return False
-        return True
 
     def content_length(self, key: str) -> int | None:
         head = self.head(key)

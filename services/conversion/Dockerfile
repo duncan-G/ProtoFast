@@ -1,5 +1,6 @@
-# Document → Markdown for ThePlot. CPU only: no CUDA, no torch, no cloud-AI client
-# (tests/test_image.py checks requirements.txt, which is exactly what this installs).
+# Document → Markdown for ThePlot, a worker on the document-conversion queue. CPU only: no
+# CUDA, no torch, no cloud-AI client (tests/test_image.py checks requirements.txt, which is
+# exactly what this installs).
 
 # python:3.12-slim (3.12.16 on Debian trixie), pinned by its multi-platform index's digest,
 # which has linux/arm64: ProtoStrap builds the image for Graviton.
@@ -29,11 +30,10 @@ ENV PYTHONUNBUFFERED=1 \
 # opentelemetry-instrument configures traces and metrics from the OTEL_ variables ProtoStrap
 # (or Aspire) sets. Logs leave by one path, JSON lines on stdout: OpenTelemetry's logging
 # instrumentation would otherwise also send each line over OTLP; it still puts the trace on
-# each line for the JSON formatter. Readiness is left out of traces.
+# each line for the JSON formatter.
 ENV OTEL_PYTHON_LOG_AUTO_INSTRUMENTATION=false \
     OTEL_LOGS_EXPORTER=none \
-    OTEL_PYTHON_LOG_CORRELATION=true \
-    OTEL_PYTHON_FASTAPI_EXCLUDED_URLS=healthz
+    OTEL_PYTHON_LOG_CORRELATION=true
 
 WORKDIR /app
 COPY requirements.txt ./
@@ -52,7 +52,5 @@ RUN find / -xdev -perm /6000 -type f -exec chmod a-s {} + \
     && useradd --system --no-create-home --uid 1654 conversion
 USER 1654
 
-EXPOSE 8090
-# One process per replica: ProtoStrap scales replicas, not workers. python -m, not uvicorn's
-# command, so the service's own SIGTERM handler drains.
+# One conversion at a time per replica: ProtoStrap scales replicas on the queue.
 CMD ["opentelemetry-instrument", "python", "-m", "conversion"]

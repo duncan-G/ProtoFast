@@ -9,9 +9,9 @@ namespace ProtoFast.DocumentImport.Worker.Import;
 
 /// <summary>
 /// Upload in, story row out: text, then the engine run, then the terminal artifact, its library
-/// names tagged as mentions, saved in place of the document. Returns null when the document was
-/// already imported or deleted. Each step is reported to the ledger under the upload id, which is
-/// what the desk shows while it waits.
+/// names tagged as mentions, saved in place of the document. Skipped when the document was already
+/// imported or deleted, and handed off when its text needs converting first. Each step is reported
+/// to the ledger under the upload id, which is what the desk shows while it waits.
 /// </summary>
 public sealed class DocumentImportRunner(
     SourceTextResolver sourceText,
@@ -22,15 +22,18 @@ public sealed class DocumentImportRunner(
     IRunLedger ledger,
     ILogger<DocumentImportRunner> logger)
 {
-    public async Task<Guid?> RunAsync(DocumentImportRequested request, CancellationToken ct)
+    public async Task<ImportOutcome> RunAsync(DocumentImportRequested request, CancellationToken ct)
     {
         if (!await writer.IsPendingAsync(request.UserId, request.UploadId, ct))
         {
-            return null;
+            return ImportOutcome.Skipped;
         }
 
         await ledger.ReportAsync(request.UploadId, new RunProgress(RunPhase.Preparing), ct);
-        var text = await sourceText.ResolveAsync(request, ct);
+        if (await sourceText.ResolveAsync(request, ct) is not { } text)
+        {
+            return ImportOutcome.Converting;
+        }
 
         // The upload id stands in for the run id of the input, so its artifact key names the upload.
         var input = await artifacts.PutAsync(
@@ -56,6 +59,6 @@ public sealed class DocumentImportRunner(
                 request.UploadId, new RunProgress(RunPhase.Finished, summary.RunId, ResultId: saved.ToString()), ct);
         }
 
-        return storyId;
+        return new ImportOutcome(storyId);
     }
 }

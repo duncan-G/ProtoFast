@@ -10,7 +10,8 @@ namespace ProtoFast.DocumentImport.Worker;
 
 /// <summary>
 /// Drains the import queue, running up to <see cref="DocumentImportConsumerOptions.MaxConcurrentImports"/>
-/// imports at once. A message is deleted once the story is saved, the upload proves unreadable
+/// imports at once. A message is deleted once the story is saved, the upload goes to the conversion worker
+/// (which sends it back converted), the upload proves unreadable
 /// or the discovery run fails on its own terms; any other failure comes back after its visibility
 /// timeout, resumes the run it interrupted or reuses the one it outlived, and dead-letters after the queue's receive limit,
 /// which is when its progress turns to failed. An import its owner cancels stops at the next poll, its message deleted and its run abandoned.
@@ -48,10 +49,14 @@ public sealed class DocumentImportConsumer(
         try
         {
             using var scope = scopes.CreateScope();
-            var storyId = await scope.ServiceProvider.GetRequiredService<DocumentImportRunner>().RunAsync(request, cancellation.Token);
+            var outcome = await scope.ServiceProvider.GetRequiredService<DocumentImportRunner>().RunAsync(request, cancellation.Token);
             await Queue.DeleteAsync(message.ReceiptHandle, ct);
-            activity?.SetTag("document_import.story_id", storyId);
-            if (storyId is null)
+            activity?.SetTag("document_import.story_id", outcome.StoryId);
+            if (outcome.SentForConversion)
+            {
+                logger.LogInformation("Upload {UploadId} went to the conversion worker; its import resumes when it comes back", request.UploadId);
+            }
+            else if (outcome.StoryId is not { } storyId)
             {
                 logger.LogInformation("Upload {UploadId} is no longer on the desk; skipped", request.UploadId);
                 await AbandonCancelledRunAsync(request.UploadId, ct);

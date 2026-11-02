@@ -92,9 +92,12 @@ var redis = builder.AddRedis("redis")
             "--maxmemory 256mb --maxmemory-policy volatile-ttl --save '' --appendonly no")
         .Volume(size: "1Gi"));
 
-// Uploads go straight from browsers to the bucket, then through two queues to document-import.
+// Uploads go straight from browsers to the bucket, then through the queues to document-import.
 var documents = builder.AddProtoStrapBucket("documents", browser: true, versions: TimeSpan.FromDays(7), locked: true);
 var documentUpload = builder.AddProtoStrapQueue("document-upload", visibility: TimeSpan.FromMinutes(15));
+// Uploads document-import sends to conversion, which sends each back on document-upload. Longer
+// than the longest conversion (CONVERSION_TIMEOUT_SECONDS, 480 s), so one isn't delivered twice.
+var documentConversion = builder.AddProtoStrapQueue("document-conversion", visibility: TimeSpan.FromMinutes(15));
 // FIFO, grouped by document family, so each family's policy has one writer at a time.
 var workflowOutcomes = builder.AddProtoStrapQueue("workflow-outcomes", fifo: true, visibility: TimeSpan.FromMinutes(15));
 // auth and Keycloak send mail with SES, from no-reply@ the protofast host's domain.
@@ -227,21 +230,23 @@ gateway.WithUpstream(api, u => Authorized(u.Routes([
 ])));
 
 // conversion turns uploads into Markdown (Python: MarkItDown, Tesseract), and document-import
-// drains the upload queue through it and the model APIs.
-var conversion = builder.AddDockerfile("conversion", "../services/conversion")
-    .WithHttpEndpoint(targetPort: 8090, name: "http")
-    .WithHttpHealthCheck("/healthz")
+// drains the upload queue through it and the model APIs. Both run only while there is work.
+builder.AddDockerfile("conversion", "../services/conversion")
     .WithReference(documents)
+    .WithReference(documentConversion)
+    .WithReference(documentUpload)
     .WithLocalStackCredentials()
     .WithLocalOtlpExporter()
-    .PublishAsProtoStrapService(s => s
-        // Measured: one 40-page scanned PDF peaks at 494 MiB, two at once at 960 MiB, and
-        // document-import runs two imports per replica. The memory request is a hard limit.
-        .Request(cpu: "1000m", memory: "1Gi")
-        // The drain, the longest conversion (CONVERSION_TIMEOUT_SECONDS, 480 s) and its writes:
-        // services/conversion/README.md.
-        .Stop(TimeSpan.FromSeconds(620))
-        .Scale(min: 1, max: 4, demand => demand.Cpu(0.70)));
+    .PublishAsProtoStrapWorker(w => w
+        .Pool(Pool.Compute)
+        // One conversion per replica: one 40-page scanned PDF peaks at 494 MiB. The memory request
+        // is a hard limit.
+        .Request(cpu: "250m", memory: "512Mi")
+        // A conversion in progress goes back on the queue at SIGTERM, so stop need only cover a
+        // long poll (20 s).
+        .Stop(TimeSpan.FromSeconds(30))
+        // Most conversions take seconds to a minute: a replica per five waiting, gone when none are.
+        .Scale(min: 0, max: 4, demand => demand.Queue(documentConversion, rate: 1.0 / 60, drain: TimeSpan.FromMinutes(5))));
 
 builder.AddProject<Projects.ProtoFast_DocumentImport_Worker>("document-import")
     .WithReferenceEnvironment(connectionStringOnly)
@@ -249,7 +254,7 @@ builder.AddProject<Projects.ProtoFast_DocumentImport_Worker>("document-import")
     .WithReference(documents)
     .WithReference(documentUpload)
     .WithReference(workflowOutcomes)
-    .WithEnvironment("Conversion__BaseUrl", conversion.GetEndpoint("http"))
+    .WithReference(documentConversion)
     .WaitForCompletion(protofastMigrations)
     .PublishAsProtoStrapWorker(w => w
         .Pool(Pool.Compute)

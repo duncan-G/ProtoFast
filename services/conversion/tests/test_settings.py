@@ -1,6 +1,6 @@
-"""What the service reads from its environment under ProtoStrap and `aspire run`: the bucket
-from BUCKET_DOCUMENTS, the region from AWS_REGION, and LocalStack from AWS_ENDPOINT_URL_S3,
-which boto3 reads itself."""
+"""What the worker reads from its environment under ProtoStrap and `aspire run`: the bucket
+from BUCKET_DOCUMENTS, its queues from QUEUE_<NAME>_URL, the region from AWS_REGION, and
+LocalStack from AWS_ENDPOINT_URL_S3, which boto3 reads itself."""
 
 from __future__ import annotations
 
@@ -59,17 +59,28 @@ def test_the_old_conversion_variables_are_not_read(monkeypatch):
     assert settings.s3_endpoint is None
 
 
-def test_without_BUCKET_DOCUMENTS_it_refuses_to_start_and_says_why(monkeypatch):  # noqa: N802
-    monkeypatch.delenv("BUCKET_DOCUMENTS", raising=False)
+REQUIRED = ("BUCKET_DOCUMENTS", "QUEUE_DOCUMENT_CONVERSION_URL", "QUEUE_DOCUMENT_UPLOAD_URL")
 
-    with pytest.raises(config.SettingsError, match="BUCKET_DOCUMENTS"):
+
+@pytest.mark.parametrize("missing", REQUIRED)
+def test_without_its_bucket_or_a_queue_it_refuses_to_start_and_says_why(monkeypatch, missing):
+    for name in REQUIRED:
+        monkeypatch.setenv(name, "x")
+    monkeypatch.delenv(missing)
+
+    with pytest.raises(config.SettingsError, match=missing):
         config.check(config.load())
 
 
-def test_with_BUCKET_DOCUMENTS_it_starts(monkeypatch):  # noqa: N802
-    monkeypatch.setenv("BUCKET_DOCUMENTS", "x")
+def test_with_its_bucket_and_queues_it_starts(monkeypatch):
+    for name in REQUIRED:
+        monkeypatch.setenv(name, "x")
 
-    config.check(config.load())
+    settings = config.load()
+    config.check(settings)
+
+    assert settings.conversions_queue_url == "x"
+    assert settings.imports_queue_url == "x"
 
 
 def test_the_region_is_AWS_REGION_which_botocore_does_not_read_itself(aws):  # noqa: N802
@@ -112,10 +123,6 @@ class RecordingClient:
         self.calls.append(("put_object", kwargs))
         return {}
 
-    def head_bucket(self, **kwargs):
-        self.calls.append(("head_bucket", kwargs))
-        return {}
-
 
 def test_every_write_carries_a_checksum_which_an_object_lock_bucket_requires():
     client = RecordingClient()
@@ -126,31 +133,3 @@ def test_every_write_carries_a_checksum_which_an_object_lock_bucket_requires():
 
     assert [kwargs["ChecksumAlgorithm"] for _, kwargs in client.calls] == ["CRC32", "CRC32"]
     assert all(kwargs["Bucket"] == "docs" for _, kwargs in client.calls)
-
-
-def test_the_bucket_answers_when_s3_heads_it():
-    client = RecordingClient()
-    storage = Storage(config.Settings(bucket="docs"), client=client)
-
-    assert storage.bucket_answers()
-    assert client.calls == [("head_bucket", {"Bucket": "docs"})]
-
-
-def test_the_bucket_does_not_answer_when_s3_refuses(aws):
-    from botocore.exceptions import ClientError  # noqa: PLC0415
-
-    class Refusing:
-        def head_bucket(self, **_):
-            raise ClientError({"Error": {"Code": "403", "Message": "Forbidden"}}, "HeadBucket")
-
-    assert not Storage(config.Settings(bucket="docs"), client=Refusing()).bucket_answers()
-
-
-def test_the_bucket_does_not_answer_when_s3_is_unreachable(aws):
-    from botocore.exceptions import EndpointConnectionError  # noqa: PLC0415
-
-    class Unreachable:
-        def head_bucket(self, **_):
-            raise EndpointConnectionError(endpoint_url="http://localstack:4566")
-
-    assert not Storage(config.Settings(bucket="docs"), client=Unreachable()).bucket_answers()

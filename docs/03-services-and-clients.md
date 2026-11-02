@@ -37,7 +37,8 @@ lists everything it sets. What ProtoFast reads of it:
 | `HOST_<NAME>`                             | auth (tenants, the SES sender's From), the clients host (which app answers a host, Angular's allowed hosts), keycloak-config |
 | `ORIGIN_<NAME>`                           | auth (`ORIGIN_AUTH`, Keycloak's public URL; the request's host's origin, for its OIDC `redirect_uri` and post-logout URL), keycloak (`KC_HOSTNAME`), keycloak-config (redirect URIs) |
 | `BUCKET_DOCUMENTS`                        | api, document-import, conversion                               |
-| `QUEUE_DOCUMENT_UPLOAD_URL`               | api (sends), document-import (receives)                        |
+| `QUEUE_DOCUMENT_UPLOAD_URL`               | api and conversion (send), document-import (receives)          |
+| `QUEUE_DOCUMENT_CONVERSION_URL`           | document-import (sends), conversion (receives)                 |
 | `QUEUE_WORKFLOW_OUTCOMES_URL`             | document-import (FIFO, the URL ends in `.fifo`)                |
 | `SECRET_ID`, `SECRET_PREFIX`              | every .NET component                                           |
 | `PROTOSTRAP_COMPONENT`                    | readiness: a check passes only for its own name                |
@@ -79,8 +80,7 @@ Configuration sources, in increasing precedence:
 2. `appsettings.Development.json`, locally only (`ASPNETCORE_ENVIRONMENT=Development` comes
    from the AppHost; in an account nothing sets it, so it is Production).
 3. Environment variables: the spec's `env` (`HTTP_PORTS=8080`,
-   `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true`, `Keycloak__Authority`, `Conversion__BaseUrl`,
-   ...) or the AppHost's.
+   `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true`, `Keycloak__Authority`, ...) or the AppHost's.
 4. The environment's secret, in an account.
 
 ### auth's option classes
@@ -128,12 +128,12 @@ queue:
 | ---------------------------------------- | -------------------------------------------------- |
 | `Providers:<name>:ApiKey` (deepseek, gemini, anthropic) | the secret, `DocumentImport_Providers__<name>__ApiKey`, `protofast/dev`'s locally |
 | `Providers:Default`, `Providers:Fallback` | `appsettings.json`: deepseek, then gemini         |
-| `Conversion:BaseUrl`                     | the spec's `env`, `http://conversion:8090`; locally conversion's endpoint |
 | `Consumer:MaxConcurrentImports`          | 2 (`appsettings.json`), 8 locally                  |
 
 It stops within 40 s of SIGTERM, inside the spec's 45 s: imports in progress are cancelled
 and their messages come back once their lease lapses. It scales from zero on the
-`document-upload` queue.
+`document-upload` queue. An upload that needs converting goes to the `document-conversion`
+queue, and conversion sends it back on `document-upload` with the outcome in `conversion`.
 
 ### The tasks
 
@@ -149,11 +149,12 @@ Each calls `AddProtoStrapSecret` itself for its connection strings and exits whe
 
 ## conversion
 
-The Python service is configured by environment variables alone; its
-[README](../services/conversion/README.md) has every one. In short: `BUCKET_DOCUMENTS` (required),
-`AWS_REGION`, the role's credentials, `AWS_ENDPOINT_URL_S3` locally, the `OTEL_` variables,
-and `CONVERSION_*` limits with defaults. It reads no keys from the secret, has no routes, and
-listens on 8090. Readiness also needs the bucket to have answered once.
+The Python worker is configured by environment variables alone; its
+[README](../services/conversion/README.md) has every one. In short: `BUCKET_DOCUMENTS`,
+`QUEUE_DOCUMENT_CONVERSION_URL` and `QUEUE_DOCUMENT_UPLOAD_URL` (required), `AWS_REGION`, the
+role's credentials, `AWS_ENDPOINT_URL_S3` and `AWS_ENDPOINT_URL_SQS` locally, the `OTEL_`
+variables, and `CONVERSION_*` limits with defaults. It reads no keys from the secret and
+listens on no port.
 
 ## Angular clients
 

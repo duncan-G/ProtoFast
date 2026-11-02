@@ -21,12 +21,16 @@ builder.AddServiceDefaults(stop: TimeSpan.FromSeconds(40));
 builder.AddNpgsqlDataSource("protofast");
 builder.Services.AddThePlotData();
 
-// The spec's documents bucket and its two queues, from what ProtoStrap sets.
+// The spec's documents bucket and its three queues, from what ProtoStrap sets.
 builder.Services.AddS3ObjectStorage(options => builder.Configuration.GetSection("S3").Bind(options), bucket: "documents");
 builder.Services.AddSqsQueue(
     DocumentImportQueues.ImportQueueKey,
     options => builder.Configuration.GetSection("Sqs:DocumentImport").Bind(options),
     queue: "document-upload");
+builder.Services.AddSqsQueue(
+    DocumentImportQueues.ConversionQueueKey,
+    options => builder.Configuration.GetSection("Sqs:Conversion").Bind(options),
+    queue: "document-conversion");
 builder.Services.AddSqsQueue(
     SqsOutcomeQueue.QueueKey,
     options => builder.Configuration.GetSection("Sqs:WorkflowOutcomes").Bind(options),
@@ -42,9 +46,7 @@ builder.Services.AddScreenplayDiscovery(
 builder.Services.AddSkillVerification(options => builder.Configuration.GetSection("SkillVerification").Bind(options));
 builder.Services.AddScriptSafetyReview(options => builder.Configuration.GetSection("ScriptSafety").Bind(options));
 
-builder.Services.Configure<ConversionOptions>(builder.Configuration.GetSection("Conversion"));
-builder.Services.AddHttpClient(ConversionClient.HttpClientName, http => http.Timeout = TimeSpan.FromMinutes(10));
-builder.Services.AddScoped<ConversionClient>();
+builder.Services.AddSingleton<ConversionClient>();
 builder.Services.AddScoped<SourceTextResolver>();
 builder.Services.AddScoped<StoryWriter>();
 builder.Services.AddScoped<DocumentImportRunner>();
