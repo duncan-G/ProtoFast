@@ -5,7 +5,7 @@ Written for the migration (October 2026); the layer docs 01–09 describe the re
 
 Before, ProtoFast ran itself: two EC2 hosts, `docker compose` per host, `deploy.sh` pushed over
 SSM by one workflow per component, its own Envoy, its own Terraform. Now it is an application
-on [ProtoStrap](https://github.com/duncan-G/protostrap) 0.1.10. The AppHost describes every
+on [ProtoStrap](https://github.com/duncan-G/protostrap) 0.1.12. The AppHost describes every
 component once; `aspire run` runs it locally behind ProtoStrap's local edge, and it writes the
 spec ProtoStrap deploys to one account, prod. Dev is the local run, with no account of its
 own: its secret, `protofast/dev`, sits beside prod's.
@@ -79,8 +79,11 @@ programs read their configs, which they couldn't on the first prod deploy. 0.1.6
 its data sources, which it had skipped, and 0.1.7 lets Loki answer queries, which hung. 0.1.8
 runs only workers in compute, so conversion moves to general, and 0.1.9 moves a replica whose
 pool changed, so compute could scale in. 0.1.10 sends each request through the edge to
-telemetry as a log record and a span, as ProtoFast's own Envoy did. ProtoFast pins that
-release, `v0.1.10`, everywhere.
+telemetry as a log record and a span, as ProtoFast's own Envoy did. 0.1.12 sends services
+the connection's `:scheme`, `http`, where it had passed on the client's `https`, which Kestrel
+refused over cleartext HTTP/2, so every gRPC-Web call to the api and payments was a 502
+(`v0.1.11` was tagged by mistake without its release commit, and is skipped). ProtoFast pins
+that release, `v0.1.12`, everywhere.
 
 
 ## Open items

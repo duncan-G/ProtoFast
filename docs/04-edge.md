@@ -8,8 +8,8 @@ ProtoFast runs no proxy of its own. In an account the edge is ProtoStrap's: one 
 zone on the ingress VM, holding cloudflared, which runs the Cloudflare tunnel, and Envoy.
 Locally `aspire run` runs the same Envoy as the `protostrap-edge` container on port 20000,
 rendered by the same code from the same routes
-([ProtoStrap's edge](https://github.com/duncan-G/protostrap/blob/v0.1.10/docs/protostrap.md#edge),
-[the local edge](https://github.com/duncan-G/protostrap/blob/v0.1.10/docs/protostrap-aspire.md#the-local-edge)).
+([ProtoStrap's edge](https://github.com/duncan-G/protostrap/blob/v0.1.12/docs/protostrap.md#edge),
+[the local edge](https://github.com/duncan-G/protostrap/blob/v0.1.12/docs/protostrap-aspire.md#the-local-edge)).
 
 There is no Envoy config in this repository. The routes are each service's `Routes(...)` in
 [`apphost/Program.cs`](../apphost/Program.cs), written into the spec's `routes`, and the
@@ -126,7 +126,7 @@ on that question; they resolve the session themselves.
 - **In an account** Cloudflare terminates TLS and redirects plain HTTP to HTTPS; cloudflared
   sends each request to Envoy in the same container, and Envoy to the services over the
   overlay, all plain HTTP inside the VPC
-  ([Requests in](https://github.com/duncan-G/protostrap/blob/v0.1.10/docs/network.md#requests-in)).
+  ([Requests in](https://github.com/duncan-G/protostrap/blob/v0.1.12/docs/network.md#requests-in)).
 - **Cloudflare's own rules** are the AppHost's `AddCloudflareCdn`: a WAF rule blocks
   scanners' probes (`/wp-admin/`, `/.env`, `/.git/` and the like), and two cache rules keep
   out of Cloudflare's cache the ThePlot console (`/theplot/` on the admin host), whose
