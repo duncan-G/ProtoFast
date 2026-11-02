@@ -150,6 +150,7 @@ gateway:
 telemetry: {}
 
 queues:
+  document-conversion: { visibility: 15m }
   document-upload: { visibility: 15m }
   workflow-outcomes: { fifo: true, visibility: 15m }
 
@@ -312,7 +313,7 @@ components:
     stop: 20s
 
   conversion:
-    kind: service
+    kind: worker
     build: services/conversion
     sources:
       - ":(exclude,glob)services/conversion/**/*.egg-info"
@@ -345,13 +346,11 @@ components:
       - ":(exclude,glob)services/conversion/tests/**"
       - ":(exclude,glob)services/conversion/venv"
       - ":(exclude,glob)services/conversion/venv/**"
-    pool: general
-    request: { cpu: 1000m, memory: 1Gi }
-    port: 8090
-    ready: /healthz
-    uses: [documents]
-    stop: 620s
-    scale: { min: 1, max: 4, demand: [{ cpu: 70% }] }
+    pool: compute
+    request: { cpu: 250m, memory: 512Mi }
+    uses: [document-upload, documents]
+    stop: 30s
+    scale: { min: 0, max: 4, demand: [{ queue: document-conversion, rate: 0.016666667/s, drain: 5m }] }
 
   document-import:
     kind: worker
@@ -376,10 +375,9 @@ components:
     pool: compute
     request: { cpu: 500m, memory: 512Mi }
     depends_on: [postgres]
-    uses: [documents, workflow-outcomes]
+    uses: [document-conversion, documents, workflow-outcomes]
     migrate: protofast-migrations
     env:
-      Conversion__BaseUrl: http://conversion:8090
       OTEL_DOTNET_EXPERIMENTAL_OTLP_RETRY: in_memory
     secrets: [ConnectionStrings__protofast]
     stop: 45s

@@ -81,8 +81,7 @@ Locally the AppHost sets the same names.
 |---|---|---|
 | `ConnectionStrings__protofast` | Aspire reference | secret `Shared_ConnectionStrings__protofast` |
 | `Providers__deepseek__ApiKey`, `…gemini__ApiKey`, `…anthropic__ApiKey` | `protofast/dev`'s `DocumentImport_Providers__*__ApiKey`, empty until set | secret `DocumentImport_Providers__*__ApiKey` |
-| `Conversion__BaseUrl` | conversion's endpoint | spec: `http://conversion:8090` |
-| `BUCKET_DOCUMENTS`, `QUEUE_DOCUMENT_UPLOAD_URL`, `QUEUE_WORKFLOW_OUTCOMES_URL` | LocalStack's | ProtoStrap |
+| `BUCKET_DOCUMENTS`, `QUEUE_DOCUMENT_UPLOAD_URL`, `QUEUE_DOCUMENT_CONVERSION_URL`, `QUEUE_WORKFLOW_OUTCOMES_URL` | LocalStack's | ProtoStrap |
 | `AWS_ENDPOINT_URL_S3`, `AWS_ENDPOINT_URL_SQS`, `AWS_PROFILE` | LocalStack, `developer` | unset: the role |
 | `Consumer__MaxConcurrentImports` | 8 | 2 |
 
@@ -98,11 +97,12 @@ Locally the AppHost sets the same names.
 
 ### `conversion`
 
-`BUCKET_DOCUMENTS`, `AWS_REGION`, `AWS_ENDPOINT_URL_S3` (locally), `AWS_ACCESS_KEY_ID` and
-`AWS_SECRET_ACCESS_KEY` (locally `test`), `PROTOSTRAP_COMPONENT`, `PROTOSTRAP_REPLICA`,
-`PROTOSTRAP_RELEASE`, `DRAIN_SECONDS`, the `OTEL_` variables, and the `CONVERSION_*` limits:
+`BUCKET_DOCUMENTS`, `QUEUE_DOCUMENT_CONVERSION_URL`, `QUEUE_DOCUMENT_UPLOAD_URL`,
+`AWS_REGION`, `AWS_ENDPOINT_URL_S3` and `AWS_ENDPOINT_URL_SQS` (locally), `AWS_ACCESS_KEY_ID`
+and `AWS_SECRET_ACCESS_KEY` (locally `test`), `PROTOSTRAP_COMPONENT`, `PROTOSTRAP_REPLICA`,
+`PROTOSTRAP_RELEASE`, the `OTEL_` variables, and the `CONVERSION_*` limits:
 `MAX_SOURCE_BYTES`, `MAX_OUTPUT_BYTES`, `TIMEOUT_SECONDS`, `OCR_LANGUAGES`,
-`OCR_MIN_CONFIDENCE`, `MAX_OCR_PAGES`, `MAX_PAGES`, `PORT`. Its
+`OCR_MIN_CONFIDENCE`, `MAX_OCR_PAGES`, `MAX_PAGES`. Its
 [README](../services/conversion/README.md) has defaults.
 
 ### `keycloak`
@@ -227,7 +227,6 @@ scripts/                    dev helpers, admin console scaffold and checks, the 
 | 8080 | overlay | auth (HTTP/1.1), api and payments (cleartext HTTP/2, gRPC), keycloak (HTTP) |
 | 9000 | overlay | Keycloak's management port: `/health/ready` |
 | 4000 | overlay | the clients host (`clients`, `clients-admin-theplot`) |
-| 8090 | overlay | conversion; no route |
 | 4318 | overlay | otel-collector's OTLP/HTTP (routed at `/otlp/`), and ProtoStrap's collector, `telemetry:4318` |
 | 13133 | overlay | otel-collector's health check |
 | 5432, 6379 | overlay | PostgreSQL, Redis on data-1; never routed |

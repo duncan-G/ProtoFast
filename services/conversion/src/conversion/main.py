@@ -1,203 +1,152 @@
+"""Drains the document-conversion queue one message at a time. Each conversion's outcome goes
+back to document-import on the document-upload queue, inside the import message it came with."""
+
 from __future__ import annotations
 
 import logging
-import os
-import re
+import signal
 import sys
-import threading
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from types import FrameType
+from typing import Any
 
-import uvicorn
-from fastapi import FastAPI, Request
-from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse
+from opentelemetry import trace
+from pydantic import ValidationError
 
 from . import config, logs
 from . import convert as conversion
-from .contract import ConvertReply, ConvertRequest, Problem
+from .contract import ConvertReply, ConvertRequest
 from .limits import ConversionError
+from .sqs import Message, Queues
 from .storage import Storage
 
 # Log keys, sizes and durations only — never document text or file names.
 logger = logging.getLogger("conversion")
+tracer = trace.get_tracer("conversion")
 
-app = FastAPI(title="ProtoFast conversion", docs_url=None, redoc_url=None, openapi_url=None)
-
-_settings = config.load()
-_storage: Storage | None = None
-
-PORT_SUFFIX = re.compile(r":\d+$")
-
-# The caller, document-import, waits 10 minutes for a reply. A conversion checks its budget
-# (CONVERSION_TIMEOUT_SECONDS, 480 s) between steps, so it can run past it by the step it is
-# in; at shutdown it gets this much longer than its budget to finish.
-SHUTDOWN_GRACE_BEYOND_TIMEOUT = 120
+Convert = Callable[[ConvertRequest, Storage, config.Settings], ConvertReply]
 
 
-def storage() -> Storage:
-    # Lazy so the module imports without AWS configured.
-    global _storage  # noqa: PLW0603
-    if _storage is None:
-        _storage = Storage(_settings)
-    return _storage
+class Stopping(BaseException):  # noqa: N818 - not an error; nothing may catch it as one
+    """SIGTERM during a conversion. Its message goes back on the queue for another replica."""
 
 
-class Readiness:
-    """Ready when asked for this component by name, not draining, and once the documents
-    bucket has answered. A stopped replica's overlay address can be given to another
-    service's replica, so a check meant for another name fails. Outside ProtoStrap (no
-    PROTOSTRAP_COMPONENT) the name isn't tested."""
+class Worker:
+    def __init__(
+        self,
+        queues: Queues,
+        storage: Storage,
+        settings: config.Settings,
+        convert: Convert = conversion.convert,
+    ) -> None:
+        self.queues = queues
+        self.storage = storage
+        self.settings = settings
+        self.convert = convert
+        self.stopping = False
+        self._interruptible = False
 
-    def __init__(self, component: str | None) -> None:
-        self.component = component or None
-        self.draining = False
-        self.bucket_seen = False
+    def run(self) -> None:
+        while not self.stopping:
+            for message in self.queues.receive():
+                self.handle(message)
 
-    def host_matches(self, host: str) -> bool:
-        if not self.component:
-            return True
-        return PORT_SUFFIX.sub("", host) == self.component
-
-
-readiness = Readiness(os.environ.get("PROTOSTRAP_COMPONENT"))
-
-
-def _bucket_answers() -> bool:
-    try:
-        return storage().bucket_answers()
-    except Exception as error:  # noqa: BLE001 - readiness answers; it never raises
-        logger.warning("the documents bucket can't be asked error=%s", type(error).__name__)
-        return False
-
-
-# The spec's `ready: /healthz`. Left out of traces by the image's
-# OTEL_PYTHON_FASTAPI_EXCLUDED_URLS, and never logged.
-@app.get("/healthz")
-async def healthz(request: Request) -> JSONResponse:
-    if readiness.draining:
-        return JSONResponse({"ready": False, "draining": True}, status_code=503)
-    if not readiness.host_matches(request.headers.get("host", "")):
-        return JSONResponse({"ready": False}, status_code=503)
-    if not readiness.bucket_seen:
-        # Asked once: after the bucket has answered, no thread, since conversions may hold
-        # them all, and no S3 call per check.
-        if not await run_in_threadpool(_bucket_answers):
-            return JSONResponse(
-                {"ready": False, "error": "the documents bucket doesn't answer"},
-                status_code=503,
-            )
-        readiness.bucket_seen = True
-    return JSONResponse({"ready": True})
-
-
-# A plain def runs on a worker thread, so the event loop answers readiness meanwhile.
-@app.post("/convert", response_model=ConvertReply)
-def post_convert(request: ConvertRequest) -> ConvertReply:
-    logger.info(
-        "converting upload=%s media_type=%s source=%s",
-        request.uploadId,
-        request.mediaType,
-        request.sourceKey,
-    )
-
-    reply = conversion.convert(request, storage(), _settings)
-
-    logger.info(
-        "converted upload=%s pages=%d markdown_bytes=%d ocr=%s duration_ms=%d",
-        request.uploadId,
-        reply.pages,
-        reply.markdownBytes,
-        reply.ocr.applied,
-        reply.durationMs,
-    )
-
-    return reply
-
-
-# 4xx means the document will never convert; 5xx means the caller may retry.
-@app.exception_handler(ConversionError)
-def on_conversion_error(_: Request, error: ConversionError) -> JSONResponse:
-    logger.warning("conversion failed status=%d code=%s", error.status, error.code)
-
-    return JSONResponse(
-        status_code=error.status,
-        content=Problem(code=error.code, message=error.message, detail=error.detail).model_dump(),
-    )
-
-
-@app.exception_handler(Exception)
-def on_unexpected_error(_: Request, error: Exception) -> JSONResponse:
-    logger.exception("unexpected conversion failure", exc_info=error)
-
-    return JSONResponse(
-        status_code=500,
-        content=Problem(
-            code="conversion_failed",
-            message="The document could not be converted.",
-            detail=type(error).__name__,
-        ).model_dump(),
-    )
-
-
-class DrainingServer(uvicorn.Server):
-    """On SIGTERM, fail readiness at once and keep serving for DRAIN_SECONDS, so callers
-    notice; then uvicorn's graceful shutdown stops accepting, lets conversions in progress
-    finish, and exits. A second signal stops at once.
-
-    Not uvicorn's own handler, which re-raises the signal once stopped: that would end the
-    process before the exit handlers that flush the last spans."""
-
-    def __init__(self, config: uvicorn.Config, state: Readiness, drain_seconds: float) -> None:
-        super().__init__(config)
-        self.readiness = state
-        self.drain_seconds = drain_seconds
-
-    def handle_exit(self, sig: int, frame: FrameType | None) -> None:
-        if self.readiness.draining:
-            self.should_exit = True
-            self.force_exit = True
+    def on_signal(self, sig: int, _frame: FrameType | None) -> None:
+        """A conversion is cut short, so a stop never waits for one; the outcome being sent
+        is not, so document-import never gets it twice."""
+        if self.stopping:
             return
-        self.readiness.draining = True
-        logger.info("draining drain_seconds=%s signal=%s", self.drain_seconds, sig)
-        if self.drain_seconds <= 0:
-            self.should_exit = True
-            return
-        timer = threading.Timer(self.drain_seconds, self._stop_accepting)
-        timer.daemon = True
-        timer.start()
+        self.stopping = True
+        logger.info("stopping signal=%s", sig)
+        if self._interruptible:
+            self._interruptible = False
+            raise Stopping
 
-    def _stop_accepting(self) -> None:
-        self.should_exit = True
+    def handle(self, message: Message) -> None:
+        with tracer.start_as_current_span(
+            "document-conversion process",
+            context=message.trace,
+            kind=trace.SpanKind.CONSUMER,
+            attributes={"messaging.system": "aws_sqs", "messaging.operation.type": "process"},
+        ):
+            try:
+                request = ConvertRequest.model_validate_json(message.body)
+            except ValidationError as error:
+                # Never forwarded, so never deleted: it goes to the dead-letter queue to be read.
+                logger.error("unreadable conversion message errors=%d", error.error_count())  # noqa: TRY400
+                return
 
+            try:
+                with self._cut_short():
+                    outcome = self._convert(request, message)
+            except Stopping:
+                self.queues.release(message)
+                logger.info("conversion stopped upload=%s; back on the queue", request.uploadId)
+                return
 
-def server_config(application: FastAPI, settings: config.Settings) -> uvicorn.Config:
-    return uvicorn.Config(
-        application,
-        host="0.0.0.0",  # noqa: S104 - every interface, inside the container
-        port=settings.port,
-        log_config=None,
-        access_log=False,
-        server_header=False,
-        # Longer than Envoy's 60 s idle timeout; uvicorn's default is 5.
-        timeout_keep_alive=65,
-        # After the drain, conversions in progress get this long. The spec's `stop` must
-        # cover DRAIN_SECONDS plus this.
-        timeout_graceful_shutdown=settings.timeout_seconds + SHUTDOWN_GRACE_BEYOND_TIMEOUT,
-    )
+            if outcome is None:
+                return
+            self.queues.send_import({**request.importRequest, "conversion": outcome})
+            self.queues.delete(message)
+
+    def _convert(self, request: ConvertRequest, message: Message) -> dict[str, Any] | None:
+        """The outcome document-import reads, or None to leave the message for redelivery."""
+        logger.info(
+            "converting upload=%s media_type=%s source=%s",
+            request.uploadId,
+            request.mediaType,
+            request.sourceKey,
+        )
+        try:
+            reply = self.convert(request, self.storage, self.settings)
+        except ConversionError as error:
+            # A verdict on the document: converting it again would fail the same way.
+            logger.warning("conversion failed status=%d code=%s", error.status, error.code)
+            return {"error": error.code}
+        except Exception:
+            if not self.queues.is_last_delivery(message):
+                logger.exception("conversion failed upload=%s; redelivered", request.uploadId)
+                return None
+            logger.exception("conversion failed upload=%s for the last time", request.uploadId)
+            return {"error": "conversion_failed"}
+
+        logger.info(
+            "converted upload=%s pages=%d markdown_bytes=%d ocr=%s duration_ms=%d",
+            request.uploadId,
+            reply.pages,
+            reply.markdownBytes,
+            reply.ocr.applied,
+            reply.durationMs,
+        )
+        return {"markdownKey": reply.markdownKey}
+
+    @contextmanager
+    def _cut_short(self) -> Iterator[None]:
+        self._interruptible = not self.stopping
+        try:
+            if self.stopping:
+                raise Stopping
+            yield
+        finally:
+            self._interruptible = False
 
 
 def main() -> None:
     logs.configure()
+    settings = config.load()
     try:
-        config.check(_settings)
+        config.check(settings)
     except config.SettingsError as error:
         logger.error("can't start: %s", error)  # noqa: TRY400 - the reason is the message
         sys.exit(1)
 
-    logger.info("starting port=%d", _settings.port)
-    # One process per replica: ProtoStrap scales replicas, not workers, and forked workers
-    # would need extra setup to export telemetry.
-    DrainingServer(server_config(app, _settings), readiness, _settings.drain_seconds).run()
+    worker = Worker(Queues(settings), Storage(settings), settings)
+    signal.signal(signal.SIGTERM, worker.on_signal)
+    signal.signal(signal.SIGINT, worker.on_signal)
+    logger.info("draining the document-conversion queue")
+    worker.run()
+    logger.info("stopped")
 
 
 if __name__ == "__main__":  # pragma: no cover

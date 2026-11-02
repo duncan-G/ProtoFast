@@ -1,7 +1,7 @@
 # How ProtoFast is configured
 
 ProtoFast is a small platform: four Angular SSR clients served by one Node host, four .NET
-services (auth, the api, payments, document-import), a Python conversion service, Keycloak,
+services (auth, the api, payments, document-import), a Python conversion worker, Keycloak,
 PostgreSQL and Redis. It deploys with [ProtoStrap](https://github.com/duncan-G/protostrap)
 0.1.12, to one AWS account, prod. Dev is the local run, `aspire run`.
 

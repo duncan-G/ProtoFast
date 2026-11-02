@@ -67,6 +67,7 @@ def request(extension: str = ".docx", media_type: str | None = None) -> ConvertR
         reportKey="uploads/alice/upl_1.conversion.json",
         mediaType=media_type or types[extension],
         fileName=f"document{extension}",
+        importRequest={"uploadId": "upl_1"},
     )
 
 

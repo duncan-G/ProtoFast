@@ -2,7 +2,7 @@
 
 ProtoFast is a small platform: Angular SSR clients (the protofast product site, ThePlot, and an
 admin host with a console per app), .NET services (auth, the api, payments, document-import),
-a Python conversion service, Keycloak, PostgreSQL and Redis. It deploys with
+a Python conversion worker, Keycloak, PostgreSQL and Redis. It deploys with
 [ProtoStrap](https://github.com/duncan-G/protostrap) 0.1.12 to one AWS account, prod. Dev is
 the local run, `aspire run`.
 
@@ -44,7 +44,7 @@ graph TD
     Auth --> KC & Redis & PG
     Api --> PG & Redis
     Api -->|"document-upload queue"| Import
-    Import --> Conversion["conversion · Python"]
+    Import <-->|"document-conversion queue"| Conversion["conversion · Python"]
     KC --> PG
 ```
 

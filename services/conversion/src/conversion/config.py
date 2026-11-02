@@ -16,16 +16,6 @@ def _int(name: str, default: int) -> int:
         return default
 
 
-def _float(name: str, default: float) -> float:
-    raw = os.environ.get(name)
-    if not raw:
-        return default
-    try:
-        return float(raw)
-    except ValueError:
-        return default
-
-
 def _list(name: str, default: list[str]) -> list[str]:
     raw = os.environ.get(name, "")
     values = [item.strip() for item in raw.split(",") if item.strip()]
@@ -36,6 +26,14 @@ def _list(name: str, default: list[str]) -> list[str]:
 class Settings:
     # The documents bucket, from the spec's `uses: [documents]` (or the AppHost's reference).
     bucket: str = field(default_factory=lambda: os.environ.get("BUCKET_DOCUMENTS", ""))
+
+    # The queue it drains, from its scale signal, and the one each outcome goes back on.
+    conversions_queue_url: str = field(
+        default_factory=lambda: os.environ.get("QUEUE_DOCUMENT_CONVERSION_URL", "")
+    )
+    imports_queue_url: str = field(
+        default_factory=lambda: os.environ.get("QUEUE_DOCUMENT_UPLOAD_URL", "")
+    )
 
     # LocalStack under `aspire run`; unset in an account, where boto3 resolves real S3 and
     # gets the role's credentials from AWS_CONTAINER_CREDENTIALS_RELATIVE_URI. boto3 reads
@@ -62,7 +60,7 @@ class Settings:
         default_factory=lambda: _int("CONVERSION_MAX_OUTPUT_BYTES", 25 * MEBIBYTE)
     )
 
-    # Keep below the caller's HTTP timeout so this service's error wins the race.
+    # Well inside the queue's 15-minute visibility, so a slow conversion isn't delivered twice.
     timeout_seconds: int = field(default_factory=lambda: _int("CONVERSION_TIMEOUT_SECONDS", 480))
 
     ocr_languages: list[str] = field(
@@ -78,20 +76,9 @@ class Settings:
 
     max_pages: int = field(default_factory=lambda: _int("CONVERSION_MAX_PAGES", 2000))
 
-    port: int = field(default_factory=lambda: _int("CONVERSION_PORT", 8090))
-
-    # After SIGTERM, how long readiness fails while requests are still taken, so the callers
-    # notice. Nothing sets DRAIN_SECONDS: 10 under ProtoStrap (PROTOSTRAP_REPLICA), and a local
-    # run stops at once.
-    drain_seconds: float = field(
-        default_factory=lambda: max(
-            0.0, _float("DRAIN_SECONDS", 10.0 if os.environ.get("PROTOSTRAP_REPLICA") else 0.0)
-        )
-    )
-
 
 class SettingsError(Exception):
-    """A setting the service can't start without is missing."""
+    """A setting the worker can't start without is missing."""
 
 
 def load() -> Settings:
@@ -99,6 +86,11 @@ def load() -> Settings:
 
 
 def check(settings: Settings) -> None:
-    """Raises SettingsError, naming the variable, for one the service can't work without."""
-    if not settings.bucket:
-        raise SettingsError("BUCKET_DOCUMENTS is not set")
+    """Raises SettingsError, naming the variable, for one the worker can't work without."""
+    for name, value in (
+        ("BUCKET_DOCUMENTS", settings.bucket),
+        ("QUEUE_DOCUMENT_CONVERSION_URL", settings.conversions_queue_url),
+        ("QUEUE_DOCUMENT_UPLOAD_URL", settings.imports_queue_url),
+    ):
+        if not value:
+            raise SettingsError(f"{name} is not set")

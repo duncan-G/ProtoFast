@@ -1,32 +1,27 @@
-using System.Net.Http.Json;
-using System.Text.Json;
-using Microsoft.Extensions.Options;
+using ProtoFast.DocumentImport.Core;
+using ProtoFast.Storage.Abstractions;
 
 namespace ProtoFast.DocumentImport.Worker.Import;
 
-public sealed class ConversionClient(IHttpClientFactory httpClients, IOptions<ConversionOptions> options)
+public sealed class ConversionClient([FromKeyedServices(DocumentImportQueues.ConversionQueueKey)] IMessageQueue queue)
 {
-    public const string HttpClientName = "conversion";
+    public Task RequestAsync(DocumentImportRequested request, CancellationToken ct) =>
+        queue.SendAsync(
+            new ConversionRequested(
+                request.UploadId,
+                request.StorageKey,
+                WithExtension(request.StorageKey, ".md"),
+                WithExtension(request.StorageKey, ".layout.json"),
+                WithExtension(request.StorageKey, ".conversion.json"),
+                request.MediaType,
+                request),
+            groupId: request.UserId,
+            ct);
 
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
-
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(options.Value.BaseUrl);
-
-    /// <summary>Returns the key the Markdown was written to.</summary>
-    public async Task<string> ConvertAsync(ConvertRequest request, CancellationToken ct)
+    private static string WithExtension(string key, string extension)
     {
-        var http = httpClients.CreateClient(HttpClientName);
-        http.BaseAddress = new Uri(options.Value.BaseUrl!.TrimEnd('/') + "/");
-
-        using var response = await http.PostAsJsonAsync("convert", request, Json, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new HttpRequestException($"Conversion returned {(int)response.StatusCode}: {body}", null, response.StatusCode);
-        }
-
-        var reply = JsonSerializer.Deserialize<ConvertReply>(body, Json)
-            ?? throw new HttpRequestException("Conversion returned an empty reply.");
-        return reply.MarkdownKey;
+        var dot = key.LastIndexOf('.');
+        var slash = key.LastIndexOf('/');
+        return (dot > slash ? key[..dot] : key) + extension;
     }
 }

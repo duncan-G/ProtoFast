@@ -1,6 +1,9 @@
-"""Wire shapes of ``POST /convert``. camelCase because the callers are .NET."""
+"""Wire shapes of the document-conversion queue's messages. camelCase because the sender is
+.NET."""
 
 from __future__ import annotations
+
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -20,7 +23,8 @@ class ConvertRequest(BaseModel):
     mediaType: str  # noqa: N815
     fileName: str = ""  # noqa: N815
     ocr: OcrRequest = Field(default_factory=OcrRequest)
-    traceparent: str | None = None
+    # document-import's message, sent back to the document-upload queue with the outcome added.
+    importRequest: dict[str, Any]  # noqa: N815
 
 
 class OcrResult(BaseModel):
@@ -40,11 +44,3 @@ class ConvertReply(BaseModel):
     ocr: OcrResult = Field(default_factory=OcrResult)
     warnings: list[str] = Field(default_factory=list)
     durationMs: int = 0  # noqa: N815
-
-
-class Problem(BaseModel):
-    """Error body: callers branch on ``code``; ``message`` is safe to show a user."""
-
-    code: str
-    message: str
-    detail: str | None = None

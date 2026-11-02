@@ -7,8 +7,6 @@ requires-python = ">=3.12"
 # The direct dependencies. The image installs requirements.txt, every package pinned for
 # linux/arm64, which is resolved from these (see its header); change both together.
 dependencies = [
-  "fastapi==0.141.1",
-  "uvicorn[standard]==0.53.0",
   "pydantic==2.13.5",
   "boto3==1.43.97",
   # Never `markitdown[all]`: its audio, YouTube and Azure extras send content off the box.
@@ -25,7 +23,6 @@ dependencies = [
   # http/protobuf, and a local run may say grpc. opentelemetry-instrument picks by it.
   "opentelemetry-distro==0.66b2",
   "opentelemetry-exporter-otlp==1.45.2",
-  "opentelemetry-instrumentation-fastapi==0.66b2",
   "opentelemetry-instrumentation-botocore==0.66b2",
   # Puts the trace on each log line (OTEL_PYTHON_LOG_CORRELATION); the image turns its OTLP
   # log handler off, since logs leave as JSON lines on stdout.
@@ -35,8 +32,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest==9.1.1",
-  # What Starlette's TestClient uses.
-  "httpx2==2.16.0",
   "ruff==0.16.8",
 ]
 
