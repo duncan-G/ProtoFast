@@ -16,10 +16,10 @@ permissions:
 
 jobs:
   infra:
-    uses: duncan-G/protostrap/.github/workflows/infra.yml@v0.1.8
+    uses: duncan-G/protostrap/.github/workflows/infra.yml@v0.1.9
     with:
       environment: prod
       directory: infra/prod
       action: ${{ inputs.action }}
-      protostrap-ref: v0.1.8
+      protostrap-ref: v0.1.9
     secrets: inherit
