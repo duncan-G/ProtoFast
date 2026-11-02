@@ -152,7 +152,7 @@ VMs, `t4g.small` and `t4g.medium`. The sizes are in
 | General pool              | `t4g.medium`, 1–4 VMs, one spare                  |
 | Compute pool              | `t4g.small`, 0–3 Spot VMs                         |
 | data-1                    | `t4g.medium`                                      |
-| auth, api, clients        | 2–4 replicas, so a VM's loss leaves one           |
+| auth, api, clients        | 1–4 replicas: a VM's loss stops one until it starts on another |
 | keycloak, payments, otel-collector, clients-admin-theplot | 1 replica: a VM's loss stops it until it starts on another |
 | conversion                | 1–4 replicas                                      |
 | document-import           | 0–4 replicas, from the queue                      |

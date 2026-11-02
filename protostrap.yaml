@@ -182,7 +182,7 @@ components:
       - services/shared/Storage
       - services/shared/Storage.Abstractions
     pool: general
-    request: { cpu: 250m, memory: 512Mi }
+    request: { cpu: 150m, memory: 512Mi }
     port: 8080
     ready: grpc
     depends_on: [postgres, redis]
@@ -194,7 +194,7 @@ components:
       OTEL_DOTNET_EXPERIMENTAL_OTLP_RETRY: in_memory
     secrets: [ConnectionStrings__protofast, ConnectionStrings__redis]
     stop: 30s
-    scale: { min: 2, max: 4, demand: [{ cpu: 70% }] }
+    scale: { min: 1, max: 4, demand: [{ cpu: 70% }] }
 
   auth:
     kind: service
@@ -208,7 +208,7 @@ components:
       - services/shared/ProtoStrap
       - services/shared/ServiceDefaults
     pool: general
-    request: { cpu: 250m, memory: 256Mi }
+    request: { cpu: 100m, memory: 256Mi }
     port: 8080
     ready: /healthz
     depends_on: [keycloak, postgres, redis]
@@ -227,7 +227,7 @@ components:
       - Keycloak__ClientSecretProtofastWeb
       - Keycloak__ClientSecretTheplotWeb
     stop: 20s
-    scale: { min: 2, max: 4, demand: [{ cpu: 70% }] }
+    scale: { min: 1, max: 4, demand: [{ cpu: 70% }] }
 
   auth-migrations:
     kind: task
@@ -269,7 +269,7 @@ components:
       - ":(exclude,glob)clients/host/*.test.mjs"
       - ":(exclude,glob)clients/host/*.test.mjs/**"
     pool: general
-    request: { cpu: 250m, memory: 512Mi }
+    request: { cpu: 100m, memory: 512Mi }
     port: 4000
     ready: /healthz
     env:
@@ -277,7 +277,7 @@ components:
       CLIENTS: admin,protofast,theplot
       DEFAULT_CLIENT: protofast
     stop: 20s
-    scale: { min: 2, max: 4, demand: [{ cpu: 70% }] }
+    scale: { min: 1, max: 4, demand: [{ cpu: 70% }] }
 
   clients-admin-theplot:
     kind: service
