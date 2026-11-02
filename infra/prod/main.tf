@@ -40,7 +40,7 @@ provider "aws" {
 provider "cloudflare" {}
 
 module "protostrap" {
-  source = "github.com/duncan-G/protostrap//infra/platform?ref=v0.1.5"
+  source = "github.com/duncan-G/protostrap//infra/platform?ref=v0.1.6"
 
   spec                  = file("${path.module}/../../protostrap.yaml")
   environment           = "prod"

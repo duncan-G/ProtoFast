@@ -5,7 +5,7 @@ Written for the migration (October 2026); the layer docs 01–09 describe the re
 
 Before, ProtoFast ran itself: two EC2 hosts, `docker compose` per host, `deploy.sh` pushed over
 SSM by one workflow per component, its own Envoy, its own Terraform. Now it is an application
-on [ProtoStrap](https://github.com/duncan-G/protostrap) 0.1.5. The AppHost describes every
+on [ProtoStrap](https://github.com/duncan-G/protostrap) 0.1.6. The AppHost describes every
 component once; `aspire run` runs it locally behind ProtoStrap's local edge, and it writes the
 spec ProtoStrap deploys to one account, prod. Dev is the local run, with no account of its
 own: its secret, `protofast/dev`, sits beside prod's.
@@ -75,8 +75,8 @@ resources the AppHost adds (`AddEnvoyGateway`, `AddCloudflareTunnel`, `AddTeleme
 `AddCloudflareCdn`). 0.1.3 sets the zone's browser cache to Respect Existing Headers, so
 Keycloak's `no-cache` theme files aren't kept 4 hours. 0.1.4 drops an apostrophe from a
 security group rule's description, which AWS rejected mid-apply. 0.1.5 lets telemetry's
-programs read their configs, which they couldn't on the first prod deploy. ProtoFast pins that
-release, `v0.1.5`, everywhere.
+programs read their configs, which they couldn't on the first prod deploy. 0.1.6 gives Grafana
+its data sources, which it had skipped. ProtoFast pins that release, `v0.1.6`, everywhere.
 
 
 ## Open items
