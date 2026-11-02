@@ -130,7 +130,7 @@ Key facts:
   general VMs' spare room, so they usually start there, on On-Demand VMs, and move to Spot
   compute VMs when they don't fit. data-1 holds PostgreSQL and Redis, each with its own EBS
   volume, and ProtoStrap's telemetry and scheduler
-  ([ProtoStrap's VMs](https://github.com/duncan-G/protostrap/blob/v0.1.4/docs/vms.md)).
+  ([ProtoStrap's VMs](https://github.com/duncan-G/protostrap/blob/v0.1.5/docs/vms.md)).
 - **Containers reach each other by component name** on ProtoStrap's overlay network:
   `http://keycloak:8080`, `http://auth:8080`, `http://conversion:8090`, `postgres:5432`,
   `redis:6379`. The connection strings in the secret use these names.
