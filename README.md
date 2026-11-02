@@ -3,7 +3,7 @@
 ProtoFast is a small platform: Angular SSR clients (the protofast product site, ThePlot, and an
 admin host with a console per app), .NET services (auth, the api, payments, document-import),
 a Python conversion service, Keycloak, PostgreSQL and Redis. It deploys with
-[ProtoStrap](https://github.com/duncan-G/protostrap) 0.1.8 to one AWS account, prod. Dev is
+[ProtoStrap](https://github.com/duncan-G/protostrap) 0.1.9 to one AWS account, prod. Dev is
 the local run, `aspire run`.
 
 ```mermaid

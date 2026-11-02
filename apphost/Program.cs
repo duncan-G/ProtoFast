@@ -19,7 +19,7 @@ var edgePort = int.TryParse(builder.Configuration["LocalEdge:Port"], out var por
 string LocalOrigin(string local) => $"http://{local}:{edgePort}";
 
 var protostrap = builder.AddProtoStrapEnvironment("protostrap", app: "protofast")
-    .WithVersion("0.1.8")
+    .WithVersion("0.1.9")
     .WithIngressPool(vm: "t4g.small")
     .WithGeneralPool(vm: ["t4g.medium"], min: 1, max: 4, spare: 0)
     .WithComputePool(vm: ["t4g.small"], min: 0, max: 3)
