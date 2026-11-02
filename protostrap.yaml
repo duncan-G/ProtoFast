@@ -194,7 +194,7 @@ components:
       OTEL_DOTNET_EXPERIMENTAL_OTLP_RETRY: in_memory
     secrets: [ConnectionStrings__protofast, ConnectionStrings__redis]
     stop: 30s
-    scale: { min: 2, max: 4, demand: [{ cpu: 70% }] }
+    scale: { min: 1, max: 4, demand: [{ cpu: 70% }] }
 
   auth:
     kind: service
@@ -227,7 +227,7 @@ components:
       - Keycloak__ClientSecretProtofastWeb
       - Keycloak__ClientSecretTheplotWeb
     stop: 20s
-    scale: { min: 2, max: 4, demand: [{ cpu: 70% }] }
+    scale: { min: 1, max: 4, demand: [{ cpu: 70% }] }
 
   auth-migrations:
     kind: task
@@ -277,7 +277,7 @@ components:
       CLIENTS: admin,protofast,theplot
       DEFAULT_CLIENT: protofast
     stop: 20s
-    scale: { min: 2, max: 4, demand: [{ cpu: 70% }] }
+    scale: { min: 1, max: 4, demand: [{ cpu: 70% }] }
 
   clients-admin-theplot:
     kind: service

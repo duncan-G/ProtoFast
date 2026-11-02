@@ -162,7 +162,7 @@ var auth = builder.AddProject<Projects.ProtoFast_Auth_Api>("auth")
     .PublishAsProtoStrapService(s => s
         .Request(cpu: "250m", memory: "256Mi")
         .Stop(TimeSpan.FromSeconds(20))
-        .Scale(min: 2, max: 4, demand => demand.Cpu(0.70)));
+        .Scale(min: 1, max: 4, demand => demand.Cpu(0.70)));
 gateway.WithUpstream(auth, u => u.Routes(authRoutes));
 
 var keycloakConfig = builder.AddDockerfile("keycloak-config", "../services/keycloak-config")
@@ -219,7 +219,7 @@ var api = builder.AddProject<Projects.ProtoFast_Api>("api")
         .Request(cpu: "250m", memory: "512Mi")
         .Ready(Readiness.Grpc)
         .Stop(TimeSpan.FromSeconds(30))
-        .Scale(min: 2, max: 4, demand => demand.Cpu(0.70)));
+        .Scale(min: 1, max: 4, demand => demand.Cpu(0.70)));
 gateway.WithUpstream(api, u => Authorized(u.Routes([
     .. PackageRoutes(clientHosts, "document", "document_upload", "story"),
     // The consoles' services, which check the operators realm and a console role again.
@@ -309,7 +309,7 @@ if (clientsImage)
         .PublishAsProtoStrapService(s => s
             .Request(cpu: "250m", memory: "512Mi")
             .Stop(TimeSpan.FromSeconds(20))
-            .Scale(min: 2, max: 4, demand => demand.Cpu(0.70)));
+            .Scale(min: 1, max: 4, demand => demand.Cpu(0.70)));
     gateway.WithUpstream(clients, u => Authorized(u.Routes([.. clientHosts.Select(host => host + "/")]), staticFiles));
     // No skip: the console's static files stay behind its role too.
     var theplotConsoleHost = ClientsHost("clients-admin-theplot", "admin-theplot", "admin-theplot", theplotConsole)
