@@ -160,7 +160,7 @@ var auth = builder.AddProject<Projects.ProtoFast_Auth_Api>("auth")
     // profile's https one, which the local gateway would then probe with plain HTTP.
     .WithHttpHealthCheck("/healthz", endpointName: "http")
     .PublishAsProtoStrapService(s => s
-        .Request(cpu: "250m", memory: "256Mi")
+        .Request(cpu: "100m", memory: "256Mi")
         .Stop(TimeSpan.FromSeconds(20))
         .Scale(min: 1, max: 4, demand => demand.Cpu(0.70)));
 gateway.WithUpstream(auth, u => u.Routes(authRoutes));
@@ -216,7 +216,7 @@ var api = builder.AddProject<Projects.ProtoFast_Api>("api")
     .WithReference(documentUpload)
     .WaitForCompletion(protofastMigrations)
     .PublishAsProtoStrapService(s => s
-        .Request(cpu: "250m", memory: "512Mi")
+        .Request(cpu: "150m", memory: "512Mi")
         .Ready(Readiness.Grpc)
         .Stop(TimeSpan.FromSeconds(30))
         .Scale(min: 1, max: 4, demand => demand.Cpu(0.70)));
@@ -307,7 +307,7 @@ if (clientsImage)
 
     var clients = ClientsHost("clients", "admin,protofast,theplot", "protofast", platformConsole)
         .PublishAsProtoStrapService(s => s
-            .Request(cpu: "250m", memory: "512Mi")
+            .Request(cpu: "100m", memory: "512Mi")
             .Stop(TimeSpan.FromSeconds(20))
             .Scale(min: 1, max: 4, demand => demand.Cpu(0.70)));
     gateway.WithUpstream(clients, u => Authorized(u.Routes([.. clientHosts.Select(host => host + "/")]), staticFiles));
