@@ -58,8 +58,8 @@ provider "github" {
 }
 
 module "bootstrap" {
-  # The same version as the spec's protostrap: and the workflows' @v0.1.5.
-  source = "github.com/duncan-G/protostrap//infra/bootstrap?ref=v0.1.5"
+  # The same version as the spec's protostrap: and the workflows' @v0.1.6.
+  source = "github.com/duncan-G/protostrap//infra/bootstrap?ref=v0.1.6"
 
   app                         = "protofast" # the spec's app; the secret is protofast/<environment>
   environment                 = var.environment
