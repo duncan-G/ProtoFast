@@ -210,6 +210,8 @@ infra/people/               Identity Center groups and permission sets (once)
 infra/bootstrap/            the account's bootstrap (once, by an Org Admin)
 infra/prod/                 prod's platform (the infra workflow)
 scripts/set-secrets.sh      fills or rotates a deployed environment's secret
+scripts/operator-ui.sh      opens prod's operator UI through SSM
+scripts/telemetry.sh        opens prod's Grafana (Loki, Tempo, Prometheus) through SSM
 scripts/                    dev helpers, admin console scaffold and checks, the operator grant script
 .github/workflows/          ci, deploy, infra
 .claude/settings.json       ProtoStrap's skills, pinned to v0.1.5
