@@ -53,7 +53,7 @@ provider "aws" {
 }
 
 module "people" {
-  source = "github.com/duncan-G/protostrap//infra/people?ref=v0.1.6"
+  source = "github.com/duncan-G/protostrap//infra/people?ref=v0.1.7"
 
   accounts = var.accounts
 }

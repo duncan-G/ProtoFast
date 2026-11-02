@@ -168,7 +168,7 @@ Locally both are Aspire's containers with Aspire's generated passwords.
 `QUEUE_<NAME>_URL`, `BUCKET_<NAME>`, `FILES_BUCKET`, `HOST_<NAME>`, `ORIGIN_<NAME>`,
 `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_SERVICE_NAME` and
 `OTEL_RESOURCE_ATTRIBUTES`
-([application contract](https://github.com/duncan-G/protostrap/blob/v0.1.6/docs/protostrap.md#application-contract)).
+([application contract](https://github.com/duncan-G/protostrap/blob/v0.1.7/docs/protostrap.md#application-contract)).
 `DRAIN_SECONDS` isn't among them: each component defaults it itself, 10 s when
 `PROTOSTRAP_REPLICA` is set and 0 otherwise.
 
@@ -214,7 +214,7 @@ scripts/operator-ui.sh      opens prod's operator UI through SSM
 scripts/telemetry.sh        opens prod's Grafana (Loki, Tempo, Prometheus) through SSM
 scripts/                    dev helpers, admin console scaffold and checks, the operator grant script
 .github/workflows/          ci, deploy, infra
-.claude/settings.json       ProtoStrap's skills, pinned to v0.1.6
+.claude/settings.json       ProtoStrap's skills, pinned to v0.1.7
 ```
 
 ## Ports
