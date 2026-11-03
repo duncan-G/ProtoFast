@@ -11,11 +11,11 @@
      that asks nothing new. We open navigator.credentials.get() on load instead,
      and the card renders as the waiting state behind the browser's prompt.
 
-     The button stays in the markup, for two cases that both need a real click:
-     a browser that refuses a WebAuthn call without user activation (Safari), and
-     a browser with no module support at all, where nothing below runs and the
-     button is the whole page — base's behaviour, unregressed. It also comes back
-     if the auto-started prompt never appears (see STALL_MS).
+     The button stays in the markup, for the cases that need a real click: a
+     browser that refuses a WebAuthn call without user activation (Safari), a
+     passkey manager extension that has replaced get() (see isNativeGet), and a
+     browser with no module support at all, where nothing below runs and the
+     button is the whole page — base's behaviour, unregressed.
 
   2. No list of registered authenticators, and no allowCredentials. Base renders
      a list when `shouldDisplayAuthenticators` is set, to pick a credential
@@ -60,7 +60,7 @@
 
         <div class="pf-passkey">
             <#-- Rendered in the resting state, not the waiting one, even though the
-                 script flips it to waiting immediately: a browser that never runs
+                 script usually flips it to waiting on load: a browser that never runs
                  the module would otherwise be left looking at a spinner for a
                  prompt that is never going to open. -->
             <p class="pf-passkey-body" id="pf-passkey-body" aria-live="polite">${msg("webauthn-login-body")}</p>
@@ -72,7 +72,7 @@
                         class="${properties.kcButtonClass!} ${properties.kcButtonPrimaryClass!} ${properties.kcButtonBlockClass!} ${properties.kcButtonLargeClass!}"
                         id="authenticateWebAuthnButton">
                     <span class="pf-spinner" aria-hidden="true"></span>
-                    <span id="pf-passkey-cta">${msg("webauthn-doAuthenticate")}</span>
+                    <span>${msg("webauthn-doAuthenticate")}</span>
                 </button>
             </div>
         </div>
@@ -97,13 +97,11 @@
             const button = document.getElementById('authenticateWebAuthnButton');
             const title = document.getElementById('pf-passkey-title');
             const body = document.getElementById('pf-passkey-body');
-            const cta = document.getElementById('pf-passkey-cta');
 
-            const resting = { title: title.textContent, body: body.textContent, cta: cta.textContent };
+            const resting = { title: title.textContent, body: body.textContent };
             const waiting = {
                 title: ${msg("webauthn-login-waiting-title")?c},
-                body: ${msg("webauthn-login-waiting-body")?c},
-                cta: ${msg("webauthn-login-waiting-cta")?c}
+                body: ${msg("webauthn-login-waiting-body")?c}
             };
 
             // A browser that refuses to open the prompt at all — no user activation
@@ -113,37 +111,28 @@
             // been drawn, a dismissal takes as long as a person takes.
             const REFUSAL_MS = 400;
 
-            // A passkey manager extension (1Password on an auto-started call) can take
-            // the ceremony and never draw its prompt, leaving a promise that never
-            // settles. After this long the button comes back, so a real click can
-            // start a fresh ceremony, which aborts the stuck one.
-            const STALL_MS = 4000;
+            // A passkey manager extension (1Password) swaps in its own get(), which can
+            // park a call made without a click with no prompt drawn, and ignores its abort.
+            const isNativeGet = navigator.credentials?.get === window.CredentialsContainer?.prototype.get;
 
             let attempt = 0;
-            let stallTimer;
 
-            function setButtonBusy(isBusy) {
-                cta.textContent = isBusy ? waiting.cta : resting.cta;
-                button.disabled = isBusy;
-                if (isBusy) {
+            // The button stays enabled while waiting: an extension's prompt may never
+            // appear, and a click is what starts one that does.
+            function setWaiting(isWaiting) {
+                const state = isWaiting ? waiting : resting;
+                title.textContent = state.title;
+                body.textContent = state.body;
+                if (isWaiting) {
                     button.setAttribute('aria-busy', 'true');
                 } else {
                     button.removeAttribute('aria-busy');
                 }
             }
 
-            function setWaiting(isWaiting) {
-                const state = isWaiting ? waiting : resting;
-                title.textContent = state.title;
-                body.textContent = state.body;
-                setButtonBusy(isWaiting);
-            }
-
             async function authenticate(auto) {
                 const current = ++attempt;
                 setWaiting(true);
-                clearTimeout(stallTimer);
-                stallTimer = setTimeout(() => setButtonBusy(false), STALL_MS);
 
                 const startedAt = Date.now();
                 try {
@@ -151,18 +140,18 @@
                     if (current !== attempt) {
                         return;
                     }
-                    clearTimeout(stallTimer);
-                    // Undefined means doAuthenticate already posted the
-                    // unsupported-browser error and this page is on its way out.
+                    // Null is a passkey manager's own prompt, dismissed. Undefined means
+                    // doAuthenticate already posted the unsupported-browser error.
                     if (result) {
                         returnSuccess(result);
+                    } else if (result === null) {
+                        setWaiting(false);
                     }
                 } catch (error) {
                     // A later click aborted this ceremony to start its own.
                     if (current !== attempt) {
                         return;
                     }
-                    clearTimeout(stallTimer);
                     if (auto && error && error.name === 'NotAllowedError' && Date.now() - startedAt < REFUSAL_MS) {
                         // Nobody was asked anything, so there is nothing to report as
                         // a failure. Hand the page back with its button.
@@ -178,7 +167,7 @@
             // A background tab cannot open the prompt, and firing one at a tab the
             // user is not looking at would be a prompt they never asked for. Leave
             // those on the button.
-            if (document.visibilityState === 'visible') {
+            if (isNativeGet && document.visibilityState === 'visible') {
                 authenticate(true);
             }
             </#outputformat>
