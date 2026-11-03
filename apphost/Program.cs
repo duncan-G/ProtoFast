@@ -203,7 +203,7 @@ string[] PackageRoutes(IEnumerable<string> hosts, params string[] packages) =>
 
 var payments = builder.AddProject<Projects.ProtoFast_Payments_Api>("payments")
     .PublishAsProtoStrapService(s => s
-        .Request(cpu: "100m", memory: "128Mi")
+        .Request(cpu: "50m", memory: "128Mi")
         .Ready(Readiness.Grpc)
         .Stop(TimeSpan.FromSeconds(15)));
 gateway.WithUpstream(payments, u => Authorized(u.Routes(PackageRoutes(clientHosts, "greet"))));
@@ -273,7 +273,7 @@ var otelCollector = builder.AddDockerfile("otel-collector", "../services/otel-co
     .WithHttpHealthCheck("/", endpointName: "health")
     .WithLocalCollectorExport(builder.Configuration)
     .PublishAsProtoStrapService(s => s
-        .Request(cpu: "100m", memory: "128Mi")
+        .Request(cpu: "50m", memory: "128Mi")
         .Ready(Readiness.Http("/").On(13133))
         .Stop(TimeSpan.FromSeconds(15)));
 gateway.WithUpstream(otelCollector, u => u
@@ -318,7 +318,7 @@ if (clientsImage)
     // No skip: the console's static files stay behind its role too.
     var theplotConsoleHost = ClientsHost("clients-admin-theplot", "admin-theplot", "admin-theplot", theplotConsole)
         .PublishAsProtoStrapService(s => s
-            .Request(cpu: "100m", memory: "256Mi")
+            .Request(cpu: "50m", memory: "256Mi")
             .Stop(TimeSpan.FromSeconds(20)));
     gateway.WithUpstream(theplotConsoleHost, u => Authorized(u.Routes("admin/theplot/")));
 }
