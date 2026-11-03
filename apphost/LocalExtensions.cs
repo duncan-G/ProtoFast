@@ -30,12 +30,14 @@ internal static class LocalExtensions
 
     /// <summary>
     /// WithLocalCollectorExport has the browsers' collector export to the dashboard, with the
-    /// dashboard's OTLP key, which a collector's config can't read from OTEL_EXPORTER_OTLP_HEADERS.
+    /// dashboard's OTLP key, which a collector's config can't read from OTEL_EXPORTER_OTLP_HEADERS,
+    /// and uncompressed: the dashboard reads a gzipped body as protobuf and answers 500.
     /// </summary>
     public static IResourceBuilder<T> WithLocalCollectorExport<T>(this IResourceBuilder<T> builder, IConfiguration configuration)
         where T : IResourceWithEnvironment =>
         builder.ApplicationBuilder.ExecutionContext.IsRunMode
             ? builder.WithOtlpExporter(OtlpProtocol.HttpProtobuf)
                 .WithEnvironment("ASPIRE_OTLP_API_KEY", configuration["AppHost:OtlpApiKey"] ?? "")
+                .WithEnvironment("ASPIRE_OTLP_COMPRESSION", "none")
             : builder;
 }
