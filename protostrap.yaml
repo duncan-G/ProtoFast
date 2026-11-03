@@ -303,7 +303,7 @@ components:
       - ":(exclude,glob)clients/host/*.test.mjs"
       - ":(exclude,glob)clients/host/*.test.mjs/**"
     pool: general
-    request: { cpu: 100m, memory: 256Mi }
+    request: { cpu: 50m, memory: 256Mi }
     port: 4000
     ready: /healthz
     env:
@@ -439,7 +439,7 @@ components:
       - ":(exclude,glob)services/otel-collector/README.md"
       - ":(exclude,glob)services/otel-collector/README.md/**"
     pool: general
-    request: { cpu: 100m, memory: 128Mi }
+    request: { cpu: 50m, memory: 128Mi }
     port: 4318
     ready: 13133/
     stop: 15s
@@ -455,7 +455,7 @@ components:
       - services/shared/ProtoStrap
       - services/shared/ServiceDefaults
     pool: general
-    request: { cpu: 100m, memory: 128Mi }
+    request: { cpu: 50m, memory: 128Mi }
     port: 8080
     ready: grpc
     env:
