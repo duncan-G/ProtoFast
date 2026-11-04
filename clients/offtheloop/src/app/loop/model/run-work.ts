@@ -5,4 +5,6 @@ import { WriteRequest } from './write-request';
 export type RunWork =
   | { kind: 'researchCompany'; companyId: string }
   | { kind: 'readPosting'; request: PostingRequest }
-  | { kind: 'write'; request: WriteRequest };
+  | { kind: 'write'; request: WriteRequest }
+  | { kind: 'readResume'; documentId: string }
+  | { kind: 'tailorResume'; applicationId: string; instructions: string };

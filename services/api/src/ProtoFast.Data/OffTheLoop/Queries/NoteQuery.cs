@@ -11,6 +11,12 @@ public sealed class NoteQuery : Query<Note>, INoteQuery
         return this;
     }
 
+    public INoteQuery OfKind(NoteKind kind)
+    {
+        Where(n => n.Kind == kind);
+        return this;
+    }
+
     public INoteQuery RecentlyModifiedFirst()
     {
         Apply(q => q.OrderByDescending(n => n.DateLastModified).ThenByDescending(n => n.Id));

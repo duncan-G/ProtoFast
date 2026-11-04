@@ -42,6 +42,9 @@ public sealed class Company : IDateStamped
 
     public List<Contact> Contacts { get; set; } = [];
 
+    /// <summary>Marked as more interesting than the rest; listed first while not applied for.</summary>
+    public bool Starred { get; set; }
+
     public DateTime DateCreated { get; set; }
 
     public DateTime DateLastModified { get; set; }

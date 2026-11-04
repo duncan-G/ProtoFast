@@ -9,7 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { LoopRuns } from '../../loop/loop-runs';
-import { LoopRun } from '../../loop/model/loop-run';
+import { LoopRun, RunKind } from '../../loop/model/loop-run';
 import { ResearchStep, stepSubject } from '../../loop/model/research-step';
 
 const SHOWN_STEPS = 3;
@@ -57,7 +57,7 @@ const SHOWN_STEPS = 3;
   template: `
     <span class="status">
       <span class="spinner h-2.5 w-2.5" aria-hidden="true"></span>
-      {{ run().state === 'queued' ? 'waiting to start' : 'researching' }}
+      {{ run().state === 'queued' ? 'waiting to start' : doing[run().kind] }}
       @if (clock(); as time) {
         · {{ time }}
       }
@@ -78,6 +78,14 @@ export class RunProgress implements OnInit {
   private readonly runs = inject(LoopRuns);
 
   readonly run = input.required<LoopRun>();
+
+  protected readonly doing: Record<RunKind, string> = {
+    researchCompany: 'researching',
+    readPosting: 'reading',
+    write: 'writing',
+    readResume: 'reading',
+    tailorResume: 'tailoring',
+  };
 
   protected readonly stepSubject = stepSubject;
   private readonly steps = signal<ResearchStep[]>([]);

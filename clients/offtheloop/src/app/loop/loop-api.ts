@@ -5,6 +5,7 @@ import { Company } from './model/company';
 import { Goal } from './model/goal';
 import { LoopRun } from './model/loop-run';
 import { Note } from './model/note';
+import { Resume } from './model/resume';
 import { RunDetails } from './model/run-details';
 import { RunUpdate } from './model/run-update';
 import { RunWork } from './model/run-work';
@@ -50,9 +51,9 @@ export abstract class LoopApi {
   abstract importStories(stories: Note[]): Promise<Note[]>;
 
   /**
-   * Queues AI work: researching a company, reading a posting, writing in a note. It runs on the
-   * server whether or not anything watches it, and drops earlier runs of the same work on the same
-   * thing. Nothing it finds is saved.
+   * Queues AI work: researching a company, reading a posting, writing in a note, reading or
+   * tailoring a resume. It runs on the server whether or not anything watches it, and drops earlier
+   * runs of the same work on the same thing. Nothing it finds is saved.
    */
   abstract startRun(label: string, work: RunWork): Promise<LoopRun>;
 
@@ -76,6 +77,14 @@ export abstract class LoopApi {
 
   /** Stops any still going. */
   abstract dismissRuns(runIds: string[]): Promise<void>;
+
+  /** The general resume once saved, then the tailored ones, most recently modified first. */
+  abstract listResumes(): Promise<Resume[]>;
+
+  /** Replaces the resume for its application, or the general one, making it on the first save. */
+  abstract saveResume(resume: Resume): Promise<Resume>;
+
+  abstract deleteResume(resumeId: string): Promise<void>;
 
   /** The open ones and any done in the last day, soonest due first. */
   abstract listTodos(): Promise<Todo[]>;

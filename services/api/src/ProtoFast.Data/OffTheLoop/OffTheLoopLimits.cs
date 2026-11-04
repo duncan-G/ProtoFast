@@ -25,4 +25,7 @@ public static class OffTheLoopLimits
     public const int Posting = 20000;
 
     public const int ListItems = 30;
+
+    /// <summary>Jobs, projects or schools on one resume.</summary>
+    public const int ResumeEntries = 50;
 }

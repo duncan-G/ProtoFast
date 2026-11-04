@@ -39,6 +39,9 @@ public static class OffTheLoopDataServiceCollectionExtensions
         services.AddQueryFactory<ModelRun, IModelRunQuery, ModelRunQuery>();
         services.AddScoped<IModelRunRepository, ModelRunRepository>();
 
+        services.AddQueryFactory<Resume, IResumeQuery, ResumeQuery>();
+        services.AddScoped<IResumeRepository, ResumeRepository>();
+
         return services;
     }
 }

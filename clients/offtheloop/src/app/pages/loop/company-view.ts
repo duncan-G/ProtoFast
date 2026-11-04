@@ -167,6 +167,19 @@ const LISTS = [
           </div>
         </div>
         <div class="flex flex-none items-center gap-2">
+          @if (notApplied()) {
+            <button
+              type="button"
+              class="btn btn-icon star-toggle h-10 min-h-10 w-10"
+              aria-label="Star company"
+              title="Starred companies come first among those not applied for"
+              [attr.aria-pressed]="co.starred"
+              [disabled]="starring()"
+              (click)="toggleStar()"
+            >
+              <app-icon name="star" [size]="16" />
+            </button>
+          }
           <button
             type="button"
             class="btn btn-sm"
@@ -202,8 +215,8 @@ const LISTS = [
       </header>
     }
 
-    @if (researchError()) {
-      <p class="alert -mt-4" role="alert">{{ researchError() }}</p>
+    @if (researchError() || starError()) {
+      <p class="alert -mt-4" role="alert">{{ researchError() || starError() }}</p>
     }
 
     <div class="company-grid dim-scope">
@@ -441,6 +454,8 @@ export class CompanyView {
   protected readonly busy = signal(false);
   protected readonly error = signal('');
   protected readonly confirmingDelete = signal(false);
+  protected readonly starring = signal(false);
+  protected readonly starError = signal('');
 
   protected readonly saveChanges = (changes: Record<string, unknown>) =>
     this.store.saveCompany({ ...this.company(), ...changes });
@@ -516,6 +531,24 @@ export class CompanyView {
   protected readonly applications = computed(() =>
     this.store.applications().filter((a) => a.companyId === this.company().id),
   );
+
+  /** Matches the loop list, which goes by the lead application. */
+  protected readonly notApplied = computed(() => {
+    const lead = this.applications()[0];
+    return !lead || statusOf(lead) === 'none';
+  });
+
+  protected async toggleStar(): Promise<void> {
+    this.starring.set(true);
+    this.starError.set('');
+    try {
+      await this.saveChanges({ starred: !this.company().starred });
+    } catch (err) {
+      this.starError.set(messageOf(err, 'The star couldn’t be saved.'));
+    } finally {
+      this.starring.set(false);
+    }
+  }
 
   protected readonly selected = computed(() => {
     const id = this.applicationId();

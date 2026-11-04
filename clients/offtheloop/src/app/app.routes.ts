@@ -24,6 +24,11 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/notes/notes').then((m) => m.Notes),
       },
       {
+        path: 'resume',
+        title: 'Resume · offtheloop',
+        loadComponent: () => import('./pages/resume/resume').then((m) => m.ResumePage),
+      },
+      {
         path: 'loop',
         title: 'The loop · offtheloop',
         loadComponent: () => import('./pages/loop/loop').then((m) => m.Loop),

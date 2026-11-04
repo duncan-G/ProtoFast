@@ -9,7 +9,9 @@ using ProtoFast.Data.OffTheLoop.Repositories;
 using ProtoFast.Database.Abstractions;
 using ApplicationRecord = ProtoFast.Data.OffTheLoop.Entities.Application;
 using CompanyRecord = ProtoFast.Data.OffTheLoop.Entities.Company;
+using DocumentRecord = ProtoFast.Data.OffTheLoop.Entities.Document;
 using NoteRecord = ProtoFast.Data.OffTheLoop.Entities.Note;
+using ResumeRecord = ProtoFast.Data.OffTheLoop.Entities.Resume;
 
 namespace ProtoFast.Api.Services.OffTheLoop.ModelRuns;
 
@@ -27,6 +29,10 @@ public sealed class RunsService(
     IQueryFactory<ApplicationRecord, IApplicationQuery> applicationQueries,
     INoteRepository noteRepository,
     IQueryFactory<NoteRecord, INoteQuery> noteQueries,
+    IDocumentRepository documentRepository,
+    IQueryFactory<DocumentRecord, IDocumentQuery> documentQueries,
+    IResumeRepository resumeRepository,
+    IQueryFactory<ResumeRecord, IResumeQuery> resumeQueries,
     UserContext userContext,
     RunStore store,
     RunSignal signal,
@@ -64,6 +70,16 @@ public sealed class RunsService(
                 WriterService.Check(work.Write);
                 run.Kind = ModelRunKind.Write;
                 (run.NoteId, run.NoteModifiedAt) = await NoteAsync(work.Write.NoteId, ct);
+                break;
+            case RunWork.WorkOneofCase.ReadResume:
+                run.Kind = ModelRunKind.ReadResume;
+                await ResumeWriterService.FindDocumentAsync(documentRepository, documentQueries, work.ReadResume.DocumentId, ct);
+                break;
+            case RunWork.WorkOneofCase.TailorResume:
+                ResumeWriterService.CheckTailoring(work.TailorResume);
+                run.Kind = ModelRunKind.TailorResume;
+                (run.ApplicationId, run.CompanyId) = await TailoredAsync(work.TailorResume.ApplicationId, ct);
+                await ResumeWriterService.FindGeneralAsync(resumeRepository, resumeQueries, ct);
                 break;
             default:
                 throw LoopErrors.Invalid(LoopErrors.RunEmpty);
@@ -235,6 +251,8 @@ public sealed class RunsService(
             {
                 ModelRunKind.ResearchCompany => "Research",
                 ModelRunKind.ReadPosting => "Read a posting",
+                ModelRunKind.ReadResume => "Read a resume",
+                ModelRunKind.TailorResume => "Tailor a resume",
                 _ => "Write",
             };
         }
@@ -258,6 +276,14 @@ public sealed class RunsService(
         return company is not null && company == companyId
             ? applicationId
             : throw LoopErrors.NotFound(LoopErrors.ApplicationNotFound);
+    }
+
+    private async Task<(Guid, Guid)> TailoredAsync(string id, CancellationToken ct)
+    {
+        var applicationId = LoopIds.Existing(id, LoopErrors.ApplicationNotFound);
+        var company = await applicationRepository.GetFirstByQueryAsync(
+            applicationQueries.Create().WithId(applicationId), a => (Guid?)a.CompanyId, ct);
+        return company is { } companyId ? (applicationId, companyId) : throw LoopErrors.NotFound(LoopErrors.ApplicationNotFound);
     }
 
     private async Task<(Guid, DateTime)> NoteAsync(string id, CancellationToken ct)

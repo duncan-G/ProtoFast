@@ -1,3 +1,4 @@
+import { isObject, parseAgentJson } from './agent-json';
 import { Note } from './model/note';
 
 export const STORY_FORMAT = 'offtheloop-stories/1';
@@ -104,7 +105,7 @@ ${JSON.stringify(example, null, 2)}
 
 /** Reads what the user's agent wrote; a story with problems is listed with them, not as a note. */
 export function readStories(text: string): StoriesRead {
-  const parsed = parse(text);
+  const parsed = parseAgentJson(text);
   if ('error' in parsed) {
     return parsed;
   }
@@ -123,30 +124,6 @@ export function readStories(text: string): StoriesRead {
     return { error: `It has ${list.length} stories; import at most ${MAX_STORIES} at a time.` };
   }
   return { stories: list.map((story, i) => readStory(story, i + 1)) };
-}
-
-/** Agents often wrap the JSON in a code fence or a sentence; the outermost braces are the file. */
-function parse(text: string): { value: unknown } | { error: string } {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return { error: 'It’s empty.' };
-  }
-  const fenced = /```(?:json)?\s*\n([\s\S]*?)```/.exec(trimmed)?.[1];
-  const start = trimmed.search(/[[{]/);
-  const end = Math.max(trimmed.lastIndexOf('}'), trimmed.lastIndexOf(']'));
-  const candidates = [trimmed, fenced, start >= 0 ? trimmed.slice(start, end + 1) : undefined];
-  let error = '';
-  for (const candidate of candidates) {
-    if (candidate === undefined) {
-      continue;
-    }
-    try {
-      return { value: JSON.parse(candidate) };
-    } catch (err) {
-      error ||= err instanceof Error ? err.message : String(err);
-    }
-  }
-  return { error: `That isn’t JSON: ${error}` };
 }
 
 function readStory(value: unknown, number: number): StoryRead {
@@ -309,8 +286,4 @@ export function speakingTime(text: string): string {
 /** `$` would open maths and `~` strike text through in the note page. */
 function escape(text: string): string {
   return text.replace(/[\\$~]/g, (c) => `\\${c}`);
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

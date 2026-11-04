@@ -1,10 +1,11 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using ProtoFast.Data.OffTheLoop;
 
 namespace ProtoFast.Api.Services.OffTheLoop;
 
 /// <summary>Checks what a user typed against the column it goes into.</summary>
-public static class LoopText
+public static partial class LoopText
 {
     private const string DayFormat = "yyyy-MM-dd";
 
@@ -51,6 +52,17 @@ public static class LoopText
     public static DateOnly? OptionalDay(string? value, string field) =>
         string.IsNullOrWhiteSpace(value) ? null : Day(value, field);
 
+    /// <summary>"2023-04", or "2023" alone; empty when not given.</summary>
+    public static string Month(string? value, string field)
+    {
+        var text = (value ?? "").Trim();
+        return text.Length == 0 || MonthPattern().IsMatch(text)
+            ? text
+            : throw LoopErrors.Invalid($"{field} isn’t a month, written like 2023-04.");
+    }
+
+    public static bool IsMonth(string text) => MonthPattern().IsMatch(text);
+
     public static string Format(DateOnly day) => day.ToString(DayFormat, CultureInfo.InvariantCulture);
 
     public static long UnixSeconds(DateTime value) =>
@@ -58,4 +70,7 @@ public static class LoopText
 
     private static string Fit(string text, int max, string field) =>
         text.Length <= max ? text : throw LoopErrors.Invalid($"{field} can be at most {max} characters.");
+
+    [GeneratedRegex(@"^\d{4}(-(0[1-9]|1[0-2]))?$")]
+    private static partial Regex MonthPattern();
 }

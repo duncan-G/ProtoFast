@@ -46,7 +46,7 @@ const TITLES: Record<NoteKind, string> = {
         <div class="sheet-body">
           <div class="flex items-start justify-between gap-4">
             <h2 id="note-editor-title" class="m-0 text-[24px] font-semibold tracking-[-0.04em]">
-              {{ editing() ? 'Note details' : 'Jot a note' }}
+              {{ heading() }}
             </h2>
             <button
               type="button"
@@ -58,19 +58,21 @@ const TITLES: Record<NoteKind, string> = {
             </button>
           </div>
 
-          <div role="radiogroup" aria-label="Kind" class="flex flex-wrap gap-x-[18px] gap-y-1">
-            @for (option of kinds; track option.kind) {
-              <button
-                type="button"
-                role="radio"
-                class="chip"
-                [attr.aria-checked]="form.kind === option.kind"
-                (click)="setKind(option.kind)"
-              >
-                {{ option.kind }}
-              </button>
-            }
-          </div>
+          @if (kind() !== 'story') {
+            <div role="radiogroup" aria-label="Kind" class="flex flex-wrap gap-x-[18px] gap-y-1">
+              @for (option of kinds; track option.kind) {
+                <button
+                  type="button"
+                  role="radio"
+                  class="chip"
+                  [attr.aria-checked]="form.kind === option.kind"
+                  (click)="setKind(option.kind)"
+                >
+                  {{ option.kind }}
+                </button>
+              }
+            </div>
+          }
 
           <div class="grid-2">
             <label class="field">
@@ -170,6 +172,15 @@ export class NoteEditor implements OnInit {
   protected readonly editing = computed(() => !!this.draft().id);
   protected readonly kind = signal<NoteKind>('pattern');
   protected readonly placeholder = computed(() => TITLES[this.kind()]);
+  protected readonly heading = computed(() =>
+    this.kind() === 'story'
+      ? this.editing()
+        ? 'Story details'
+        : 'New story'
+      : this.editing()
+        ? 'Note details'
+        : 'Jot a note',
+  );
   protected readonly tags = computed(() => tagChoices(this.kind(), this.store.notes()));
 
   protected form = {
@@ -233,7 +244,11 @@ export class NoteEditor implements OnInit {
       this.close();
       if (!this.editing()) {
         this.editors.created.set(saved.id);
-        void this.router.navigate(['/app/notes'], { queryParams: { id: saved.id } });
+        void (saved.kind === 'story'
+          ? this.router.navigate(['/app/resume'], {
+              queryParams: { view: 'stories', id: saved.id },
+            })
+          : this.router.navigate(['/app/notes'], { queryParams: { id: saved.id } }));
       }
     } catch (err) {
       this.error.set(messageOf(err, 'The note could not be saved.'));

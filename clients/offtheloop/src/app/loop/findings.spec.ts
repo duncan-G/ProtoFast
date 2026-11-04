@@ -19,6 +19,7 @@ const COMPANY: Company = {
   competitors: [],
   concerns: [],
   contacts: [],
+  starred: false,
   lastModified: 0,
 };
 

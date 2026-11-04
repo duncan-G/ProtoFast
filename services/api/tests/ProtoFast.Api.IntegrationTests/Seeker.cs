@@ -33,6 +33,8 @@ public sealed class Seeker(StoryDatabase database)
 
     public Task<TReply> Runs<TReply>(Func<RunsService, ServerCallContext, Task<TReply>> call) => CallAs(call);
 
+    public Task<TReply> Resumes<TReply>(Func<ResumeService, ServerCallContext, Task<TReply>> call) => CallAs(call);
+
     /// <summary>The model this user's runs research with.</summary>
     public void Script(IResearchModel model) => database.Services.GetRequiredService<ScriptedModels>().Use(UserId, model);
 
@@ -114,6 +116,12 @@ public sealed class Seeker(StoryDatabase database)
         return (await Notes((s, c) => s.ImportStories(request, c))).Stories;
     }
 
+    public async Task<Resume> SaveResumeAsync(Resume resume) =>
+        (await Resumes((s, c) => s.SaveResume(new SaveResumeRequest { Resume = resume }, c))).Resume;
+
+    public async Task<IReadOnlyList<Resume>> ListResumesAsync() =>
+        (await Resumes((s, c) => s.ListResumes(new ListResumesRequest(), c))).Resumes;
+
     public async Task<Todo> CreateTodoAsync(string label, string? dueOn = null)
     {
         var todo = new Todo { Label = label };
@@ -163,10 +171,10 @@ public sealed class Seeker(StoryDatabase database)
     }
 
     /// <summary>Starts an upload, lands its file and completes it.</summary>
-    public async Task<Loop.Document> UploadAsync(DocumentKindRecord kind, string fileName)
+    public async Task<Loop.Document> UploadAsync(DocumentKindRecord kind, string fileName, byte[]? content = null)
     {
         var (id, storageKey) = await StartUploadAsync(kind, fileName);
-        database.Services.GetRequiredService<StoredFiles>().Put(storageKey);
+        database.Services.GetRequiredService<StoredFiles>().Put(storageKey, content);
         return (await Documents((s, c) => s.CompleteDocumentUpload(
             new Loop.CompleteDocumentUploadRequest { DocumentId = id }, c))).Document;
     }

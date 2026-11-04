@@ -22,6 +22,8 @@ export interface Company {
   competitors: string[];
   concerns: string[];
   contacts: Contact[];
+  /** More interesting than the rest; listed first while not applied for. */
+  starred: boolean;
   /** Unix seconds, as the server last sent it; ignored on writes. */
   lastModified: number;
 }

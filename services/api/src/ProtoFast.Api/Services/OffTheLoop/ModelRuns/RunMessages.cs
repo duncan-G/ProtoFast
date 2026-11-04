@@ -29,6 +29,8 @@ public static class RunMessages
         ModelRunKind.ResearchCompany => RunKind.ResearchCompany,
         ModelRunKind.ReadPosting => RunKind.ReadPosting,
         ModelRunKind.Write => RunKind.Write,
+        ModelRunKind.ReadResume => RunKind.ReadResume,
+        ModelRunKind.TailorResume => RunKind.TailorResume,
         _ => RunKind.Unspecified,
     };
 

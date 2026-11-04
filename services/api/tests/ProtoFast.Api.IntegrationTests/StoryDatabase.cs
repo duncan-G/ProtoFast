@@ -81,6 +81,9 @@ public sealed class StoryDatabase : IAsyncLifetime
             sp.GetRequiredService<PostedPages>(), sp.GetRequiredService<ILogger<PostingPages>>()));
         services.AddScoped<ResearcherService>();
         services.AddScoped<WriterService>();
+        services.AddScoped<ResumeService>();
+        services.AddScoped<ResumeWriterService>();
+        services.AddScoped<ResumeFiles>();
         Services = services.BuildServiceProvider();
 
         await using var scope = Services.CreateAsyncScope();
