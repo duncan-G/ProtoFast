@@ -51,6 +51,8 @@ processors:
 exporters:
   otlp_http:
     endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT}
+    # gzip in an account; none under `aspire run`, where the dashboard can't decode gzip.
+    compression: ${env:ASPIRE_OTLP_COMPRESSION:-gzip}
     headers:
       # The dashboard's key under `aspire run`; ProtoStrap's collector takes none.
       x-otlp-api-key: ${env:ASPIRE_OTLP_API_KEY:-none}
