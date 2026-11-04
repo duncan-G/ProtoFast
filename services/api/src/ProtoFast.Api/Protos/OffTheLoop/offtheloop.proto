@@ -4,8 +4,8 @@ option csharp_namespace = "ProtoFast.Api.OffTheLoop";
 
 package offtheloop;
 
-// OffTheLoop: a job search's companies and the applications made to them, the notes kept for its
-// interviews, what is left to do, and the career goals it is for. Every call is confined to the
+// OffTheLoop: a job search's companies and the applications made to them, the notes and resumes kept
+// for it, what is left to do, and the career goals it is for. Every call is confined to the
 // caller the internal JWT names; anything the caller does not own reads as not found. Dates are
 // calendar days, written YYYY-MM-DD.
 
@@ -75,10 +75,38 @@ service Researcher {
 
 }
 
-// The Writer's and Researcher's work run in the background: a run is queued at once, keeps going
-// when the caller leaves, and what it made is kept until they dismiss it. Each run is the service's
-// own request, made as its owner. Starting work on something drops the earlier runs of that work on
-// it.
+// Your resumes. The general one holds everything that could go on a resume, from your work and git
+// history; one tailored to an application is what goes to that employer.
+service Resumes {
+
+    // The general resume once saved, then the tailored ones, most recently modified first.
+    rpc ListResumes (ListResumesRequest) returns (ListResumesReply);
+
+    // Replaces every field of the resume for its application, or of the general resume when it has
+    // none, making it on the first save.
+    rpc SaveResume (SaveResumeRequest) returns (SaveResumeReply);
+
+    rpc DeleteResume (DeleteResumeRequest) returns (DeleteResumeReply);
+
+}
+
+// Reads resume files and tailors resumes with a model, at the caller's request. Nothing is stored:
+// the client shows what it made, and saves what the caller keeps.
+service ResumeWriter {
+
+    // Streams what it is working out, then what one of the caller's resume files says.
+    rpc ReadResume (ReadResumeRequest) returns (stream ReadResumeReply);
+
+    // Streams what it is working out, then the general resume tailored to one of the caller's
+    // applications, drawing on their stories too.
+    rpc TailorResume (TailorResumeRequest) returns (stream TailorResumeReply);
+
+}
+
+// The Writer's, Researcher's and ResumeWriter's work run in the background: a run is queued at once,
+// keeps going when the caller leaves, and what it made is kept until they dismiss it. Each run is the
+// service's own request, made as its owner. Starting work on something drops the earlier runs of that
+// work on it.
 service Runs {
 
     // Checks the work as its call would, then queues it.
@@ -337,6 +365,90 @@ message Document {
     int64 uploaded_unix_seconds = 7;
 }
 
+message ResumeLink {
+    // "GitHub", "portfolio".
+    string label = 1;
+    // An absolute http(s) URL.
+    string url = 2;
+}
+
+// A commit a resume entry rests on.
+message ResumeEvidence {
+    string repo = 1;
+    // Its hash, 7 to 40 hex digits.
+    string commit = 2;
+    // Empty when not known.
+    string date = 3;
+    // What the commit shows.
+    string what = 4;
+}
+
+// Months are written YYYY-MM, or YYYY alone.
+message ResumeRole {
+    string company = 1;
+    string title = 2;
+    string location = 3;
+    string start = 4;
+    // Empty while it's current.
+    string end = 5;
+    string summary = 6;
+    repeated string highlights = 7;
+    repeated string stack = 8;
+    repeated ResumeEvidence evidence = 9;
+}
+
+message ResumeProject {
+    string name = 1;
+    // An absolute http(s) URL, or empty.
+    string link = 2;
+    string start = 3;
+    // Empty while it's ongoing.
+    string end = 4;
+    string summary = 5;
+    repeated string highlights = 6;
+    repeated string stack = 7;
+    repeated ResumeEvidence evidence = 8;
+}
+
+message ResumeSchool {
+    string school = 1;
+    string degree = 2;
+    string start = 3;
+    string end = 4;
+    repeated string details = 5;
+}
+
+// A named list: a skill group ("languages"), or "open source", "talks".
+message ResumeGroup {
+    string name = 1;
+    repeated string items = 2;
+}
+
+// The id is ignored on save.
+message Resume {
+    string id = 1;
+    // One of the caller's applications for a resume tailored to it; empty for the general resume.
+    string application_id = 2;
+    string name = 3;
+    // One line under the name: "Senior backend engineer · payments".
+    string headline = 4;
+    string email = 5;
+    string phone = 6;
+    string location = 7;
+    repeated ResumeLink links = 8;
+    string summary = 9;
+    repeated ResumeRole experience = 10;
+    repeated ResumeProject projects = 11;
+    // Skills in groups.
+    repeated ResumeGroup skills = 12;
+    repeated ResumeSchool education = 13;
+    // Certifications, awards, talks, open source and the like.
+    repeated ResumeGroup extras = 14;
+    // A tailored resume's: what it leans on, and what the job asks that it can't show.
+    repeated string notes = 15;
+    int64 last_modified_unix_seconds = 16;
+}
+
 message ListCompaniesRequest {}
 
 message ListCompaniesReply {
@@ -431,6 +543,26 @@ message ImportStoriesReply {
     repeated Note stories = 1;
 }
 
+message ListResumesRequest {}
+
+message ListResumesReply {
+    repeated Resume resumes = 1;
+}
+
+message SaveResumeRequest {
+    Resume resume = 1;
+}
+
+message SaveResumeReply {
+    Resume resume = 1;
+}
+
+message DeleteResumeRequest {
+    string resume_id = 1;
+}
+
+message DeleteResumeReply {}
+
 message WriteRequest {
     string instruction = 1;
     // The note's markdown, with ⟦cursor⟧ where the reply goes, or the selection between
@@ -521,11 +653,47 @@ message ReadPostingReply {
     }
 }
 
+message ReadResumeRequest {
+    // One of the caller's files: a PDF, Word (.docx), OpenDocument, RTF, text or Markdown resume.
+    string document_id = 1;
+}
+
+message TailorResumeRequest {
+    // One of the caller's applications.
+    string application_id = 1;
+    // What the caller wants it to lean on or leave out; may be empty.
+    string instructions = 2;
+}
+
+// What a resume file says, or a resume tailored to an application, with its notes. Never the id or
+// the application.
+message ResumeFindings {
+    Resume resume = 1;
+}
+
+message ReadResumeReply {
+    oneof reply {
+        ResearchStep step = 1;
+        // Last, once.
+        ResumeFindings findings = 2;
+    }
+}
+
+message TailorResumeReply {
+    oneof reply {
+        ResearchStep step = 1;
+        // Last, once.
+        ResumeFindings findings = 2;
+    }
+}
+
 enum RunKind {
     RUN_KIND_UNSPECIFIED = 0;
     RUN_KIND_RESEARCH_COMPANY = 1;
     RUN_KIND_READ_POSTING = 2;
     RUN_KIND_WRITE = 3;
+    RUN_KIND_READ_RESUME = 4;
+    RUN_KIND_TAILOR_RESUME = 5;
 }
 
 enum RunStatus {
@@ -542,6 +710,8 @@ message RunWork {
         ResearchCompanyRequest research_company = 1;
         ReadPostingRequest read_posting = 2;
         WriteRequest write = 3;
+        ReadResumeRequest read_resume = 4;
+        TailorResumeRequest tailor_resume = 5;
     }
 }
 
@@ -553,9 +723,9 @@ message Run {
     RunStatus status = 4;
     // Why it failed, in words for the caller.
     string error = 5;
-    // The company researched or whose posting is read.
+    // The company researched, whose posting is read, or whose application a resume is tailored to.
     string company_id = 6;
-    // The application a posting is read into.
+    // The application a posting is read into, or a resume tailored to.
     string application_id = 7;
     // The note written in.
     string note_id = 8;
@@ -575,11 +745,12 @@ message RunProgress {
     string text = 2;
 }
 
-// What a research run found; a writing run's is its progress text.
+// What a research or resume run found; a writing run's is its progress text.
 message RunResult {
     oneof result {
         CompanyFindings company = 1;
         PostingFindings posting = 2;
+        ResumeFindings resume = 3;
     }
 }
 

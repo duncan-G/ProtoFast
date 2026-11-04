@@ -1,4 +1,4 @@
-export type RunKind = 'researchCompany' | 'readPosting' | 'write';
+export type RunKind = 'researchCompany' | 'readPosting' | 'write' | 'readResume' | 'tailorResume';
 
 export type RunState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
@@ -11,7 +11,7 @@ export interface LoopRun {
   /** In words for the user. */
   error: string;
   companyId: string | null;
-  /** The application a posting is read into. */
+  /** The application a posting is read into, or a resume tailored to. */
   applicationId: string | null;
   noteId: string | null;
   /** A run taken over after its worker stopped starts over, one attempt on. */

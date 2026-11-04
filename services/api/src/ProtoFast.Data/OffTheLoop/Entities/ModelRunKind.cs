@@ -5,4 +5,6 @@ public enum ModelRunKind
     ResearchCompany,
     ReadPosting,
     Write,
+    ReadResume,
+    TailorResume,
 }

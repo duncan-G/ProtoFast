@@ -39,8 +39,8 @@ builder.Services.AddThePlotData();
 builder.Services.AddOffTheLoopData();
 builder.Services.TryAddSingleton(TimeProvider.System);
 
-// OffTheLoop's notes write with DeepSeek, and its companies and job postings are researched with
-// Gemini grounded in Google Search.
+// OffTheLoop's notes write with DeepSeek, its companies and job postings are researched with Gemini
+// grounded in Google Search, and Gemini reads and tailors its resumes.
 builder.Services.Configure<ModelProviders>(builder.Configuration.GetSection("Providers"));
 builder.Services.Configure<WriterOptions>(builder.Configuration.GetSection("Writer"));
 builder.Services.AddSingleton<ModelCalls>();
@@ -58,7 +58,7 @@ builder.Services.AddHttpClient(PostingPages.HttpClientName, http =>
     .ConfigurePrimaryHttpMessageHandler(PublicAddresses.Handler);
 builder.Services.AddSingleton<PostingPages>();
 
-// The writer's and researcher's work runs in the background off a queue in Postgres; the client watches it.
+// OffTheLoop's AI work runs in the background off a queue in Postgres; the client watches it.
 builder.Services.AddSingleton(builder.Configuration.GetSection("Runs").Get<RunOptions>() ?? new RunOptions());
 builder.Services.AddSingleton<RunSignal>();
 builder.Services.AddKeyedSingleton(RunStore.DataSourceKey, (_, _) =>
@@ -69,6 +69,8 @@ builder.Services.AddSingleton<RunExecutor>();
 // Runs call the services directly, outside a gRPC call.
 builder.Services.AddScoped<WriterService>();
 builder.Services.AddScoped<ResearcherService>();
+builder.Services.AddScoped<ResumeWriterService>();
+builder.Services.AddScoped<ResumeFiles>();
 builder.Services.AddHostedService<RunWorker>();
 
 // Import progress is read from the document import engine's run ledger, in the same database;
@@ -102,6 +104,8 @@ app.MapGrpcService<NoteService>();
 app.MapGrpcService<WriterService>();
 app.MapGrpcService<ResearcherService>();
 app.MapGrpcService<RunsService>();
+app.MapGrpcService<ResumeService>();
+app.MapGrpcService<ResumeWriterService>();
 app.MapGrpcService<TodoService>();
 app.MapGrpcService<GoalService>();
 app.MapGrpcService<LoopDocumentService>();

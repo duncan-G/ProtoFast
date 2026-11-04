@@ -6,6 +6,7 @@ import { Application } from './model/application';
 import { Company } from './model/company';
 import { Goal } from './model/goal';
 import { Note } from './model/note';
+import { Resume } from './model/resume';
 import { SentFile } from './model/sent-file';
 import { SentFileKind } from './model/sent-file-kind';
 import { Todo } from './model/todo';
@@ -22,12 +23,24 @@ export class LoopStore {
   readonly todos = signal<Todo[]>([]);
   readonly goals = signal<Goal[]>([]);
   readonly files = signal<SentFile[]>([]);
+  readonly resumes = signal<Resume[]>([]);
   readonly loaded = signal(false);
   readonly error = signal('');
   readonly today = signal(today());
 
-  /** What the notes page lists; company notes are on their company's page. */
-  readonly libraryNotes = computed(() => this.notes().filter((note) => !note.companyId));
+  /** What the notes page lists; company notes are on their company's page, stories on the resume page. */
+  readonly libraryNotes = computed(() =>
+    this.notes().filter((note) => !note.companyId && note.kind !== 'story'),
+  );
+
+  readonly stories = computed(() => this.notes().filter((note) => note.kind === 'story'));
+
+  /** Everything that could go on a resume; null until first saved. */
+  readonly generalResume = computed(() => this.resumes().find((r) => !r.applicationId) ?? null);
+
+  readonly tailoredResumes = computed(
+    () => new Map(this.resumes().flatMap((r) => (r.applicationId ? [[r.applicationId, r]] : []))),
+  );
 
   readonly companiesById = computed(
     () => new Map(this.companies().map((company) => [company.id, company])),
@@ -60,13 +73,14 @@ export class LoopStore {
   async refresh(): Promise<void> {
     this.today.set(today());
     try {
-      const [companies, applications, notes, todos, goals, files] = await Promise.all([
+      const [companies, applications, notes, todos, goals, files, resumes] = await Promise.all([
         this.api.listCompanies(),
         this.api.listApplications(),
         this.api.listNotes(),
         this.api.listTodos(),
         this.api.listGoals(),
         this.api.listFiles(),
+        this.api.listResumes(),
       ]);
       this.companies.set(companies);
       this.applications.set(applications);
@@ -74,6 +88,7 @@ export class LoopStore {
       this.todos.set(todos);
       this.goals.set(goals);
       this.files.set(files);
+      this.resumes.set(resumes);
       this.error.set('');
     } catch (err) {
       this.loading = null;
@@ -123,8 +138,16 @@ export class LoopStore {
 
   async deleteCompany(companyId: string): Promise<void> {
     await this.api.deleteCompany(companyId);
+    const gone = new Set(
+      this.applications()
+        .filter((a) => a.companyId === companyId)
+        .map((a) => a.id),
+    );
     this.companies.update((list) => list.filter((c) => c.id !== companyId));
     this.applications.update((list) => list.filter((a) => a.companyId !== companyId));
+    this.resumes.update((list) =>
+      list.filter((r) => !r.applicationId || !gone.has(r.applicationId)),
+    );
     this.notes.update((list) => list.filter((n) => n.companyId !== companyId));
   }
 
@@ -182,6 +205,7 @@ export class LoopStore {
   async deleteApplication(applicationId: string): Promise<void> {
     await this.api.deleteApplication(applicationId);
     this.applications.update((list) => list.filter((a) => a.id !== applicationId));
+    this.resumes.update((list) => list.filter((r) => r.applicationId !== applicationId));
   }
 
   async saveNote(note: Note): Promise<Note> {
@@ -202,6 +226,20 @@ export class LoopStore {
   async deleteNote(noteId: string): Promise<void> {
     await this.api.deleteNote(noteId);
     this.notes.update((list) => list.filter((n) => n.id !== noteId));
+  }
+
+  async saveResume(resume: Resume): Promise<Resume> {
+    const saved = await this.api.saveResume(resume);
+    this.resumes.update((list) => [
+      ...list.filter((r) => r.applicationId !== saved.applicationId),
+      saved,
+    ]);
+    return saved;
+  }
+
+  async deleteResume(resumeId: string): Promise<void> {
+    await this.api.deleteResume(resumeId);
+    this.resumes.update((list) => list.filter((r) => r.id !== resumeId));
   }
 
   async addTodo(label: string, dueOn: string | null): Promise<void> {

@@ -19,6 +19,10 @@ import {
   type PostingFindings as PostingFindingsMessage,
   ResearchAction as ResearchActionMessage,
   type ResearchStep as ResearchStepMessage,
+  type Resume as ResumeMessage,
+  type ResumeEvidence as ResumeEvidenceMessage,
+  type ResumeGroup as ResumeGroupMessage,
+  Resumes,
   RoundState as RoundStateMessage,
   type Run as RunMessage,
   RunKind as RunKindMessage,
@@ -47,6 +51,9 @@ import { Note } from './model/note';
 import { NoteKind } from './model/note-kind';
 import { PostingFindings } from './model/posting-findings';
 import { ResearchStep } from './model/research-step';
+import { Resume } from './model/resume';
+import { ResumeEvidence } from './model/resume-evidence';
+import { ResumeGroup } from './model/resume-group';
 import { RoundState } from './model/round-state';
 import { RunDetails } from './model/run-details';
 import { RunResult } from './model/run-result';
@@ -111,6 +118,7 @@ export class ConnectLoopApi implements LoopApi {
   private readonly goals = createClient(Goals, this.transport);
   private readonly documents = createClient(Documents, this.transport);
   private readonly runs = createClient(Runs, this.transport);
+  private readonly resumes = createClient(Resumes, this.transport);
 
   async listCompanies(): Promise<Company[]> {
     const reply = await this.companies.listCompanies({});
@@ -229,6 +237,20 @@ export class ConnectLoopApi implements LoopApi {
     await this.runs.dismissRuns({ runIds });
   }
 
+  async listResumes(): Promise<Resume[]> {
+    const reply = await this.resumes.listResumes({});
+    return reply.resumes.map(toResume);
+  }
+
+  async saveResume(resume: Resume): Promise<Resume> {
+    const reply = await this.resumes.saveResume({ resume: fromResume(resume) });
+    return toResume(required(reply.resume));
+  }
+
+  async deleteResume(resumeId: string): Promise<void> {
+    await this.resumes.deleteResume({ resumeId });
+  }
+
   async listTodos(): Promise<Todo[]> {
     const reply = await this.todos.listTodos({});
     return reply.todos.map(toTodo);
@@ -327,6 +349,8 @@ const RUN_KINDS: Record<RunKind, RunKindMessage> = {
   researchCompany: RunKindMessage.RESEARCH_COMPANY,
   readPosting: RunKindMessage.READ_POSTING,
   write: RunKindMessage.WRITE,
+  readResume: RunKindMessage.READ_RESUME,
+  tailorResume: RunKindMessage.TAILOR_RESUME,
 };
 
 const RUN_STATES: Record<RunState, RunStatusMessage> = {
@@ -371,6 +395,15 @@ function fromWork(work: RunWork): MessageInitShape<typeof RunWorkSchema> {
           value: { ...work.request, kind: NOTE_KINDS[work.request.kind] },
         },
       };
+    case 'readResume':
+      return { work: { case: 'readResume', value: { documentId: work.documentId } } };
+    case 'tailorResume':
+      return {
+        work: {
+          case: 'tailorResume',
+          value: { applicationId: work.applicationId, instructions: work.instructions },
+        },
+      };
   }
 }
 
@@ -401,6 +434,14 @@ function toWork(message: RunWorkMessage): RunWork | null {
           kind: keyOf(NOTE_KINDS, work.value.kind, 'pattern'),
         },
       };
+    case 'readResume':
+      return { kind: 'readResume', documentId: work.value.documentId };
+    case 'tailorResume':
+      return {
+        kind: 'tailorResume',
+        applicationId: work.value.applicationId,
+        instructions: work.value.instructions,
+      };
     default:
       return null;
   }
@@ -413,6 +454,8 @@ function toResult(message: RunResultMessage): RunResult | null {
       return { kind: 'company', findings: toCompanyFindings(result.value) };
     case 'posting':
       return { kind: 'posting', findings: toPostingFindings(result.value) };
+    case 'resume':
+      return { kind: 'resume', resume: toResume(required(result.value.resume)) };
     default:
       return null;
   }
@@ -591,6 +634,65 @@ function toNote(message: NoteMessage): Note {
 
 function fromNote(note: Note) {
   return { ...note, kind: NOTE_KINDS[note.kind], companyId: note.companyId ?? '' };
+}
+
+function toResume(message: ResumeMessage): Resume {
+  return {
+    id: message.id,
+    applicationId: message.applicationId || null,
+    name: message.name,
+    headline: message.headline,
+    email: message.email,
+    phone: message.phone,
+    location: message.location,
+    links: message.links.map(({ label, url }) => ({ label, url })),
+    summary: message.summary,
+    experience: message.experience.map((role) => ({
+      company: role.company,
+      title: role.title,
+      location: role.location,
+      start: role.start,
+      end: role.end,
+      summary: role.summary,
+      highlights: [...role.highlights],
+      stack: [...role.stack],
+      evidence: role.evidence.map(toEvidence),
+    })),
+    projects: message.projects.map((project) => ({
+      name: project.name,
+      link: project.link,
+      start: project.start,
+      end: project.end,
+      summary: project.summary,
+      highlights: [...project.highlights],
+      stack: [...project.stack],
+      evidence: project.evidence.map(toEvidence),
+    })),
+    skills: message.skills.map(toGroup),
+    education: message.education.map((school) => ({
+      school: school.school,
+      degree: school.degree,
+      start: school.start,
+      end: school.end,
+      details: [...school.details],
+    })),
+    extras: message.extras.map(toGroup),
+    notes: [...message.notes],
+    lastModified: Number(message.lastModifiedUnixSeconds),
+  };
+}
+
+function toEvidence({ repo, commit, date, what }: ResumeEvidenceMessage): ResumeEvidence {
+  return { repo, commit, date, what };
+}
+
+function toGroup(message: ResumeGroupMessage): ResumeGroup {
+  return { name: message.name, items: [...message.items] };
+}
+
+function fromResume(resume: Resume) {
+  const { lastModified: _, ...fields } = resume;
+  return { ...fields, applicationId: resume.applicationId ?? '' };
 }
 
 function toTodo(message: TodoMessage): Todo {

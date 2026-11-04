@@ -7,7 +7,7 @@ using ProtoFast.Database.Abstractions;
 namespace ProtoFast.Api.Services.OffTheLoop.ModelRuns;
 
 /// <summary>
-/// Runs a claimed run: its work is the Writer's or Researcher's own request, made as the run's owner
+/// Runs a claimed run: its work is the Writer's, Researcher's or ResumeWriter's own request, made as the run's owner
 /// in a scope of its own, as if they had made the call. What the call streams back is saved as
 /// progress, and its findings as the result.
 /// </summary>
@@ -113,6 +113,36 @@ public sealed class RunExecutor(
                         }
 
                         result = new RunResult { Posting = reply.Findings };
+                        return Task.CompletedTask;
+                    }),
+                    context);
+                break;
+            case RunWork.WorkOneofCase.ReadResume:
+                await scope.ServiceProvider.GetRequiredService<ResumeWriterService>().ReadResume(
+                    work.ReadResume,
+                    new RunStreamWriter<ReadResumeReply>(reply =>
+                    {
+                        if (reply.Step is { } step)
+                        {
+                            return recorder.StepAsync(step);
+                        }
+
+                        result = new RunResult { Resume = reply.Findings };
+                        return Task.CompletedTask;
+                    }),
+                    context);
+                break;
+            case RunWork.WorkOneofCase.TailorResume:
+                await scope.ServiceProvider.GetRequiredService<ResumeWriterService>().TailorResume(
+                    work.TailorResume,
+                    new RunStreamWriter<TailorResumeReply>(reply =>
+                    {
+                        if (reply.Step is { } step)
+                        {
+                            return recorder.StepAsync(step);
+                        }
+
+                        result = new RunResult { Resume = reply.Findings };
                         return Task.CompletedTask;
                     }),
                     context);

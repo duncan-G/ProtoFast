@@ -637,6 +637,87 @@ namespace ProtoFast.Data.OffTheLoop.Migrations
                     b.ToTable("notes", "loop");
                 });
 
+            modelBuilder.Entity("ProtoFast.Data.OffTheLoop.Entities.Resume", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<DateTime>("DateCreated")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("date_created");
+
+                    b.Property<DateTime>("DateLastModified")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("date_last_modified");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("Headline")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("headline");
+
+                    b.Property<string>("Location")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("location");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.PrimitiveCollection<List<string>>("Notes")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("phone");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("summary");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_resumes");
+
+                    b.HasIndex("ApplicationId")
+                        .HasDatabaseName("ix_resumes_application_id");
+
+                    b.HasIndex("UserId", "ApplicationId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_resumes_user_id_application_id");
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("UserId", "ApplicationId"), false);
+
+                    b.ToTable("resumes", "loop");
+                });
+
             modelBuilder.Entity("ProtoFast.Data.OffTheLoop.Entities.Todo", b =>
                 {
                     b.Property<Guid>("Id")
@@ -797,6 +878,290 @@ namespace ProtoFast.Data.OffTheLoop.Migrations
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .HasConstraintName("fk_notes_companies_company_id");
+                });
+
+            modelBuilder.Entity("ProtoFast.Data.OffTheLoop.Entities.Resume", b =>
+                {
+                    b.HasOne("ProtoFast.Data.OffTheLoop.Entities.Application", null)
+                        .WithMany()
+                        .HasForeignKey("ApplicationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_resumes_applications_application_id");
+
+                    b.OwnsMany("ProtoFast.Data.OffTheLoop.Entities.ResumeGroup", "Extras", b1 =>
+                        {
+                            b1.Property<Guid>("ResumeId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.PrimitiveCollection<string>("Items")
+                                .IsRequired();
+
+                            b1.Property<string>("Name")
+                                .IsRequired();
+
+                            b1.HasKey("ResumeId", "__synthesizedOrdinal");
+
+                            b1.ToTable("resumes", "loop");
+
+                            b1
+                                .ToJson("extras")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ResumeId")
+                                .HasConstraintName("fk_resumes_resumes_resume_id");
+                        });
+
+                    b.OwnsMany("ProtoFast.Data.OffTheLoop.Entities.ResumeGroup", "Skills", b1 =>
+                        {
+                            b1.Property<Guid>("ResumeId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.PrimitiveCollection<string>("Items")
+                                .IsRequired();
+
+                            b1.Property<string>("Name")
+                                .IsRequired();
+
+                            b1.HasKey("ResumeId", "__synthesizedOrdinal")
+                                .HasName("pk_resumes");
+
+                            b1.ToTable("resumes", "loop");
+
+                            b1
+                                .ToJson("skills")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ResumeId")
+                                .HasConstraintName("fk_resumes_resumes_resume_id");
+                        });
+
+                    b.OwnsMany("ProtoFast.Data.OffTheLoop.Entities.ResumeLink", "Links", b1 =>
+                        {
+                            b1.Property<Guid>("ResumeId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<string>("Label")
+                                .IsRequired();
+
+                            b1.Property<string>("Url")
+                                .IsRequired();
+
+                            b1.HasKey("ResumeId", "__synthesizedOrdinal");
+
+                            b1.ToTable("resumes", "loop");
+
+                            b1
+                                .ToJson("links")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ResumeId")
+                                .HasConstraintName("fk_resumes_resumes_resume_id");
+                        });
+
+                    b.OwnsMany("ProtoFast.Data.OffTheLoop.Entities.ResumeProject", "Projects", b1 =>
+                        {
+                            b1.Property<Guid>("ResumeId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<string>("End")
+                                .IsRequired();
+
+                            b1.PrimitiveCollection<string>("Highlights")
+                                .IsRequired();
+
+                            b1.Property<string>("Link")
+                                .IsRequired();
+
+                            b1.Property<string>("Name")
+                                .IsRequired();
+
+                            b1.PrimitiveCollection<string>("Stack")
+                                .IsRequired();
+
+                            b1.Property<string>("Start")
+                                .IsRequired();
+
+                            b1.Property<string>("Summary")
+                                .IsRequired();
+
+                            b1.HasKey("ResumeId", "__synthesizedOrdinal");
+
+                            b1.ToTable("resumes", "loop");
+
+                            b1
+                                .ToJson("projects")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ResumeId")
+                                .HasConstraintName("fk_resumes_resumes_resume_id");
+
+                            b1.OwnsMany("ProtoFast.Data.OffTheLoop.Entities.ResumeEvidence", "Evidence", b2 =>
+                                {
+                                    b2.Property<Guid>("ResumeProjectResumeId");
+
+                                    b2.Property<int>("ResumeProject__synthesizedOrdinal");
+
+                                    b2.Property<int>("__synthesizedOrdinal")
+                                        .ValueGeneratedOnAdd();
+
+                                    b2.Property<string>("Commit")
+                                        .IsRequired();
+
+                                    b2.Property<DateOnly?>("Date");
+
+                                    b2.Property<string>("Repo")
+                                        .IsRequired();
+
+                                    b2.Property<string>("What")
+                                        .IsRequired();
+
+                                    b2.HasKey("ResumeProjectResumeId", "ResumeProject__synthesizedOrdinal", "__synthesizedOrdinal")
+                                        .HasName("pk_resumes");
+
+                                    b2.ToTable("resumes", "loop");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("ResumeProjectResumeId", "ResumeProject__synthesizedOrdinal")
+                                        .HasConstraintName("fk_resumes_resumes_resume_project_resume_id_resume_project__synthe");
+                                });
+
+                            b1.Navigation("Evidence");
+                        });
+
+                    b.OwnsMany("ProtoFast.Data.OffTheLoop.Entities.ResumeRole", "Experience", b1 =>
+                        {
+                            b1.Property<Guid>("ResumeId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<string>("Company")
+                                .IsRequired();
+
+                            b1.Property<string>("End")
+                                .IsRequired();
+
+                            b1.PrimitiveCollection<string>("Highlights")
+                                .IsRequired();
+
+                            b1.Property<string>("Location")
+                                .IsRequired();
+
+                            b1.PrimitiveCollection<string>("Stack")
+                                .IsRequired();
+
+                            b1.Property<string>("Start")
+                                .IsRequired();
+
+                            b1.Property<string>("Summary")
+                                .IsRequired();
+
+                            b1.Property<string>("Title")
+                                .IsRequired();
+
+                            b1.HasKey("ResumeId", "__synthesizedOrdinal");
+
+                            b1.ToTable("resumes", "loop");
+
+                            b1
+                                .ToJson("experience")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ResumeId")
+                                .HasConstraintName("fk_resumes_resumes_resume_id");
+
+                            b1.OwnsMany("ProtoFast.Data.OffTheLoop.Entities.ResumeEvidence", "Evidence", b2 =>
+                                {
+                                    b2.Property<Guid>("ResumeRoleResumeId");
+
+                                    b2.Property<int>("ResumeRole__synthesizedOrdinal");
+
+                                    b2.Property<int>("__synthesizedOrdinal")
+                                        .ValueGeneratedOnAdd();
+
+                                    b2.Property<string>("Commit")
+                                        .IsRequired();
+
+                                    b2.Property<DateOnly?>("Date");
+
+                                    b2.Property<string>("Repo")
+                                        .IsRequired();
+
+                                    b2.Property<string>("What")
+                                        .IsRequired();
+
+                                    b2.HasKey("ResumeRoleResumeId", "ResumeRole__synthesizedOrdinal", "__synthesizedOrdinal")
+                                        .HasName("pk_resumes");
+
+                                    b2.ToTable("resumes", "loop");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("ResumeRoleResumeId", "ResumeRole__synthesizedOrdinal")
+                                        .HasConstraintName("fk_resumes_resumes_resume_role_resume_id_resume_role__synthesized_o");
+                                });
+
+                            b1.Navigation("Evidence");
+                        });
+
+                    b.OwnsMany("ProtoFast.Data.OffTheLoop.Entities.ResumeSchool", "Education", b1 =>
+                        {
+                            b1.Property<Guid>("ResumeId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<string>("Degree")
+                                .IsRequired();
+
+                            b1.PrimitiveCollection<string>("Details")
+                                .IsRequired();
+
+                            b1.Property<string>("End")
+                                .IsRequired();
+
+                            b1.Property<string>("School")
+                                .IsRequired();
+
+                            b1.Property<string>("Start")
+                                .IsRequired();
+
+                            b1.HasKey("ResumeId", "__synthesizedOrdinal");
+
+                            b1.ToTable("resumes", "loop");
+
+                            b1
+                                .ToJson("education")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ResumeId")
+                                .HasConstraintName("fk_resumes_resumes_resume_id");
+                        });
+
+                    b.Navigation("Education");
+
+                    b.Navigation("Experience");
+
+                    b.Navigation("Extras");
+
+                    b.Navigation("Links");
+
+                    b.Navigation("Projects");
+
+                    b.Navigation("Skills");
                 });
 #pragma warning restore 612, 618
         }

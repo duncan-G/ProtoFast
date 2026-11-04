@@ -68,7 +68,8 @@ public sealed partial class GeminiResearchModel(
         else
         {
             var read = Request(gemini, brief.System, brief.User);
-            await foreach (var step in StreamAsync(gemini, read, Body(read, brief.Schema, web: false), answer, sources, cancellationToken))
+            var body = Body(read, brief.Schema, web: false, file: brief.File);
+            await foreach (var step in StreamAsync(gemini, read, body, answer, sources, cancellationToken))
             {
                 yield return step;
             }
@@ -81,10 +82,21 @@ public sealed partial class GeminiResearchModel(
     private static ChatRequest Request(ModelProvider gemini, string system, string user) =>
         new(Provider, new Uri(gemini.BaseUrl), gemini.Medium, MaxOutputTokens, system, user);
 
-    private static object Body(ChatRequest request, JsonElement? schema, bool web, bool thoughts = true) => new
+    /// <summary>A file goes before the text, as Gemini reads best.</summary>
+    private static object Body(
+        ChatRequest request, JsonElement? schema, bool web, bool thoughts = true, ResearchFile? file = null) => new
     {
         system_instruction = new { parts = new[] { new { text = request.System } } },
-        contents = new[] { new { role = "user", parts = new[] { new { text = request.User } } } },
+        contents = new[]
+        {
+            new
+            {
+                role = "user",
+                parts = file is null
+                    ? new object[] { new { text = request.User } }
+                    : [new { inline_data = new { mime_type = file.MediaType, data = Convert.ToBase64String(file.Data) } }, new { text = request.User }],
+            },
+        },
         tools = web ? new object[] { new { google_search = new { } }, new { url_context = new { } } } : null,
         generationConfig = new
         {

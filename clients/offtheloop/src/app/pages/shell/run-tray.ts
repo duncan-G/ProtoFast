@@ -266,7 +266,7 @@ const EASE = 'cubic-bezier(0.2, 0.7, 0.2, 1)';
                     <div class="row">
                       <div class="flex min-w-0 flex-1 flex-col gap-1">
                         <span class="label truncate">{{ row.run.label }}</span>
-                        @if (row.kind === 'active' && row.run.kind === 'researchCompany') {
+                        @if (row.kind === 'active' && showsSteps(row.run)) {
                           <app-run-progress [run]="row.run" />
                         } @else {
                           <span class="status" [class]="'is-' + row.kind">
@@ -599,6 +599,9 @@ export class RunTray {
     this.runs.clearFinished().catch(() => undefined);
   }
 
+  protected readonly showsSteps = (run: LoopRun) =>
+    run.kind === 'researchCompany' || run.kind === 'readResume' || run.kind === 'tailorResume';
+
   protected open(run: LoopRun): void {
     void this.close();
     if (run.kind === 'write') {
@@ -607,7 +610,13 @@ export class RunTray {
         ? this.router.navigate(['/app/loop'], {
             queryParams: { id: note.companyId, note: note.id },
           })
-        : this.router.navigate(['/app/notes'], { queryParams: { id: run.noteId } }));
+        : note?.kind === 'story'
+          ? this.router.navigate(['/app/resume'], { queryParams: { view: 'stories', id: note.id } })
+          : this.router.navigate(['/app/notes'], { queryParams: { id: run.noteId } }));
+    } else if (run.kind === 'readResume') {
+      void this.router.navigate(['/app/resume']);
+    } else if (run.kind === 'tailorResume') {
+      void this.router.navigate(['/app/resume'], { queryParams: { for: run.applicationId } });
     } else if (run.companyId) {
       void this.router.navigate(['/app/loop'], {
         queryParams: { id: run.companyId, application: run.applicationId ?? undefined },
@@ -669,13 +678,24 @@ export class RunTray {
         return 'reading';
       case 'write':
         return 'writing';
+      case 'readResume':
+        return 'reading';
+      case 'tailorResume':
+        return 'tailoring';
     }
   }
 
   private openable(run: LoopRun): boolean {
-    return run.kind === 'write'
-      ? this.store.notes().some((n) => n.id === run.noteId)
-      : !!run.companyId && this.store.companiesById().has(run.companyId);
+    switch (run.kind) {
+      case 'write':
+        return this.store.notes().some((n) => n.id === run.noteId);
+      case 'readResume':
+        return true;
+      case 'tailorResume':
+        return !!run.applicationId && this.store.applicationsById().has(run.applicationId);
+      default:
+        return !!run.companyId && this.store.companiesById().has(run.companyId);
+    }
   }
 }
 

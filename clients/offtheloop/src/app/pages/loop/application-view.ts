@@ -16,6 +16,7 @@ import { Figure } from '../../shared/figure';
 import { PostingReader } from './posting-reader';
 import { Rounds } from './rounds';
 import { SentFiles } from './sent-files';
+import { TailoredResume } from './tailored-resume';
 
 type Section = 'basics' | 'next' | 'pay' | 'job' | 'posting' | 'learned';
 
@@ -134,7 +135,7 @@ const LISTS = [
 /** One application, every section edited where it is shown. */
 @Component({
   selector: 'app-application-view',
-  imports: [Figure, FieldsForm, ListField, PostingReader, Rounds, SentFiles],
+  imports: [Figure, FieldsForm, ListField, PostingReader, Rounds, SentFiles, TailoredResume],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'dim-scope flex flex-col gap-10' },
   template: `
@@ -259,6 +260,8 @@ const LISTS = [
     </section>
 
     <app-sent-files [application]="app" />
+
+    <app-tailored-resume [application]="app" />
 
     <section aria-label="The job" class="section-rule flex flex-col gap-3.5">
       @if (editing() === 'job') {

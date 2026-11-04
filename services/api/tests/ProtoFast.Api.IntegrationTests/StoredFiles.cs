@@ -3,12 +3,12 @@ using ProtoFast.Storage.Abstractions;
 
 namespace ProtoFast.Api.IntegrationTests;
 
-/// <summary>The bucket as the documents service sees it: which keys hold a file, and links that name them.</summary>
+/// <summary>The bucket as the documents service sees it: which keys hold a file and what's in it, and links that name them.</summary>
 public sealed class StoredFiles : IObjectStore, IPresignedUrlFactory
 {
-    private readonly ConcurrentDictionary<string, byte> _keys = new();
+    private readonly ConcurrentDictionary<string, byte[]> _keys = new();
 
-    public void Put(string key) => _keys[key] = 0;
+    public void Put(string key, byte[]? content = null) => _keys[key] = content ?? [];
 
     public bool Holds(string key) => _keys.ContainsKey(key);
 
@@ -44,7 +44,8 @@ public sealed class StoredFiles : IObjectStore, IPresignedUrlFactory
     public Task<IReadOnlyList<T>> ReadJsonLinesAsync<T>(string key, CancellationToken ct = default) =>
         throw new NotSupportedException();
 
-    public Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default) => throw new NotSupportedException();
+    public Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default) =>
+        Task.FromResult<Stream?>(_keys.TryGetValue(key, out var content) ? new MemoryStream(content) : null);
 
     public Task<ObjectRef> WriteAsync<T>(string key, T value, string idempotencyKey, CancellationToken ct = default) =>
         throw new NotSupportedException();

@@ -25,6 +25,13 @@ public static class LoopErrors
     public const string PostingGone = "That posting couldn’t be found; it may have come down. Paste its text if you kept it.";
     public const string PostingNotAPosting = "That page doesn’t look like a job posting.";
     public const string PostingUnreadable = "That page couldn’t be read. Paste the posting’s text instead.";
+    public const string ResumeAiOff = "Reading and tailoring resumes with AI isn’t set up here.";
+    public const string ResumeFailed = "The AI couldn’t finish the resume. Try again in a moment.";
+    public const string ResumeRefused = "The AI wouldn’t work on that resume.";
+    public const string ResumeEmpty = "Your resume is empty. Add to it, import it from git or read one in first.";
+    public const string ResumeFileFormat = "Only a PDF, Word (.docx), OpenDocument, RTF, text or Markdown resume can be read. Save it as a PDF and try again.";
+    public const string ResumeUnreadable = "That file couldn’t be read. Save it as a PDF and try again.";
+    public const string ResumeNotAResume = "That file doesn’t look like a resume.";
     public const string RunNotFound = "That AI work could not be found.";
     public const string RunEmpty = "There’s nothing for the AI to do.";
     public const string RunNoteMissing = "Say which note to write in.";

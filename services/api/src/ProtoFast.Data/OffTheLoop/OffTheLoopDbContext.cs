@@ -33,6 +33,8 @@ public sealed class OffTheLoopDbContext(
 
     public DbSet<ModelRun> ModelRuns => Set<ModelRun>();
 
+    public DbSet<Resume> Resumes => Set<Resume>();
+
     protected override void ConfigureModel(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(Schema);
@@ -156,6 +158,42 @@ public sealed class OffTheLoopDbContext(
             entity.Property(g => g.Current).IsRequired().HasMaxLength(OffTheLoopLimits.Label);
 
             entity.HasIndex(g => g.UserId);
+        });
+
+        modelBuilder.Entity<Resume>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+            entity.Property(r => r.UserId).IsRequired().HasMaxLength(UserIdLength);
+            entity.Property(r => r.Name).IsRequired().HasMaxLength(OffTheLoopLimits.Name);
+            entity.Property(r => r.Headline).IsRequired().HasMaxLength(OffTheLoopLimits.Line);
+            entity.Property(r => r.Email).IsRequired().HasMaxLength(OffTheLoopLimits.Name);
+            entity.Property(r => r.Phone).IsRequired().HasMaxLength(OffTheLoopLimits.Label);
+            entity.Property(r => r.Location).IsRequired().HasMaxLength(OffTheLoopLimits.Label);
+            entity.Property(r => r.Summary).IsRequired().HasMaxLength(OffTheLoopLimits.Text);
+
+            entity.OwnsMany(r => r.Links, link => link.ToJson());
+            entity.OwnsMany(r => r.Experience, role =>
+            {
+                role.ToJson();
+                role.OwnsMany(x => x.Evidence);
+            });
+            entity.OwnsMany(r => r.Projects, project =>
+            {
+                project.ToJson();
+                project.OwnsMany(x => x.Evidence);
+            });
+            entity.OwnsMany(r => r.Skills, group => group.ToJson());
+            entity.OwnsMany(r => r.Education, school => school.ToJson());
+            entity.OwnsMany(r => r.Extras, group => group.ToJson());
+
+            entity.HasOne<Application>()
+                .WithMany()
+                .HasForeignKey(r => r.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // One general resume per user, and one per application.
+            entity.HasIndex(r => new { r.UserId, r.ApplicationId }).IsUnique().AreNullsDistinct(false);
+            entity.HasIndex(r => r.ApplicationId);
         });
 
         modelBuilder.Entity<ModelRun>(entity =>

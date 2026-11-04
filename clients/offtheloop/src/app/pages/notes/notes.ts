@@ -5,6 +5,7 @@ import {
   computed,
   ElementRef,
   inject,
+  input,
   signal,
   viewChild,
 } from '@angular/core';
@@ -26,7 +27,6 @@ type KindFilter = NoteKind | 'all';
 const NO_KIND: Partial<Record<NoteKind, string>> = {
   pattern: 'No patterns yet',
   design: 'No design notes yet',
-  story: 'No stories yet',
 };
 
 const FILTERS: readonly { kind: KindFilter; label: string }[] = [
@@ -34,7 +34,10 @@ const FILTERS: readonly { kind: KindFilter; label: string }[] = [
   ...NOTE_KINDS.map(({ kind, plural }) => ({ kind, label: plural })),
 ];
 
-/** Every note in a list that scrolls on its own, the one picked open beside it. */
+/**
+ * Every note in a list that scrolls on its own, the one picked open beside it. With a kind, only
+ * notes of that kind, as the resume page shows its stories; what's projected heads the list.
+ */
 @Component({
   selector: 'app-notes',
   imports: [Icon, NoteBody, RouterLink, StoryImportSheet],
@@ -49,49 +52,62 @@ const FILTERS: readonly { kind: KindFilter; label: string }[] = [
         (keydown.arrowup)="step(-1, $event)"
       >
         <div class="flex flex-col gap-2 pb-3">
+          <ng-content />
           <div class="flex items-center gap-3">
             <div
               class="flex min-w-0 flex-1 items-center gap-2.5 border-b border-[var(--color-edge)] focus-within:border-[var(--color-accent)]"
             >
               <span class="text-[var(--color-dim)]"><app-icon name="search" [size]="16" /></span>
-              <label for="note-query" class="sr-only">Search your notes</label>
+              <label for="note-query" class="sr-only">{{
+                only() === 'story' ? 'Search your stories' : 'Search your notes'
+              }}</label>
               <input
                 id="note-query"
                 type="search"
                 class="h-11 min-w-0 flex-1 border-0 bg-transparent text-[17px] tracking-[-0.01em] text-[var(--color-text)] outline-none placeholder:text-[var(--color-faint)]"
-                placeholder="Search notes"
+                [placeholder]="only() === 'story' ? 'Search stories' : 'Search notes'"
                 autocomplete="off"
                 [value]="query()"
                 (input)="setQuery($any($event.target).value)"
               />
               <span class="mono text-[12px] text-[var(--color-dim)]">{{ results().length }}</span>
             </div>
-            <button
-              type="button"
-              class="btn btn-icon"
-              aria-label="Import stories"
-              title="Import stories from your git history"
-              (click)="importing.set(true)"
-            >
-              <app-icon name="upload" [size]="16" />
-            </button>
-            <button type="button" class="btn btn-primary wide-only pl-3.5" (click)="add()">
-              <app-icon name="plus" [size]="14" [weight]="2" />Note
-            </button>
-          </div>
-          <div role="group" aria-label="Filter by kind" class="flex flex-wrap gap-x-[18px] gap-y-1">
-            @for (filter of filters; track filter.kind) {
+            @if (only() === 'story') {
               <button
                 type="button"
-                class="chip"
-                [attr.aria-pressed]="kind() === filter.kind"
-                (click)="setKind(filter.kind)"
+                class="btn btn-icon"
+                aria-label="Import stories"
+                title="Import stories from your git history"
+                (click)="importing.set(true)"
               >
-                {{ filter.label }}
+                <app-icon name="upload" [size]="16" />
               </button>
             }
+            <button type="button" class="btn btn-primary wide-only pl-3.5" (click)="add()">
+              <app-icon name="plus" [size]="14" [weight]="2" />{{
+                only() === 'story' ? 'Story' : 'Note'
+              }}
+            </button>
           </div>
-          @if (store.libraryNotes().length) {
+          @if (!only()) {
+            <div
+              role="group"
+              aria-label="Filter by kind"
+              class="flex flex-wrap gap-x-[18px] gap-y-1"
+            >
+              @for (filter of filters; track filter.kind) {
+                <button
+                  type="button"
+                  class="chip"
+                  [attr.aria-pressed]="kind() === filter.kind"
+                  (click)="setKind(filter.kind)"
+                >
+                  {{ filter.label }}
+                </button>
+              }
+            </div>
+          }
+          @if (pool().length) {
             <div class="flex items-center justify-between gap-4">
               <label class="note-pick min-w-0">
                 <span>tag</span>
@@ -126,7 +142,7 @@ const FILTERS: readonly { kind: KindFilter; label: string }[] = [
             @for (note of group.notes; track note.id) {
               <a
                 class="note-row"
-                routerLink="/app/notes"
+                [routerLink]="[]"
                 [queryParams]="{ id: note.id }"
                 queryParamsHandling="merge"
                 [attr.data-note]="note.id"
@@ -134,8 +150,10 @@ const FILTERS: readonly { kind: KindFilter; label: string }[] = [
               >
                 <span class="flex items-baseline gap-3">
                   <span class="truncate flex-1 font-medium">{{ note.title }}</span>
-                  @if (kind() === 'all') {
+                  @if (kind() === 'all' && !only()) {
                     <span class="meta text-[11.5px]">{{ note.kind }}</span>
+                  } @else if (only() && note.tag) {
+                    <span class="meta text-[11.5px]">{{ tagKey(note.tag) }}</span>
                   }
                 </span>
               </a>
@@ -155,11 +173,11 @@ const FILTERS: readonly { kind: KindFilter; label: string }[] = [
             [class.opacity-0]="revealed() !== note.id"
           >
             <a
-              routerLink="/app/notes"
+              [routerLink]="[]"
               [queryParams]="{ id: null }"
               queryParamsHandling="merge"
               class="phone-only -mb-3 inline-flex min-h-[40px] items-center gap-1.5 self-start text-[14px] text-[var(--color-muted)] no-underline"
-              ><app-icon name="back" [size]="14" />Notes</a
+              ><app-icon name="back" [size]="14" />{{ only() === 'story' ? 'Stories' : 'Notes' }}</a
             >
             <div class="flex items-start justify-between gap-4">
               <div class="min-w-0">
@@ -169,7 +187,7 @@ const FILTERS: readonly { kind: KindFilter; label: string }[] = [
                     ·
                     <a
                       class="note-tag"
-                      routerLink="/app/notes"
+                      [routerLink]="[]"
                       [queryParams]="{
                         tag: noteTag,
                         id: note.id,
@@ -225,9 +243,14 @@ const FILTERS: readonly { kind: KindFilter; label: string }[] = [
             >
               {{ emptyTitle() }}
             </h1>
-            @if (!store.libraryNotes().length) {
+            @if (!pool().length) {
               <p class="m-0 text-[17px] text-[var(--color-muted)]">
-                Note a coding pattern, a system design or a story once, in your words.
+                @if (only() === 'story') {
+                  Stories from your real work, for behavioural questions. The AI also draws on them
+                  when it tailors a resume.
+                } @else {
+                  Note a coding pattern or a system design once, in your words.
+                }
               </p>
             }
             <div class="flex flex-wrap gap-3">
@@ -236,7 +259,7 @@ const FILTERS: readonly { kind: KindFilter; label: string }[] = [
                   query() ? 'Jot down “' + query().trim() + '”' : 'Write one'
                 }}
               </button>
-              @if (!query() && !tag() && (kind() === 'all' || kind() === 'story')) {
+              @if (!query() && !tag() && only() === 'story') {
                 <button type="button" class="btn pl-3.5" (click)="importing.set(true)">
                   <app-icon name="upload" [size]="15" />Import stories from git
                 </button>
@@ -255,6 +278,16 @@ const FILTERS: readonly { kind: KindFilter; label: string }[] = [
 export class Notes {
   protected readonly store = inject(LoopStore);
   protected readonly editors = inject(LoopEditors);
+
+  /** The one kind listed; the notes page lists its own kinds. */
+  readonly only = input<NoteKind | null>(null);
+
+  protected readonly pool = computed(() => {
+    const only = this.only();
+    return only
+      ? this.store.notes().filter((n) => n.kind === only && !n.companyId)
+      : this.store.libraryNotes();
+  });
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly list = viewChild.required<ElementRef<HTMLElement>>('list');
@@ -274,7 +307,7 @@ export class Notes {
   protected readonly tagKey = tagKey;
   protected readonly query = computed(() => this.params().get('q') ?? '');
   protected readonly kind = computed(
-    () => (this.params().get('kind') as KindFilter | null) ?? 'all',
+    () => this.only() ?? (this.params().get('kind') as KindFilter | null) ?? 'all',
   );
   protected readonly tag = computed(() => tagKey(this.params().get('tag') ?? ''));
   protected readonly sort = computed(() => {
@@ -287,14 +320,14 @@ export class Notes {
   /** The tags of the kind shown, and the one filtered on even when no note carries it now. */
   protected readonly tags = computed(() => {
     const kind = this.kind();
-    const tags = tagsOf(this.store.libraryNotes().filter((n) => kind === 'all' || n.kind === kind));
+    const tags = tagsOf(this.pool().filter((n) => kind === 'all' || n.kind === kind));
     const tag = this.tag();
     return !tag || tags.includes(tag) ? tags : [tag, ...tags];
   });
 
   protected readonly results = computed(() =>
     sortNotes(
-      search(this.store.libraryNotes(), {
+      search(this.pool(), {
         query: this.query(),
         kind: this.kind(),
         tag: this.tag(),
@@ -324,19 +357,15 @@ export class Notes {
 
   protected readonly emptyTitle = computed(() => {
     const kind = this.kind();
-    if (!this.store.libraryNotes().length) {
-      return 'No notes yet';
+    if (!this.pool().length) {
+      return this.only() === 'story' ? 'No stories yet' : 'No notes yet';
     }
     return (kind !== 'all' && !this.query() && !this.tag() && NO_KIND[kind]) || 'No match';
   });
 
   protected readonly selected = computed(() => {
     const id = this.picked();
-    return (
-      (id ? this.store.libraryNotes().find((n) => n.id === id) : undefined) ??
-      this.results()[0] ??
-      null
-    );
+    return (id ? this.pool().find((n) => n.id === id) : undefined) ?? this.results()[0] ?? null;
   });
 
   constructor() {

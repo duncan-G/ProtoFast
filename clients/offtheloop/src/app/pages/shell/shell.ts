@@ -56,6 +56,14 @@ import { RunTray } from './run-tray';
           ><app-icon name="loop"
         /></a>
         <a
+          routerLink="/app/resume"
+          routerLinkActive="active"
+          ariaCurrentWhenActive="page"
+          aria-label="Resume"
+          class="rail-link"
+          ><app-icon name="resume"
+        /></a>
+        <a
           routerLink="/app/account"
           routerLinkActive="active"
           ariaCurrentWhenActive="page"
@@ -107,6 +115,14 @@ import { RunTray } from './run-tray';
           aria-label="The loop"
           class="tab"
           ><app-icon name="loop" [size]="22" [weight]="1.2"
+        /></a>
+        <a
+          routerLink="/app/resume"
+          routerLinkActive="active"
+          ariaCurrentWhenActive="page"
+          aria-label="Resume"
+          class="tab"
+          ><app-icon name="resume" [size]="22" [weight]="1.4"
         /></a>
         <a
           routerLink="/app/account"

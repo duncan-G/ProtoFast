@@ -7,5 +7,7 @@ public interface INoteQuery : IQuery<Note>
 {
     INoteQuery WithId(Guid id);
 
+    INoteQuery OfKind(NoteKind kind);
+
     INoteQuery RecentlyModifiedFirst();
 }
