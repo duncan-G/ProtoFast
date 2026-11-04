@@ -4,7 +4,7 @@
   "displayNameHtml": "<img src=\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNTAgMzIiIHJvbGU9ImltZyIgYXJpYS1sYWJlbD0iUHJvdG9mYXN0Ij48ZyBmaWxsPSJub25lIiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj48cGF0aCBkPSJNNSA2SDEzIiBzdHJva2U9IiM0MjNhNmEiLz48cGF0aCBkPSJNNSAxMUgxNiIgc3Ryb2tlPSIjNWQ1Mjk0Ii8+PHBhdGggZD0iTTUgMTZIMTkiIHN0cm9rZT0iIzc5NmNiZiIvPjxwYXRoIGQ9Ik01IDIxSDE2IiBzdHJva2U9IiM1ZDUyOTQiLz48cGF0aCBkPSJNNSAyNkgxMyIgc3Ryb2tlPSIjNDIzYTZhIi8+PC9nPjxjaXJjbGUgY3g9IjI1IiBjeT0iMTYiIHI9IjQiIGZpbGw9IiM5MTg0ZDkiLz48dGV4dCB4PSIzOCIgeT0iMjMiIGZpbGw9IiNlOWU5ZWQiIGZvbnQtZmFtaWx5PSJJbnRlcixzeXN0ZW0tdWksc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMiIgZm9udC13ZWlnaHQ9IjUwMCIgbGV0dGVyLXNwYWNpbmc9Ii0wLjQ0Ij5Qcm90b2Zhc3Q8L3RleHQ+PC9zdmc+\" alt=\"Protofast\" height=\"28\" style=\"height:28px;width:auto\">",
   "enabled": true,
   "sslRequired": "external",
-  "registrationAllowed": true,
+  "registrationAllowed": false,
   "registrationEmailAsUsername": true,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,

@@ -291,7 +291,7 @@ Both reach a realm that already exists: this task applies them like everything e
 
 ## Adding a tenant realm
 
-Do **not** fork a file blindly. A tenant realm differs from `protofast` in exactly three
+Do **not** fork a file blindly. A tenant realm differs from `protofast` in exactly four
 things:
 
 1. **`webAuthnPolicyPasswordlessRpId`.** Give every tenant realm its own RP ID before
@@ -303,6 +303,8 @@ things:
    other valid value; the entrypoint sets it.
 2. **Identity provider credentials.** Google and Apple are configured per realm.
 3. **`loginTheme` / `emailTheme`**, if the tenant is branded.
+4. **`registrationAllowed`.** `protofast` is invite-only, so it is `false` there and an admin
+   creates its accounts; a tenant that takes sign-ups sets it `true`.
 
 Everything else (the flows, the required actions, the brute-force numbers, the credential
 model) is the same, and should stay literally the same. A new realm file also needs its

@@ -31,6 +31,18 @@ export interface Stat {
   label: string;
 }
 
+/** A live app built on Protofast, shown in the gallery. */
+export interface GalleryApp {
+  name: string;
+  kicker: string;
+  tagline: string;
+  description: string;
+  host: string;
+  /** Landing-page screenshot in public/gallery/, 1440×900. */
+  image: string;
+  tags: string[];
+}
+
 export interface PricingTier {
   name: string;
   tagline: string;
@@ -147,6 +159,29 @@ export const LANDING_MILESTONES: Milestone[] = [
     time: '0:28',
     title: 'Deployed to production',
     detail: 'A shareable URL with TLS, ready for users.',
+  },
+];
+
+export const LANDING_GALLERY: GalleryApp[] = [
+  {
+    name: 'ThePlot',
+    kicker: 'Storytelling',
+    tagline: 'Every story deserves a screening.',
+    description:
+      'Writers draft chapters in a screenplay-aware editor. Readers open them as prose, or press play on an AI-directed adaptation, pictured and voiced scene by scene.',
+    host: 'theplot.protofast.dev',
+    image: '/gallery/theplot.webp',
+    tags: ['Scene editor', 'AI director', 'Narration'],
+  },
+  {
+    name: 'OffTheLoop',
+    kicker: 'Job search',
+    tagline: 'Get off the loop. Get the offer.',
+    description:
+      'A job-search tracker for engineers: every application and interview round, prep notes one search away, AI company research and a resume tailored to each posting.',
+    host: 'offtheloop.protofast.dev',
+    image: '/gallery/offtheloop.webp',
+    tags: ['Interview loops', 'Notes', 'Tailored resumes'],
   },
 ];
 
