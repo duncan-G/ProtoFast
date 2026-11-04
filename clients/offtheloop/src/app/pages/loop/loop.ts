@@ -207,6 +207,8 @@ export class Loop {
       .companies()
       .find((c) => c.name.localeCompare(name, undefined, { sensitivity: 'base' }) === 0);
     const company = existing ?? (await this.store.addCompany(name, String(fields['about'] ?? '')));
+    // The company replaces the list before the sheet's dialog fires its close event.
+    this.adding.set(false);
     void this.router.navigate([], {
       relativeTo: this.route,
       queryParams: { id: company.id, status: null },
