@@ -37,6 +37,7 @@ processors:
         - >-
           resource.attributes["service.name"] != "protofast-client" and
           resource.attributes["service.name"] != "theplot-client" and
+          resource.attributes["service.name"] != "offtheloop-client" and
           resource.attributes["service.name"] != "admin-client" and
           resource.attributes["service.name"] != "admin-theplot-client"
     logs:
@@ -44,6 +45,7 @@ processors:
         - >-
           resource.attributes["service.name"] != "protofast-client" and
           resource.attributes["service.name"] != "theplot-client" and
+          resource.attributes["service.name"] != "offtheloop-client" and
           resource.attributes["service.name"] != "admin-client" and
           resource.attributes["service.name"] != "admin-theplot-client"
   batch:

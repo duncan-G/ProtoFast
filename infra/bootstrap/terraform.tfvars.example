@@ -3,10 +3,11 @@ region                = "us-west-2"
 cloudflare_account_id = "0123456789abcdef0123456789abcdef"
 cloudflare_zone       = "protofast.dev"
 hosts = {
-  protofast = "protofast.dev"
-  theplot   = "theplot.protofast.dev"
-  admin     = "admin.protofast.dev"
-  auth      = "auth.protofast.dev"
+  protofast  = "protofast.dev"
+  theplot    = "theplot.protofast.dev"
+  offtheloop = "offtheloop.protofast.dev"
+  admin      = "admin.protofast.dev"
+  auth       = "auth.protofast.dev"
 }
 # auth and Keycloak send from no-reply@ the protofast host's hostname.
 email_domains = ["protofast.dev"]

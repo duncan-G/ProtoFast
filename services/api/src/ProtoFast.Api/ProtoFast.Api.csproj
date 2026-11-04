@@ -11,12 +11,15 @@
     <Protobuf Include="Protos\document.proto" ProtoRoot="Protos" GrpcServices="Server" />
     <Protobuf Include="Protos\document_upload.proto" ProtoRoot="Protos" GrpcServices="Server" />
     <Protobuf Include="Protos\story.proto" ProtoRoot="Protos" GrpcServices="Server" />
+    <Protobuf Include="Protos\OffTheLoop\offtheloop.proto" ProtoRoot="Protos" GrpcServices="Server" />
     <Protobuf Include="Protos\Admin\Shared\admin_overview.proto" ProtoRoot="Protos" GrpcServices="Server" />
     <Protobuf Include="Protos\Admin\Theplot\theplot_admin.proto" ProtoRoot="Protos" GrpcServices="Server" />
     <Protobuf Include="Protos\Admin\Theplot\theplot_engine.proto" ProtoRoot="Protos" GrpcServices="Server" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="AngleSharp" Version="1.9.1" />
+    <PackageReference Include="Anthropic" Version="12.48.0" />
     <PackageReference Include="Aspire.Npgsql" Version="13.6.2" />
     <PackageReference Include="Grpc.AspNetCore" Version="2.80.0" />
     <PackageReference Include="Aspire.StackExchange.Redis" Version="13.6.2" />

@@ -87,7 +87,7 @@ Configuration sources, in increasing precedence:
 
 | Section          | Class                  | What it controls                                                    |
 | ---------------- | ---------------------- | ------------------------------------------------------------------- |
-| `Keycloak`       | `KeycloakOptions`      | back-channel `Authority`, browser-facing `PublicAuthority` (default `ORIGIN_AUTH`), the three web clients' secrets, the `account-admin` client |
+| `Keycloak`       | `KeycloakOptions`      | back-channel `Authority`, browser-facing `PublicAuthority` (default `ORIGIN_AUTH`), the four web clients' secrets, the `account-admin` client |
 | `Tenants:ByHost` | `TenantOptions`        | host name → realm and client, plus `MaxAge`, `AcrValues`, `RequiredRoles` and `Consoles` on the admin host |
 | `Session`        | `SessionPolicyOptions` | cookie name (`pf_session`), 8 h idle, 7 d absolute, id rotation on refresh |
 | `InternalJwt`    | `InternalJwtOptions` (auth), `InternalJwtValidationOptions` (api, payments) | ES256 key material, `kid`, issuer `protofast-auth`, audience `protofast-internal`, 5 min lifetime |
@@ -142,6 +142,8 @@ Each calls `AddProtoStrapSecret` itself for its connection strings and exits whe
 
 - **The migrations** take a PostgreSQL advisory lock, apply EF Core's migrations and exit 0.
   `--rebuild-schema` drops the schema first, and is refused in Production.
+  `protofast-migrations` migrates three schemas in the `protofast` database: ThePlot's `plot`,
+  OffTheLoop's `loop` and the import engine's `engine`, each with its own history table.
 - **postgres-config** logs in with `ConnectionStrings__postgres` (the superuser) and, for each
   database in `Databases__Names` (`keycloak,auth,protofast`), makes the user its connection
   string names, gives it the password there, and makes the database owned by it. It applies
@@ -166,14 +168,14 @@ fork.
 | `SERVER_URL`             | SSR, handed to the browser through `TransferState` | the base of the gRPC-Web transport and of browser telemetry. Set only for the dev servers (the host's local origin); the clients image leaves it empty, and the browser uses its own origin |
 | `NG_ALLOWED_HOSTS`       | `src/server.ts`, admin-kit's server | the hosts Angular's SSRF guard renders for. The clients host sets it to every `HOST_<NAME>` before loading the apps |
 | `ADMIN_CONSOLE_ROLES`    | admin-kit's SSR gate            | the roles that open a console (`*` for the platform console, `admin-theplot` for theplot's). Set by the AppHost, never by a console |
-| `OTEL_*`                 | `src/telemetry.server.ts` (protofast, theplot), `src/instrumentation.ts` (the admin consoles) | the Node SDK, configured from the variables alone; under the clients host, the host starts it once for every app |
+| `OTEL_*`                 | `src/telemetry.server.ts` (protofast, theplot, offtheloop), `src/instrumentation.ts` (the admin consoles) | the Node SDK, configured from the variables alone; under the clients host, the host starts it once for every app |
 | `PORT`                   | `ng serve`                      | the port Aspire assigns                                       |
 
 Behaviour that lives in the SSR server rather than in config:
 
 - **Proxy headers.** Of the `x-forwarded-*` headers, Angular trusts `x-forwarded-for` and
   `x-forwarded-proto`.
-- **The protected-area gate.** protofast's `/app` and `/subscribe`, and theplot's `/app`,
+- **The protected-area gate.** protofast's `/app` and `/subscribe`, and theplot's and offtheloop's `/app`,
   need an `x-user-id` header (from auth's answer to the edge); without it SSR redirects to
   `/signin?returnUrl=…`, and those responses are `private, no-store`. admin-kit's gate does
   the same for a console, and sends an operator without its roles to `/forbidden`.
@@ -182,7 +184,8 @@ Behaviour that lives in the SSR server rather than in config:
   and the page carries its traceparent in `<meta name="traceparent">`, so the browser's
   `documentLoad` span, the render and its backend calls share one trace. Browsers send their
   spans and logs to `/otlp/v1/traces` and `/otlp/v1/logs` on their own origin, as
-  `protofast-client`, `theplot-client`, `admin-client` or `admin-theplot-client`.
+  `protofast-client`, `theplot-client`, `offtheloop-client`, `admin-client` or
+  `admin-theplot-client`.
 
 gRPC stubs are generated from the services' `.proto` files by `buf` (`buf.gen.yaml` →
 `src/lib/gen`) and committed, so the image builds from `clients/` alone. `npm start` and
@@ -192,12 +195,12 @@ auth is deliberately not an input: browsers talk to it over plain HTTP.
 ## The clients host
 
 One Node process serves several clients' SSR bundles ([`clients/host`](../clients/host)). The
-image ([`clients/Dockerfile`](../clients/Dockerfile)) holds all four apps; `CLIENTS` says
+image ([`clients/Dockerfile`](../clients/Dockerfile)) holds all five apps; `CLIENTS` says
 which this replica loads.
 
 | Variable          | Purpose                                                               |
 | ----------------- | --------------------------------------------------------------------- |
-| `CLIENTS`         | the clients to load: `admin,protofast,theplot` for `clients`, `admin-theplot` for `clients-admin-theplot` |
+| `CLIENTS`         | the clients to load: `admin,protofast,theplot,offtheloop` for `clients`, `admin-theplot` for `clients-admin-theplot` |
 | `DEFAULT_CLIENT`  | the client for a host no client is named for: `protofast`, or `admin-theplot` |
 | `HOST_<NAME>`     | a client is served on the host of its name (client `protofast` on `HOST_PROTOFAST`) |
 | `PORT`            | 4000                                                                  |
@@ -222,10 +225,10 @@ What it does itself:
 ## The browsers' collector
 
 [`services/otel-collector`](../services/otel-collector) is an OpenTelemetry collector for
-browsers only; its README has the details. The edge routes `/otlp/` on the protofast, theplot
-and admin hosts to it at 20 requests a second. It takes traces and logs on
+browsers only; its README has the details. The edge routes `/otlp/` on the protofast, theplot,
+offtheloop and admin hosts to it at 20 requests a second. It takes traces and logs on
 `/otlp/v1/traces` and `/otlp/v1/logs`, up to 512 KiB a request, drops anything whose
-`service.name` isn't one of the four browser clients, and passes the rest to
+`service.name` isn't one of the five browser clients, and passes the rest to
 `OTEL_EXPORTER_OTLP_ENDPOINT`: ProtoStrap's collector in an account, the dashboard locally. Its
 config is in the image. Its readiness (`13133/`) doesn't test the Host, and it doesn't drain on
 SIGTERM, so a browser's batch sent during a deploy may be lost.

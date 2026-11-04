@@ -1,0 +1,231 @@
+/* A note's page: Milkdown Crepe in the Quiet tokens. Its own bundle, which the editor loads when it
+   first opens a note (angular.json "inject": false). Unlayered, so it wins over loop.css. */
+@import '@milkdown/crepe/theme/common/style.css';
+
+.milkdown {
+  --crepe-color-background: transparent;
+  --crepe-color-on-background: var(--color-text);
+  --crepe-color-surface: var(--color-raise);
+  --crepe-color-surface-low: var(--color-panel);
+  --crepe-color-on-surface: var(--color-text-2);
+  --crepe-color-on-surface-variant: var(--color-muted);
+  --crepe-color-outline: var(--color-faint);
+  --crepe-color-primary: var(--color-accent);
+  --crepe-color-secondary: var(--color-line-2);
+  --crepe-color-on-secondary: var(--color-text);
+  --crepe-color-inverse: var(--color-text);
+  --crepe-color-on-inverse: var(--color-bg);
+  --crepe-color-inline-code: var(--color-keyword);
+  --crepe-color-error: var(--color-danger);
+  --crepe-color-hover: var(--color-line-2);
+  --crepe-color-selected: color-mix(in srgb, var(--color-accent), transparent 78%);
+  --crepe-color-inline-area: var(--color-raise);
+  --crepe-base-font-size: 15px;
+  --crepe-font-title: var(--font-sans);
+  --crepe-font-default: var(--font-sans);
+  --crepe-font-code: var(--font-mono);
+  --crepe-shadow-1: 0 0 0 1px var(--color-line-2), 0 6px 20px rgb(0 0 0 / 0.45);
+  --crepe-shadow-2: 0 0 0 1px var(--color-edge), 0 12px 32px rgb(0 0 0 / 0.55);
+}
+
+/* The note page as it was: blocks 26px apart, the first paragraph as the lead, the rest muted. */
+.milkdown .ProseMirror {
+  padding: 0 0 8px;
+  line-height: 1.5;
+}
+
+/* Decoration widgets sit among the blocks, so the rules skip them. */
+.milkdown
+  .ProseMirror
+  > :not(.ProseMirror-widget, .prosemirror-virtual-cursor)
+  ~ :not(.ProseMirror-widget, .prosemirror-virtual-cursor) {
+  margin-top: 26px;
+}
+
+.milkdown
+  .ProseMirror
+  > :is(h1, h2, h3, h4, h5, h6):not(.ProseMirror-widget, .prosemirror-virtual-cursor)
+  + :not(.ProseMirror-widget, .prosemirror-virtual-cursor) {
+  margin-top: 10px;
+}
+
+.milkdown .ProseMirror p {
+  max-width: 62ch;
+  padding: 0;
+  line-height: 1.5;
+  color: var(--color-muted);
+}
+
+.milkdown .ProseMirror > p:not(:not(.ProseMirror-widget, .prosemirror-virtual-cursor) ~ *) {
+  font-size: 19px;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+}
+
+@media (max-width: 719px) {
+  .milkdown .ProseMirror > p:not(:not(.ProseMirror-widget, .prosemirror-virtual-cursor) ~ *) {
+    font-size: 17px;
+  }
+}
+
+.milkdown .ProseMirror h1,
+.milkdown .ProseMirror h2,
+.milkdown .ProseMirror h3,
+.milkdown .ProseMirror h4,
+.milkdown .ProseMirror h5,
+.milkdown .ProseMirror h6 {
+  margin-top: 0;
+  padding: 0;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+}
+
+.milkdown .ProseMirror h1 {
+  font-size: 1.75em;
+  line-height: 1.2;
+}
+
+.milkdown .ProseMirror h2 {
+  font-size: 1.375em;
+  line-height: 1.25;
+}
+
+.milkdown .ProseMirror h3 {
+  font-size: 1.125em;
+  line-height: 1.35;
+}
+
+.milkdown .ProseMirror h4,
+.milkdown .ProseMirror h5,
+.milkdown .ProseMirror h6 {
+  font-size: 1em;
+  line-height: 1.5;
+}
+
+.milkdown .ProseMirror a {
+  color: var(--color-text);
+  text-decoration-color: var(--color-edge-2);
+  text-underline-offset: 3px;
+}
+
+.milkdown .ProseMirror blockquote {
+  padding-left: 18px;
+}
+
+.milkdown .ProseMirror blockquote::before {
+  width: 2px;
+  background: var(--color-edge-2);
+}
+
+.milkdown .ProseMirror hr {
+  background: var(--color-line-2);
+}
+
+/* The handle sits in .notes-page's left padding. */
+.milkdown .milkdown-block-handle {
+  gap: 0;
+}
+
+.milkdown .milkdown-block-handle .operation-item {
+  width: 22px;
+  height: 26px;
+  padding: 3px 1px;
+}
+
+.milkdown .milkdown-block-handle .operation-item svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Code in the panel the old page drew it in. */
+.milkdown .milkdown-code-block {
+  margin-bottom: 0;
+  padding: 18px 20px;
+  border-radius: 12px;
+  background: var(--color-panel);
+}
+
+.milkdown .milkdown-code-block .cm-editor {
+  font-size: 13px;
+  background: transparent;
+}
+
+.milkdown .milkdown-code-block .cm-scroller {
+  font-family: var(--font-mono);
+  line-height: 1.75;
+}
+
+/* Its language and copy button float over the corner, so showing them on hover moves nothing. */
+.milkdown .milkdown-code-block .tools {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 1;
+  gap: 4px;
+}
+
+.milkdown .milkdown-code-block .tools .language-button {
+  margin-bottom: 0;
+}
+
+/* Crepe sets the picker's left inline, which would run it past the block's right edge. */
+.milkdown .milkdown-code-block .tools .language-picker {
+  left: auto !important;
+  right: 0;
+}
+
+.milkdown .milkdown-code-block .tools:focus-within .language-button,
+.milkdown .milkdown-code-block .tools:focus-within .tools-button-group > button {
+  opacity: 1;
+}
+
+/* Math and diagrams read as what they render to; the source shows while it's being written. */
+.milkdown .milkdown-code-block .preview-toggle-button {
+  display: none !important;
+}
+
+.milkdown
+  .milkdown-code-block:has(.preview-panel .preview):not(:focus-within, .selected, [data-editing]) {
+  background: transparent;
+  cursor: text;
+}
+
+.milkdown
+  .milkdown-code-block:has(.preview-panel .preview):not(:focus-within, .selected, [data-editing])
+  .tools,
+.milkdown
+  .milkdown-code-block:has(.preview-panel .preview):not(:focus-within, .selected, [data-editing])
+  .codemirror-host,
+.milkdown
+  .milkdown-code-block:has(.preview-panel .preview):not(:focus-within, .selected, [data-editing])
+  .preview-divider,
+.milkdown
+  .milkdown-code-block:has(.preview-panel .preview):not(:focus-within, .selected, [data-editing])
+  .preview-label {
+  display: none;
+}
+
+.milkdown span[data-type='math_inline'] {
+  padding: 0 2px;
+  color: var(--color-text);
+}
+
+.milkdown .milkdown-code-block .preview {
+  color: var(--color-text);
+}
+
+.milkdown .milkdown-code-block .preview svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.milkdown .note-diagram-error {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  text-align: left;
+  white-space: pre-wrap;
+  color: var(--color-danger);
+}

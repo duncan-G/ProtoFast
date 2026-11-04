@@ -35,14 +35,13 @@ public static class DatabaseServiceCollectionExtensions
                     .UseSnakeCaseNamingConvention()
                     .AddInterceptors(new DateStampedSaveChangesInterceptor(), new UserScopeSaveChangesInterceptor());
             })
-            .AddScoped<UserContext>()
-            .AddScoped<QueryFilterService>()
-            .AddScoped<PagingTokenHelper>()
-            .AddScoped<IUnitOfWorkFactory>(sp =>
-            {
-                TContext dbContext = sp.GetRequiredService<TContext>();
-                return new UnitOfWorkFactory(dbContext);
-            });
+            .AddScoped<IUnitOfWorkFactory<TContext>>(sp => new UnitOfWorkFactory<TContext>(sp.GetRequiredService<TContext>()));
+
+        // A second context in the process keeps the first one's plain factory; its own callers take IUnitOfWorkFactory<TContext>.
+        services.TryAddScoped<UserContext>();
+        services.TryAddScoped<QueryFilterService>();
+        services.TryAddScoped<PagingTokenHelper>();
+        services.TryAddScoped<IUnitOfWorkFactory>(sp => new UnitOfWorkFactory(sp.GetRequiredService<TContext>()));
 
         return services;
     }

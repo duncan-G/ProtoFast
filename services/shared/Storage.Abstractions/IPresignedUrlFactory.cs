@@ -4,7 +4,8 @@ public interface IPresignedUrlFactory
 {
     string PresignPut(string key, string contentType, TimeSpan? ttl = null);
 
-    string PresignGet(string key, TimeSpan? ttl = null);
+    /// <param name="fileName">Served as the name to save it under, shown inline where the browser can.</param>
+    string PresignGet(string key, TimeSpan? ttl = null, string? fileName = null);
 
     /// <summary>
     /// Mints a presigned <em>POST</em> for a browser upload.

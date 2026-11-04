@@ -1,7 +1,7 @@
 # ProtoFast
 
-ProtoFast is a small platform: Angular SSR clients (the protofast product site, ThePlot, and an
-admin host with a console per app), .NET services (auth, the api, payments, document-import),
+ProtoFast is a small platform: Angular SSR clients (the protofast product site, ThePlot,
+OffTheLoop, and an admin host with a console per app), .NET services (auth, the api, payments, document-import),
 a Python conversion worker, Keycloak, PostgreSQL and Redis. It deploys with
 [ProtoStrap](https://github.com/duncan-G/protostrap) 0.1.12 to one AWS account, prod. Dev is
 the local run, `aspire run`.
@@ -15,7 +15,7 @@ graph TD
     end
 
     subgraph Clients["Angular SSR · one Node host"]
-        Web["protofast · theplot · admin"]
+        Web["protofast · theplot · offtheloop · admin"]
         Console["admin-theplot console"]
     end
 
@@ -34,10 +34,10 @@ graph TD
     end
 
     Browser --> Routes
-    Routes -->|"protofast/ theplot/ admin/"| Web
+    Routes -->|"protofast/ theplot/ offtheloop/ admin/"| Web
     Routes -->|"admin/theplot/ · admin-theplot holders only"| Console
     Routes -->|"/signin … /account/"| Auth
-    Routes -->|"/document. /story. /admin. (gRPC-Web)"| Api
+    Routes -->|"/document. /story. /offtheloop. /admin. (gRPC-Web)"| Api
     Routes -->|"/greet."| Payments
     Routes -->|"auth host: sign-in pages only"| KC
     Routes -.->|"ext_authz"| Auth
@@ -84,6 +84,7 @@ aspire run
 | -------------------------------------- | ------------------------------------------------------ |
 | http://protofast.dev.localhost:20000   | The product site                                       |
 | http://theplot.dev.localhost:20000     | ThePlot                                                |
+| http://offtheloop.dev.localhost:20000  | OffTheLoop                                             |
 | http://admin.dev.localhost:20000       | The admin console, and ThePlot's at /theplot/          |
 | http://auth.dev.localhost:20000        | Keycloak's sign-in pages (the edge routes only these)  |
 | http://localhost:8025                  | smtp4dev, where every mail goes, sign-in codes included |

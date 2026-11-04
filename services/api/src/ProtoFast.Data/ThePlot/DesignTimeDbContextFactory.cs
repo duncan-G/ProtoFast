@@ -11,7 +11,7 @@ namespace ProtoFast.Data.ThePlot;
 /// inject the real one (<c>ConnectionStrings__protofast</c>) at runtime.
 ///
 /// <para>Run from <c>services/api/src/ProtoFast.Data</c>:
-/// <c>dotnet ef migrations add &lt;Name&gt; --startup-project ../ProtoFast.SchemaMigrations</c>.</para>
+/// <c>dotnet ef migrations add &lt;Name&gt; --context ThePlotDbContext --startup-project ../ProtoFast.SchemaMigrations</c>.</para>
 /// </summary>
 public sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<ThePlotDbContext>
 {

@@ -34,16 +34,18 @@ What the edge does with them:
 | ----------- | --------------------------------------------------------------------------------- | ------------------------ | ------------------ |
 | `protofast` | `/`                                                                               | `clients`                | yes                |
 | `theplot`   | `/`                                                                               | `clients`                | yes                |
+| `offtheloop` | `/`                                                                              | `clients`                | yes                |
 | `admin`     | `/`                                                                               | `clients`                | yes                |
 | `admin`     | `/theplot/`                                                                       | `clients-admin-theplot`  | yes                |
-| `protofast`, `theplot`, `admin` | `/signin`, `/signup`, `/signout`, `/reset`, `/add-passkey`, `/account/` | `auth`        | no                 |
-| `protofast`, `theplot`, `admin` | `/document.`, `/document_upload.`, `/story.`                      | `api`                    | yes                |
+| `protofast`, `theplot`, `offtheloop`, `admin` | `/signin`, `/signup`, `/signout`, `/reset`, `/add-passkey`, `/account/` | `auth`        | no                 |
+| `protofast`, `theplot`, `offtheloop`, `admin` | `/document.`, `/document_upload.`, `/story.`        | `api`                    | yes                |
+| `offtheloop` | `/offtheloop.`                                                                   | `api`                    | yes                |
 | `admin`     | `/admin.`                                                                         | `api`                    | yes                |
-| `protofast`, `theplot`, `admin` | `/greet.`                                                         | `payments`               | yes                |
-| `protofast`, `theplot`, `admin` | `/otlp/`, 20 requests a second                                    | `otel-collector`         | no                 |
-| `auth`      | `/realms/<realm>/protocol/openid-connect/auth`, `/realms/<realm>/protocol/openid-connect/logout`, `/realms/<realm>/login-actions/`, `/realms/<realm>/broker/` for `protofast`, `theplot` and `operators`; `/resources/` | `keycloak` | no |
+| `protofast`, `theplot`, `offtheloop`, `admin` | `/greet.`                                                         | `payments`               | yes                |
+| `protofast`, `theplot`, `offtheloop`, `admin` | `/otlp/`, 20 requests a second                                    | `otel-collector`         | no                 |
+| `auth`      | `/realms/<realm>/protocol/openid-connect/auth`, `/realms/<realm>/protocol/openid-connect/logout`, `/realms/<realm>/login-actions/`, `/realms/<realm>/broker/` for `protofast`, `theplot`, `offtheloop` and `operators`; `/resources/` | `keycloak` | no |
 
-Under `aspire run` the dev servers `protofast`, `theplot`, `admin` and `admin-theplot` take the
+Under `aspire run` the dev servers `protofast`, `theplot`, `offtheloop`, `admin` and `admin-theplot` take the
 clients' routes, with the same authorizer.
 
 Three things about this table are load-bearing:

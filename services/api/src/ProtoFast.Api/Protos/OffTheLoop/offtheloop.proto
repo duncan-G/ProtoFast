@@ -1,0 +1,750 @@
+syntax = "proto3";
+
+option csharp_namespace = "ProtoFast.Api.OffTheLoop";
+
+package offtheloop;
+
+// OffTheLoop: a job search's companies and the applications made to them, the notes kept for its
+// interviews, what is left to do, and the career goals it is for. Every call is confined to the
+// caller the internal JWT names; anything the caller does not own reads as not found. Dates are
+// calendar days, written YYYY-MM-DD.
+
+service Companies {
+
+    // By name.
+    rpc ListCompanies (ListCompaniesRequest) returns (ListCompaniesReply);
+
+    rpc CreateCompany (CreateCompanyRequest) returns (CreateCompanyReply);
+
+    // Replaces every field, the people included.
+    rpc UpdateCompany (UpdateCompanyRequest) returns (UpdateCompanyReply);
+
+    // Deletes its applications and notes too.
+    rpc DeleteCompany (DeleteCompanyRequest) returns (DeleteCompanyReply);
+
+}
+
+service Applications {
+
+    // Open before closed, the furthest stage first, then the soonest next step.
+    rpc ListApplications (ListApplicationsRequest) returns (ListApplicationsReply);
+
+    rpc CreateApplication (CreateApplicationRequest) returns (CreateApplicationReply);
+
+    // Replaces every field, the rounds included.
+    rpc UpdateApplication (UpdateApplicationRequest) returns (UpdateApplicationReply);
+
+    rpc DeleteApplication (DeleteApplicationRequest) returns (DeleteApplicationReply);
+
+}
+
+service Notes {
+
+    // Most recently modified first.
+    rpc ListNotes (ListNotesRequest) returns (ListNotesReply);
+
+    rpc CreateNote (CreateNoteRequest) returns (CreateNoteReply);
+
+    rpc UpdateNote (UpdateNoteRequest) returns (UpdateNoteReply);
+
+    rpc DeleteNote (DeleteNoteRequest) returns (DeleteNoteReply);
+
+    // Adds every story or, when one is invalid, none.
+    rpc ImportStories (ImportStoriesRequest) returns (ImportStoriesReply);
+
+}
+
+// Writes into a note with a model, at the caller's instruction. Nothing is stored.
+service Writer {
+
+    // Streams markdown for the cursor, or to replace the selection.
+    rpc Write (WriteRequest) returns (stream WriteReply);
+
+}
+
+// Looks a company or a job posting up on the web with a model, at the caller's request. Nothing is
+// stored: the client shows what was found beside what the caller has, and saves what they keep.
+service Researcher {
+
+    // Streams what it is working out, searching and reading, then what it found about one of the
+    // caller's companies.
+    rpc ResearchCompany (ResearchCompanyRequest) returns (stream ResearchCompanyReply);
+
+    // Streams what it is working out and reading, then what a job posting says.
+    rpc ReadPosting (ReadPostingRequest) returns (stream ReadPostingReply);
+
+}
+
+// The Writer's and Researcher's work run in the background: a run is queued at once, keeps going
+// when the caller leaves, and what it made is kept until they dismiss it. Each run is the service's
+// own request, made as its owner. Starting work on something drops the earlier runs of that work on
+// it.
+service Runs {
+
+    // Checks the work as its call would, then queues it.
+    rpc StartRun (StartRunRequest) returns (StartRunReply);
+
+    // Queued, running and finished runs not yet dismissed, oldest first.
+    rpc ListRuns (ListRunsRequest) returns (ListRunsReply);
+
+    // One run with its work, what it has done so far and what it made.
+    rpc GetRun (GetRunRequest) returns (GetRunReply);
+
+    // Streams the run's progress from where the caller has it, then what it made, until it ends.
+    // Hanging up leaves it running.
+    rpc WatchRun (WatchRunRequest) returns (stream WatchRunReply);
+
+    // A queued run never starts; a running one stops. It stays listed, cancelled.
+    rpc CancelRun (CancelRunRequest) returns (CancelRunReply);
+
+    // Forgets runs, stopping any still going.
+    rpc DismissRuns (DismissRunsRequest) returns (DismissRunsReply);
+
+}
+
+service Todos {
+
+    // The open ones and any done in the last day, soonest due first.
+    rpc ListTodos (ListTodosRequest) returns (ListTodosReply);
+
+    rpc CreateTodo (CreateTodoRequest) returns (CreateTodoReply);
+
+    rpc UpdateTodo (UpdateTodoRequest) returns (UpdateTodoReply);
+
+    rpc DeleteTodo (DeleteTodoRequest) returns (DeleteTodoReply);
+
+}
+
+service Goals {
+
+    // Oldest first.
+    rpc ListGoals (ListGoalsRequest) returns (ListGoalsReply);
+
+    rpc CreateGoal (CreateGoalRequest) returns (CreateGoalReply);
+
+    rpc UpdateGoal (UpdateGoalRequest) returns (UpdateGoalReply);
+
+    rpc DeleteGoal (DeleteGoalRequest) returns (DeleteGoalReply);
+
+}
+
+// The resumes and CVs sent with applications; one file can go with any number of them. The browser
+// sends the file straight to storage, so an upload is created, posted, then completed.
+service Documents {
+
+    // Newest first, once their file has arrived.
+    rpc ListDocuments (ListDocumentsRequest) returns (ListDocumentsReply);
+
+    // Signs a POST for the file. Post the fields as given, then the file last.
+    rpc CreateDocumentUpload (CreateDocumentUploadRequest) returns (CreateDocumentUploadReply);
+
+    // Lists the document once its file is in storage.
+    rpc CompleteDocumentUpload (CompleteDocumentUploadRequest) returns (CompleteDocumentUploadReply);
+
+    rpc RenameDocument (RenameDocumentRequest) returns (RenameDocumentReply);
+
+    // A link to the file that works for a few minutes.
+    rpc OpenDocument (OpenDocumentRequest) returns (OpenDocumentReply);
+
+    // Takes it off every application it went with.
+    rpc DeleteDocument (DeleteDocumentRequest) returns (DeleteDocumentReply);
+
+}
+
+enum Stage {
+    STAGE_UNSPECIFIED = 0;
+    STAGE_APPLIED = 1;
+    STAGE_SCREEN = 2;
+    STAGE_TECH = 3;
+    STAGE_ONSITE = 4;
+    STAGE_OFFER = 5;
+}
+
+enum RoundState {
+    ROUND_STATE_UNSPECIFIED = 0;
+    ROUND_STATE_UPCOMING = 1;
+    ROUND_STATE_CURRENT = 2;
+    ROUND_STATE_DONE = 3;
+}
+
+enum Source {
+    SOURCE_UNSPECIFIED = 0;
+    SOURCE_REFERRAL = 1;
+    SOURCE_RECRUITER = 2;
+    SOURCE_JOB_BOARD = 3;
+    SOURCE_CAREERS_PAGE = 4;
+    SOURCE_OTHER = 5;
+}
+
+enum Arrangement {
+    ARRANGEMENT_UNSPECIFIED = 0;
+    ARRANGEMENT_REMOTE = 1;
+    ARRANGEMENT_HYBRID = 2;
+    ARRANGEMENT_ONSITE = 3;
+}
+
+enum NoteKind {
+    NOTE_KIND_UNSPECIFIED = 0;
+    NOTE_KIND_PATTERN = 1;
+    NOTE_KIND_DESIGN = 2;
+    // Kept on one company's page.
+    NOTE_KIND_COMPANY = 3;
+    NOTE_KIND_STORY = 4;
+}
+
+enum DocumentKind {
+    DOCUMENT_KIND_UNSPECIFIED = 0;
+    DOCUMENT_KIND_RESUME = 1;
+    DOCUMENT_KIND_CV = 2;
+}
+
+message Round {
+    string label = 1;
+    RoundState state = 2;
+}
+
+// Someone at the company.
+message Contact {
+    string name = 1;
+    string role = 2;
+    optional string met_on = 3;
+    string note = 4;
+}
+
+// The id is ignored on create, required on update.
+message Company {
+    string id = 1;
+    string name = 2;
+    // One line on it: "fintech · payments api · remote (us)".
+    string about = 3;
+    string revenue = 4;
+    string growth = 5;
+    string headcount = 6;
+    string funding = 7;
+    // When the last round closed: "Mar 2025".
+    string last_raised = 8;
+    repeated string values = 9;
+    // How it works: on-call, remote policy, process.
+    repeated string practices = 10;
+    repeated string competitors = 11;
+    repeated string concerns = 12;
+    repeated Contact contacts = 13;
+    int64 last_modified_unix_seconds = 14;
+    // Where it's based: "Burbank, CA".
+    string location = 15;
+}
+
+// The id is ignored on create, required on update.
+message Application {
+    string id = 1;
+    // One of the caller's companies.
+    string company_id = 2;
+    // The company's name; ignored on writes.
+    string company = 3;
+    string role = 4;
+    // The furthest it got; a closed application keeps the stage it closed at.
+    Stage stage = 5;
+    bool closed = 6;
+    // Unset until you apply.
+    optional string applied_on = 7;
+    // Unspecified when not recorded.
+    Source source = 8;
+    // Who referred you or which board: "Sam Okafor", "LinkedIn".
+    string source_detail = 9;
+    // The version sent, from before files: "v4-backend". A resume file's name supersedes it.
+    string resume = 10;
+    // An absolute http(s) URL, or empty.
+    string posting_url = 11;
+    // The posting's text, kept in case it comes down.
+    string posting = 12;
+    string next_step = 13;
+    optional string next_on = 14;
+    string posted_pay = 15;
+    string asked_pay = 16;
+    string offered_pay = 17;
+    // Equity, bonus, vesting, sign-on.
+    string offer_terms = 18;
+    repeated string wants = 19;
+    // Questions to ask them.
+    repeated string questions = 20;
+    string team = 21;
+    string reports_to = 22;
+    repeated string stack = 23;
+    // Unspecified when not recorded.
+    Arrangement arrangement = 24;
+    string location = 25;
+    // Timezone or overlap the team expects: "4h overlap with ET".
+    string hours = 26;
+    // Unset when not known.
+    optional bool sponsors_visa = 27;
+    repeated string benefits = 28;
+    repeated Round rounds = 29;
+    string learned = 30;
+    int64 last_modified_unix_seconds = 31;
+    // One of the caller's uploaded resumes, or empty.
+    string resume_id = 32;
+    // One of the caller's uploaded CVs, or empty.
+    string cv_id = 33;
+}
+
+// The id is ignored on create, required on update.
+message Note {
+    string id = 1;
+    NoteKind kind = 2;
+    string title = 3;
+    string tag = 4;
+    // Markdown, with $math$, $$math$$ and ```mermaid diagrams.
+    string body = 5;
+    repeated string badges = 6;
+    repeated string fits = 7;
+    int64 last_modified_unix_seconds = 8;
+    // One of the caller's companies for a company note; empty for every other kind.
+    string company_id = 9;
+}
+
+// The id is ignored on create, required on update.
+message Todo {
+    string id = 1;
+    string label = 2;
+    optional string due_on = 3;
+    bool done = 4;
+}
+
+// The id is ignored on create, required on update. Values are as typed: "200k", "staff".
+message Goal {
+    string id = 1;
+    // What it measures: "salary", "title".
+    string kind = 2;
+    string target = 3;
+    // Where it stands now; may be empty.
+    string current = 4;
+}
+
+message Document {
+    string id = 1;
+    DocumentKind kind = 2;
+    // The version it is: "v4-backend".
+    string name = 3;
+    string file_name = 4;
+    string media_type = 5;
+    int64 size_bytes = 6;
+    int64 uploaded_unix_seconds = 7;
+}
+
+message ListCompaniesRequest {}
+
+message ListCompaniesReply {
+    repeated Company companies = 1;
+}
+
+message CreateCompanyRequest {
+    Company company = 1;
+}
+
+message CreateCompanyReply {
+    Company company = 1;
+}
+
+message UpdateCompanyRequest {
+    Company company = 1;
+}
+
+message UpdateCompanyReply {
+    Company company = 1;
+}
+
+message DeleteCompanyRequest {
+    string company_id = 1;
+}
+
+message DeleteCompanyReply {}
+
+message ListApplicationsRequest {}
+
+message ListApplicationsReply {
+    repeated Application applications = 1;
+}
+
+message CreateApplicationRequest {
+    Application application = 1;
+}
+
+message CreateApplicationReply {
+    Application application = 1;
+}
+
+message UpdateApplicationRequest {
+    Application application = 1;
+}
+
+message UpdateApplicationReply {
+    Application application = 1;
+}
+
+message DeleteApplicationRequest {
+    string application_id = 1;
+}
+
+message DeleteApplicationReply {}
+
+message ListNotesRequest {}
+
+message ListNotesReply {
+    repeated Note notes = 1;
+}
+
+message CreateNoteRequest {
+    Note note = 1;
+}
+
+message CreateNoteReply {
+    Note note = 1;
+}
+
+message UpdateNoteRequest {
+    Note note = 1;
+}
+
+message UpdateNoteReply {
+    Note note = 1;
+}
+
+message DeleteNoteRequest {
+    string note_id = 1;
+}
+
+message DeleteNoteReply {}
+
+// Every note is a story; ids are ignored.
+message ImportStoriesRequest {
+    repeated Note stories = 1;
+}
+
+// In the order they were sent.
+message ImportStoriesReply {
+    repeated Note stories = 1;
+}
+
+message WriteRequest {
+    string instruction = 1;
+    // The note's markdown, with ⟦cursor⟧ where the reply goes, or the selection between
+    // ⟦selection⟧ and ⟦/selection⟧.
+    string document = 2;
+    // The selected markdown, which the reply replaces; empty at a cursor.
+    string selection = 3;
+    string title = 4;
+    NoteKind kind = 5;
+    // The caller's note it writes in; a run needs it, the Writer's own call doesn't.
+    string note_id = 6;
+}
+
+message WriteReply {
+    // The next piece of the markdown.
+    string text = 1;
+}
+
+enum ResearchAction {
+    RESEARCH_ACTION_UNSPECIFIED = 0;
+    RESEARCH_ACTION_SEARCHING = 1;
+    RESEARCH_ACTION_READING = 2;
+    RESEARCH_ACTION_THINKING = 3;
+}
+
+message ResearchStep {
+    ResearchAction action = 1;
+    // The search's words, the page's address, or what it is working out.
+    string subject = 2;
+}
+
+// A page the findings came from.
+message WebSource {
+    // Its site when it has no title of its own.
+    string title = 1;
+    // An absolute http(s) URL.
+    string url = 2;
+}
+
+message ResearchCompanyRequest {
+    string company_id = 1;
+}
+
+// Only the fields it found are set; never the id or the name. Its people are the executives it
+// found, a name and title each.
+message CompanyFindings {
+    Company company = 1;
+    repeated WebSource sources = 2;
+}
+
+message ResearchCompanyReply {
+    oneof reply {
+        ResearchStep step = 1;
+        // Last, once.
+        CompanyFindings findings = 2;
+    }
+}
+
+message ReadPostingRequest {
+    // An absolute http(s) URL; may be empty when text is given.
+    string url = 1;
+    // The posting itself, pasted when its page can't be read; the page isn't fetched then.
+    string text = 2;
+    // One of the caller's companies, which the posting should be for.
+    string company_id = 3;
+    // One of that company's applications, which the posting is read into; empty for a new one. Only
+    // a run keeps to it.
+    string application_id = 4;
+}
+
+// Only the fields the posting tells are set.
+message PostingFindings {
+    // The job: role, posting (its text), pay, the job's fields, what they want and benefits. Never
+    // the id, the company, the stage or the dates.
+    Application application = 1;
+    // What it says of the employer: about, values, practices.
+    Company company = 2;
+    // The employer the posting names; may differ from the company asked about.
+    string employer = 3;
+    repeated WebSource sources = 4;
+}
+
+message ReadPostingReply {
+    oneof reply {
+        ResearchStep step = 1;
+        // Last, once.
+        PostingFindings findings = 2;
+    }
+}
+
+enum RunKind {
+    RUN_KIND_UNSPECIFIED = 0;
+    RUN_KIND_RESEARCH_COMPANY = 1;
+    RUN_KIND_READ_POSTING = 2;
+    RUN_KIND_WRITE = 3;
+}
+
+enum RunStatus {
+    RUN_STATUS_UNSPECIFIED = 0;
+    RUN_STATUS_QUEUED = 1;
+    RUN_STATUS_RUNNING = 2;
+    RUN_STATUS_SUCCEEDED = 3;
+    RUN_STATUS_FAILED = 4;
+    RUN_STATUS_CANCELLED = 5;
+}
+
+message RunWork {
+    oneof work {
+        ResearchCompanyRequest research_company = 1;
+        ReadPostingRequest read_posting = 2;
+        WriteRequest write = 3;
+    }
+}
+
+message Run {
+    string id = 1;
+    RunKind kind = 2;
+    // What the caller asked for, as the client named it: "Research Linear".
+    string label = 3;
+    RunStatus status = 4;
+    // Why it failed, in words for the caller.
+    string error = 5;
+    // The company researched or whose posting is read.
+    string company_id = 6;
+    // The application a posting is read into.
+    string application_id = 7;
+    // The note written in.
+    string note_id = 8;
+    // A run taken over after its worker stopped starts over, one attempt on.
+    int32 attempt = 9;
+    int64 created_unix_seconds = 10;
+    // 0 until it starts.
+    int64 started_unix_seconds = 11;
+    // 0 until it ends.
+    int64 finished_unix_seconds = 12;
+}
+
+// What a run has done so far.
+message RunProgress {
+    repeated ResearchStep steps = 1;
+    // A writing run's markdown so far; a failed one keeps what it wrote.
+    string text = 2;
+}
+
+// What a research run found; a writing run's is its progress text.
+message RunResult {
+    oneof result {
+        CompanyFindings company = 1;
+        PostingFindings posting = 2;
+    }
+}
+
+message StartRunRequest {
+    string label = 1;
+    RunWork work = 2;
+}
+
+message StartRunReply {
+    Run run = 1;
+}
+
+message ListRunsRequest {}
+
+message ListRunsReply {
+    repeated Run runs = 1;
+}
+
+message GetRunRequest {
+    string run_id = 1;
+}
+
+message GetRunReply {
+    Run run = 1;
+    RunWork work = 2;
+    RunProgress progress = 3;
+    // Once it has succeeded.
+    RunResult result = 4;
+    // A writing run's note was saved after the run started, so its document no longer matches it.
+    bool note_changed = 5;
+}
+
+message WatchRunRequest {
+    string run_id = 1;
+    // What the caller already has: the attempt it came from, and its steps and text.
+    int32 attempt = 2;
+    int32 from_step = 3;
+    int32 from_text = 4;
+}
+
+message WatchRunReply {
+    // On the first reply, and on each that sees the run change.
+    Run run = 1;
+    // The steps and text since the last reply.
+    RunProgress progress = 2;
+    // The run started over: progress holds everything from the beginning.
+    bool restarted = 3;
+    // On the last reply of a run that succeeded.
+    RunResult result = 4;
+}
+
+message CancelRunRequest {
+    string run_id = 1;
+}
+
+message CancelRunReply {
+    Run run = 1;
+}
+
+message DismissRunsRequest {
+    repeated string run_ids = 1;
+}
+
+message DismissRunsReply {}
+
+message ListTodosRequest {}
+
+message ListTodosReply {
+    repeated Todo todos = 1;
+}
+
+message CreateTodoRequest {
+    Todo todo = 1;
+}
+
+message CreateTodoReply {
+    Todo todo = 1;
+}
+
+message UpdateTodoRequest {
+    Todo todo = 1;
+}
+
+message UpdateTodoReply {
+    Todo todo = 1;
+}
+
+message DeleteTodoRequest {
+    string todo_id = 1;
+}
+
+message DeleteTodoReply {}
+
+message ListGoalsRequest {}
+
+message ListGoalsReply {
+    repeated Goal goals = 1;
+}
+
+message CreateGoalRequest {
+    Goal goal = 1;
+}
+
+message CreateGoalReply {
+    Goal goal = 1;
+}
+
+message UpdateGoalRequest {
+    Goal goal = 1;
+}
+
+message UpdateGoalReply {
+    Goal goal = 1;
+}
+
+message DeleteGoalRequest {
+    string goal_id = 1;
+}
+
+message DeleteGoalReply {}
+
+message ListDocumentsRequest {}
+
+message ListDocumentsReply {
+    repeated Document documents = 1;
+}
+
+message CreateDocumentUploadRequest {
+    DocumentKind kind = 1;
+    // Empty takes it from the file's name.
+    string name = 2;
+    // A PDF, Word, OpenDocument, RTF, text or Markdown file, told by its extension.
+    string file_name = 3;
+    int64 size_bytes = 4;
+}
+
+message CreateDocumentUploadReply {
+    string document_id = 1;
+    string post_url = 2;
+    map<string, string> fields = 3;
+    // Storage refuses a bigger file.
+    int64 max_bytes = 4;
+}
+
+message CompleteDocumentUploadRequest {
+    string document_id = 1;
+}
+
+message CompleteDocumentUploadReply {
+    Document document = 1;
+}
+
+message RenameDocumentRequest {
+    string document_id = 1;
+    string name = 2;
+}
+
+message RenameDocumentReply {
+    Document document = 1;
+}
+
+message OpenDocumentRequest {
+    string document_id = 1;
+}
+
+message OpenDocumentReply {
+    string url = 1;
+}
+
+message DeleteDocumentRequest {
+    string document_id = 1;
+}
+
+message DeleteDocumentReply {}

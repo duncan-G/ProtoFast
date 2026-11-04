@@ -32,7 +32,7 @@ variable "github_repository" {
 variable "cloudflare_account_id" { type = string }
 variable "cloudflare_zone" { type = string }
 variable "hosts" {
-  description = "The hostname in this account of each of the spec's hosts: protofast, theplot, admin and auth."
+  description = "The hostname in this account of each of the spec's hosts: protofast, theplot, offtheloop, admin and auth."
   type        = map(string)
 }
 variable "email_domains" {

@@ -2,7 +2,7 @@
 
 ProtoFast's own OpenTelemetry collector, for browsers only. ProtoStrap runs the collector
 every component sends to, and it isn't reachable from the internet, so the edge routes
-`/otlp/` on the `protofast`, `theplot` and `admin` hosts here, rate-limited, with the path as
+`/otlp/` on the `protofast`, `theplot`, `offtheloop` and `admin` hosts here, rate-limited, with the path as
 it is. This collector passes what it accepts to `OTEL_EXPORTER_OTLP_ENDPOINT`: ProtoStrap's
 collector (`http://telemetry:4318`) in an account, Aspire's dashboard under `aspire run`.
 
@@ -10,8 +10,8 @@ collector (`http://telemetry:4318`) in an account, Aspire's dashboard under `asp
   `/otlp/v1/logs`: what `clients/*/src/lib/telemetry.browser.ts` and admin-kit's
   `telemetry/browser.ts` send, on the page's own origin. Any other path answers 404.
 - **Only from ProtoFast's browser clients:** anyone can send to this route, so spans and log
-  records whose `service.name` isn't `protofast-client`, `theplot-client`, `admin-client` or
-  `admin-theplot-client` are dropped. A client that changes its name must change it here too.
+  records whose `service.name` isn't `protofast-client`, `theplot-client`, `offtheloop-client`,
+  `admin-client` or `admin-theplot-client` are dropped. A client that changes its name must change it here too.
 - **Up to 512 KiB a request,** and a memory limiter at 80% of the replica's memory, which is
   the spec's request and a hard limit.
 - **Idle connections are kept 75 s,** longer than the edge's 60 s; the collector's default is

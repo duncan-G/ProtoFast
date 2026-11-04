@@ -73,7 +73,7 @@ client secrets are Aspire's, as keycloak-config's are ([layer 03](03-services-an
 |---|---|---|
 | `Keycloak:Authority` | Keycloak's own URL, from the AppHost | `http://keycloak:8080` (the spec's `env`) |
 | `Keycloak:PublicAuthority` | unset, so `ORIGIN_AUTH`: `http://auth.dev.localhost:20000` | unset, so `ORIGIN_AUTH`: `https://auth.protofast.dev` in prod. Used for redirects and as the expected token issuer |
-| `Keycloak:ClientSecretProtofastWeb`, `…TheplotWeb`, `…Admin` | generated, in the AppHost's user secrets | `Shared_Keycloak__ClientSecret*` |
+| `Keycloak:ClientSecretProtofastWeb`, `…TheplotWeb`, `…OfftheloopWeb`, `…Admin` | generated, in the AppHost's user secrets | `Shared_Keycloak__ClientSecret*` |
 | `Keycloak:AdminClientId`, `AdminClientSecret` | `account-admin`; generated | `account-admin`; `Shared_Keycloak__AdminClientSecret`. Empty disables account management (503) instead of failing startup. One value serves every realm's `account-admin` client |
 | `Tenants:ByHost:<host>` | `appsettings.json` | the same |
 | `Tenants:ByHost:admin:RequiredRoles` | `platform`, `admin-protofast`, `admin-theplot` | the same: an account holding none gets no session and lands on `/forbidden` |
@@ -86,13 +86,14 @@ client secrets are Aspire's, as keycloak-config's are ([layer 03](03-services-an
 | Mail | `Smtp:Host`/`Port` to smtp4dev, `StartTls=false`, From `no-reply@protofast.dev` (`appsettings.Development.json`) | SES, with auth's role; From `Smtp:From` if set, else `no-reply@<HOST_PROTOFAST>` |
 | `Subscriptions:Enabled` | off | off until billing exists |
 
-**Tenants are keyed by the spec's host names**, `protofast`, `theplot` and `admin`, so the
+**Tenants are keyed by the spec's host names**, `protofast`, `theplot`, `offtheloop` and `admin`, so the
 same `appsettings.json` serves every environment:
 
 | Host name   | Realm       | Client          |
 | ----------- | ----------- | --------------- |
 | `protofast` | `protofast` | `protofast-web` |
 | `theplot`   | `theplot`   | `theplot-web`   |
+| `offtheloop` | `offtheloop` | `offtheloop-web` |
 | `admin`     | `operators` | `admin`         |
 
 `TenantResolver` turns each key into that account's hostname with `HOST_<NAME>`; a key that
@@ -125,7 +126,7 @@ steps):
   `ses-email-sender.jar` supplies the `ses` email sender. **The browser flow names `email-otp`
   and the registration flow `protofast-registration-user-creation` by id, so without the first
   JAR Keycloak can run neither sign-in nor sign-up.**
-- **The themes**, `themes/protofast` and `themes/theplot` (login and email); each realm's
+- **The themes**, `themes/protofast`, `themes/theplot` and `themes/offtheloop` (login and email); each realm's
   `loginTheme` and `emailTheme` names one.
 - **Build-time options**, fixed by `kc.sh build` so `start --optimized` starts at once:
   PostgreSQL, health checks, tracing and OpenTelemetry log export, and the SES email sender.
@@ -161,7 +162,7 @@ The realms aren't imported at startup. [`services/keycloak-config`](../services/
 is keycloak's configure task: ProtoStrap runs it once Keycloak is ready, and again whenever
 the task's image, one of its keys, Keycloak's release or a hostname changes
 ([configure tasks](https://github.com/duncan-G/protostrap/blob/v0.1.12/docs/config.md#configure-tasks)).
-It runs keycloak-config-cli, which makes `protofast`, `theplot` and `operators` match
+It runs keycloak-config-cli, which makes `protofast`, `theplot`, `offtheloop` and `operators` match
 `realms/*.json` through Keycloak's admin API, creating a realm that's missing, and exits 0
 only when all of it is applied. Locally it runs once each `aspire run`, after Keycloak is
 healthy, and auth waits for it.
@@ -170,13 +171,13 @@ The realm files substitute `$(env:NAME)` from the task's environment:
 
 | Variable | Supplies |
 |---|---|
-| `Keycloak__ClientSecretProtofastWeb`, `…TheplotWeb`, `…Admin` | the web clients' secrets |
+| `Keycloak__ClientSecretProtofastWeb`, `…TheplotWeb`, `…OfftheloopWeb`, `…Admin` | the web clients' secrets |
 | `Keycloak__AdminClientSecret` | every realm's `account-admin` client |
-| `ORIGIN_PROTOFAST`, `ORIGIN_THEPLOT`, `ORIGIN_ADMIN` | each client's home URL, redirect URI (`<origin>/signin-oidc`), web origin and post-logout redirects |
+| `ORIGIN_PROTOFAST`, `ORIGIN_THEPLOT`, `ORIGIN_OFFTHELOOP`, `ORIGIN_ADMIN` | each client's home URL, redirect URI (`<origin>/signin-oidc`), web origin and post-logout redirects |
 | `AUTH_URL` | where Keycloak posts logout tokens, `<AUTH_URL>/backchannel-logout`: `http://auth:8080` on the overlay |
-| `WEBAUTHN_RP_ID`, `THEPLOT_WEBAUTHN_RP_ID`, `OPERATORS_WEBAUTHN_RP_ID` | worked out from `HOST_PROTOFAST` and `HOST_AUTH`: protofast's is `HOST_PROTOFAST` when `HOST_AUTH` is under it (`protofast.dev` in prod), else `HOST_AUTH`; theplot's and operators' are `HOST_AUTH`. One per realm, so a realm's passkeys never show in another's picker; each must be Keycloak's host or a parent of it |
+| `WEBAUTHN_RP_ID`, `THEPLOT_WEBAUTHN_RP_ID`, `OFFTHELOOP_WEBAUTHN_RP_ID`, `OPERATORS_WEBAUTHN_RP_ID` | worked out from `HOST_PROTOFAST` and `HOST_AUTH`: protofast's is `HOST_PROTOFAST` when `HOST_AUTH` is under it (`protofast.dev` in prod), else `HOST_AUTH`; theplot's, offtheloop's and operators' are `HOST_AUTH`. One per realm, so a realm's passkeys never show in another's picker; each must be Keycloak's host or a parent of it |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_AUTH`, `SMTP_STARTTLS`, `SMTP_SSL` | the realm's mail settings. Locally the AppHost points host and port at smtp4dev; in an account the SES sender ignores the server and uses `from` (default `no-reply@<HOST_PROTOFAST>`) and the display name |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | social sign-in for protofast and theplot; empty by default, and both providers ship **disabled** |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | social sign-in for protofast, theplot and offtheloop; empty by default, and both providers ship **disabled** |
 | `DEV_OPERATORS` | locally only: operators-realm users and their roles |
 
 In an account it logs in with the bootstrap admin client's client-credentials grant on
@@ -191,8 +192,9 @@ secrets.
 |---|---|---|---|
 | `protofast-web` | `protofast` | confidential | the product site's OIDC flow |
 | `theplot-web` | `theplot` | confidential | ThePlot's OIDC flow |
+| `offtheloop-web` | `offtheloop` | confidential | OffTheLoop's OIDC flow |
 | `admin` | `operators` | confidential | the admin console's OIDC flow (with `max_age`, optional `acr_values`) |
-| `account-admin` | all three | confidential, service account only | the Admin API calls a user makes about their own account: list or remove passkeys, change email, delete account. Holds `view-users` and `manage-users` and nothing else; no sign-in path touches it |
+| `account-admin` | all four | confidential, service account only | the Admin API calls a user makes about their own account: list or remove passkeys, change email, delete account. Holds `view-users` and `manage-users` and nothing else; no sign-in path touches it |
 
 ### The flows
 

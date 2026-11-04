@@ -12,18 +12,41 @@ internal sealed partial class S3ObjectStore
             BucketName = _options.Bucket,
             Key = key,
             Verb = HttpVerb.PUT,
+            Protocol = UrlProtocol,
             ContentType = contentType,
             Expires = DateTime.UtcNow.Add(ttl ?? _options.UploadUrlTtl),
         });
 
-    public string PresignGet(string key, TimeSpan? ttl = null) =>
-        s3.GetPreSignedURL(new GetPreSignedUrlRequest
+    public string PresignGet(string key, TimeSpan? ttl = null, string? fileName = null)
+    {
+        var request = new GetPreSignedUrlRequest
         {
             BucketName = _options.Bucket,
             Key = key,
             Verb = HttpVerb.GET,
+            Protocol = UrlProtocol,
             Expires = DateTime.UtcNow.Add(ttl ?? _options.DownloadUrlTtl),
-        });
+        };
+        if (!string.IsNullOrEmpty(fileName))
+        {
+            request.ResponseHeaderOverrides.ContentDisposition = InlineDisposition(fileName);
+        }
+
+        return s3.GetPreSignedURL(request);
+    }
+
+    /// <summary>The SDK signs https URLs whatever the endpoint; LocalStack under aspire serves http.</summary>
+    private Protocol UrlProtocol =>
+        s3.Config.ServiceURL?.StartsWith("http://", StringComparison.OrdinalIgnoreCase) == true
+            ? Protocol.HTTP
+            : Protocol.HTTPS;
+
+    /// <summary>RFC 6266: an ASCII fallback for old clients, then the exact name percent-encoded.</summary>
+    private static string InlineDisposition(string fileName)
+    {
+        var ascii = new string(fileName.Select(c => c is >= ' ' and <= '~' and not '"' and not '\\' ? c : '_').ToArray());
+        return $"inline; filename=\"{ascii}\"; filename*=UTF-8''{Uri.EscapeDataString(fileName)}";
+    }
 
     /// <summary>
     /// Signs a POST policy whose <c>content-length-range</c> condition makes S3 itself enforce

@@ -23,6 +23,7 @@ public sealed class KeycloakOptions
     public string ClientSecretProtofastWeb { get; init; } = "";
     public string ClientSecretAdmin { get; init; } = "";
     public string ClientSecretTheplotWeb { get; init; } = "";
+    public string ClientSecretOfftheloopWeb { get; init; } = "";
 
     /// <summary>
     /// Service-account client used for the Admin API calls account management needs — reading a
@@ -47,6 +48,7 @@ public sealed class KeycloakOptions
         "protofast-web" => ClientSecretProtofastWeb,
         "admin" => ClientSecretAdmin,
         "theplot-web" => ClientSecretTheplotWeb,
+        "offtheloop-web" => ClientSecretOfftheloopWeb,
         _ => throw new InvalidOperationException($"No client secret configured for client '{clientId}'.")
     };
 }

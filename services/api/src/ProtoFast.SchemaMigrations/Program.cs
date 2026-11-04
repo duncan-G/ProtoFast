@@ -2,12 +2,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Npgsql;
+using ProtoFast.Data.OffTheLoop;
 using ProtoFast.Data.ThePlot;
 using ProtoFast.DocumentImport.Data.Postgres;
 using ProtoFast.ProtoStrap;
 
-// Standalone schema-migrations runner for the `protofast` database: ThePlot's `plot` schema and
-// the document import workflow engine's `engine` schema.
+// Standalone schema-migrations runner for the `protofast` database: ThePlot's `plot` schema,
+// OffTheLoop's `loop` schema and the document import workflow engine's `engine` schema.
 // The API never migrates on boot (replicas would race); this one-shot exe owns schema changes,
 // the same way ProtoFast.Auth.SchemaMigrations does for `auth`. It is the spec's
 // protofast-migrations task, the `migrate` of the api and document-import, which `aspire run`
@@ -20,12 +21,14 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Configuration.AddProtoStrapSecret();
 builder.AddNpgsqlDataSource("protofast");
 builder.Services.AddThePlotData();
+builder.Services.AddOffTheLoopData();
 builder.Services.AddDbContext<WorkflowEngineDbContext>((sp, options) =>
     options.UseWorkflowEngineNpgsql(sp.GetRequiredService<NpgsqlDataSource>()));
 
 using var host = builder.Build();
 using var scope = host.Services.CreateScope();
 var db = scope.ServiceProvider.GetRequiredService<ThePlotDbContext>();
+var loopDb = scope.ServiceProvider.GetRequiredService<OffTheLoopDbContext>();
 var engineDb = scope.ServiceProvider.GetRequiredService<WorkflowEngineDbContext>();
 
 var isProd = builder.Environment.IsProduction();
@@ -48,7 +51,7 @@ try
     {
         // The migrations history table follows the model's default schema, so dropping the
         // schema takes it too; the public one is dropped for a history left by an older layout.
-        foreach (var schema in new[] { db.Model.GetDefaultSchema() ?? "public", WorkflowEngineDbContext.Schema })
+        foreach (var schema in new[] { db.Model.GetDefaultSchema() ?? "public", OffTheLoopDbContext.Schema, WorkflowEngineDbContext.Schema })
         {
             Console.WriteLine($"Rebuild: dropping schema \"{schema}\" + migrations history…");
 #pragma warning disable EF1002 // interpolated identifiers are our own schema names, not user input
@@ -62,6 +65,7 @@ try
 
     Console.WriteLine("Applying migrations…");
     await db.Database.MigrateAsync();
+    await loopDb.Database.MigrateAsync();
     await engineDb.Database.MigrateAsync();
     Console.WriteLine("Migrations applied.");
     return 0;

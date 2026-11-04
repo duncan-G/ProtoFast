@@ -2,10 +2,10 @@
 
 ProtoFast's identity provider: Keycloak 26.7 with ProtoFast's own providers (sign-in by an
 emailed code, sign-up, Sign in with Apple), an email sender that sends through Amazon SES
-with the component's own role, and the `protofast` and `theplot` login and email themes,
-built for PostgreSQL and OpenTelemetry. The realms (`protofast`, `theplot`, `operators`)
-aren't here: keycloak-config ([`../keycloak-config`](../keycloak-config)) applies them
-through the admin API once Keycloak is ready.
+with the component's own role, and the `protofast`, `theplot` and `offtheloop` login and email
+themes, built for PostgreSQL and OpenTelemetry. The realms (`protofast`, `theplot`,
+`offtheloop`, `operators`) aren't here: keycloak-config ([`../keycloak-config`](../keycloak-config))
+applies them through the admin API once Keycloak is ready.
 
 | Path                          | What it is                                                          |
 | ----------------------------- | ------------------------------------------------------------------- |
@@ -13,7 +13,7 @@ through the admin API once Keycloak is ready.
 | `entrypoint.sh`               | Turns ProtoStrap's and the AppHost's variables into Keycloak's      |
 | `providers/email-otp/`        | ProtoFast's providers, `protofast-keycloak.jar`: a Maven project, Java 21 |
 | `providers/ses-email-sender/` | The email sender `ses`: a Maven project, Java 21                     |
-| `themes/`                     | The `protofast` and `theplot` themes, login and email                |
+| `themes/`                     | The `protofast`, `theplot` and `offtheloop` themes, login and email  |
 | `test/entrypoint_test.sh`     | The entrypoint's tests                                              |
 
 ## What's in the image
@@ -175,7 +175,7 @@ email sender and exits.
 
 ## Themes
 
-`protofast` and `theplot` each ship two theme types, which the realms select (`loginTheme`,
+`protofast`, `theplot` and `offtheloop` each ship two theme types, which the realms select (`loginTheme`,
 `emailTheme`; the `operators` realm uses `protofast`):
 
 | Type    | What it covers                                                          |
@@ -184,7 +184,8 @@ email sender and exits.
 | `email` | Every message the realm sends                                           |
 
 - They render the clients' design systems (Nocturne for `protofast`,
-  `clients/protofast/src/styles/nocturne.css`; Ember for `theplot`), so mail and sign-in
+  `clients/protofast/src/styles/nocturne.css`; Ember for `theplot`; the Quiet design's tokens
+  in `clients/offtheloop/src/styles/loop.css` for `offtheloop`), so mail and sign-in
   pages read as the same product.
 - The email themes have `parent=base`, and base's own templates `<#import "template.ftl">`
   by name, which resolves through the theme chain: the messages these themes don't override

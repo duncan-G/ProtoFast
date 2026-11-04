@@ -1,0 +1,5 @@
+<!--
+  The OffTheLoop mark, on the page ground. Same file as
+  clients/offtheloop/public/favicon.svg.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="OffTheLoop"><rect width="32" height="32" rx="8" fill="#0a0c0f"/><path d="M15.2 20A6 6 0 1 1 14.8 13.4" fill="none" stroke="#e8eaed" stroke-width="2.4" stroke-linecap="round"/><path d="M14.8 13.4A1.5 1.5 0 0 0 16 14H27M23.5 10.5 27 14l-3.5 3.5" fill="none" stroke="#c2f25a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>

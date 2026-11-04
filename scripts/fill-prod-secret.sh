@@ -53,6 +53,12 @@ key=DocumentImport_Providers__anthropic__ApiKey
 if ! has "$key" && ask "Set the Anthropic API key (only if prod routes work to Anthropic)?"; then
   args+=("$key=-")
 fi
+if ! has Api_Providers__deepseek__ApiKey && ask "Set Api_Providers__deepseek__ApiKey, the DeepSeek key OffTheLoop's notes write with?"; then
+  args+=("Api_Providers__deepseek__ApiKey=-")
+fi
+if ! has Api_Providers__gemini__ApiKey && ask "Set Api_Providers__gemini__ApiKey, the Gemini key OffTheLoop researches companies and postings with?"; then
+  args+=("Api_Providers__gemini__ApiKey=-")
+fi
 if ! has Reporter_ANTHROPIC_API_KEY && ask "Set Reporter_ANTHROPIC_API_KEY for ProtoStrap's daily report?"; then
   args+=("Reporter_ANTHROPIC_API_KEY=-")
 fi
@@ -70,6 +76,7 @@ for key in \
   Shared_ConnectionStrings__keycloak Shared_ConnectionStrings__auth Shared_ConnectionStrings__protofast \
   Redis_REDIS_PASSWORD Shared_ConnectionStrings__redis Keycloak_KC_BOOTSTRAP_ADMIN_CLIENT_SECRET \
   Shared_Keycloak__ClientSecretProtofastWeb Shared_Keycloak__ClientSecretTheplotWeb \
+  Shared_Keycloak__ClientSecretOfftheloopWeb \
   Shared_Keycloak__ClientSecretAdmin Shared_Keycloak__AdminClientSecret \
   Auth_InternalJwt__PrivateKeyPem Auth_InternalJwt__KeyId \
   Api_InternalJwt__PublicKeyPem Payments_InternalJwt__PublicKeyPem \
