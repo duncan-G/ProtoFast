@@ -683,15 +683,16 @@
     </div>
   </footer>
 
-  <!-- The padding is on the inner panel, so a click on the dialog itself is a backdrop click. -->
+  <!-- The padding is on the inner panel, so a click on the dialog itself is a backdrop click.
+       The shadow and the rise sit on the dialog: it clips its contents (overflow: auto). -->
   <dialog
     #inviteDialog
     aria-labelledby="invite-title"
-    class="m-auto w-[min(440px,calc(100%-32px))] border-0 bg-transparent p-0 text-[var(--color-text)] backdrop:bg-[color-mix(in_srgb,var(--color-bg)_72%,transparent)] backdrop:backdrop-blur-sm"
+    class="rise m-auto w-[min(440px,calc(100%-32px))] rounded-[var(--radius-lg)] border-0 bg-transparent p-0 text-[var(--color-text)] shadow-[0_16px_40px_rgb(0_0_0/0.65)] backdrop:bg-[color-mix(in_srgb,var(--color-bg)_72%,transparent)] backdrop:backdrop-blur-sm"
     (click)="onInviteClick($event)"
   >
     <div
-      class="rise rounded-[var(--radius-lg)] border border-[var(--color-divider)] bg-[var(--color-surface)] p-6 shadow-[var(--shadow-lg)] sm:p-7"
+      class="rounded-[var(--radius-lg)] border border-[var(--color-divider)] bg-[var(--color-surface)] p-6 sm:p-7"
     >
       <span class="tag tag-outline font-mono text-[10.5px] tracking-[0.06em]">
         INVITE ONLY · COMING SOON
