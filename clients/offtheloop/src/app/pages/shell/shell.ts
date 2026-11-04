@@ -153,10 +153,23 @@ export class Shell {
       .subscribe((event) => {
         const next = event.urlAfterRedirects.split(/[?#]/, 1)[0];
         if (page && next !== page) {
-          riseIn(this.main().nativeElement);
+          this.rise();
         }
         page = next;
       });
+  }
+
+  /** Clipped while it rises, or a page that fits the window flashes a scrollbar. */
+  private rise(): void {
+    const main = this.main().nativeElement;
+    const shell = main.parentElement!;
+    shell.style.overflowY = 'clip';
+    const animation = riseIn(main);
+    animation.onfinish = animation.oncancel = () => {
+      if (!main.getAnimations().length) {
+        shell.style.overflowY = '';
+      }
+    };
   }
 
   protected retry(): void {
