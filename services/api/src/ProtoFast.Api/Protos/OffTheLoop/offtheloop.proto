@@ -236,6 +236,8 @@ message Company {
     string what_it_does = 16;
     // Who pays it, for what, and how it's priced.
     string how_it_makes_money = 17;
+    // Marked as more interesting than the rest; listed first while not applied for.
+    bool starred = 18;
 }
 
 // The id is ignored on create, required on update.

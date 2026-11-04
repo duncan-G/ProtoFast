@@ -500,6 +500,7 @@ function toCompany(message: CompanyMessage): Company {
         note: contact.note,
       }),
     ),
+    starred: message.starred,
     lastModified: Number(message.lastModifiedUnixSeconds),
   };
 }

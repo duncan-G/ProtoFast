@@ -9,6 +9,8 @@ export interface CompanyEntry {
   applications: Application[];
   lead: Application | null;
   status: Status;
+  /** Starred and not applied for; a star stops counting once you apply. */
+  starred: boolean;
 }
 
 export interface CompanySection {
@@ -19,8 +21,8 @@ export interface CompanySection {
 const SECTIONS: readonly Status[] = ['offer', 'active', 'applied', 'none', 'closed'];
 
 /**
- * Companies grouped by their lead application's status, each group by the furthest stage,
- * then the nearest next date, then the latest change. Applications come in loop order.
+ * Companies grouped by their lead application's status, each group starred first, then by the
+ * furthest stage, the nearest next date and the latest change. Applications come in loop order.
  */
 export function companySections(
   companies: Company[],
@@ -35,7 +37,14 @@ export function companySections(
   const entries = companies.map((company): CompanyEntry => {
     const all = byCompany.get(company.id) ?? [];
     const lead = all[0] ?? null;
-    return { company, applications: all, lead, status: lead ? statusOf(lead) : 'none' };
+    const status = lead ? statusOf(lead) : 'none';
+    return {
+      company,
+      applications: all,
+      lead,
+      status,
+      starred: status === 'none' && company.starred,
+    };
   });
   return SECTIONS.map((status) => ({
     status,
@@ -45,6 +54,7 @@ export function companySections(
 
 function compare(a: CompanyEntry, b: CompanyEntry): number {
   return (
+    Number(b.starred) - Number(a.starred) ||
     stageRank(b) - stageRank(a) ||
     compareDays(deadline(a), deadline(b)) ||
     lastModified(b) - lastModified(a)

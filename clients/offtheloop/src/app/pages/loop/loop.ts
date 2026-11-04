@@ -108,9 +108,15 @@ import { COMPANY_FIELDS, CompanyView } from './company-view';
                 [queryParams]="{ id: row.id }"
                 queryParamsHandling="merge"
                 [attr.data-company]="row.id"
+                [class.row-starred]="row.starred"
                 [style.color]="row.status === 'closed' ? 'var(--color-dim)' : null"
               >
-                <app-stage-dot [status]="row.status" />
+                @if (row.starred) {
+                  <app-icon name="star" class="star-mark w-[14px] justify-center" [size]="14" />
+                  <span class="sr-only">starred</span>
+                } @else {
+                  <app-stage-dot [status]="row.status" />
+                }
                 <span class="flex min-w-0 flex-1 items-baseline gap-x-6 max-[719px]:flex-col">
                   <span class="w-[34%] flex-none truncate font-medium max-[719px]:w-full">{{
                     row.name
@@ -224,10 +230,11 @@ export class Loop {
       .map((section) => ({
         status: section.status,
         label: STATUSES.find((s) => s.status === section.status)?.label ?? section.status,
-        rows: section.entries.map(({ company, applications, lead, status }) => ({
+        rows: section.entries.map(({ company, applications, lead, status, starred }) => ({
           id: company.id,
           name: company.name,
           status,
+          starred,
           detail: lead
             ? [
                 lead.role || 'role not set',

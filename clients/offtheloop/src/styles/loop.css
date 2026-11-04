@@ -301,6 +301,17 @@
     border: 1.5px dotted var(--color-edge);
   }
 
+  /* a starred company, not applied for yet */
+  .star-mark,
+  .star-toggle[aria-pressed="true"] {
+    color: var(--color-amber);
+  }
+
+  .star-mark path,
+  .star-toggle[aria-pressed="true"] path {
+    fill: currentColor;
+  }
+
   .legend {
     display: flex;
     flex-wrap: wrap;
@@ -352,6 +363,14 @@
   .row-pick[aria-current="true"],
   .row-pick[aria-current="page"] {
     background: var(--color-raise);
+  }
+
+  .row-pick.row-starred {
+    background: color-mix(in srgb, var(--color-amber) 5%, transparent);
+  }
+
+  .row-pick.row-starred:hover {
+    background: color-mix(in srgb, var(--color-amber) 9%, transparent);
   }
 
   .meta {

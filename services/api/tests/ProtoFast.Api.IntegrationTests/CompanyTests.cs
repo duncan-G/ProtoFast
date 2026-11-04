@@ -43,6 +43,7 @@ public class CompanyTests(StoryDatabase database)
         created.Location = " Burbank, CA ";
         created.WhatItDoes = " Runs payments for online shops. ";
         created.HowItMakesMoney = "A cut of each payment.";
+        created.Starred = true;
         await _seeker.UpdateCompanyAsync(created);
 
         var stored = Assert.Single(await _seeker.ListCompaniesAsync());
@@ -52,6 +53,7 @@ public class CompanyTests(StoryDatabase database)
         Assert.Equal("Burbank, CA", stored.Location);
         Assert.Equal("Runs payments for online shops.", stored.WhatItDoes);
         Assert.Equal("A cut of each payment.", stored.HowItMakesMoney);
+        Assert.True(stored.Starred);
         Assert.Equal(["Marcus Lee", "Priya Raman"], stored.Contacts.Select(c => c.Name));
         Assert.Equal("2026-10-16", stored.Contacts[0].MetOn);
         Assert.False(stored.Contacts[1].HasMetOn);

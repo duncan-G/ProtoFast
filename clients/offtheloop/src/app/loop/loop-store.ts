@@ -101,6 +101,7 @@ export class LoopStore {
       competitors: [],
       concerns: [],
       contacts: [],
+      starred: false,
       lastModified: 0,
     });
   }

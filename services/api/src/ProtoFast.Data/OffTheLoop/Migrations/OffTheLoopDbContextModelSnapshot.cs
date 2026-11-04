@@ -301,6 +301,10 @@ namespace ProtoFast.Data.OffTheLoop.Migrations
                         .HasColumnType("character varying(80)")
                         .HasColumnName("revenue");
 
+                    b.Property<bool>("Starred")
+                        .HasColumnType("boolean")
+                        .HasColumnName("starred");
+
                     b.Property<string>("UserId")
                         .IsRequired()
                         .HasMaxLength(255)

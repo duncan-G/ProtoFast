@@ -22,6 +22,7 @@ public static class CompanyMessages
             Headcount = company.Headcount,
             Funding = company.Funding,
             LastRaised = company.LastRaised,
+            Starred = company.Starred,
             LastModifiedUnixSeconds = LoopText.UnixSeconds(company.DateLastModified),
         };
         message.Values.AddRange(company.Values);
@@ -57,6 +58,7 @@ public static class CompanyMessages
             Competitors = LoopText.Items(message.Competitors, OffTheLoopLimits.Name, "Competition"),
             Concerns = LoopText.Items(message.Concerns, OffTheLoopLimits.Line, "Concerns"),
             Contacts = contacts,
+            Starred = message.Starred,
         };
     }
 
@@ -77,6 +79,7 @@ public static class CompanyMessages
         target.Competitors = source.Competitors;
         target.Concerns = source.Concerns;
         target.Contacts = source.Contacts;
+        target.Starred = source.Starred;
     }
 
     private static Contact ToMessage(ContactRecord contact)

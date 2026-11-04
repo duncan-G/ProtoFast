@@ -2,7 +2,7 @@ import { companySections } from './company-sections';
 import { Application } from './model/application';
 import { Company } from './model/company';
 
-function company(name: string, lastModified = 0): Company {
+function company(name: string, lastModified = 0, starred = false): Company {
   return {
     id: name,
     name,
@@ -20,6 +20,7 @@ function company(name: string, lastModified = 0): Company {
     competitors: [],
     concerns: [],
     contacts: [],
+    starred,
     lastModified,
   };
 }
@@ -108,6 +109,27 @@ describe('company sections', () => {
     expect(names(companySections(companies, applications))).toEqual([
       ['active', ['Cedar', 'Dogwood', 'Birch', 'Elm', 'Arbor']],
     ]);
+  });
+
+  it('puts starred companies first among those not applied for', () => {
+    const companies = [
+      company('Arbor', 30),
+      company('Birch', 10, true),
+      company('Cedar', 20, true),
+      company('Dogwood', 40, true),
+    ];
+    const applications = [
+      application('Arbor', { appliedOn: null }),
+      application('Dogwood', { stage: 'screen' }),
+    ];
+
+    const sections = companySections(companies, applications);
+
+    expect(names(sections)).toEqual([
+      ['active', ['Dogwood']],
+      ['none', ['Cedar', 'Birch', 'Arbor']],
+    ]);
+    expect(sections[0].entries[0].starred).toBe(false);
   });
 
   it('ignores a closed application’s next date', () => {

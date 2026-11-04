@@ -17,7 +17,8 @@ export type IconName =
   | 'mail'
   | 'file'
   | 'upload'
-  | 'pin';
+  | 'pin'
+  | 'star';
 
 /** The design's stroke icons, drawn in currentColor. Decorative: label the control instead. */
 @Component({
@@ -97,6 +98,11 @@ export type IconName =
         @case ('pin') {
           <path d="M13 6.75c0 3.5-5 7.5-5 7.5s-5-4-5-7.5a5 5 0 0 1 10 0z" />
           <circle cx="8" cy="6.75" r="1.75" />
+        }
+        @case ('star') {
+          <path
+            d="M8 2.1 9.6 6.2 14 6.45 10.6 9.25 11.7 13.5 8 11.1 4.3 13.5 5.4 9.25 2 6.45 6.4 6.2z"
+          />
         }
       }
     </svg>
