@@ -103,6 +103,8 @@ public class ClaimingUserCreation extends RegistrationUserCreation {
 
     @Override
     public void success(FormContext context) {
+        rememberIfAsked(context);
+
         UserModel user = claimTarget(context);
         if (user == null) {
             super.success(context);
@@ -174,6 +176,20 @@ public class ClaimingUserCreation extends RegistrationUserCreation {
             session.setAttribute(ATTR_PROFILE, profile);
         }
         return profile;
+    }
+
+    /**
+     * Stock registration never reads "remember me", so a new account's first session dies with
+     * the browser. This applies the form's {@code rememberMe} the way
+     * {@code AuthenticatorUtils.processRememberMe} does at sign-in; only a theme that sends it
+     * asks.
+     */
+    private static void rememberIfAsked(FormContext context) {
+        String rememberMe = context.getHttpRequest().getDecodedFormParameters().getFirst("rememberMe");
+        if (context.getRealm().isRememberMe() && "on".equalsIgnoreCase(rememberMe)) {
+            context.getAuthenticationSession().setAuthNote(Details.REMEMBER_ME, "true");
+            context.getEvent().detail(Details.REMEMBER_ME, "true");
+        }
     }
 
     /** The submitted address, if it belongs to a shell this sign-up is allowed to take over. */

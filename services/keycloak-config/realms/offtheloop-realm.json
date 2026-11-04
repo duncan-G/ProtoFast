@@ -23,8 +23,8 @@
   "quickLoginCheckMilliSeconds": 1000,
   "maxDeltaTimeSeconds": 43200,
   "passwordPolicy": "",
-  "ssoSessionIdleTimeout": 28800,
-  "ssoSessionMaxLifespan": 604800,
+  "ssoSessionIdleTimeout": 31536000,
+  "ssoSessionMaxLifespan": 31536000,
   "accessTokenLifespan": 300,
   "accessTokenLifespanForImplicitFlow": 900,
   "revokeRefreshToken": true,
@@ -301,7 +301,7 @@
       "alias": "basic-level-of-authentication",
       "config": {
         "loa-condition-level": "1",
-        "loa-max-age": "604800"
+        "loa-max-age": "31536000"
       }
     },
     {
