@@ -1,7 +1,7 @@
 /** Eases an element in, as if it just arrived. Browser only. */
-export function riseIn(element: HTMLElement): void {
+export function riseIn(element: HTMLElement): Animation {
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  element.animate(
+  return element.animate(
     still
       ? [{ opacity: 0 }, { opacity: 1 }]
       : [

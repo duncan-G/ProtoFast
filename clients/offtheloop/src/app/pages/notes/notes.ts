@@ -23,6 +23,12 @@ import { StoryImportSheet } from './story-import-sheet';
 
 type KindFilter = NoteKind | 'all';
 
+const NO_KIND: Partial<Record<NoteKind, string>> = {
+  pattern: 'No patterns yet',
+  design: 'No design notes yet',
+  story: 'No stories yet',
+};
+
 const FILTERS: readonly { kind: KindFilter; label: string }[] = [
   { kind: 'all', label: 'all' },
   ...NOTE_KINDS.map(({ kind, plural }) => ({ kind, label: plural })),
@@ -85,29 +91,31 @@ const FILTERS: readonly { kind: KindFilter; label: string }[] = [
               </button>
             }
           </div>
-          <div class="flex items-center justify-between gap-4">
-            <label class="note-pick min-w-0">
-              <span>tag</span>
-              <select
-                class="input"
-                [class.is-set]="tag()"
-                (change)="setTag($any($event.target).value)"
-              >
-                <option value="" [selected]="!tag()">all</option>
-                @for (t of tags(); track t) {
-                  <option [value]="t" [selected]="t === tag()">{{ t }}</option>
-                }
-              </select>
-            </label>
-            <label class="note-pick">
-              <span>sort</span>
-              <select class="input" (change)="setSort($any($event.target).value)">
-                @for (s of sorts; track s) {
-                  <option [value]="s" [selected]="s === sort()">{{ s }}</option>
-                }
-              </select>
-            </label>
-          </div>
+          @if (store.libraryNotes().length) {
+            <div class="flex items-center justify-between gap-4">
+              <label class="note-pick min-w-0">
+                <span>tag</span>
+                <select
+                  class="input"
+                  [class.is-set]="tag()"
+                  (change)="setTag($any($event.target).value)"
+                >
+                  <option value="" [selected]="!tag()">all</option>
+                  @for (t of tags(); track t) {
+                    <option [value]="t" [selected]="t === tag()">{{ t }}</option>
+                  }
+                </select>
+              </label>
+              <label class="note-pick">
+                <span>sort</span>
+                <select class="input" (change)="setSort($any($event.target).value)">
+                  @for (s of sorts; track s) {
+                    <option [value]="s" [selected]="s === sort()">{{ s }}</option>
+                  }
+                </select>
+              </label>
+            </div>
+          }
         </div>
 
         <div #list class="notes-scroll">
@@ -133,39 +141,8 @@ const FILTERS: readonly { kind: KindFilter; label: string }[] = [
               </a>
             }
           }
-          @if (!results().length) {
-            <p class="m-0 py-3.5 text-[var(--color-dim)]">
-              @if (!store.loaded()) {
-                Loading…
-              } @else if (store.libraryNotes().length === 0) {
-                No notes yet.
-                <button
-                  type="button"
-                  class="btn-link text-[15px] text-[var(--color-accent)]"
-                  (click)="jot()"
-                >
-                  Jot the first one down
-                </button>
-              } @else if (kind() === 'story' && !query() && !tag()) {
-                No stories yet.
-                <button
-                  type="button"
-                  class="btn-link text-[15px] text-[var(--color-accent)]"
-                  (click)="importing.set(true)"
-                >
-                  Import them from your git history
-                </button>
-              } @else {
-                No match.
-                <button
-                  type="button"
-                  class="btn-link text-[15px] text-[var(--color-accent)]"
-                  (click)="jot()"
-                >
-                  Jot it down
-                </button>
-              }
-            </p>
+          @if (!store.loaded()) {
+            <p class="m-0 py-3.5 text-[var(--color-dim)]">Loading…</p>
           }
         </div>
       </section>
@@ -238,6 +215,33 @@ const FILTERS: readonly { kind: KindFilter; label: string }[] = [
                 }
               </div>
             }
+          </div>
+        </article>
+      } @else if (store.loaded()) {
+        <article class="notes-page">
+          <div class="flex max-w-[520px] flex-col items-start gap-[22px] max-[719px]:pt-6">
+            <h1
+              class="m-0 text-[clamp(28px,3vw,38px)] leading-[1.08] font-semibold tracking-[-0.04em]"
+            >
+              {{ emptyTitle() }}
+            </h1>
+            @if (!store.libraryNotes().length) {
+              <p class="m-0 text-[17px] text-[var(--color-muted)]">
+                Note a coding pattern, a system design or a story once, in your words.
+              </p>
+            }
+            <div class="flex flex-wrap gap-3">
+              <button type="button" class="btn pl-3.5" (click)="jot()">
+                <app-icon name="plus" [size]="14" [weight]="2" />{{
+                  query() ? 'Jot down “' + query().trim() + '”' : 'Write one'
+                }}
+              </button>
+              @if (!query() && !tag() && (kind() === 'all' || kind() === 'story')) {
+                <button type="button" class="btn pl-3.5" (click)="importing.set(true)">
+                  <app-icon name="upload" [size]="15" />Import stories from git
+                </button>
+              }
+            </div>
           </div>
         </article>
       }
@@ -316,6 +320,14 @@ export class Notes {
       }
     }
     return groups;
+  });
+
+  protected readonly emptyTitle = computed(() => {
+    const kind = this.kind();
+    if (!this.store.libraryNotes().length) {
+      return 'No notes yet';
+    }
+    return (kind !== 'all' && !this.query() && !this.tag() && NO_KIND[kind]) || 'No match';
   });
 
   protected readonly selected = computed(() => {

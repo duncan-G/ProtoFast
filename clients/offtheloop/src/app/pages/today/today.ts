@@ -139,7 +139,9 @@ const DAYS_AHEAD = 10;
                 @if (store.loaded()) {
                   {{ store.applications().length ? 'Nothing open.' : 'Nothing in the loop yet.' }}
                   @if (!store.companies().length) {
-                    <a routerLink="/app/loop" class="btn-link text-[var(--color-accent)]"
+                    <a
+                      routerLink="/app/loop"
+                      class="btn-link inline-flex items-center text-[var(--color-accent)]"
                       >Add a company</a
                     >
                   }
