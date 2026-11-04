@@ -7,6 +7,8 @@ export interface CompanyFindings {
     Company,
     | 'about'
     | 'location'
+    | 'whatItDoes'
+    | 'howItMakesMoney'
     | 'revenue'
     | 'growth'
     | 'headcount'

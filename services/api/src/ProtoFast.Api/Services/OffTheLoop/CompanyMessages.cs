@@ -15,6 +15,8 @@ public static class CompanyMessages
             Name = company.Name,
             About = company.About,
             Location = company.Location,
+            WhatItDoes = company.WhatItDoes,
+            HowItMakesMoney = company.HowItMakesMoney,
             Revenue = company.Revenue,
             Growth = company.Growth,
             Headcount = company.Headcount,
@@ -43,6 +45,8 @@ public static class CompanyMessages
             Name = LoopText.Required(message.Name, OffTheLoopLimits.Name, "The company name", "Give the company a name."),
             About = LoopText.Optional(message.About, OffTheLoopLimits.Line, "The company line"),
             Location = LoopText.Optional(message.Location, OffTheLoopLimits.Label, "Where the company is based"),
+            WhatItDoes = LoopText.Optional(message.WhatItDoes, OffTheLoopLimits.Summary, "What the company does"),
+            HowItMakesMoney = LoopText.Optional(message.HowItMakesMoney, OffTheLoopLimits.Summary, "How the company makes money"),
             Revenue = LoopText.Optional(message.Revenue, OffTheLoopLimits.Label, "Revenue"),
             Growth = LoopText.Optional(message.Growth, OffTheLoopLimits.Label, "The growth target"),
             Headcount = LoopText.Optional(message.Headcount, OffTheLoopLimits.Label, "Headcount"),
@@ -61,6 +65,8 @@ public static class CompanyMessages
         target.Name = source.Name;
         target.About = source.About;
         target.Location = source.Location;
+        target.WhatItDoes = source.WhatItDoes;
+        target.HowItMakesMoney = source.HowItMakesMoney;
         target.Revenue = source.Revenue;
         target.Growth = source.Growth;
         target.Headcount = source.Headcount;

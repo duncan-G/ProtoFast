@@ -22,7 +22,7 @@ import { CompanyNotes } from './company-notes';
 import { People } from './people';
 import { PostingReader } from './posting-reader';
 
-type Section = 'head' | 'numbers';
+type Section = 'head' | 'business' | 'numbers';
 
 export const COMPANY_FIELDS: readonly FieldSpec[] = [
   {
@@ -45,6 +45,23 @@ export const COMPANY_FIELDS: readonly FieldSpec[] = [
 const HEAD: readonly FieldSpec[] = [
   ...COMPANY_FIELDS,
   { key: 'location', label: 'based in', placeholder: 'Burbank, CA' },
+];
+
+const BUSINESS: readonly FieldSpec[] = [
+  {
+    key: 'whatItDoes',
+    label: 'what it does',
+    hint: 'in plain words',
+    type: 'textarea',
+    placeholder: 'Runs card payments for online shops and pays them out the next day.',
+  },
+  {
+    key: 'howItMakesMoney',
+    label: 'how it makes money',
+    hint: 'who pays, for what',
+    type: 'textarea',
+    placeholder: 'Takes 2.9% + 30¢ of each payment; big shops pay a monthly fee instead.',
+  },
 ];
 
 const NUMBERS: readonly FieldSpec[] = [
@@ -285,7 +302,35 @@ const LISTS = [
       </div>
 
       <aside class="card company-card dim-scope" [attr.aria-label]="'About ' + co.name">
-        <section aria-label="Company numbers" class="flex flex-col gap-3.5">
+        <section aria-label="The business" class="flex flex-col gap-3.5">
+          @if (editing() === 'business') {
+            <app-fields-form
+              heading="the business"
+              [fields]="businessFields"
+              [value]="co"
+              [save]="saveChanges"
+              (closed)="editing.set(null)"
+            />
+          } @else {
+            <div class="section-head">
+              <h3 class="caption">the business</h3>
+              <button type="button" class="btn-link" (click)="editing.set('business')">edit</button>
+            </div>
+            @for (part of business(); track part.label) {
+              <div class="flex flex-col gap-1">
+                <h4 class="figure-label m-0 font-normal">{{ part.label }}</h4>
+                <p
+                  class="m-0 text-[15px] leading-[1.5]"
+                  [style.color]="part.text ? 'var(--color-text-2)' : 'var(--color-edge-2)'"
+                >
+                  {{ part.text || '—' }}
+                </p>
+              </div>
+            }
+          }
+        </section>
+
+        <section aria-label="Company numbers" class="card-rule flex flex-col gap-3.5">
           @if (editing() === 'numbers') {
             <app-fields-form
               heading="numbers"
@@ -296,7 +341,7 @@ const LISTS = [
             />
           } @else {
             <div class="section-head">
-              <h3 class="caption">the company</h3>
+              <h3 class="caption">numbers</h3>
               <button type="button" class="btn-link" (click)="editing.set('numbers')">edit</button>
             </div>
             <div class="grid grid-cols-2 gap-x-5 gap-y-[18px]">
@@ -376,6 +421,7 @@ export class CompanyView {
   protected readonly stageLabel = stageLabel;
   protected readonly shortDate = shortDate;
   protected readonly headFields = HEAD;
+  protected readonly businessFields = BUSINESS;
   protected readonly numberFields = NUMBERS;
   protected readonly newApplicationFields = NEW_APPLICATION;
   protected readonly blankApplication = {
@@ -475,6 +521,14 @@ export class CompanyView {
     const id = this.applicationId();
     const list = this.applications();
     return list.find((a) => a.id === id) ?? list[0] ?? null;
+  });
+
+  protected readonly business = computed(() => {
+    const co = this.company();
+    return [
+      { label: 'what it does', text: co.whatItDoes },
+      { label: 'how it makes money', text: co.howItMakesMoney },
+    ];
   });
 
   protected readonly figures = computed(() => {

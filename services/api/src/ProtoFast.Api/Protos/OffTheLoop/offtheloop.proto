@@ -232,6 +232,10 @@ message Company {
     int64 last_modified_unix_seconds = 14;
     // Where it's based: "Burbank, CA".
     string location = 15;
+    // In plain words: what it makes or sells, and to whom.
+    string what_it_does = 16;
+    // Who pays it, for what, and how it's priced.
+    string how_it_makes_money = 17;
 }
 
 // The id is ignored on create, required on update.

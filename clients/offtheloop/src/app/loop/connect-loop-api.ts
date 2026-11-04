@@ -424,6 +424,8 @@ function toCompanyFindings(message: CompanyFindingsMessage): CompanyFindings {
     company: {
       about: co.about,
       location: co.location,
+      whatItDoes: co.whatItDoes,
+      howItMakesMoney: co.howItMakesMoney,
       revenue: co.revenue,
       growth: co.growth,
       headcount: co.headcount,
@@ -479,6 +481,8 @@ function toCompany(message: CompanyMessage): Company {
     name: message.name,
     about: message.about,
     location: message.location,
+    whatItDoes: message.whatItDoes,
+    howItMakesMoney: message.howItMakesMoney,
     revenue: message.revenue,
     growth: message.growth,
     headcount: message.headcount,

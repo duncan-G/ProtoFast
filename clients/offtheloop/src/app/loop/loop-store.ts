@@ -89,6 +89,8 @@ export class LoopStore {
       name,
       about,
       location: '',
+      whatItDoes: '',
+      howItMakesMoney: '',
       revenue: '',
       growth: '',
       headcount: '',

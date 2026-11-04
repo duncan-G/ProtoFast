@@ -23,6 +23,7 @@ public class ResearcherTests(StoryDatabase database)
         var company = await _seeker.CreateCompanyAsync("Halcyon <Pay>");
         company.Revenue = "$140M";
         company.Location = "Oakland, CA";
+        company.HowItMakesMoney = "Card fees.";
         company.Values.Add("Ownership");
         company.Contacts.Add(new Contact { Name = "Lin Ho", Role = "recruiter" });
         await _seeker.UpdateCompanyAsync(company);
@@ -31,6 +32,8 @@ public class ResearcherTests(StoryDatabase database)
             {
                 about = "  fintech · payments api  ",
                 location = "San Francisco, CA",
+                what_it_does = " Moves money between the bank accounts of online shops and their buyers. ",
+                how_it_makes_money = new string('$', 700),
                 revenue = "",
                 headcount = new string('9', 200),
                 values = new[] { "Default to writing", "default to writing", " " },
@@ -60,6 +63,8 @@ public class ResearcherTests(StoryDatabase database)
         var findings = Assert.Single(replies.Messages, r => r.Findings is not null).Findings;
         Assert.Equal("fintech · payments api", findings.Company.About);
         Assert.Equal("San Francisco, CA", findings.Company.Location);
+        Assert.Equal("Moves money between the bank accounts of online shops and their buyers.", findings.Company.WhatItDoes);
+        Assert.Equal(600, findings.Company.HowItMakesMoney.Length);
         Assert.Equal("", findings.Company.Revenue);
         Assert.Equal(80, findings.Company.Headcount.Length);
         Assert.Equal(["Default to writing"], findings.Company.Values);
@@ -72,6 +77,7 @@ public class ResearcherTests(StoryDatabase database)
         Assert.Contains("<company>Halcyon &lt;Pay&gt;</company>", model.Brief!.User);
         Assert.Contains("revenue: $140M", model.Brief.User);
         Assert.Contains("location: Oakland, CA", model.Brief.User);
+        Assert.Contains("how_it_makes_money: Card fees.", model.Brief.User);
         Assert.Contains("values: Ownership", model.Brief.User);
         Assert.Contains("people: Lin Ho (recruiter)", model.Brief.User);
         Assert.True(model.Brief.Web);
