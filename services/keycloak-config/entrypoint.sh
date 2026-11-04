@@ -13,10 +13,11 @@
 #      already had an admin user when the bootstrap client came in), admin-cli's password
 #      grant on master as KEYCLOAK_USER with KEYCLOAK_PASSWORD.
 #   3. It requires KEYCLOAK_URL, the login's variables, ORIGIN_PROTOFAST, ORIGIN_THEPLOT,
-#      ORIGIN_ADMIN, HOST_PROTOFAST, HOST_AUTH, AUTH_URL and the four client secrets, and
-#      fails naming each one that is missing.
+#      ORIGIN_OFFTHELOOP, ORIGIN_ADMIN, HOST_PROTOFAST, HOST_AUTH, AUTH_URL and the five client
+#      secrets, and fails naming each one that is missing.
 #   4. Origins and AUTH_URL lose a trailing slash. Each realm's WebAuthn RP ID is worked out
-#      from the hosts (WEBAUTHN_RP_ID, THEPLOT_WEBAUTHN_RP_ID, OPERATORS_WEBAUTHN_RP_ID).
+#      from the hosts (WEBAUTHN_RP_ID, THEPLOT_WEBAUTHN_RP_ID, OFFTHELOOP_WEBAUTHN_RP_ID,
+#      OPERATORS_WEBAUTHN_RP_ID).
 #   5. DEV_OPERATORS, such as
 #      protofast@admin.test=platform,admin-protofast;theplot@admin.test=admin-theplot, adds
 #      a file of users for the operators realm, imported after the realms.
@@ -90,8 +91,8 @@ configure_login() {
             ;;
     esac
     require KEYCLOAK_URL "${login[@]}" \
-        ORIGIN_PROTOFAST ORIGIN_THEPLOT ORIGIN_ADMIN HOST_PROTOFAST HOST_AUTH AUTH_URL \
-        Keycloak__ClientSecretProtofastWeb Keycloak__ClientSecretTheplotWeb \
+        ORIGIN_PROTOFAST ORIGIN_THEPLOT ORIGIN_OFFTHELOOP ORIGIN_ADMIN HOST_PROTOFAST HOST_AUTH AUTH_URL \
+        Keycloak__ClientSecretProtofastWeb Keycloak__ClientSecretTheplotWeb Keycloak__ClientSecretOfftheloopWeb \
         Keycloak__ClientSecretAdmin Keycloak__AdminClientSecret || return 1
     export KEYCLOAK_GRANTTYPE=$grant
     set_default KEYCLOAK_LOGINREALM master
@@ -105,7 +106,7 @@ configure_login() {
 # follow with a path.
 trim_urls() {
     local name value
-    for name in ORIGIN_PROTOFAST ORIGIN_THEPLOT ORIGIN_ADMIN AUTH_URL; do
+    for name in ORIGIN_PROTOFAST ORIGIN_THEPLOT ORIGIN_OFFTHELOOP ORIGIN_ADMIN AUTH_URL; do
         value=${!name-}
         while [[ $value == */ ]]; do
             value=${value%/}
@@ -118,8 +119,8 @@ trim_urls() {
 # the host of the page that runs the ceremony, Keycloak's (HOST_AUTH), or a parent of it.
 # protofast's is HOST_PROTOFAST when that is a parent of HOST_AUTH (protofast.dev for
 # auth.protofast.dev), so its passkeys are ProtoFast's own; otherwise, as locally
-# (auth.dev.localhost isn't under protofast.dev.localhost), HOST_AUTH. theplot's and
-# operators' are HOST_AUTH, so no realm's passkeys show up in another's picker.
+# (auth.dev.localhost isn't under protofast.dev.localhost), HOST_AUTH. theplot's, offtheloop's
+# and operators' are HOST_AUTH, so no realm's passkeys show up in another's picker.
 set_webauthn_rp_ids() {
     local auth=${HOST_AUTH,,} protofast=${HOST_PROTOFAST,,} rp_id
     if [[ $auth == *".$protofast" ]]; then
@@ -129,6 +130,7 @@ set_webauthn_rp_ids() {
     fi
     set_default WEBAUTHN_RP_ID "$rp_id"
     set_default THEPLOT_WEBAUTHN_RP_ID "$auth"
+    set_default OFFTHELOOP_WEBAUTHN_RP_ID "$auth"
     set_default OPERATORS_WEBAUTHN_RP_ID "$auth"
 }
 

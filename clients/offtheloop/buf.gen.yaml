@@ -1,0 +1,10 @@
+version: v2
+inputs:
+  - directory: ../../services/api/src/ProtoFast.Api/Protos
+    paths:
+      - ../../services/api/src/ProtoFast.Api/Protos/OffTheLoop
+plugins:
+  - local: protoc-gen-es
+    out: src/lib/gen
+    opt: target=ts
+clean: true

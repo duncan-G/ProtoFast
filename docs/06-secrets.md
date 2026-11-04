@@ -29,11 +29,13 @@ ProtoFast's keys:
 | `Redis_REDIS_PASSWORD`                                 | redis (secret file)                          | yes                      |
 | `Shared_ConnectionStrings__redis`                      | auth, api                                    | yes                      |
 | `Keycloak_KC_BOOTSTRAP_ADMIN_CLIENT_SECRET`            | keycloak, keycloak-config (secret files): the `protofast-admin` client in `master` | yes, once |
-| `Shared_Keycloak__ClientSecretProtofastWeb`, `…ClientSecretTheplotWeb`, `…ClientSecretAdmin` | auth, keycloak-config (secret files) | yes |
+| `Shared_Keycloak__ClientSecretProtofastWeb`, `…ClientSecretTheplotWeb`, `…ClientSecretOfftheloopWeb`, `…ClientSecretAdmin` | auth, keycloak-config (secret files) | yes |
 | `Shared_Keycloak__AdminClientSecret`                   | auth, keycloak-config: every realm's `account-admin` client | yes       |
 | `Auth_InternalJwt__PrivateKeyPem`, `Auth_InternalJwt__KeyId` | auth                                   | yes                      |
 | `Api_InternalJwt__PublicKeyPem`, `Payments_InternalJwt__PublicKeyPem` | api, payments: a copy each, so a rotation replaces both | yes |
 | `DocumentImport_Providers__deepseek__ApiKey`, `…gemini__ApiKey`, `…anthropic__ApiKey` | document-import | no: set the ones the environment uses |
+| `Api_Providers__deepseek__ApiKey`                      | api: writing in OffTheLoop's notes           | no: without it the notes' AI answers unavailable |
+| `Api_Providers__gemini__ApiKey`                        | api: OffTheLoop's company and posting research | no: without it research answers unavailable |
 | `Edge_TUNNEL_TOKEN`                                    | ProtoStrap's edge                            | no: ProtoStrap's `set-edge-token.sh` |
 
 The connection strings name components on the overlay: `Host=postgres;Port=5432;Database=<db>;Username=<db>;Password=…;GSS Encryption Mode=Disable`
@@ -142,7 +144,7 @@ that's missing fails the replica.
 | `postgres`        | `POSTGRES_PASSWORD`                                                | `POSTGRES_PASSWORD_FILE`, on an empty data directory |
 | `redis`           | `REDIS_PASSWORD`                                                   | its command: `--requirepass "$(cat /run/secrets/REDIS_PASSWORD)"` |
 | `keycloak`        | `ConnectionStrings__keycloak`, `KC_BOOTSTRAP_ADMIN_CLIENT_SECRET`  | its entrypoint, which turns them into `KC_DB_*` and the bootstrap client ([layer 05](05-identity.md#2-its-entrypoint-and-variables)) |
-| `keycloak-config` | `KC_BOOTSTRAP_ADMIN_CLIENT_SECRET`, `Keycloak__ClientSecretProtofastWeb`, `…TheplotWeb`, `…Admin`, `Keycloak__AdminClientSecret` | its entrypoint, as variables the realm files substitute |
+| `keycloak-config` | `KC_BOOTSTRAP_ADMIN_CLIENT_SECRET`, `Keycloak__ClientSecretProtofastWeb`, `…TheplotWeb`, `…OfftheloopWeb`, `…Admin`, `Keycloak__AdminClientSecret` | its entrypoint, as variables the realm files substitute |
 
 **3. Locally, the services the same way, from dev's secret.** Under `aspire run`, `SECRET_ID`
 is `protofast/dev` and `AWS_PROFILE` your sign-in. The containers with `secret_files` are local

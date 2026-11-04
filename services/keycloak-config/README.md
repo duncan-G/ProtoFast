@@ -1,6 +1,6 @@
 # keycloak-config
 
-keycloak's configure task: it makes the realms `protofast`, `theplot` and `operators` match
+keycloak's configure task: it makes the realms `protofast`, `theplot`, `offtheloop` and `operators` match
 the files in `realms/` through Keycloak's admin API, with
 [keycloak-config-cli](https://github.com/adorsys/keycloak-config-cli), and creates a realm
 that is missing. ProtoStrap runs it once keycloak has a ready replica, and again when this
@@ -29,14 +29,14 @@ existed. This task applies every change, every time.
 | `KC_BOOTSTRAP_ADMIN_CLIENT_ID`      | The spec's `env`: `protofast-admin`                                    | The login (client credentials) |
 | `KC_BOOTSTRAP_ADMIN_CLIENT_SECRET`  | The secret's `Keycloak_KC_BOOTSTRAP_ADMIN_CLIENT_SECRET`, a secret file | The login (client credentials) |
 | `KEYCLOAK_GRANTTYPE`, `KEYCLOAK_USER`, `KEYCLOAK_PASSWORD` | Locally only: `password`, `admin` and the admin's password | The login (password grant) |
-| `ORIGIN_PROTOFAST`, `ORIGIN_THEPLOT`, `ORIGIN_ADMIN` | ProtoStrap and the AppHost: `https://protofast.dev`, `http://protofast.dev.localhost:20000` | Each web client's redirect URI (`<origin>/signin-oidc`), post-logout URIs (`<origin>/*`), web origins (`<origin>` and `+`) and home URL |
+| `ORIGIN_PROTOFAST`, `ORIGIN_THEPLOT`, `ORIGIN_OFFTHELOOP`, `ORIGIN_ADMIN` | ProtoStrap and the AppHost: `https://protofast.dev`, `http://protofast.dev.localhost:20000` | Each web client's redirect URI (`<origin>/signin-oidc`), post-logout URIs (`<origin>/*`), web origins (`<origin>` and `+`) and home URL |
 | `HOST_PROTOFAST`, `HOST_AUTH`       | ProtoStrap and the AppHost: `protofast.dev`, `auth.protofast.dev`      | The WebAuthn RP IDs, and the From address, `no-reply@<HOST_PROTOFAST>` |
 | `AUTH_URL`                          | The spec's `env`: `http://auth:8080`; auth's endpoint as Keycloak's container reaches it | Back-channel logout, `<AUTH_URL>/backchannel-logout` |
-| `Keycloak__ClientSecretProtofastWeb`, `Keycloak__ClientSecretTheplotWeb`, `Keycloak__ClientSecretAdmin` | The secret's `Shared_` keys, secret files; AppHost parameters | The `protofast-web`, `theplot-web` and `admin` clients' secrets |
+| `Keycloak__ClientSecretProtofastWeb`, `Keycloak__ClientSecretTheplotWeb`, `Keycloak__ClientSecretOfftheloopWeb`, `Keycloak__ClientSecretAdmin` | The secret's `Shared_` keys, secret files; AppHost parameters | The `protofast-web`, `theplot-web`, `offtheloop-web` and `admin` clients' secrets |
 | `Keycloak__AdminClientSecret`       | The secret's `Shared_Keycloak__AdminClientSecret`, a secret file       | Every realm's `account-admin` client's secret |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Nothing passes them yet, so they are empty ([layer 05](../../docs/05-identity.md)) | The `google` and `apple` identity providers of `protofast` and `theplot`, which ship disabled |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Nothing passes them yet, so they are empty ([layer 05](../../docs/05-identity.md)) | The `google` and `apple` identity providers of `protofast`, `theplot` and `offtheloop`, which ship disabled |
 | `SMTP_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SSL`, `SMTP_STARTTLS`, `SMTP_AUTH`, `SMTP_USER`, `SMTP_PASSWORD` | Locally, the AppHost: smtp4dev's host and port | The realms' `smtpServer`; defaults `no-reply@<HOST_PROTOFAST>`, `localhost`, `1025`, `false`, `false`, `false`, empty, empty. SES ignores all but `from` |
-| `WEBAUTHN_RP_ID`, `THEPLOT_WEBAUTHN_RP_ID`, `OPERATORS_WEBAUTHN_RP_ID` | Worked out by the entrypoint, unless set                  | Each realm's passwordless WebAuthn RP ID |
+| `WEBAUTHN_RP_ID`, `THEPLOT_WEBAUTHN_RP_ID`, `OFFTHELOOP_WEBAUTHN_RP_ID`, `OPERATORS_WEBAUTHN_RP_ID` | Worked out by the entrypoint, unless set                  | Each realm's passwordless WebAuthn RP ID |
 | `DEV_OPERATORS`                     | Locally only, the AppHost                                             | The operators realm's dev users (below) |
 | `PROTOSTRAP_REPLICA`                | ProtoStrap                                                            | JSON log lines (`SPRING_PROFILES_ACTIVE=json-log`), unless set |
 
@@ -62,8 +62,8 @@ with admin-cli's password grant instead. Any other grant type fails.
 **WebAuthn RP IDs.** The RP ID must be the host of the page that runs the ceremony, which
 is Keycloak's (`HOST_AUTH`), or a parent of it. `protofast`'s is `HOST_PROTOFAST` when that
 is a parent of `HOST_AUTH` (`protofast.dev` for `auth.protofast.dev`), and `HOST_AUTH`
-otherwise (locally, `auth.dev.localhost` isn't under `protofast.dev.localhost`). `theplot`'s
-and `operators`' are always `HOST_AUTH`. Each realm has its own, so no tenant's picker
+otherwise (locally, `auth.dev.localhost` isn't under `protofast.dev.localhost`). `theplot`'s,
+`offtheloop`'s and `operators`' are always `HOST_AUTH`. Each realm has its own, so no tenant's picker
 offers another realm's passkeys (see [Adding a tenant realm](#adding-a-tenant-realm)).
 
 **Values in the realm files.** keycloak-config-cli substitutes `$(env:NAME)` and
@@ -292,8 +292,8 @@ things:
    (different realm), leaking that the user has a ProtoFast account. The RP ID must be the
    host of the page that runs the ceremony, or a parent of it, and that page is Keycloak's
    (`auth.protofast.dev`), not the tenant app's: `theplot.protofast.dev` makes the browser
-   refuse every registration outright. `theplot` uses `HOST_AUTH`, the one other valid
-   value; the entrypoint sets it.
+   refuse every registration outright. `theplot` and `offtheloop` use `HOST_AUTH`, the one
+   other valid value; the entrypoint sets it.
 2. **Identity provider credentials.** Google and Apple are configured per realm.
 3. **`loginTheme` / `emailTheme`**, if the tenant is branded.
 

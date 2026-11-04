@@ -80,6 +80,7 @@ GITHUB_TOKEN=$(gh auth token) terraform -chdir=infra/bootstrap apply
 | ----------- | ----------------------- |
 | `protofast` | `protofast.dev`         |
 | `theplot`   | `theplot.protofast.dev` |
+| `offtheloop` | `offtheloop.protofast.dev` |
 | `admin`     | `admin.protofast.dev`   |
 | `auth`      | `auth.protofast.dev`    |
 | Email from  | `protofast.dev`         |

@@ -1,0 +1,103 @@
+import './telemetry.server';
+
+import {
+  AngularNodeAppEngine,
+  createNodeRequestHandler,
+  isMainModule,
+  writeResponseToNodeResponse,
+} from '@angular/ssr/node';
+import express from 'express';
+import { join } from 'node:path';
+import { ssrRequestContext, ssrTraceMiddleware } from './lib/telemetry.ssr';
+
+const browserDistFolder = join(import.meta.dirname, '../browser');
+
+const app = express();
+
+// NG_ALLOWED_HOSTS is a comma-separated list of allowed hosts: the clients host sets it to every
+// HOST_<NAME> before loading this bundle. Angular's SSRF guard renders for no other `Host`.
+const allowedHosts = (process.env['NG_ALLOWED_HOSTS'] ?? '')
+  .split(',')
+  .map((host) => host.trim())
+  .filter((host) => host.length > 0);
+
+// Requests reach this app through the edge. Of the proxy headers, trust the two it sets, so
+// pages render `https://` behind it; Angular drops (and warns about) any other.
+const angularApp = new AngularNodeAppEngine({
+  allowedHosts,
+  trustProxyHeaders: ['x-forwarded-for', 'x-forwarded-proto'],
+});
+
+/** Paths that only mean anything for a signed-in user. */
+const PROTECTED_PREFIXES = ['/app'];
+
+/**
+ * Protected-area gate. The edge only annotates identity, so the SSR server itself
+ * enforces these paths: anonymous requests (no `x-user-id` from ext_authz) are bounced to the
+ * BFF sign-in server-side — no flash of protected chrome — and personalized responses are
+ * never cached.
+ */
+app.use((req, res, next) => {
+  const protectedPath = PROTECTED_PREFIXES.some(
+    (prefix) => req.path === prefix || req.path.startsWith(`${prefix}/`),
+  );
+  if (protectedPath) {
+    res.setHeader('Cache-Control', 'private, no-store');
+    if (!req.headers['x-user-id']) {
+      res.redirect(302, `/signin?returnUrl=${encodeURIComponent(req.originalUrl)}`);
+      return;
+    }
+  }
+  next();
+});
+
+/**
+ * Serve static files from /browser
+ */
+app.use(
+  express.static(browserDistFolder, {
+    maxAge: '1y',
+    index: false,
+    redirect: false,
+    // The one bundle without a hash in its name (angular.json "inject": false).
+    setHeaders: (res, path) => {
+      if (path.endsWith('note-page.css')) {
+        res.setHeader('Cache-Control', 'no-cache');
+      }
+    },
+  }),
+);
+
+/**
+ * Handle all other requests by rendering the Angular application. Each render runs inside a
+ * server span whose traceparent the page carries to the browser (see lib/telemetry.ssr.ts).
+ */
+app.use(ssrTraceMiddleware);
+app.use((req, res, next) => {
+  angularApp
+    .handle(req, ssrRequestContext(res))
+    .then((response) =>
+      response ? writeResponseToNodeResponse(response, res) : next(),
+    )
+    .catch(next);
+});
+
+/**
+ * Start the server if this module is the main entry point.
+ * The server listens on the port defined by the `PORT` environment variable, or defaults to 4000.
+ */
+if (isMainModule(import.meta.url)) {
+  const port = process.env['PORT'] || 4000;
+  app.listen(port, (error) => {
+    if (error) {
+      throw error;
+    }
+
+    console.log(`Node Express server listening on http://localhost:${port}`);
+  });
+}
+
+/**
+ * Request handler used by the Angular CLI (for dev-server and during build) or Firebase Cloud Functions.
+ */
+export const reqHandler = createNodeRequestHandler(app);

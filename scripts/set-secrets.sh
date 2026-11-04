@@ -16,7 +16,7 @@
 # finds: a process would take the secret's over Aspire's, as auth would Keycloak's client secrets.
 #
 # Groups for --rotate: postgres (the superuser), keycloak-db, auth-db, protofast-db, redis,
-# clients (the four Keycloak client secrets), internal-jwt (the key pair and its kid). Each
+# clients (the five Keycloak client secrets), internal-jwt (the key pair and its kid). Each
 # rotates every key that must change with it, in the same run. Keycloak's bootstrap admin
 # client isn't rotated: Keycloak makes it only on its first start.
 #
@@ -101,7 +101,7 @@ fi
 
 # The realms' confidential clients: keycloak-config sets each on its client, and auth, which
 # waits for keycloak-config, signs in with it.
-for client in ClientSecretProtofastWeb ClientSecretTheplotWeb ClientSecretAdmin AdminClientSecret; do
+for client in ClientSecretProtofastWeb ClientSecretTheplotWeb ClientSecretOfftheloopWeb ClientSecretAdmin AdminClientSecret; do
   dev && break
   key="Shared_Keycloak__$client"
   if ! has "$key" || rotating clients; then
@@ -132,8 +132,7 @@ if dev; then
     case $key in Postgres_* | Redis_* | Keycloak_* | Shared_Keycloak__* | *ConnectionStrings__*) args+=("-$key") ;; esac
   done <<<"$have"
   # The model APIs' keys, empty until a Developer sets theirs.
-  for provider in deepseek gemini anthropic; do
-    key="DocumentImport_Providers__${provider}__ApiKey"
+  for key in DocumentImport_Providers__{deepseek,gemini,anthropic}__ApiKey Api_Providers__{deepseek,gemini}__ApiKey; do
     if ! has "$key"; then
       : >"$dir/$key"
       put "$key" "$key"

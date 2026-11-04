@@ -1,7 +1,7 @@
-# The clients image: the four Angular SSR apps and the Node host that serves them
-# (host/server.mjs). The clients component runs it with CLIENTS=admin,protofast,theplot, and
-# clients-admin-theplot with CLIENTS=admin-theplot. ProtoStrap's deploy workflow builds it for
-# linux/arm64.
+# The clients image: the five Angular SSR apps and the Node host that serves them
+# (host/server.mjs). The clients component runs it with
+# CLIENTS=admin,protofast,theplot,offtheloop, and clients-admin-theplot with
+# CLIENTS=admin-theplot. ProtoStrap's deploy workflow builds it for linux/arm64.
 #
 # The build stages run on the builder's own platform ($BUILDPLATFORM, set by BuildKit): what
 # they make, JavaScript bundles and pure-JavaScript packages, is the same on every platform, so
@@ -40,6 +40,13 @@ RUN npm ci --no-audit --no-fund
 COPY theplot ./
 RUN npm run build
 
+FROM --platform=$BUILDPLATFORM node:24@sha256:e7add2a490bb17d97b485b8641bd88455fff7839ade0f5eba493c3508124d413 AS offtheloop
+WORKDIR /src/offtheloop
+COPY offtheloop/package.json offtheloop/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY offtheloop ./
+RUN npm run build
+
 # The host's own packages, OpenTelemetry's, which it loads when OTEL_EXPORTER_OTLP_ENDPOINT is
 # set. The apps' server bundles are self-contained: they need no node_modules of their own.
 FROM --platform=$BUILDPLATFORM node:24@sha256:e7add2a490bb17d97b485b8641bd88455fff7839ade0f5eba493c3508124d413 AS host
@@ -57,6 +64,7 @@ COPY --from=admin /src/admin/dist/admin ./admin/dist/admin
 COPY --from=admin-theplot /src/admin-theplot/dist/admin-theplot ./admin-theplot/dist/admin-theplot
 COPY --from=protofast /src/protofast/dist/protofast ./protofast/dist/protofast
 COPY --from=theplot /src/theplot/dist/theplot ./theplot/dist/theplot
+COPY --from=offtheloop /src/offtheloop/dist/offtheloop ./offtheloop/dist/offtheloop
 COPY host/server.mjs host/host.mjs host/telemetry.mjs ./host/
 # The files stay root's; the server runs as node, which can read them but not change them.
 USER node

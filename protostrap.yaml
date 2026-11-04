@@ -35,6 +35,7 @@ gateway:
   hosts:
     admin: admin.protofast.dev
     auth: auth.protofast.dev
+    offtheloop: offtheloop.protofast.dev
     protofast: protofast.dev
     theplot: theplot.protofast.dev
   upstreams:
@@ -46,9 +47,13 @@ gateway:
         - theplot/document.
         - theplot/document_upload.
         - theplot/story.
+        - offtheloop/document.
+        - offtheloop/document_upload.
+        - offtheloop/story.
         - admin/document.
         - admin/document_upload.
         - admin/story.
+        - offtheloop/offtheloop.
         - admin/admin.
       authorize:
         by: auth
@@ -72,6 +77,12 @@ gateway:
         - theplot/reset
         - theplot/add-passkey
         - theplot/account/
+        - offtheloop/signin
+        - offtheloop/signup
+        - offtheloop/signout
+        - offtheloop/reset
+        - offtheloop/add-passkey
+        - offtheloop/account/
         - admin/signin
         - admin/signup
         - admin/signout
@@ -79,7 +90,7 @@ gateway:
         - admin/add-passkey
         - admin/account/
     clients:
-      routes: [protofast/, theplot/, admin/]
+      routes: [protofast/, theplot/, offtheloop/, admin/]
       authorize:
         by: auth
         path: /ext-authz
@@ -126,6 +137,10 @@ gateway:
         - auth/realms/theplot/protocol/openid-connect/logout
         - auth/realms/theplot/login-actions/
         - auth/realms/theplot/broker/
+        - auth/realms/offtheloop/protocol/openid-connect/auth
+        - auth/realms/offtheloop/protocol/openid-connect/logout
+        - auth/realms/offtheloop/login-actions/
+        - auth/realms/offtheloop/broker/
         - auth/realms/operators/protocol/openid-connect/auth
         - auth/realms/operators/protocol/openid-connect/logout
         - auth/realms/operators/login-actions/
@@ -135,9 +150,10 @@ gateway:
       routes:
         - { route: protofast/otlp/, rate: 20/s }
         - { route: theplot/otlp/, rate: 20/s }
+        - { route: offtheloop/otlp/, rate: 20/s }
         - { route: admin/otlp/, rate: 20/s }
     payments:
-      routes: [protofast/greet., theplot/greet., admin/greet.]
+      routes: [protofast/greet., theplot/greet., offtheloop/greet., admin/greet.]
       authorize:
         by: auth
         path: /ext-authz
@@ -225,6 +241,7 @@ components:
       - ConnectionStrings__redis
       - Keycloak__AdminClientSecret
       - Keycloak__ClientSecretAdmin
+      - Keycloak__ClientSecretOfftheloopWeb
       - Keycloak__ClientSecretProtofastWeb
       - Keycloak__ClientSecretTheplotWeb
     stop: 20s
@@ -275,7 +292,7 @@ components:
     ready: /healthz
     env:
       ADMIN_CONSOLE_ROLES: "*"
-      CLIENTS: admin,protofast,theplot
+      CLIENTS: admin,protofast,theplot,offtheloop
       DEFAULT_CLIENT: protofast
     stop: 20s
     scale: { min: 1, max: 4, demand: [{ cpu: 70% }] }
@@ -425,6 +442,7 @@ components:
       - KC_BOOTSTRAP_ADMIN_CLIENT_SECRET
       - Keycloak__AdminClientSecret
       - Keycloak__ClientSecretAdmin
+      - Keycloak__ClientSecretOfftheloopWeb
       - Keycloak__ClientSecretProtofastWeb
       - Keycloak__ClientSecretTheplotWeb
     secret_prefix: Keycloak_

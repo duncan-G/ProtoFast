@@ -35,7 +35,7 @@ Ask when the request doesn't say. Each is the developer's call:
 
 - **An app's admin console** (`admin-<app>`, at `/<app>/` on the admin host) isn't this
   skill: run `scripts/scaffold-admin-console.py <app> "<Title>"` and follow what it prints,
-  then add `admin-<app>` to ci.yml's `clients` matrix, which its list leaves out.
+  then add a `client/admin-<app>` filter to `.github/ci-paths.yml`, which its list leaves out.
 - **Realm:** one of its own, as theplot has, or a second client in an existing realm.
 - **Prod hostname:** `<name>.protofast.dev` unless told otherwise; it must be in the
   Cloudflare zone.
@@ -110,9 +110,10 @@ Ask when the request doesn't say. Each is the developer's call:
    name every host the spec has. The release's infra job then applies the platform.
    protostrap-deploy has the order.
 
-9. **CI.** Add `<name>` to the `clients` matrix in `.github/workflows/ci.yml`: `npm ci`, the
-   check that `src/lib/gen` is what the protos make, `npm test` and `ng build`. The `images`
-   job already builds `clients`.
+9. **CI.** Add a `client/<name>` filter to `.github/ci-paths.yml` (`*ci`, `*protos`,
+   `clients/<name>/**`), which puts it in ci.yml's `clients` matrix: `npm ci`, the check that
+   `src/lib/gen` is what the protos make, `npm test` and `ng build`. The `images` job already
+   builds `clients`.
 
 10. **Write the spec.** `aspire do protostrap-spec` and commit `protostrap.yaml`. Its diff
     shows the host, the new routes, `CLIENTS` and the client secret in `auth`'s and

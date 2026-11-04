@@ -65,12 +65,14 @@ required=(
     KC_BOOTSTRAP_ADMIN_CLIENT_SECRET=bootstrap-secret-value
     ORIGIN_PROTOFAST=https://protofast.dev
     ORIGIN_THEPLOT=https://theplot.protofast.dev
+    ORIGIN_OFFTHELOOP=https://offtheloop.protofast.dev
     ORIGIN_ADMIN=https://admin.protofast.dev
     HOST_PROTOFAST=protofast.dev
     HOST_AUTH=auth.protofast.dev
     AUTH_URL=http://auth:8080
     Keycloak__ClientSecretProtofastWeb=protofast-web-secret-value
     Keycloak__ClientSecretTheplotWeb=theplot-web-secret-value
+    Keycloak__ClientSecretOfftheloopWeb=offtheloop-web-secret-value
     Keycloak__ClientSecretAdmin=admin-secret-value
     Keycloak__AdminClientSecret=account-admin-secret-value
 )
@@ -238,8 +240,9 @@ check output 'entrypoint: KEYCLOAK_GRANTTYPE is refresh_token; it must be client
 # --- what it requires ------------------------------------------------------------------
 
 for name in KEYCLOAK_URL KC_BOOTSTRAP_ADMIN_CLIENT_ID KC_BOOTSTRAP_ADMIN_CLIENT_SECRET ORIGIN_PROTOFAST \
-    ORIGIN_THEPLOT ORIGIN_ADMIN HOST_PROTOFAST HOST_AUTH AUTH_URL Keycloak__ClientSecretProtofastWeb \
-    Keycloak__ClientSecretTheplotWeb Keycloak__ClientSecretAdmin Keycloak__AdminClientSecret; do
+    ORIGIN_THEPLOT ORIGIN_OFFTHELOOP ORIGIN_ADMIN HOST_PROTOFAST HOST_AUTH AUTH_URL Keycloak__ClientSecretProtofastWeb \
+    Keycloak__ClientSecretTheplotWeb Keycloak__ClientSecretOfftheloopWeb Keycloak__ClientSecretAdmin \
+    Keycloak__AdminClientSecret; do
     scenario "without $name it fails, naming it and no value"
     run_without "$name"
     check status 1 "$status"
@@ -255,7 +258,7 @@ check output 'entrypoint: missing ORIGIN_ADMIN' "$output"
 scenario "every missing variable is named at once"
 run
 check status 1 "$status"
-check output 'entrypoint: missing KEYCLOAK_URL KC_BOOTSTRAP_ADMIN_CLIENT_ID KC_BOOTSTRAP_ADMIN_CLIENT_SECRET ORIGIN_PROTOFAST ORIGIN_THEPLOT ORIGIN_ADMIN HOST_PROTOFAST HOST_AUTH AUTH_URL Keycloak__ClientSecretProtofastWeb Keycloak__ClientSecretTheplotWeb Keycloak__ClientSecretAdmin Keycloak__AdminClientSecret' "$output"
+check output 'entrypoint: missing KEYCLOAK_URL KC_BOOTSTRAP_ADMIN_CLIENT_ID KC_BOOTSTRAP_ADMIN_CLIENT_SECRET ORIGIN_PROTOFAST ORIGIN_THEPLOT ORIGIN_OFFTHELOOP ORIGIN_ADMIN HOST_PROTOFAST HOST_AUTH AUTH_URL Keycloak__ClientSecretProtofastWeb Keycloak__ClientSecretTheplotWeb Keycloak__ClientSecretOfftheloopWeb Keycloak__ClientSecretAdmin Keycloak__AdminClientSecret' "$output"
 
 scenario "Google's and Apple's keys and SMTP's may be missing or empty"
 run_all GOOGLE_CLIENT_ID= APPLE_PRIVATE_KEY=
@@ -308,9 +311,11 @@ check_var GOOGLE_CLIENT_SECRET '<unset>'
 
 scenario "origins and AUTH_URL lose their trailing slashes"
 run_all ORIGIN_PROTOFAST=https://protofast.dev/ ORIGIN_THEPLOT=https://theplot.protofast.dev// \
-    ORIGIN_ADMIN=http://admin.dev.localhost:20000/ AUTH_URL=http://auth:8080/
+    ORIGIN_OFFTHELOOP=https://offtheloop.protofast.dev/ ORIGIN_ADMIN=http://admin.dev.localhost:20000/ \
+    AUTH_URL=http://auth:8080/
 check_var ORIGIN_PROTOFAST https://protofast.dev
 check_var ORIGIN_THEPLOT https://theplot.protofast.dev
+check_var ORIGIN_OFFTHELOOP https://offtheloop.protofast.dev
 check_var ORIGIN_ADMIN http://admin.dev.localhost:20000
 check_var AUTH_URL http://auth:8080
 
@@ -318,12 +323,14 @@ scenario "in production protofast's RP ID is its own domain, the parent of Keycl
 run_all HOST_PROTOFAST=protofast.dev HOST_AUTH=auth.protofast.dev
 check_var WEBAUTHN_RP_ID protofast.dev
 check_var THEPLOT_WEBAUTHN_RP_ID auth.protofast.dev
+check_var OFFTHELOOP_WEBAUTHN_RP_ID auth.protofast.dev
 check_var OPERATORS_WEBAUTHN_RP_ID auth.protofast.dev
 
 scenario "locally Keycloak's host isn't under protofast's, so every RP ID is Keycloak's host"
 run_all HOST_PROTOFAST=protofast.dev.localhost HOST_AUTH=auth.dev.localhost
 check_var WEBAUTHN_RP_ID auth.dev.localhost
 check_var THEPLOT_WEBAUTHN_RP_ID auth.dev.localhost
+check_var OFFTHELOOP_WEBAUTHN_RP_ID auth.dev.localhost
 check_var OPERATORS_WEBAUTHN_RP_ID auth.dev.localhost
 
 scenario "a host that only ends with protofast's name isn't under it"
@@ -340,9 +347,11 @@ check_var WEBAUTHN_RP_ID protofast.dev
 check_var THEPLOT_WEBAUTHN_RP_ID auth.protofast.dev
 
 scenario "an RP ID that is set wins"
-run_all WEBAUTHN_RP_ID=localhost THEPLOT_WEBAUTHN_RP_ID=theplot.example OPERATORS_WEBAUTHN_RP_ID=ops.example
+run_all WEBAUTHN_RP_ID=localhost THEPLOT_WEBAUTHN_RP_ID=theplot.example OFFTHELOOP_WEBAUTHN_RP_ID=loop.example \
+    OPERATORS_WEBAUTHN_RP_ID=ops.example
 check_var WEBAUTHN_RP_ID localhost
 check_var THEPLOT_WEBAUTHN_RP_ID theplot.example
+check_var OFFTHELOOP_WEBAUTHN_RP_ID loop.example
 check_var OPERATORS_WEBAUTHN_RP_ID ops.example
 
 # --- dev operators -------------------------------------------------------------------
@@ -418,12 +427,12 @@ check names $'APPLE_PRIVATE_KEY\nGOOGLE_CLIENT_ID\nHOST_PROTOFAST\nKeycloak__Cli
     "$(source "$entrypoint" && realm_variables "$work/realms" | sort)"
 
 scenario "the real realm files substitute only what the entrypoint requires, works out, or defaults"
-expected=$'APPLE_CLIENT_ID\nAPPLE_KEY_ID\nAPPLE_PRIVATE_KEY\nAPPLE_TEAM_ID\nAUTH_URL\nGOOGLE_CLIENT_ID\nGOOGLE_CLIENT_SECRET\nHOST_PROTOFAST\nKeycloak__AdminClientSecret\nKeycloak__ClientSecretAdmin\nKeycloak__ClientSecretProtofastWeb\nKeycloak__ClientSecretTheplotWeb\nOPERATORS_WEBAUTHN_RP_ID\nORIGIN_ADMIN\nORIGIN_PROTOFAST\nORIGIN_THEPLOT\nSMTP_AUTH\nSMTP_FROM\nSMTP_HOST\nSMTP_PASSWORD\nSMTP_PORT\nSMTP_SSL\nSMTP_STARTTLS\nSMTP_USER\nTHEPLOT_WEBAUTHN_RP_ID\nWEBAUTHN_RP_ID'
+expected=$'APPLE_CLIENT_ID\nAPPLE_KEY_ID\nAPPLE_PRIVATE_KEY\nAPPLE_TEAM_ID\nAUTH_URL\nGOOGLE_CLIENT_ID\nGOOGLE_CLIENT_SECRET\nHOST_PROTOFAST\nKeycloak__AdminClientSecret\nKeycloak__ClientSecretAdmin\nKeycloak__ClientSecretOfftheloopWeb\nKeycloak__ClientSecretProtofastWeb\nKeycloak__ClientSecretTheplotWeb\nOFFTHELOOP_WEBAUTHN_RP_ID\nOPERATORS_WEBAUTHN_RP_ID\nORIGIN_ADMIN\nORIGIN_OFFTHELOOP\nORIGIN_PROTOFAST\nORIGIN_THEPLOT\nSMTP_AUTH\nSMTP_FROM\nSMTP_HOST\nSMTP_PASSWORD\nSMTP_PORT\nSMTP_SSL\nSMTP_STARTTLS\nSMTP_USER\nTHEPLOT_WEBAUTHN_RP_ID\nWEBAUTHN_RP_ID'
 # shellcheck disable=SC1090,SC1091 # The entrypoint, sourced for its functions.
 check names "$expected" "$(source "$entrypoint" && realm_variables "$real_realms" | LC_ALL=C sort)"
 # Each one without a default is required or worked out by the entrypoint.
 no_default=$(grep -ohE '\$\(env:[A-Za-z_][A-Za-z0-9_]*\)' "$real_realms"/*.json | sed -E 's/^\$\(env:(.*)\)$/\1/' | LC_ALL=C sort -u)
-check 'without a default' $'AUTH_URL\nHOST_PROTOFAST\nKeycloak__AdminClientSecret\nKeycloak__ClientSecretAdmin\nKeycloak__ClientSecretProtofastWeb\nKeycloak__ClientSecretTheplotWeb\nOPERATORS_WEBAUTHN_RP_ID\nORIGIN_ADMIN\nORIGIN_PROTOFAST\nORIGIN_THEPLOT\nTHEPLOT_WEBAUTHN_RP_ID\nWEBAUTHN_RP_ID' "$no_default"
+check 'without a default' $'AUTH_URL\nHOST_PROTOFAST\nKeycloak__AdminClientSecret\nKeycloak__ClientSecretAdmin\nKeycloak__ClientSecretOfftheloopWeb\nKeycloak__ClientSecretProtofastWeb\nKeycloak__ClientSecretTheplotWeb\nOFFTHELOOP_WEBAUTHN_RP_ID\nOPERATORS_WEBAUTHN_RP_ID\nORIGIN_ADMIN\nORIGIN_OFFTHELOOP\nORIGIN_PROTOFAST\nORIGIN_THEPLOT\nTHEPLOT_WEBAUTHN_RP_ID\nWEBAUTHN_RP_ID' "$no_default"
 check "no Keycloak \${...} placeholder left" '' "$(grep -lE '\$\{[^}]*\}' "$real_realms"/*.json || true)"
 
 scenario "values are escaped for a JSON string: quotes, backslashes, line breaks, tabs"
@@ -480,18 +489,20 @@ check_var SPRING_PROFILES_ACTIVE debug
 scenario "a ProtoStrap run, with every secret from a file, prints no value"
 realms=$real_realms
 for key in KC_BOOTSTRAP_ADMIN_CLIENT_SECRET Keycloak__ClientSecretProtofastWeb Keycloak__ClientSecretTheplotWeb \
-    Keycloak__ClientSecretAdmin Keycloak__AdminClientSecret GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET \
+    Keycloak__ClientSecretOfftheloopWeb Keycloak__ClientSecretAdmin Keycloak__AdminClientSecret GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET \
     APPLE_CLIENT_ID APPLE_TEAM_ID APPLE_KEY_ID APPLE_PRIVATE_KEY; do
     secret "$key" "$key-value"
 done
 run KEYCLOAK_URL=http://keycloak:8080 KC_BOOTSTRAP_ADMIN_CLIENT_ID=protofast-admin PROTOSTRAP_REPLICA=keycloak-config-1 \
-    ORIGIN_PROTOFAST=https://protofast.dev ORIGIN_THEPLOT=https://theplot.protofast.dev ORIGIN_ADMIN=https://admin.protofast.dev \
+    ORIGIN_PROTOFAST=https://protofast.dev ORIGIN_THEPLOT=https://theplot.protofast.dev \
+    ORIGIN_OFFTHELOOP=https://offtheloop.protofast.dev ORIGIN_ADMIN=https://admin.protofast.dev \
     HOST_PROTOFAST=protofast.dev HOST_AUTH=auth.protofast.dev AUTH_URL=http://auth:8080
 check status 0 "$status"
 check output '' "$output"
 check_var KEYCLOAK_GRANTTYPE client_credentials
 check_var KEYCLOAK_CLIENTSECRET KC_BOOTSTRAP_ADMIN_CLIENT_SECRET-value
 check_var Keycloak__ClientSecretTheplotWeb Keycloak__ClientSecretTheplotWeb-value
+check_var Keycloak__ClientSecretOfftheloopWeb Keycloak__ClientSecretOfftheloopWeb-value
 check_var APPLE_PRIVATE_KEY APPLE_PRIVATE_KEY-value
 check_var WEBAUTHN_RP_ID protofast.dev
 check_var OPERATORS_WEBAUTHN_RP_ID auth.protofast.dev
@@ -501,10 +512,10 @@ scenario "aspire run's run, with the password grant and dev operators, prints no
 realms=$real_realms
 run KEYCLOAK_URL=http://localhost:8080 KEYCLOAK_GRANTTYPE=password KEYCLOAK_USER=admin KEYCLOAK_PASSWORD=local-admin-pw \
     ORIGIN_PROTOFAST=http://protofast.dev.localhost:20000 ORIGIN_THEPLOT=http://theplot.dev.localhost:20000 \
-    ORIGIN_ADMIN=http://admin.dev.localhost:20000 HOST_PROTOFAST=protofast.dev.localhost HOST_AUTH=auth.dev.localhost \
+    ORIGIN_OFFTHELOOP=http://offtheloop.dev.localhost:20000 ORIGIN_ADMIN=http://admin.dev.localhost:20000 HOST_PROTOFAST=protofast.dev.localhost HOST_AUTH=auth.dev.localhost \
     AUTH_URL=http://host.docker.internal:5100 SMTP_HOST=smtp4dev SMTP_PORT=25 \
-    Keycloak__ClientSecretProtofastWeb=a Keycloak__ClientSecretTheplotWeb=b Keycloak__ClientSecretAdmin=c \
-    Keycloak__AdminClientSecret=d 'DEV_OPERATORS=protofast@admin.test=platform,admin-protofast;theplot@admin.test=admin-theplot'
+    Keycloak__ClientSecretProtofastWeb=a Keycloak__ClientSecretTheplotWeb=b Keycloak__ClientSecretOfftheloopWeb=e \
+    Keycloak__ClientSecretAdmin=c Keycloak__AdminClientSecret=d 'DEV_OPERATORS=protofast@admin.test=platform,admin-protofast;theplot@admin.test=admin-theplot'
 check status 0 "$status"
 check output '' "$output"
 check_var WEBAUTHN_RP_ID auth.dev.localhost

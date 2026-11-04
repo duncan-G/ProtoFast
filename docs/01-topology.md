@@ -9,15 +9,15 @@ Each row is one component of the spec, by its name there. The AppHost declares a
 
 | Component               | Kind     | What it is                                                         | Source                                  |
 | ----------------------- | -------- | ------------------------------------------------------------------ | --------------------------------------- |
-| `clients`               | service  | One Node host serving the `protofast`, `theplot` and `admin` SSR apps, each on the host of its name | `clients/Dockerfile`, `clients/host` |
+| `clients`               | service  | One Node host serving the `protofast`, `theplot`, `offtheloop` and `admin` SSR apps, each on the host of its name | `clients/Dockerfile`, `clients/host` |
 | `clients-admin-theplot` | service  | The same image serving only theplot's admin console, on `admin/theplot/` | `clients/Dockerfile`               |
 | `auth`                  | service  | BFF: sign-in, sessions, account management, and the edge's authorizer | `services/auth`                      |
-| `api`                   | service  | gRPC: documents, uploads, stories, and the admin consoles' RPCs    | `services/api`                          |
+| `api`                   | service  | gRPC: documents, uploads, stories, OffTheLoop's applications, notes, to-dos and goals, and the admin consoles' RPCs | `services/api` |
 | `payments`              | service  | gRPC: the `greet` service so far                                    | `services/payments`                     |
 | `conversion`            | worker   | Drains the `document-conversion` queue: document to Markdown (MarkItDown, CPU OCR) | `services/conversion`   |
 | `document-import`       | worker   | Drains the `document-upload` queue through the model APIs, sending uploads that need converting to conversion | `services/document_import` |
-| `keycloak`              | service  | Identity provider: realms `protofast`, `theplot`, `operators`      | `services/keycloak`                     |
-| `keycloak-config`       | task     | Keycloak's configure task: applies the three realms                | `services/keycloak-config`              |
+| `keycloak`              | service  | Identity provider: realms `protofast`, `theplot`, `offtheloop`, `operators` | `services/keycloak`            |
+| `keycloak-config`       | task     | Keycloak's configure task: applies the four realms                 | `services/keycloak-config`              |
 | `otel-collector`        | service  | Takes browsers' traces and logs on `/otlp/` and passes them on     | `services/otel-collector`               |
 | `auth-migrations`       | task     | auth's schema migrations, auth's `migrate`                         | `services/auth/src/ProtoFast.Auth.SchemaMigrations` |
 | `protofast-migrations`  | task     | The `protofast` database's migrations, the api's and document-import's `migrate` | `services/api/src/ProtoFast.SchemaMigrations` |
@@ -41,6 +41,7 @@ name the same ones.
 | ----------- | ----------------------- | ------------------------- | --------------------------------------------------------- |
 | `protofast` | `protofast.dev`         | `protofast.dev.localhost` | the protofast client, auth's sign-in paths, api, payments |
 | `theplot`   | `theplot.protofast.dev` | `theplot.dev.localhost`   | the theplot client, auth's sign-in paths, api, payments   |
+| `offtheloop` | `offtheloop.protofast.dev` | `offtheloop.dev.localhost` | the offtheloop client, auth's sign-in paths, api (its own `offtheloop.` package too), payments |
 | `admin`     | `admin.protofast.dev`   | `admin.dev.localhost`     | the admin console, theplot's console at `/theplot/`, auth's sign-in paths, api, payments |
 | `auth`      | `auth.protofast.dev`    | `auth.dev.localhost`      | Keycloak's sign-in pages only                              |
 
@@ -57,7 +58,7 @@ dashboard's own, in `apphost/Properties/launchSettings.json`.
 ```mermaid
 graph TD
     Browser -->|"http://«host».dev.localhost:20000"| Edge["protostrap-edge (Envoy)"]
-    Edge -->|"protofast/ theplot/ admin/ admin/theplot/"| Ng["ng serve × 4"]
+    Edge -->|"protofast/ theplot/ offtheloop/ admin/ admin/theplot/"| Ng["ng serve × 5"]
     Edge -->|"/signin … /account/"| Auth["auth"]
     Edge -->|"/document. /story. /admin. … (gRPC-Web)"| Api["api"]
     Edge -->|"/greet."| Pay["payments"]

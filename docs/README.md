@@ -1,6 +1,6 @@
 # How ProtoFast is configured
 
-ProtoFast is a small platform: four Angular SSR clients served by one Node host, four .NET
+ProtoFast is a small platform: five Angular SSR clients served by one Node host, four .NET
 services (auth, the api, payments, document-import), a Python conversion worker, Keycloak,
 PostgreSQL and Redis. It deploys with [ProtoStrap](https://github.com/duncan-G/protostrap)
 0.1.12, to one AWS account, prod. Dev is the local run, `aspire run`.
@@ -42,9 +42,10 @@ sets the same names, and a service reads its secrets from `protofast/dev`. The f
 ## The 60-second version
 
 - **Locally**: `aspire run` from the repository root. The AppHost starts PostgreSQL, Redis,
-  LocalStack, Keycloak, smtp4dev, the services, the four Angular dev servers and ProtoStrap's
+  LocalStack, Keycloak, smtp4dev, the services, the five Angular dev servers and ProtoStrap's
   local edge. Browsers use `http://protofast.dev.localhost:20000`,
-  `http://theplot.dev.localhost:20000`, `http://admin.dev.localhost:20000` and
+  `http://theplot.dev.localhost:20000`, `http://offtheloop.dev.localhost:20000`,
+  `http://admin.dev.localhost:20000` and
   `http://auth.dev.localhost:20000`. The services read `protofast/dev` with your AWS SSO sign-in.
 - **In an account**: ProtoStrap's VMs. An ingress VM runs the edge (cloudflared and Envoy),
   the general pool runs the services and clients, and document-import starts in the general

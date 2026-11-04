@@ -45,6 +45,11 @@ client/theplot:
   - *protos
   - clients/theplot/**
 
+client/offtheloop:
+  - *ci
+  - *protos
+  - clients/offtheloop/**
+
 clients-host:
   - *ci
   - clients/host/**

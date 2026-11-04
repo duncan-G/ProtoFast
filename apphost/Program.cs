@@ -32,6 +32,7 @@ var protostrap = builder.AddProtoStrapEnvironment("protostrap", app: "protofast"
 var gateway = protostrap.AddEnvoyGateway("gateway")
     .WithHost("protofast", "protofast.dev", local: "protofast.dev.localhost")
     .WithHost("theplot", "theplot.protofast.dev", local: "theplot.dev.localhost")
+    .WithHost("offtheloop", "offtheloop.protofast.dev", local: "offtheloop.dev.localhost")
     .WithHost("admin", "admin.protofast.dev", local: "admin.dev.localhost")
     .WithHost("auth", "auth.protofast.dev", local: "auth.dev.localhost")
     .WithLocalPort(edgePort);
@@ -54,10 +55,11 @@ IResourceBuilder<ParameterResource> Generated(string name) =>
 var keycloakAdminSecret = Generated("keycloak-admin-secret");
 var protofastWebSecret = Generated("protofast-web-client-secret");
 var theplotWebSecret = Generated("theplot-web-client-secret");
+var offtheloopWebSecret = Generated("offtheloop-web-client-secret");
 var adminClientSecret = Generated("admin-client-secret");
 var accountAdminSecret = Generated("account-admin-client-secret");
 
-// PostgreSQL holds Keycloak's, auth's and ThePlot's databases, each with a user of its own,
+// PostgreSQL holds Keycloak's, auth's and the apps' databases, each with a user of its own,
 // which postgres-config makes from the connection strings. Redis is a cache: memory only. With
 // ProtoStrap's telemetry (500m, 1536Mi) they fill data-1's 3 GiB after its reserve.
 var postgres = builder.AddPostgres("postgres")
@@ -107,7 +109,7 @@ var email = builder.AddProtoStrapEmail("email", "protofast.dev");
 // Apple identity provider, the SES email sender) and themes are in the image. Browsers reach
 // only its sign-in pages, through the gateway on the auth host; auth and keycloak-config reach it
 // on the overlay. keycloak-config applies its realms once it is ready, and again on any change.
-string[] realms = ["protofast", "theplot", "operators"];
+string[] realms = ["protofast", "theplot", "offtheloop", "operators"];
 var keycloakRoutes = realms
     .SelectMany(realm => new[]
     {
@@ -143,7 +145,7 @@ var authMigrations = builder.AddSchemaMigrations<Projects.ProtoFast_Auth_SchemaM
 
 // The browser's OIDC flow and account endpoints, on each client's host. A prefix list, never
 // all of auth: /backchannel-logout, which deletes sessions on a logout token, stays unrouted.
-string[] clientHosts = ["protofast", "theplot", "admin"];
+string[] clientHosts = ["protofast", "theplot", "offtheloop", "admin"];
 var authRoutes = clientHosts
     .SelectMany(host => new[] { "/signin", "/signup", "/signout", "/reset", "/add-passkey", "/account/" }.Select(path => host + path))
     .ToArray();
@@ -155,6 +157,7 @@ var auth = builder.AddProject<Projects.ProtoFast_Auth_Api>("auth")
     .WithEnvironment("Keycloak__Authority", keycloak.GetEndpoint("http"))
     .WithEnvironment("Keycloak__ClientSecretProtofastWeb", protofastWebSecret)
     .WithEnvironment("Keycloak__ClientSecretTheplotWeb", theplotWebSecret)
+    .WithEnvironment("Keycloak__ClientSecretOfftheloopWeb", offtheloopWebSecret)
     .WithEnvironment("Keycloak__ClientSecretAdmin", adminClientSecret)
     .WithEnvironment("Keycloak__AdminClientSecret", accountAdminSecret)
     .WaitFor(keycloak)
@@ -176,6 +179,7 @@ var keycloakConfig = builder.AddDockerfile("keycloak-config", "../services/keycl
     .WithEnvironment("KC_BOOTSTRAP_ADMIN_CLIENT_SECRET", keycloakAdminSecret)
     .WithEnvironment("Keycloak__ClientSecretProtofastWeb", protofastWebSecret)
     .WithEnvironment("Keycloak__ClientSecretTheplotWeb", theplotWebSecret)
+    .WithEnvironment("Keycloak__ClientSecretOfftheloopWeb", offtheloopWebSecret)
     .WithEnvironment("Keycloak__ClientSecretAdmin", adminClientSecret)
     .WithEnvironment("Keycloak__AdminClientSecret", accountAdminSecret)
     .PublishAsProtoStrapTask(t => t
@@ -225,6 +229,8 @@ var api = builder.AddProject<Projects.ProtoFast_Api>("api")
         .Scale(min: 1, max: 4, demand => demand.Cpu(0.70)));
 gateway.WithUpstream(api, u => Authorized(u.Routes([
     .. PackageRoutes(clientHosts, "document", "document_upload", "story"),
+    // OffTheLoop's services answer on its own host only.
+    .. PackageRoutes(["offtheloop"], "offtheloop"),
     // The consoles' services, which check the operators realm and a console role again.
     .. PackageRoutes(["admin"], "admin"),
 ])));
@@ -279,6 +285,7 @@ var otelCollector = builder.AddDockerfile("otel-collector", "../services/otel-co
 gateway.WithUpstream(otelCollector, u => u
     .Route("protofast/otlp/", rate: 20)
     .Route("theplot/otlp/", rate: 20)
+    .Route("offtheloop/otlp/", rate: 20)
     .Route("admin/otlp/", rate: 20));
 
 // The clients. In an account one Node host serves every client's SSR bundle, choosing by the
@@ -309,7 +316,7 @@ if (clientsImage)
         return host;
     }
 
-    var clients = ClientsHost("clients", "admin,protofast,theplot", "protofast", platformConsole)
+    var clients = ClientsHost("clients", "admin,protofast,theplot,offtheloop", "protofast", platformConsole)
         .PublishAsProtoStrapService(s => s
             .Request(cpu: "100m", memory: "512Mi")
             .Stop(TimeSpan.FromSeconds(20))
@@ -335,6 +342,7 @@ else
 
     DevServer("protofast", "protofast.dev.localhost", ["protofast/"], skip: staticFiles);
     DevServer("theplot", "theplot.dev.localhost", ["theplot/"], skip: staticFiles);
+    DevServer("offtheloop", "offtheloop.dev.localhost", ["offtheloop/"], skip: staticFiles);
     DevServer("admin", "admin.dev.localhost", ["admin/"], platformConsole, staticFiles);
     DevServer("admin-theplot", "admin.dev.localhost", ["admin/theplot/"], theplotConsole);
 }

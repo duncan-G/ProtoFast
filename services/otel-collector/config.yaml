@@ -37,6 +37,7 @@ processors:
         - >-
           resource.attributes["service.name"] != "protofast-client" and
           resource.attributes["service.name"] != "theplot-client" and
+          resource.attributes["service.name"] != "offtheloop-client" and
           resource.attributes["service.name"] != "admin-client" and
           resource.attributes["service.name"] != "admin-theplot-client"
     logs:
@@ -44,6 +45,7 @@ processors:
         - >-
           resource.attributes["service.name"] != "protofast-client" and
           resource.attributes["service.name"] != "theplot-client" and
+          resource.attributes["service.name"] != "offtheloop-client" and
           resource.attributes["service.name"] != "admin-client" and
           resource.attributes["service.name"] != "admin-theplot-client"
   batch:
@@ -51,6 +53,8 @@ processors:
 exporters:
   otlp_http:
     endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT}
+    # gzip in an account; none under `aspire run`, where the dashboard can't decode gzip.
+    compression: ${env:ASPIRE_OTLP_COMPRESSION:-gzip}
     headers:
       # The dashboard's key under `aspire run`; ProtoStrap's collector takes none.
       x-otlp-api-key: ${env:ASPIRE_OTLP_API_KEY:-none}

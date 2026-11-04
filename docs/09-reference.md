@@ -46,12 +46,12 @@ Locally the AppHost sets the same names.
 | `ConnectionStrings__auth`, `ConnectionStrings__redis` | Aspire references | secret `Shared_ConnectionStrings__auth`, `Shared_ConnectionStrings__redis` |
 | `Keycloak__Authority` | Keycloak's endpoint | spec: `http://keycloak:8080` |
 | `Keycloak__PublicAuthority` | unset: `ORIGIN_AUTH` | unset: `ORIGIN_AUTH` |
-| `Keycloak__ClientSecretProtofastWeb`, `…TheplotWeb`, `…Admin`, `Keycloak__AdminClientSecret` | generated parameters | secret `Shared_Keycloak__*` |
+| `Keycloak__ClientSecretProtofastWeb`, `…TheplotWeb`, `…OfftheloopWeb`, `…Admin`, `Keycloak__AdminClientSecret` | generated parameters | secret `Shared_Keycloak__*` |
 | `InternalJwt__PrivateKeyPem`, `InternalJwt__KeyId` | `protofast/dev`'s `Auth_InternalJwt__*` | secret `Auth_InternalJwt__*` |
 | `Smtp__Host`, `Smtp__Port`, `Smtp__StartTls` | smtp4dev, `false` | unset (SES) |
 | `Smtp__From` | `no-reply@protofast.dev` (`appsettings.Development.json`) | unset: `no-reply@<HOST_PROTOFAST>` |
 | `Tenants__ByHost__*` | `appsettings.json` | `appsettings.json` |
-| `HOST_PROTOFAST`, `HOST_THEPLOT`, `HOST_ADMIN`, `ORIGIN_AUTH` | the local hostnames and origin | ProtoStrap |
+| `HOST_PROTOFAST`, `HOST_THEPLOT`, `HOST_OFFTHELOOP`, `HOST_ADMIN`, `ORIGIN_AUTH` | the local hostnames and origin | ProtoStrap |
 | `HTTP_PORTS`, `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | Aspire | spec: `8080`, `true` |
 | `PROTOSTRAP_REPLICA` | unset: SMTP, console logs | ProtoStrap: SES, logs by OTLP only |
 | `SECRET_ID`, `SECRET_PREFIX`, `AWS_REGION`, and the role's credentials | `protofast/dev`, `Auth_`, `us-west-2`, and `AWS_PROFILE=developer` | ProtoStrap (`Auth_`, `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI`) |
@@ -127,17 +127,17 @@ and `AWS_SECRET_ACCESS_KEY` (locally `test`), `PROTOSTRAP_COMPONENT`, `PROTOSTRA
 | `AUTH_URL` | auth's endpoint | spec: `http://auth:8080` |
 | `KC_BOOTSTRAP_ADMIN_CLIENT_ID`, `KC_BOOTSTRAP_ADMIN_CLIENT_SECRET` | `protofast-admin`, generated | spec; secret file from `Keycloak_KC_BOOTSTRAP_ADMIN_CLIENT_SECRET` |
 | `KEYCLOAK_GRANTTYPE`, `KEYCLOAK_USER`, `KEYCLOAK_PASSWORD` | `password`, `admin`, generated | unset: client credentials |
-| `Keycloak__ClientSecretProtofastWeb`, `…TheplotWeb`, `…Admin`, `Keycloak__AdminClientSecret` | generated parameters | secret files from `Shared_Keycloak__*` |
-| `ORIGIN_PROTOFAST`, `ORIGIN_THEPLOT`, `ORIGIN_ADMIN`, `HOST_PROTOFAST`, `HOST_AUTH` | local | ProtoStrap |
+| `Keycloak__ClientSecretProtofastWeb`, `…TheplotWeb`, `…OfftheloopWeb`, `…Admin`, `Keycloak__AdminClientSecret` | generated parameters | secret files from `Shared_Keycloak__*` |
+| `ORIGIN_PROTOFAST`, `ORIGIN_THEPLOT`, `ORIGIN_OFFTHELOOP`, `ORIGIN_ADMIN`, `HOST_PROTOFAST`, `HOST_AUTH` | local | ProtoStrap |
 | `SMTP_HOST`, `SMTP_PORT` | smtp4dev | unset (realm defaults; SES ignores them) |
 | `DEV_OPERATORS` | two operators | unset |
-| `WEBAUTHN_RP_ID`, `THEPLOT_WEBAUTHN_RP_ID`, `OPERATORS_WEBAUTHN_RP_ID`, `SMTP_FROM`, `GOOGLE_*`, `APPLE_*` | derived or defaulted | derived or defaulted |
+| `WEBAUTHN_RP_ID`, `THEPLOT_WEBAUTHN_RP_ID`, `OFFTHELOOP_WEBAUTHN_RP_ID`, `OPERATORS_WEBAUTHN_RP_ID`, `SMTP_FROM`, `GOOGLE_*`, `APPLE_*` | derived or defaulted | derived or defaulted |
 
 ### Clients, dev servers and the clients host
 
 | Variable | `ng serve` (locally) | The clients image |
 |---|---|---|
-| `CLIENTS`, `DEFAULT_CLIENT` | — | spec: `admin,protofast,theplot` / `protofast`; `admin-theplot` / `admin-theplot` |
+| `CLIENTS`, `DEFAULT_CLIENT` | — | spec: `admin,protofast,theplot,offtheloop` / `protofast`; `admin-theplot` / `admin-theplot` |
 | `ADMIN_CONSOLE_ROLES` | admin: `*`; admin-theplot: `admin-theplot` | spec: the same |
 | `HOST_<NAME>` | the local hostnames | ProtoStrap |
 | `NG_ALLOWED_HOSTS` | — | set by the host from every `HOST_<NAME>` |
@@ -190,10 +190,10 @@ apphost/                    the AppHost: the application for aspire run and the 
 protostrap.yaml             prod's spec, written by the AppHost: never edit it
 Directory.Build.targets     the .NET images' base image, pinned by digest
 global.json                 the .NET SDK every project and image builds with
-clients/<name>/             the Angular SSR apps: protofast, theplot, admin, admin-theplot
+clients/<name>/             the Angular SSR apps: protofast, theplot, offtheloop, admin, admin-theplot
 clients/admin-kit/          the consoles' shared platform layer, linked into each console
 clients/host/               the Node host that serves the apps (host.mjs, server.mjs)
-clients/Dockerfile          the clients image: all four apps and the host
+clients/Dockerfile          the clients image: all five apps and the host
 services/auth/              BFF: sign-in, sessions, accounts, the edge's authorizer
 services/api/               gRPC: documents, stories, admin RPCs; ProtoFast.SchemaMigrations
 services/payments/          gRPC behind the internal JWT

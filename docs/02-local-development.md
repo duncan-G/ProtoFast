@@ -32,6 +32,7 @@ account ([Local secrets and keys](#local-secrets-and-keys)).
 | ------------------------------------ | ------------------------------------------------------ |
 | http://protofast.dev.localhost:20000 | The product site                                       |
 | http://theplot.dev.localhost:20000   | ThePlot                                                |
+| http://offtheloop.dev.localhost:20000 | OffTheLoop                                            |
 | http://admin.dev.localhost:20000     | The admin console, and theplot's at `/theplot/`        |
 | http://auth.dev.localhost:20000      | Keycloak's sign-in pages (the edge routes only these)  |
 | http://localhost:8025                | smtp4dev, where every mail goes, sign-in codes included |
@@ -55,7 +56,7 @@ account ([Local secrets and keys](#local-secrets-and-keys)).
 | `conversion`                     | Dockerfile          | LocalStack's bucket, queues and test credentials, OTLP to the dashboard  |
 | `document-import`                | project             | LocalStack's bucket and queues; the model APIs' keys from `protofast/dev` |
 | `otel-collector`                 | Dockerfile          | exports browsers' telemetry to the dashboard, with its key in `ASPIRE_OTLP_API_KEY` |
-| `protofast`, `theplot`, `admin`, `admin-theplot` | `ng serve` | `PORT`, `SERVER_URL` (the host's local origin), OTLP to the dashboard; the admin ones `ADMIN_CONSOLE_ROLES` |
+| `protofast`, `theplot`, `offtheloop`, `admin`, `admin-theplot` | `ng serve` | `PORT`, `SERVER_URL` (the host's local origin), OTLP to the dashboard; the admin ones `ADMIN_CONSOLE_ROLES` |
 
 What waits for what follows the spec: auth waits for its database, Redis, Keycloak (and so
 keycloak-config) and its migrations; the api and document-import wait for theirs; anything
@@ -105,7 +106,7 @@ sign in again, then restart it.
 | The internal JWT's key pair and key id                    | `protofast/dev`: `Auth_InternalJwt__PrivateKeyPem`, `Auth_InternalJwt__KeyId`, and the public key under `Api_` and `Payments_` |
 | The model APIs' keys                                      | `protofast/dev`: `DocumentImport_Providers__{deepseek,gemini,anthropic}__ApiKey`; empty until set, and imports fail at the model call |
 | PostgreSQL's and Redis's passwords, the connection strings | Aspire, generated and kept in the AppHost's user secrets      |
-| Keycloak's bootstrap admin client secret, the four realm client secrets, its local `admin` password | Aspire, generated and kept in the AppHost's user secrets: keycloak and keycloak-config can't read Secrets Manager |
+| Keycloak's bootstrap admin client secret, the five realm client secrets, its local `admin` password | Aspire, generated and kept in the AppHost's user secrets: keycloak and keycloak-config can't read Secrets Manager |
 
 `scripts/set-secrets.sh dev` fills `protofast/dev` once for the team, and removes the local
 resources' keys if it finds any ([layer 06](06-secrets.md#dev)). Set a model API's key with
@@ -179,7 +180,7 @@ This picks up the client's `.nvmrc` through `nvm`/`fnm` and runs `ng serve`.
 | --------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | Regenerate gRPC client code       | `npm run generate:grpc` in the client (`npm start` runs it too); commit `src/lib/gen`, which the image builds from and CI checks |
 | Add an EF migration (auth)        | `dotnet ef migrations add <Name> -p services/auth/src/ProtoFast.Auth.Data`                                |
-| Add an EF migration (protofast)   | in `services/api/src/ProtoFast.Data`: `dotnet ef migrations add <Name> --startup-project ../ProtoFast.SchemaMigrations` |
+| Add an EF migration (protofast)   | in `services/api/src/ProtoFast.Data`: `dotnet ef migrations add <Name> --context ThePlotDbContext --startup-project ../ProtoFast.SchemaMigrations`; for OffTheLoop's `loop` schema, `--context OffTheLoopDbContext -o OffTheLoop/Migrations` |
 | Apply migrations                  | automatic: the migrations resources run before the services that use them. **Rebuild** on one drops its schema and migrates again |
 | Edit a Keycloak theme             | under `services/keycloak/themes/`; bind-mounted, and `start-dev` doesn't cache, so a refresh shows it      |
 | Change Keycloak's providers       | under `services/keycloak/providers/`; the keycloak image, which builds and tests them with Maven, is built when `aspire run` starts |
