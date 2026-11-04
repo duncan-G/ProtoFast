@@ -295,11 +295,14 @@
           <div
             class="mt-4 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-divider)]"
           >
-            <div class="h-[196px]">
-              <app-image-placeholder
-                description="Build console — preview pane (browser + phone frame)"
-              />
-            </div>
+            <img
+              src="/console/build-preview.webp"
+              alt="Live preview of the dog grooming booking app in a browser and on a phone, its deposit button still marked as the payments agent deploys"
+              width="1200"
+              height="588"
+              decoding="async"
+              class="h-auto w-full"
+            />
           </div>
         </div>
       </div>
@@ -373,11 +376,24 @@
       <div
         class="mt-10 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-divider)]"
       >
-        <div class="h-[220px] sm:h-[300px]">
-          <app-image-placeholder
-            description="Orchestration diagram — prompt → five agent nodes → LIVE app"
+        <!-- Squeezed below sm the wide diagram is unreadable, so phones get a stacked cut. -->
+        <picture>
+          <source
+            media="(min-width: 640px)"
+            srcset="/console/orchestration.webp"
+            width="1932"
+            height="600"
           />
-        </div>
+          <img
+            src="/console/orchestration-narrow.webp"
+            alt="The prompt fans out to five agents (Architect, UI, Payments, Auth and Deploy) building in parallel, which converge on the live app at its protofast.app URL"
+            width="1080"
+            height="1260"
+            loading="lazy"
+            decoding="async"
+            class="h-auto w-full"
+          />
+        </picture>
       </div>
     </section>
 
@@ -529,11 +545,15 @@
         <div
           class="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-divider)]"
         >
-          <div class="h-[220px] lg:h-[260px]">
-            <app-image-placeholder
-              description="Build timeline view — timestamped agent events, live URL card"
-            />
-          </div>
+          <img
+            src="/console/build-timeline.webp"
+            alt="Build timeline from 00:00 to 27:58, one timestamped event per agent, ending on a card with the app's live URL"
+            width="1410"
+            height="780"
+            loading="lazy"
+            decoding="async"
+            class="h-auto w-full"
+          />
         </div>
 
         <figure class="m-0">
