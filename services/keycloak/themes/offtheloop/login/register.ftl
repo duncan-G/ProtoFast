@@ -5,6 +5,8 @@
         <p class="pf-subtitle">Your next loop starts here.</p>
     <#elseif section = "form">
         <form id="kc-register-form" action="${url.registrationAction}" method="post" class="${properties.kcFormClass!}">
+            <#-- ClaimingUserCreation remembers the sign-up for this, as login-username.ftl's does a sign-in. -->
+            <input type="hidden" name="rememberMe" value="on">
             <div class="${properties.kcFormGroupClass!}">
                 <label for="email" class="${properties.kcLabelClass!}">${msg("email")}</label>
                 <input type="email" id="email" name="email" value="${(register.formData.email!'')}" autocomplete="email" autofocus

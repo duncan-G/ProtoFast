@@ -184,6 +184,13 @@ It used to be 30, which is generous for a password and far too generous for a si
 code. With no password left in the realm, this number is the lockout threshold for guessing
 a code and nothing else.
 
+### Why `theplot` and `offtheloop` sign-ins last a year
+
+Their `ssoSessionIdleTimeout`, `ssoSessionMaxLifespan` and level-1 `loa-max-age` are 365
+days, and their themes always send "remember me", so Keycloak's cookie outlives the browser.
+auth's own session stays at 8 h idle / 7 d: when it lapses, the next page goes through
+`/signin` and this session signs the user back in without a prompt.
+
 ## The browser flow
 
     passwordless browser                          (browserFlow)
@@ -191,7 +198,7 @@ a code and nothing else.
       |- Identity Provider Redirector             ALTERNATIVE
       \- passwordless forms                       ALTERNATIVE
            |- passwordless sign-in                CONDITIONAL
-           |    |- Condition - Level of Authentication  (level 1, max age 604800)
+           |    |- Condition - Level of Authentication  (level 1, max age = ssoSessionMaxLifespan)
            |    |- Username Form                  REQUIRED
            |    \- passwordless credentials       REQUIRED
            |         |- WebAuthn Passwordless     ALTERNATIVE
