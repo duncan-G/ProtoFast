@@ -3,8 +3,10 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   inject,
   signal,
+  viewChild,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { ImagePlaceholder } from './image-placeholder';
@@ -14,6 +16,7 @@ import { AuthIdentityService } from '../../auth/auth-identity';
 import {
   LANDING_AGENT_FEED,
   LANDING_FEATURES,
+  LANDING_GALLERY,
   LANDING_MILESTONES,
   LANDING_PRICING_TIERS,
   LANDING_PROMPTS,
@@ -49,6 +52,25 @@ export class Landing {
     this.menuOpen.set(false);
   }
 
+  /** Sign-up is closed: every sign-up button opens this notice instead of /signup. */
+  private readonly inviteDialog = viewChild.required<ElementRef<HTMLDialogElement>>('inviteDialog');
+
+  protected openInvite(): void {
+    this.closeMenu();
+    this.inviteDialog().nativeElement.showModal();
+  }
+
+  protected closeInvite(): void {
+    this.inviteDialog().nativeElement.close();
+  }
+
+  // A click whose target is the dialog itself landed on the backdrop.
+  protected onInviteClick(event: MouseEvent): void {
+    if (event.target === this.inviteDialog().nativeElement) {
+      this.closeInvite();
+    }
+  }
+
   private readonly prompts = LANDING_PROMPTS;
 
   /**
@@ -63,6 +85,7 @@ export class Landing {
   protected readonly steps = LANDING_STEPS;
   protected readonly features = LANDING_FEATURES;
   protected readonly milestones = LANDING_MILESTONES;
+  protected readonly gallery = LANDING_GALLERY;
   protected readonly pricingTiers = LANDING_PRICING_TIERS;
 
   constructor() {
