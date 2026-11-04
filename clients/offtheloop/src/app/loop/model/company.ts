@@ -7,6 +7,10 @@ export interface Company {
   about: string;
   /** "Burbank, CA" */
   location: string;
+  /** In plain words: what it makes or sells, and to whom. */
+  whatItDoes: string;
+  /** Who pays it, for what, and how it's priced. */
+  howItMakesMoney: string;
   revenue: string;
   growth: string;
   headcount: string;

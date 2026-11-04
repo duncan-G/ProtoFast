@@ -8,6 +8,8 @@ function company(name: string, lastModified = 0): Company {
     name,
     about: '',
     location: '',
+    whatItDoes: '',
+    howItMakesMoney: '',
     revenue: '',
     growth: '',
     headcount: '',

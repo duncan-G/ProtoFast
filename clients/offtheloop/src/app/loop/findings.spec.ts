@@ -7,6 +7,8 @@ const COMPANY: Company = {
   name: 'Halcyon Pay',
   about: '',
   location: '',
+  whatItDoes: '',
+  howItMakesMoney: '',
   revenue: '$120M',
   growth: '',
   headcount: '~400',
@@ -23,6 +25,8 @@ const COMPANY: Company = {
 const NOTHING = {
   about: '',
   location: '',
+  whatItDoes: '',
+  howItMakesMoney: '',
   revenue: '',
   growth: '',
   headcount: '',
@@ -62,6 +66,7 @@ describe('findings', () => {
     const findings = companyFindings(COMPANY, {
       ...NOTHING,
       about: 'fintech · payments api',
+      whatItDoes: 'Runs payments for online shops.',
       revenue: '$140M',
       headcount: '~ 400',
       values: ['default to writing', 'Ownership'],
@@ -69,6 +74,7 @@ describe('findings', () => {
 
     expect(findings.map((f) => [f.key, f.text, f.replaces, f.keep])).toEqual([
       ['about', 'fintech · payments api', '', true],
+      ['whatItDoes', 'Runs payments for online shops.', '', true],
       ['revenue', '$140M', '$120M', false],
       ['values', 'Ownership', '', true],
     ]);

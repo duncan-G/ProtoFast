@@ -266,6 +266,12 @@ namespace ProtoFast.Data.OffTheLoop.Migrations
                         .HasColumnType("character varying(80)")
                         .HasColumnName("headcount");
 
+                    b.Property<string>("HowItMakesMoney")
+                        .IsRequired()
+                        .HasMaxLength(600)
+                        .HasColumnType("character varying(600)")
+                        .HasColumnName("how_it_makes_money");
+
                     b.Property<string>("LastRaised")
                         .IsRequired()
                         .HasMaxLength(80)
@@ -305,6 +311,12 @@ namespace ProtoFast.Data.OffTheLoop.Migrations
                         .IsRequired()
                         .HasColumnType("text[]")
                         .HasColumnName("values");
+
+                    b.Property<string>("WhatItDoes")
+                        .IsRequired()
+                        .HasMaxLength(600)
+                        .HasColumnType("character varying(600)")
+                        .HasColumnName("what_it_does");
 
                     b.HasKey("Id")
                         .HasName("pk_companies");

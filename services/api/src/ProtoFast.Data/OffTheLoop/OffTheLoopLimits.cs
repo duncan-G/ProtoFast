@@ -11,6 +11,9 @@ public static class OffTheLoopLimits
 
     public const int Text = 4000;
 
+    /// <summary>A couple of plain sentences.</summary>
+    public const int Summary = 600;
+
     /// <summary>A note's page, diagrams and code included.</summary>
     public const int Body = 50000;
 

@@ -42,6 +42,8 @@ interface Spec {
 const COMPANY: readonly Spec[] = [
   { key: 'about', label: 'about' },
   { key: 'location', label: 'based in' },
+  { key: 'whatItDoes', label: 'what it does' },
+  { key: 'howItMakesMoney', label: 'how it makes money' },
   { key: 'revenue', label: 'revenue' },
   { key: 'growth', label: 'growth target' },
   { key: 'headcount', label: 'people' },

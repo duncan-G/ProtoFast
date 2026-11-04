@@ -44,6 +44,8 @@ public sealed class OffTheLoopDbContext(
             entity.Property(c => c.Name).IsRequired().HasMaxLength(OffTheLoopLimits.Name);
             entity.Property(c => c.About).IsRequired().HasMaxLength(OffTheLoopLimits.Line);
             entity.Property(c => c.Location).IsRequired().HasMaxLength(OffTheLoopLimits.Label);
+            entity.Property(c => c.WhatItDoes).IsRequired().HasMaxLength(OffTheLoopLimits.Summary);
+            entity.Property(c => c.HowItMakesMoney).IsRequired().HasMaxLength(OffTheLoopLimits.Summary);
             entity.Property(c => c.Revenue).IsRequired().HasMaxLength(OffTheLoopLimits.Label);
             entity.Property(c => c.Growth).IsRequired().HasMaxLength(OffTheLoopLimits.Label);
             entity.Property(c => c.Headcount).IsRequired().HasMaxLength(OffTheLoopLimits.Label);

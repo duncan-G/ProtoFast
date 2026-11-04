@@ -16,6 +16,10 @@ public sealed class Company : IDateStamped
     /// <summary>Where it's based: "Burbank, CA".</summary>
     public string Location { get; set; } = "";
 
+    public string WhatItDoes { get; set; } = "";
+
+    public string HowItMakesMoney { get; set; } = "";
+
     public string Revenue { get; set; } = "";
 
     public string Growth { get; set; } = "";
