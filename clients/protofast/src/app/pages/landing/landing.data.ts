@@ -40,6 +40,8 @@ export interface GalleryApp {
   host: string;
   /** Landing-page screenshot in public/gallery/, 1440×900. */
   image: string;
+  /** Grey wordmark in public/logos/ for the "shipping with" strip, at its display size. */
+  logo: { src: string; width: number; height: number };
   tags: string[];
 }
 
@@ -171,6 +173,7 @@ export const LANDING_GALLERY: GalleryApp[] = [
       'Writers draft chapters in a screenplay-aware editor. Readers open them as prose, or press play on an AI-directed adaptation, pictured and voiced scene by scene.',
     host: 'theplot.protofast.dev',
     image: '/gallery/theplot.webp',
+    logo: { src: '/logos/theplot.svg', width: 83, height: 26 },
     tags: ['Scene editor', 'AI director', 'Narration'],
   },
   {
@@ -181,6 +184,7 @@ export const LANDING_GALLERY: GalleryApp[] = [
       'A job-search tracker for engineers: every application and interview round, prep notes one search away, AI company research and a resume tailored to each posting.',
     host: 'offtheloop.protofast.dev',
     image: '/gallery/offtheloop.webp',
+    logo: { src: '/logos/offtheloop.svg', width: 121, height: 20 },
     tags: ['Interview loops', 'Notes', 'Tailored resumes'],
   },
 ];

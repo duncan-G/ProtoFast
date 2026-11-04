@@ -336,13 +336,17 @@
       <span class="text-[11px] tracking-[0.1em] whitespace-nowrap text-[var(--color-neutral-600)]">
         SHIPPING WITH PROTOFAST
       </span>
-      <!-- A 34px band has no room for the placeholder's caption; the description
-           rides on the aria-label instead. -->
-      <div class="h-[34px] min-w-[240px] flex-1">
-        <app-image-placeholder
-          description="Five or six grayscale customer logos"
-          [showCaption]="false"
-        />
+      <div class="flex h-[34px] items-center gap-x-10">
+        @for (app of gallery; track app.name) {
+          <a href="#gallery" class="opacity-75 transition hover:opacity-100">
+            <img
+              [src]="app.logo.src"
+              [alt]="app.name"
+              [width]="app.logo.width"
+              [height]="app.logo.height"
+            />
+          </a>
+        }
       </div>
     </section>
 
