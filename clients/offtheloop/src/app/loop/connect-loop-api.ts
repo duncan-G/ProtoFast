@@ -594,7 +594,12 @@ function toApplication(message: ApplicationMessage): Application {
       label: round.label,
       state: keyOf(ROUND_STATES, round.state, 'upcoming'),
     })),
-    learned: message.learned,
+    asked: message.asked.map((asked) => ({ question: asked.question, answer: asked.answer })),
+    learnings: message.learnings.map((learning) => ({
+      text: learning.text,
+      round: learning.round,
+      on: learning.on ?? null,
+    })),
     lastModified: Number(message.lastModifiedUnixSeconds),
   };
 }
@@ -615,6 +620,10 @@ function fromApplication(application: Application) {
     rounds: application.rounds.map((round) => ({
       label: round.label,
       state: ROUND_STATES[round.state],
+    })),
+    learnings: application.learnings.map((learning) => ({
+      ...learning,
+      on: learning.on ?? undefined,
     })),
   };
 }

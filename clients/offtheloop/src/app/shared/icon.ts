@@ -21,7 +21,10 @@ export type IconName =
   | 'star'
   | 'resume'
   | 'print'
-  | 'copy';
+  | 'copy'
+  | 'more'
+  | 'next'
+  | 'check';
 
 /** The design's stroke icons, drawn in currentColor. Decorative: label the control instead. */
 @Component({
@@ -120,6 +123,17 @@ export type IconName =
         @case ('copy') {
           <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
           <path d="M10.5 3.5v-.75a1 1 0 0 0-1-1H3.25a1 1 0 0 0-1 1V9.5a1 1 0 0 0 1 1h.75" />
+        }
+        @case ('more') {
+          <circle cx="3.5" cy="8" r="0.6" />
+          <circle cx="8" cy="8" r="0.6" />
+          <circle cx="12.5" cy="8" r="0.6" />
+        }
+        @case ('next') {
+          <path d="m6 3 5 5-5 5" />
+        }
+        @case ('check') {
+          <path d="m3 8.5 3.2 3L13 4.5" />
         }
       }
     </svg>

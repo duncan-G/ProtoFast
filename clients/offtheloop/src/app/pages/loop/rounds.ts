@@ -2,6 +2,7 @@ import {
   afterNextRender,
   ChangeDetectionStrategy,
   Component,
+  computed,
   ElementRef,
   inject,
   Injector,
@@ -14,6 +15,8 @@ import { LoopStore } from '../../loop/loop-store';
 import { Application } from '../../loop/model/application';
 import { RoundState } from '../../loop/model/round-state';
 import { Icon } from '../../shared/icon';
+
+const SHOWN = 5;
 
 const NEXT_STATE: Record<RoundState, RoundState> = {
   upcoming: 'current',
@@ -31,7 +34,7 @@ interface DraftRound {
   selector: 'app-rounds',
   imports: [FormsModule, Icon],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { class: 'flex flex-col gap-1.5', role: 'group', 'aria-label': 'Process' },
+  host: { class: 'flex flex-col gap-2.5', role: 'group', 'aria-label': 'Interview rounds' },
   template: `
     @if (editing()) {
       <form
@@ -121,15 +124,22 @@ interface DraftRound {
         </div>
       </form>
     } @else {
-      <div class="section-head">
-        <h4 class="caption">process</h4>
+      <div class="card-head">
+        <h3 class="field-label text-[13px] font-medium">
+          Interview rounds
+          @if (application().rounds.length) {
+            · {{ application().rounds.length }}
+          }
+        </h3>
         @if (application().rounds.length) {
-          <button type="button" class="btn-link" (click)="edit()">edit</button>
+          <button type="button" class="btn btn-xs" (click)="edit()">
+            <app-icon name="edit" [size]="13" />Edit
+          </button>
         }
       </div>
       @if (application().rounds.length) {
         <ol class="rounds">
-          @for (round of application().rounds; track $index) {
+          @for (round of visible(); track $index) {
             <li
               [attr.data-state]="round.state"
               [style.color]="round.state === 'current' ? hot() : null"
@@ -151,8 +161,23 @@ interface DraftRound {
             </li>
           }
         </ol>
+        @if (earlier()) {
+          <button
+            type="button"
+            class="btn btn-xs self-start"
+            [attr.aria-expanded]="showingAll()"
+            (click)="showingAll.set(!showingAll())"
+          >
+            {{ showingAll() ? 'Show fewer' : 'Show ' + earlier() + ' earlier' }}
+          </button>
+        }
       } @else {
-        <button type="button" class="btn-link self-start" (click)="edit()">+ round</button>
+        <button type="button" class="add-tile" (click)="edit()">
+          <span class="add-tile-mark"><app-icon name="plus" [size]="13" [weight]="2" /></span>
+          <span class="add-tile-text"
+            >Add a round<small>Recruiter call, tech screen, onsite</small></span
+          >
+        </button>
       }
     }
   `,
@@ -167,6 +192,14 @@ export class Rounds {
   readonly hot = input.required<string>();
 
   protected readonly editing = signal(false);
+  protected readonly showingAll = signal(false);
+  /** Rounds done long ago fold away once there are more than a few. */
+  protected readonly earlier = computed(() =>
+    Math.max(0, this.application().rounds.length - SHOWN),
+  );
+  protected readonly visible = computed(() =>
+    this.application().rounds.slice(this.showingAll() ? 0 : this.earlier()),
+  );
   protected readonly busy = signal(false);
   protected readonly error = signal('');
   protected readonly rounds = signal<DraftRound[]>([]);

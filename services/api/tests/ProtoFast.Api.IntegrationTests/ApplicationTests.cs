@@ -110,6 +110,39 @@ public class ApplicationTests(StoryDatabase database)
         Assert.False(stored.HasSponsorsVisa);
     }
 
+    [Fact]
+    public async Task An_application_keeps_its_asked_questions_and_what_was_learned()
+    {
+        var application = NewApplication((await _seeker.CreateCompanyAsync("Halcyon Pay")).Id, Stage.Tech);
+        application.Questions.Add("Who owns on-call?");
+        application.Asked.Add(new AskedQuestion { Question = "Is it remote?", Answer = "US only" });
+        application.Asked.Add(new AskedQuestion { Question = "  " });
+        application.Learnings.Add(new Learning { Text = "Lead with failure modes.", Round = "System design", On = "2026-11-03" });
+        application.Learnings.Add(new Learning { Text = "Small PRs." });
+        application.Learnings.Add(new Learning { Text = " " });
+        await _seeker.CreateApplicationAsync(application);
+
+        var stored = Assert.Single(await _seeker.ListApplicationsAsync());
+        Assert.Equal(["Who owns on-call?"], stored.Questions);
+        var asked = Assert.Single(stored.Asked);
+        Assert.Equal(("Is it remote?", "US only"), (asked.Question, asked.Answer));
+        Assert.Equal(2, stored.Learnings.Count);
+        Assert.Equal(("Lead with failure modes.", "System design", "2026-11-03"), (stored.Learnings[0].Text, stored.Learnings[0].Round, stored.Learnings[0].On));
+        Assert.Equal("", stored.Learnings[1].Round);
+        Assert.False(stored.Learnings[1].HasOn);
+    }
+
+    [Fact]
+    public async Task Learnings_are_capped()
+    {
+        var application = NewApplication((await _seeker.CreateCompanyAsync("Halcyon Pay")).Id, Stage.Applied);
+        application.Learnings.AddRange(Enumerable.Range(0, 201).Select(i => new Learning { Text = $"Note {i}" }));
+
+        var error = await Assert.ThrowsAsync<RpcException>(() => _seeker.CreateApplicationAsync(application));
+
+        Assert.Equal(StatusCode.InvalidArgument, error.StatusCode);
+    }
+
     [Theory]
     [InlineData("javascript:alert(1)")]
     [InlineData("boards.example.com/halcyon")]

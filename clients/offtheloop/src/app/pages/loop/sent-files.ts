@@ -11,19 +11,25 @@ import {
   viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { shortDate } from '../../loop/days';
+import { Router, RouterLink } from '@angular/router';
+import { shortDate, toDay } from '../../loop/days';
 import { messageOf } from '../../loop/errors';
+import { LoopRuns } from '../../loop/loop-runs';
 import { LoopStore } from '../../loop/loop-store';
 import { Application } from '../../loop/model/application';
+import { isActive } from '../../loop/model/loop-run';
+import { isEmptyResume } from '../../loop/model/resume';
 import { SentFile } from '../../loop/model/sent-file';
 import { SENT_FILE_KINDS, SentFileKind } from '../../loop/model/sent-file-kind';
 import { Icon } from '../../shared/icon';
+import { MenuItem, MoreMenu } from '../../shared/more-menu';
 
 /** What the server takes, told by extension; it checks again. */
 const ACCEPT = ['.pdf', '.docx', '.doc', '.odt', '.rtf', '.txt', '.md'];
 const MAX_BYTES = 10 * 1024 * 1024;
 
 const NOUNS: Record<SentFileKind, string> = { resume: 'resume', cv: 'CV' };
+const LABELS: Record<SentFileKind, string> = { resume: 'Resume', cv: 'CV' };
 
 /** A resume file's name supersedes the version typed before files. */
 function slotChanges(kind: SentFileKind, fileId: string | null): Partial<Application> {
@@ -36,12 +42,12 @@ interface Upload {
   fraction: number;
 }
 
-/** The resume and CV an application went with: upload one, or pick one sent before. */
+/** The resume and CV an application went with: the tailored resume, a file, or one sent before. */
 @Component({
   selector: 'app-sent-files',
-  imports: [FormsModule, Icon],
+  imports: [FormsModule, Icon, MoreMenu, RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { class: 'section-rule flex flex-col gap-3.5', role: 'region', 'aria-label': 'Sent' },
+  host: { class: 'card card-pad dim-scope', role: 'region', 'aria-label': 'What you sent' },
   template: `
     <input
       #chooser
@@ -99,8 +105,12 @@ interface Upload {
                       [id]="'sent-rename-' + file.id"
                       [(ngModel)]="draftName"
                     />
-                    <button type="submit" class="btn-link" [disabled]="busy() || !draftName.trim()">
-                      save
+                    <button
+                      type="submit"
+                      class="btn btn-xs"
+                      [disabled]="busy() || !draftName.trim()"
+                    >
+                      Save
                     </button>
                   </form>
                 } @else if (confirmingDelete() === file.id) {
@@ -116,8 +126,8 @@ interface Upload {
                     >
                       Delete
                     </button>
-                    <button type="button" class="btn-link" (click)="confirmingDelete.set(null)">
-                      keep
+                    <button type="button" class="btn btn-xs" (click)="confirmingDelete.set(null)">
+                      Keep
                     </button>
                   </div>
                 } @else {
@@ -133,11 +143,15 @@ interface Upload {
                       <span class="truncate font-medium">{{ file.name }}</span>
                       <span class="meta truncate max-[559px]:hidden">{{ describe(file) }}</span>
                     </button>
-                    <button type="button" class="btn-link" (click)="startRename(file)">
-                      rename
+                    <button type="button" class="btn btn-xs" (click)="startRename(file)">
+                      Rename
                     </button>
-                    <button type="button" class="btn-link" (click)="confirmingDelete.set(file.id)">
-                      delete
+                    <button
+                      type="button"
+                      class="btn btn-xs"
+                      (click)="confirmingDelete.set(file.id)"
+                    >
+                      Delete
                     </button>
                   </div>
                 }
@@ -153,77 +167,152 @@ interface Upload {
         </div>
       </div>
     } @else {
-      <h4 class="caption">sent</h4>
-      <div class="sent-grid">
-        @for (slot of slots(); track slot.kind) {
-          <div
-            class="sent-slot"
-            role="group"
-            [attr.aria-label]="slot.noun"
-            [class.is-over]="over() === slot.kind"
-            (dragover)="dragOver($event, slot.kind)"
-            (dragleave)="over.set(null)"
-            (drop)="dropped($event, slot.kind)"
-          >
-            <span class="figure-label">{{ slot.noun }}</span>
-            @if (uploading()?.kind === slot.kind) {
-              <div class="sent-file" aria-live="polite">
-                <span class="spinner"></span>
-                <div class="min-w-0 flex-1">
-                  <p class="sent-name truncate">{{ uploading()?.fileName }}</p>
-                  <div class="sent-progress" role="progressbar" [attr.aria-valuenow]="percent()">
-                    <span [style.width.%]="percent()"></span>
+      <div class="card-head">
+        <h3 class="card-title">What you sent</h3>
+      </div>
+      @for (slot of slots(); track slot.kind) {
+        <div
+          class="flex flex-col gap-1.5"
+          role="group"
+          [attr.aria-label]="slot.label"
+          (dragover)="dragOver($event, slot.kind)"
+          (dragleave)="over.set(null)"
+          (drop)="dropped($event, slot.kind)"
+        >
+          <p class="field-label">{{ slot.label }}</p>
+          @if (uploading()?.kind === slot.kind) {
+            <div class="slot" aria-live="polite">
+              <span class="slot-mark"><span class="spinner"></span></span>
+              <div class="slot-text">
+                <p class="slot-name truncate">{{ uploading()?.fileName }}</p>
+                <div class="sent-progress" role="progressbar" [attr.aria-valuenow]="percent()">
+                  <span [style.width.%]="percent()"></span>
+                </div>
+              </div>
+            </div>
+          } @else if (slot.file; as file) {
+            <div class="slot" [class.is-over]="over() === slot.kind">
+              <span class="slot-mark"><app-icon name="file" [size]="18" /></span>
+              <div class="slot-text">
+                <p class="slot-name truncate">{{ file.name }}</p>
+                <p class="meta truncate">{{ file.fileName }} · {{ size(file) }}</p>
+              </div>
+              <button type="button" class="btn btn-xs" (click)="open(file)">Open ↗</button>
+              <app-more-menu
+                small
+                [label]="'More ' + slot.noun + ' actions'"
+                [items]="fileMenu(slot.kind)"
+              />
+            </div>
+          } @else if (slot.kind === 'resume' && tailoring() !== 'none') {
+            @switch (tailoring()) {
+              @case ('going') {
+                <a
+                  class="slot no-underline"
+                  routerLink="/app/resume"
+                  [queryParams]="{ for: app().id }"
+                >
+                  <span class="slot-mark is-tailored"><span class="spinner"></span></span>
+                  <span class="slot-text">
+                    <span class="slot-name block">Tailoring to this job</span>
+                    <span class="meta block">About a minute. You can leave this page.</span>
+                  </span>
+                </a>
+              }
+              @case ('done') {
+                <div class="slot is-ready">
+                  <div class="slot-text">
+                    <p class="slot-name flex items-center gap-2">
+                      <span class="research-ready" aria-hidden="true"></span>Tailored resume ready
+                    </p>
+                    <p class="meta">Keep it or throw it away</p>
                   </div>
-                </div>
-              </div>
-            } @else if (slot.file; as file) {
-              <div class="sent-file">
-                <app-icon name="file" [size]="20" [weight]="1.4" />
-                <div class="min-w-0 flex-1">
-                  <button
-                    type="button"
-                    class="sent-name sent-open"
-                    [attr.aria-label]="'Open ' + file.name"
-                    (click)="open(file)"
+                  <a
+                    class="btn btn-xs btn-primary"
+                    routerLink="/app/resume"
+                    [queryParams]="{ for: app().id }"
+                    >Review</a
                   >
-                    <span class="truncate">{{ file.name }}</span>
-                    <span aria-hidden="true">↗</span>
-                  </button>
-                  <p class="meta m-0 truncate">{{ file.fileName }} · {{ size(file) }}</p>
                 </div>
-              </div>
-              <div class="flex gap-4">
-                <button type="button" class="btn-link" (click)="pick(slot.kind)">change</button>
+              }
+              @case ('failed') {
+                <p class="alert" role="alert">
+                  {{ run()?.error || 'The tailoring stopped before it finished.' }}
+                </p>
                 <button
                   type="button"
-                  class="btn-link"
-                  [disabled]="busy()"
-                  (click)="detach(slot.kind)"
+                  class="btn btn-xs self-start"
+                  [disabled]="starting()"
+                  (click)="tailor()"
                 >
-                  remove
+                  Try again
                 </button>
-              </div>
-            } @else if (slot.legacy) {
-              <div class="sent-file">
-                <app-icon name="file" [size]="20" [weight]="1.4" />
-                <div class="min-w-0 flex-1">
-                  <p class="sent-name truncate">{{ slot.legacy }}</p>
-                  <p class="meta m-0">no file kept</p>
+              }
+              @default {
+                <div class="slot" [class.is-over]="over() === slot.kind">
+                  <span class="slot-mark is-tailored"><app-icon name="resume" [size]="18" /></span>
+                  <div class="slot-text">
+                    <p class="slot-name">Tailored resume</p>
+                    <p class="meta">Made for this role · updated {{ tailoredOn() }}</p>
+                  </div>
+                  <a class="btn btn-xs" routerLink="/app/resume" [queryParams]="{ for: app().id }"
+                    >Open</a
+                  >
+                  <app-more-menu small label="More resume actions" [items]="tailoredMenu()" />
                 </div>
-              </div>
-              <button type="button" class="btn-link self-start" (click)="pick(slot.kind)">
-                + attach the file
-              </button>
-            } @else {
-              <button type="button" class="sent-empty" (click)="pick(slot.kind)">
-                <app-icon name="plus" [size]="12" [weight]="1.8" />
-                <span>add {{ slot.noun }}</span>
-                <span class="meta ml-auto max-[719px]:hidden">or drop a file</span>
-              </button>
+              }
             }
-          </div>
-        }
-      </div>
+          } @else if (slot.legacy) {
+            <div class="slot">
+              <span class="slot-mark"><app-icon name="file" [size]="18" /></span>
+              <div class="slot-text">
+                <p class="slot-name truncate">{{ slot.legacy }}</p>
+                <p class="meta">No file kept</p>
+              </div>
+              <button type="button" class="btn-add" (click)="pick(slot.kind)">
+                <app-icon name="upload" [size]="12" />Attach the file
+              </button>
+            </div>
+          } @else if (slot.kind === 'resume' && !generalEmpty()) {
+            <div class="slot-empty" [class.is-over]="over() === slot.kind">
+              <button
+                type="button"
+                class="btn btn-sm btn-primary"
+                [disabled]="starting()"
+                (click)="tailor()"
+              >
+                @if (starting()) {
+                  <span class="spinner h-3 w-3" aria-hidden="true"></span>
+                }
+                Tailor my resume to this job
+              </button>
+              <button type="button" class="btn btn-sm btn-raised" (click)="pick(slot.kind)">
+                <app-icon name="upload" [size]="14" />Upload a file
+              </button>
+              <p class="hint text-center">or drop one here</p>
+            </div>
+          } @else {
+            <button
+              type="button"
+              class="add-tile"
+              [class.is-over]="over() === slot.kind"
+              (click)="pick(slot.kind)"
+            >
+              <span class="add-tile-mark"><app-icon name="upload" [size]="14" /></span>
+              <span class="add-tile-text"
+                >Add {{ slot.kind === 'cv' ? 'a CV' : 'a resume'
+                }}<small>or drop a file here</small></span
+              >
+            </button>
+            @if (slot.kind === 'resume') {
+              <p class="hint">
+                Fill in <a routerLink="/app/resume">your resume</a> and it can be tailored to this
+                job.
+              </p>
+            }
+          }
+        </div>
+      }
       @if (error()) {
         <p class="alert" role="alert">{{ error() }}</p>
       }
@@ -232,6 +321,8 @@ interface Upload {
 })
 export class SentFiles {
   private readonly store = inject(LoopStore);
+  private readonly runs = inject(LoopRuns);
+  private readonly router = inject(Router);
   private readonly injector = inject(Injector);
   private readonly chooser = viewChild.required<ElementRef<HTMLInputElement>>('chooser');
   private readonly uploadButton = viewChild<ElementRef<HTMLButtonElement>>('uploadButton');
@@ -239,6 +330,7 @@ export class SentFiles {
 
   readonly application = input.required<Application>();
 
+  protected readonly app = this.application;
   protected readonly accept = ACCEPT.join(',');
   protected readonly nouns = NOUNS;
   protected readonly picking = signal<SentFileKind | null>(null);
@@ -258,6 +350,7 @@ export class SentFiles {
       return {
         kind,
         noun: NOUNS[kind],
+        label: LABELS[kind],
         file: (id && files.get(id)) || null,
         legacy: kind === 'resume' ? app.resume : '',
       };
@@ -268,6 +361,70 @@ export class SentFiles {
     const kind = this.picking();
     return this.store.files().filter((file) => file.kind === kind);
   });
+
+  protected readonly starting = signal(false);
+  protected readonly tailored = computed(
+    () => this.store.tailoredResumes().get(this.application().id) ?? null,
+  );
+  protected readonly run = computed(() => {
+    const app = this.application();
+    return this.runs.find('tailorResume', { companyId: app.companyId, applicationId: app.id });
+  });
+  protected readonly generalEmpty = computed(() => isEmptyResume(this.store.generalResume()));
+
+  /** A tailored resume fills the resume slot until a file is put in it. */
+  protected readonly tailoring = computed(() => {
+    const run = this.run();
+    if (run && isActive(run)) {
+      return 'going';
+    }
+    if (run?.state === 'succeeded') {
+      return 'done';
+    }
+    if (run) {
+      return 'failed';
+    }
+    return this.tailored() ? 'saved' : 'none';
+  });
+
+  protected readonly tailoredOn = computed(() => {
+    const saved = this.tailored();
+    return saved ? shortDate(toDay(new Date(saved.lastModified * 1000))) : '';
+  });
+
+  protected readonly tailoredMenu = computed((): MenuItem[] => [
+    { label: 'Tailor again', run: () => void this.tailor() },
+    { label: 'Send a file instead', run: () => this.pick('resume') },
+  ]);
+
+  protected fileMenu(kind: SentFileKind): MenuItem[] {
+    return [
+      { label: 'Use another file', run: () => this.pick(kind) },
+      {
+        label: `Take it off this application`,
+        danger: true,
+        run: () => void this.detach(kind),
+      },
+    ];
+  }
+
+  protected async tailor(): Promise<void> {
+    const app = this.application();
+    this.starting.set(true);
+    this.error.set('');
+    try {
+      await this.runs.start(`Tailor · ${app.company}`, {
+        kind: 'tailorResume',
+        applicationId: app.id,
+        instructions: '',
+      });
+      void this.router.navigate(['/app/resume'], { queryParams: { for: app.id } });
+    } catch (err) {
+      this.error.set(messageOf(err, 'The tailoring couldn’t start.'));
+    } finally {
+      this.starting.set(false);
+    }
+  }
 
   protected readonly percent = computed(() => Math.round((this.uploading()?.fraction ?? 0) * 100));
 

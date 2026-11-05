@@ -10,6 +10,10 @@ describe('figureParts', () => {
       figure: '~2,400',
       context: '~231k parent company',
     });
+    expect(figureParts('$10M+ [reached eight figures in 2026]')).toEqual({
+      figure: '$10M+',
+      context: 'reached eight figures in 2026',
+    });
   });
 
   it('takes only the last brackets, and leaves a figure without them whole', () => {

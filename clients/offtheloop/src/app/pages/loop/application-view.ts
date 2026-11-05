@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FieldSpec, FieldsForm } from '../../editors/fields-form';
-import { ListField, ListSpec } from '../../editors/list-field';
+import { ListCard } from '../../editors/list-card';
+import { ListField } from '../../editors/list-field';
 import { fromNow, shortDate, today, whenWithDate } from '../../loop/days';
 import { messageOf } from '../../loop/errors';
 import { changesFrom, Finding } from '../../loop/findings';
@@ -12,13 +13,16 @@ import { ARRANGEMENTS } from '../../loop/model/arrangement';
 import { Source, SOURCES } from '../../loop/model/source';
 import { Stage, STAGES } from '../../loop/model/stage';
 import { statusOf } from '../../loop/model/status';
-import { Figure } from '../../shared/figure';
+import { figureParts } from '../../shared/figure';
+import { Icon } from '../../shared/icon';
+import { MenuItem, MoreMenu } from '../../shared/more-menu';
+import { LearningsCard } from './learnings-card';
 import { PostingReader } from './posting-reader';
+import { QuestionsCard } from './questions-card';
 import { Rounds } from './rounds';
 import { SentFiles } from './sent-files';
-import { TailoredResume } from './tailored-resume';
 
-type Section = 'basics' | 'next' | 'pay' | 'job' | 'posting' | 'learned';
+type Section = 'basics' | 'next' | 'pay' | 'job' | 'posting';
 
 const VIA: Partial<Record<Source, string>> = {
   referral: 'referred by',
@@ -110,37 +114,32 @@ const JOB: readonly FieldSpec[] = [
   },
 ];
 
-const LEARNED: readonly FieldSpec[] = [
-  {
-    key: 'learned',
-    label: 'learned',
-    type: 'textarea',
-    placeholder: 'Tech screen was all idempotency and retries.',
-  },
-];
-
 const PAY_FIGURES = [
-  ['postedPay', 'posted range'],
-  ['askedPay', 'you asked'],
-  ['offeredPay', 'offer'],
+  ['postedPay', 'Posted range'],
+  ['askedPay', 'You asked'],
+  ['offeredPay', 'Offer'],
 ] as const;
 
-const LISTS = [
-  { key: 'questions', label: 'to ask', placeholder: 'Who owns on-call?', marker: '?' },
-  { key: 'stack', label: 'stack', placeholder: 'Postgres', look: 'tags' },
-  { key: 'wants', label: 'they want', placeholder: 'Go or Java' },
-  { key: 'benefits', label: 'benefits', placeholder: '16 weeks parental leave' },
-] as const satisfies readonly ListSpec<Application>[];
-
-/** One application, every section edited where it is shown. */
+/** One application as cards, each edited where it is shown. */
 @Component({
   selector: 'app-application-view',
-  imports: [Figure, FieldsForm, ListField, PostingReader, Rounds, SentFiles, TailoredResume],
+  imports: [
+    FieldsForm,
+    Icon,
+    LearningsCard,
+    ListCard,
+    ListField,
+    MoreMenu,
+    PostingReader,
+    QuestionsCard,
+    Rounds,
+    SentFiles,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { class: 'dim-scope flex flex-col gap-10' },
+  host: { class: 'dim-scope flex flex-col gap-6' },
   template: `
     @let app = application();
-    <div class="card app-card dim-scope">
+    <section class="card app-card dim-scope" aria-label="Where it stands">
       @if (editing() === 'basics') {
         <app-fields-form
           heading="role and source"
@@ -150,53 +149,75 @@ const LISTS = [
           (closed)="editing.set(null)"
         />
       } @else {
-        <div class="flex items-start justify-between gap-4">
+        <div class="flex flex-wrap items-start justify-between gap-4">
           <div class="min-w-0">
-            <h3 class="app-role">{{ app.role || 'Role not set' }}</h3>
-            <p class="mono mt-2 mb-0 text-[12.5px] text-[var(--color-dim)]">{{ appliedLine() }}</p>
+            <h2 class="app-role flex flex-wrap items-center gap-x-3 gap-y-1">
+              {{ app.role || 'Role not set' }}
+              @if (app.closed) {
+                <span class="badge font-sans text-[12.5px] font-medium">Closed</span>
+              }
+            </h2>
+            <p class="mt-2 mb-0 text-[14px] text-[var(--color-muted)]">{{ appliedLine() }}</p>
           </div>
-          <div class="flex flex-none gap-4 pt-1">
-            <button
-              type="button"
-              class="btn-link"
-              [disabled]="busy()"
-              (click)="setClosed(!app.closed)"
-            >
-              {{ app.closed ? 'reopen' : 'mark closed' }}
+          <div class="card-actions">
+            <button type="button" class="btn btn-xs" (click)="editing.set('basics')">
+              <app-icon name="edit" [size]="13" />Edit
             </button>
-            <button type="button" class="btn-link" (click)="editing.set('basics')">edit</button>
+            <app-more-menu small label="More application actions" [items]="menu()" />
           </div>
         </div>
       }
-
-      <div role="radiogroup" aria-label="Stage" class="stage-bar">
-        @for (step of track(); track step.stage) {
+      @if (confirmingDelete()) {
+        <div class="confirm-bar" role="alert">
+          <span>Delete this application for good?</span>
+          <button type="button" class="btn btn-xs" (click)="confirmingDelete.set(false)">
+            Keep it
+          </button>
           <button
             type="button"
-            role="radio"
-            class="stage-step"
-            [attr.aria-checked]="step.here"
-            [attr.aria-label]="step.stage"
+            class="btn btn-sm btn-danger"
             [disabled]="busy()"
-            (click)="setStage(step.stage)"
+            (click)="remove()"
           >
-            <span
-              class="stage-seg"
-              [style.background]="step.seg"
-              [style.box-shadow]="step.glow"
-            ></span>
-            <span
-              class="stage-label"
-              [class.font-semibold]="step.here"
-              [style.color]="step.color"
-              >{{ step.label }}</span
-            >
+            Delete
           </button>
-        }
+        </div>
+      }
+
+      <div>
+        <div class="stage-head">
+          <h3 class="field-label text-[13px] font-medium">Stage</h3>
+          <p class="hint">Click a stage to move it</p>
+        </div>
+        <div role="radiogroup" aria-label="Stage" class="stage-bar">
+          @for (step of track(); track step.stage) {
+            <button
+              type="button"
+              role="radio"
+              class="stage-step"
+              [attr.aria-checked]="step.here"
+              [attr.aria-label]="step.stage"
+              [disabled]="busy()"
+              (click)="setStage(step.stage)"
+            >
+              <span
+                class="stage-seg"
+                [style.background]="step.seg"
+                [style.box-shadow]="step.glow"
+              ></span>
+              <span
+                class="stage-label"
+                [class.font-semibold]="step.here"
+                [style.color]="step.color"
+                >{{ step.label }}</span
+              >
+            </button>
+          }
+        </div>
       </div>
 
       <div class="app-split dim-scope">
-        <div class="flex flex-col gap-1.5">
+        <div class="flex flex-col gap-2.5">
           @if (editing() === 'next') {
             <app-fields-form
               heading="next step"
@@ -206,64 +227,93 @@ const LISTS = [
               (closed)="editing.set(null)"
             />
           } @else {
-            <div class="section-head">
-              <h4 class="caption">{{ app.stage === 'offer' ? 'offer ends' : 'next' }}</h4>
+            <div class="card-head">
+              <h3 class="field-label text-[13px] font-medium">
+                {{ app.stage === 'offer' ? 'Offer ends' : 'Next step' }}
+              </h3>
               @if (app.nextStep || app.nextOn) {
-                <button type="button" class="btn-link" (click)="editing.set('next')">edit</button>
+                <button type="button" class="btn btn-xs" (click)="editing.set('next')">
+                  <app-icon name="edit" [size]="13" />Edit
+                </button>
               }
             </div>
             @if (app.nextStep || app.nextOn) {
-              @if (app.nextOn) {
-                <div class="mt-1 flex items-baseline gap-3">
-                  <span class="next-day" [style.color]="hot()">{{ nextWhen() }}</span>
-                  <span class="meta">{{ nextIn() }}</span>
-                </div>
-              }
-              @if (app.nextStep) {
-                <p class="next-what">{{ app.nextStep }}</p>
-              }
+              <div class="next-box" [style.--next-color]="hot()">
+                @if (app.nextOn) {
+                  <div class="flex flex-wrap items-baseline gap-x-3">
+                    <span class="next-day" [style.color]="hot()">{{ nextWhen() }}</span>
+                    <span class="meta">{{ nextIn() }}</span>
+                  </div>
+                }
+                @if (app.nextStep) {
+                  <p class="next-what">{{ app.nextStep }}</p>
+                }
+              </div>
             } @else {
-              <button type="button" class="btn-link self-start" (click)="editing.set('next')">
-                + next step
+              <button type="button" class="add-tile" (click)="editing.set('next')">
+                <span class="add-tile-mark"><app-icon name="plus" [size]="13" [weight]="2" /></span>
+                <span class="add-tile-text"
+                  >Add the next step<small>When it is and what happens</small></span
+                >
               </button>
             }
           }
         </div>
         <app-rounds [application]="app" [hot]="hot()" />
       </div>
-    </div>
-
-    <section aria-label="Pay" class="flex flex-col gap-3.5">
-      @if (editing() === 'pay') {
-        <app-fields-form
-          heading="pay"
-          layout="figures"
-          [fields]="payFields"
-          [value]="app"
-          [save]="saveChanges"
-          (closed)="editing.set(null)"
-        />
-      } @else {
-        <div class="section-head">
-          <h4 class="caption">pay</h4>
-          <button type="button" class="btn-link" (click)="editing.set('pay')">edit</button>
-        </div>
-        <div class="grid grid-cols-3 gap-5">
-          @for (figure of pay(); track figure.label) {
-            <app-figure [value]="figure.value" [label]="figure.label" [color]="figure.color" />
-          }
-        </div>
-        @if (app.offerTerms) {
-          <p class="m-0 text-[14.5px] text-[var(--color-text-2)]">{{ app.offerTerms }}</p>
-        }
-      }
     </section>
 
-    <app-sent-files [application]="app" />
+    @if (error()) {
+      <p class="alert" role="alert">{{ error() }}</p>
+    }
 
-    <app-tailored-resume [application]="app" />
+    <div class="cards dim-scope">
+      <section class="card card-pad dim-scope" aria-label="Pay">
+        @if (editing() === 'pay') {
+          <app-fields-form
+            heading="pay"
+            layout="figures"
+            [fields]="payFields"
+            [value]="app"
+            [save]="saveChanges"
+            (closed)="editing.set(null)"
+          />
+        } @else {
+          <div class="card-head">
+            <h3 class="card-title">Pay</h3>
+            <button type="button" class="btn btn-xs" (click)="editing.set('pay')">
+              <app-icon name="edit" [size]="13" />Edit
+            </button>
+          </div>
+          <div class="figures-row">
+            @for (figure of pay(); track figure.label) {
+              <div class="flex min-w-0 flex-col gap-1.5">
+                <p class="field-label">{{ figure.label }}</p>
+                @if (figure.value) {
+                  <p class="figure m-0" [style.color]="figure.color">{{ figure.value }}</p>
+                  @if (figure.context) {
+                    <p class="tile-context m-0">{{ figure.context }}</p>
+                  }
+                } @else if (figure.addable) {
+                  <button type="button" class="btn-add self-start" (click)="editing.set('pay')">
+                    <app-icon name="plus" [size]="11" [weight]="2" />Add
+                  </button>
+                } @else {
+                  <p class="quiet pt-1.5">None yet</p>
+                }
+              </div>
+            }
+          </div>
+          @if (app.offerTerms) {
+            <p class="m-0 text-[14.5px] text-[var(--color-text-2)]">{{ app.offerTerms }}</p>
+          }
+        }
+      </section>
 
-    <section aria-label="The job" class="section-rule flex flex-col gap-3.5">
+      <app-sent-files [application]="app" />
+    </div>
+
+    <section class="card card-pad dim-scope" aria-label="The job">
       @if (editing() === 'job') {
         <app-fields-form
           heading="the job"
@@ -282,128 +332,99 @@ const LISTS = [
           (closed)="editing.set(null)"
         />
       } @else {
-        <div class="section-head">
-          <h4 class="caption">the job</h4>
-          <div class="flex gap-4">
-            <button type="button" class="btn-link" (click)="editing.set('posting')">
-              read posting
-            </button>
-            @if (hasJob()) {
-              <button type="button" class="btn-link" (click)="editing.set('job')">edit</button>
+        <div class="card-head">
+          <h3 class="card-title">The job</h3>
+          <div class="card-actions">
+            @if (app.posting) {
+              <button
+                type="button"
+                class="btn btn-xs"
+                [attr.aria-expanded]="readingSaved()"
+                (click)="readingSaved.set(!readingSaved())"
+              >
+                <app-icon name="file" [size]="13" />{{
+                  readingSaved() ? 'Hide the saved posting' : 'Read the saved posting'
+                }}
+              </button>
             }
+            @if (app.postingUrl) {
+              <a
+                class="btn btn-xs"
+                [href]="app.postingUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                >{{ postingHost() }} ↗</a
+              >
+            }
+            <button type="button" class="btn btn-xs" (click)="editing.set('posting')">
+              <app-icon name="search" [size]="13" />Fill from a posting
+            </button>
+            <button type="button" class="btn btn-xs" (click)="editing.set('job')">
+              <app-icon name="edit" [size]="13" />Edit
+            </button>
           </div>
         </div>
-        @if (hasJob()) {
-          <dl class="facts">
-            @if (app.postingUrl || app.posting) {
-              <dt class="term">posting</dt>
-              <dd class="flex min-w-0 flex-col items-start">
-                @if (app.postingUrl) {
-                  <a
-                    class="max-w-full truncate"
-                    [href]="app.postingUrl"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    >{{ postingHost() }} ↗</a
-                  >
-                }
-                @if (app.posting) {
-                  <details class="w-full">
-                    <summary
-                      class="btn-link inline-flex list-none items-center [&::-webkit-details-marker]:hidden"
-                    >
-                      saved copy
-                    </summary>
-                    <p
-                      class="m-0 mt-1 whitespace-pre-line text-[14.5px] text-[var(--color-text-2)]"
-                    >
-                      {{ app.posting }}
-                    </p>
-                  </details>
-                }
-              </dd>
-            }
-            @if (app.team) {
-              <dt class="term">team</dt>
-              <dd>{{ app.team }}</dd>
-            }
-            @if (app.reportsTo) {
-              <dt class="term">reports to</dt>
-              <dd>{{ app.reportsTo }}</dd>
-            }
-            @if (setup().length) {
-              <dt class="term">setup</dt>
-              <dd class="tags">
-                @for (part of setup(); track part) {
-                  <span class="tag-soft">{{ part }}</span>
-                }
-              </dd>
-            }
-          </dl>
-        } @else {
-          <button type="button" class="btn-link self-start" (click)="editing.set('job')">
-            + posting, team, setup
-          </button>
-        }
-      }
-    </section>
-
-    <div class="section-rule flex flex-col gap-8">
-      @for (list of lists; track list.key) {
-        <app-list-field
-          [label]="list.label"
-          [items]="app[list.key]"
-          [placeholder]="list.placeholder"
-          [look]="list.look"
-          [marker]="list.marker"
-          [save]="list.save"
-        />
-      }
-    </div>
-
-    <section aria-label="Learned" class="section-rule flex flex-col gap-2">
-      @if (editing() === 'learned') {
-        <app-fields-form
-          heading="learned"
-          [fields]="learnedFields"
-          [value]="app"
-          [save]="saveChanges"
-          (closed)="editing.set(null)"
-        />
-      } @else {
-        <div class="section-head">
-          <h4 class="caption">learned</h4>
-          @if (app.learned) {
-            <button type="button" class="btn-link" (click)="editing.set('learned')">edit</button>
-          }
-        </div>
-        @if (app.learned) {
-          <p class="m-0 max-w-[60ch] text-[16px] whitespace-pre-line text-[var(--color-text-2)]">
-            {{ app.learned }}
+        @if (readingSaved()) {
+          <p
+            class="m-0 max-h-[420px] overflow-y-auto rounded-[12px] bg-[var(--color-bg)] p-4 text-[14.5px] whitespace-pre-line text-[var(--color-text-2)]"
+          >
+            {{ app.posting }}
           </p>
-        } @else {
-          <button type="button" class="btn-link self-start" (click)="editing.set('learned')">
-            + what you learned
-          </button>
         }
+        <dl class="facts-grid">
+          @for (fact of facts(); track fact.label) {
+            <div class="min-w-0">
+              <dt class="field-label">{{ fact.label }}</dt>
+              <dd>
+                @if (fact.value) {
+                  {{ fact.value }}
+                } @else {
+                  <button type="button" class="btn-add min-h-8" (click)="editing.set('job')">
+                    <app-icon name="plus" [size]="11" [weight]="2" />Add
+                  </button>
+                }
+              </dd>
+            </div>
+          }
+        </dl>
+        <div class="card-split flex flex-col gap-2.5">
+          <h4 class="field-label">Stack</h4>
+          <app-list-field
+            label="Stack"
+            look="tags"
+            placeholder="Postgres"
+            [heading]="false"
+            [items]="app.stack"
+            [save]="saveList('stack')"
+          />
+        </div>
+        <div class="card-split flex flex-col gap-2.5">
+          <h4 class="field-label">Benefits</h4>
+          <app-list-field
+            label="Benefits"
+            look="tags"
+            placeholder="16 weeks parental leave"
+            [heading]="false"
+            [items]="app.benefits"
+            [save]="saveList('benefits')"
+          />
+        </div>
       }
     </section>
 
-    @if (error()) {
-      <p class="alert" role="alert">{{ error() }}</p>
-    }
-    <div class="-mt-4 flex flex-wrap items-center gap-2.5">
-      @if (confirmingDelete()) {
-        <span class="text-[13px] text-[var(--color-muted)]">Delete this application for good?</span>
-        <button type="button" class="btn btn-danger" [disabled]="busy()" (click)="remove()">
-          Delete
-        </button>
-        <button type="button" class="btn-link" (click)="confirmingDelete.set(false)">keep</button>
-      } @else {
-        <button type="button" class="btn-link" (click)="confirmingDelete.set(true)">
-          delete application
-        </button>
-      }
+    <app-list-card
+      heading="What they want"
+      split
+      placeholder="Go or Java"
+      empty="Nothing noted yet. Fill the job from its posting, or add what they ask for."
+      [subtitle]="subtitle()"
+      [items]="app.wants"
+      [save]="saveList('wants')"
+    />
+
+    <div class="cards">
+      <app-questions-card [application]="app" />
+      <app-learnings-card [application]="app" />
     </div>
   `,
 })
@@ -418,11 +439,11 @@ export class ApplicationView {
   protected readonly basics = BASICS;
   protected readonly payFields = PAY;
   protected readonly jobFields = JOB;
-  protected readonly learnedFields = LEARNED;
   protected readonly editing = signal<Section | null>(null);
   protected readonly busy = signal(false);
   protected readonly error = signal('');
   protected readonly confirmingDelete = signal(false);
+  protected readonly readingSaved = signal(false);
 
   protected readonly saveChanges = (changes: Record<string, unknown>) =>
     this.store.saveApplication({ ...this.application(), ...changes });
@@ -448,12 +469,23 @@ export class ApplicationView {
     }
   };
 
-  protected readonly lists = LISTS.map((list) => ({
-    look: 'rows' as const,
-    marker: '·' as const,
-    ...list,
-    save: (items: string[]) => this.saveChanges({ [list.key]: items }),
-  }));
+  protected readonly saveList =
+    (key: 'wants' | 'stack' | 'benefits') =>
+    (items: string[]): Promise<unknown> =>
+      this.saveChanges({ [key]: items });
+
+  protected readonly subtitle = computed(() => {
+    const app = this.application();
+    return `${app.role || 'Role not set'} · ${app.company}`;
+  });
+
+  protected readonly menu = computed((): MenuItem[] => [
+    {
+      label: this.application().closed ? 'Reopen' : 'Mark closed',
+      run: () => void this.setClosed(!this.application().closed),
+    },
+    { label: 'Delete application', danger: true, run: () => this.confirmingDelete.set(true) },
+  ]);
 
   protected readonly nextFields = computed((): FieldSpec[] => [
     {
@@ -493,19 +525,25 @@ export class ApplicationView {
     const via =
       source && app.sourceDetail ? `${source} (${app.sourceDetail})` : source || app.sourceDetail;
     const applied = app.appliedOn
-      ? `applied ${shortDate(app.appliedOn)}`
-      : statusOf(app) === 'none' && 'not applied yet';
-    return [applied, via && `via ${via}`].filter(Boolean).join(' · ');
+      ? `Applied ${shortDate(app.appliedOn)}`
+      : statusOf(app) === 'none' && 'Not applied yet';
+    const line = [applied, via && `via ${via}`].filter(Boolean).join(' · ');
+    return line.charAt(0).toUpperCase() + line.slice(1);
   });
 
-  /** An offer shows in the offer colour. */
+  /** An offer shows in the offer colour, and can't be added before there is one. */
   protected readonly pay = computed(() => {
     const app = this.application();
-    return PAY_FIGURES.map(([key, label]) => ({
-      label,
-      value: app[key],
-      color: key === 'offeredPay' ? 'var(--color-accent)' : undefined,
-    }));
+    return PAY_FIGURES.map(([key, label]) => {
+      const { figure, context } = figureParts(app[key]);
+      return {
+        label,
+        value: figure,
+        context,
+        color: key === 'offeredPay' ? 'var(--color-accent)' : 'var(--color-text)',
+        addable: key !== 'offeredPay' || app.stage === 'offer',
+      };
+    });
   });
 
   protected readonly postingHost = computed(() => {
@@ -517,16 +555,17 @@ export class ApplicationView {
     }
   });
 
-  protected readonly setup = computed(() => {
+  protected readonly facts = computed(() => {
     const app = this.application();
+    const setup = [app.arrangement ?? '', app.location, app.hours].filter(Boolean).join(' · ');
     const visa =
-      app.sponsorsVisa === null ? '' : app.sponsorsVisa ? 'sponsors visas' : 'no visa sponsorship';
-    return [app.arrangement ?? '', app.location, app.hours, visa].filter(Boolean);
-  });
-
-  protected readonly hasJob = computed(() => {
-    const app = this.application();
-    return !!(app.postingUrl || app.posting || app.team || app.reportsTo || this.setup().length);
+      app.sponsorsVisa === null ? '' : app.sponsorsVisa ? 'Sponsors visas' : 'No visa sponsorship';
+    return [
+      { label: 'Team', value: app.team },
+      { label: 'Reports to', value: app.reportsTo },
+      { label: 'Setup', value: setup.charAt(0).toUpperCase() + setup.slice(1) },
+      { label: 'Visa', value: visa },
+    ];
   });
 
   /** Passed stages grey, the one it's at lit unless only applied or closed; none before applying. */

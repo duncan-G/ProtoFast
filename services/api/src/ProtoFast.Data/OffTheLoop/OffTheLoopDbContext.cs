@@ -80,13 +80,14 @@ public sealed class OffTheLoopDbContext(
             entity.Property(a => a.Arrangement).HasConversion<string>().HasMaxLength(EnumLength);
             entity.Property(a => a.Location).IsRequired().HasMaxLength(OffTheLoopLimits.Label);
             entity.Property(a => a.Hours).IsRequired().HasMaxLength(OffTheLoopLimits.Label);
-            entity.Property(a => a.Learned).IsRequired().HasMaxLength(OffTheLoopLimits.Text);
 
             entity.OwnsMany(a => a.Rounds, round =>
             {
                 round.ToJson();
                 round.Property(r => r.State).HasConversion<string>();
             });
+            entity.OwnsMany(a => a.Asked, asked => asked.ToJson());
+            entity.OwnsMany(a => a.Learnings, learning => learning.ToJson());
 
             entity.HasOne(a => a.Company)
                 .WithMany()

@@ -36,7 +36,8 @@ function application(company: string, fields: Partial<Application> = {}): Applic
     sponsorsVisa: null,
     benefits: [],
     rounds: [],
-    learned: '',
+    asked: [],
+    learnings: [],
     lastModified: 0,
     ...fields,
   };
