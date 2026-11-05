@@ -2615,6 +2615,690 @@
     display: none !important;
   }
 
+  /* ── resume, read: an outline and a find beside it, dates in a column ── */
+
+  .resume-page {
+    max-width: 1160px;
+    margin-inline: auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 40px;
+  }
+
+  .resume-outline {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 26px;
+  }
+
+  .outline-find,
+  .outline-part {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .outline-part {
+    gap: 10px;
+  }
+
+  .outline-part > p {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-dim);
+  }
+
+  .find-field {
+    height: 44px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    border: 1px solid var(--color-edge);
+    border-radius: 22px;
+    background: var(--color-panel);
+    color: var(--color-dim);
+  }
+
+  .find-field:focus-within {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .find-field input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    outline: none;
+    background: none;
+    color: var(--color-text);
+    font-size: 14px;
+  }
+
+  .find-field input::placeholder {
+    color: var(--color-faint);
+  }
+
+  .find-result {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--color-text-2);
+  }
+
+  .find-result:not(:has(button)) {
+    margin-top: -8px;
+  }
+
+  .find-hit {
+    padding: 0 1px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+    color: #f3ffdc;
+  }
+
+  .outline-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .outline-group {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .outline-head {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border-bottom: 1px solid var(--color-line-2);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--color-muted);
+    text-decoration: none;
+  }
+
+  .outline-entry {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--color-text-2);
+    text-decoration: none;
+  }
+
+  .outline-entry.is-out {
+    opacity: 0.45;
+  }
+
+  .outline-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 14px;
+  }
+
+  .outline-years,
+  .outline-count {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-dim);
+    white-space: nowrap;
+  }
+
+  .outline-entry .outline-count {
+    flex: 0 0 24px;
+    text-align: right;
+  }
+
+  .outline-count.is-hit {
+    color: var(--color-accent);
+  }
+
+  .outline-tailored {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--color-line-2);
+    border-radius: 12px;
+    background: var(--color-panel);
+    color: var(--color-text);
+    text-decoration: none;
+  }
+
+  .outline-tailored:hover {
+    border-color: var(--color-edge);
+    color: var(--color-text);
+  }
+
+  .outline-tailored > app-icon {
+    margin-top: 2px;
+    color: var(--color-accent);
+  }
+
+  /* Below the two columns the find and section links sit on top, the rest after the resume. */
+  @media (max-width: 1099px) {
+    .resume-page {
+      gap: 18px;
+    }
+
+    .resume-outline {
+      display: contents;
+    }
+
+    .resume-read {
+      order: 1;
+      margin: 22px 0 40px;
+    }
+
+    .outline-part {
+      order: 2;
+    }
+
+    .outline-nav {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 0 20px;
+    }
+
+    .outline-group {
+      display: contents;
+    }
+
+    .outline-entry {
+      display: none;
+    }
+
+    .outline-head {
+      justify-content: flex-start;
+      border-bottom: 0;
+    }
+  }
+
+  @media (min-width: 1100px) {
+    .resume-page {
+      grid-template-columns: 248px minmax(0, 820px);
+      justify-content: center;
+      align-items: start;
+      column-gap: clamp(48px, 5vw, 72px);
+    }
+
+    /* padded so focus rings inside its scroll aren't cut */
+    .resume-outline {
+      position: sticky;
+      top: 24px;
+      max-height: calc(100dvh - 48px);
+      overflow-y: auto;
+      padding: 4px 10px 24px 4px;
+      margin: -4px -10px 0 -4px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--color-edge) transparent;
+    }
+  }
+
+  .resume-read {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 64px;
+  }
+
+  .resume-read [tabindex="-1"]:focus {
+    outline: none;
+  }
+
+  .read-edit,
+  .read-toggle {
+    flex: none;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 22px;
+    background: none;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--color-muted);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .read-edit {
+    margin-right: -12px;
+  }
+
+  .read-toggle {
+    color: var(--color-text);
+  }
+
+  .read-edit:hover,
+  .read-toggle:hover {
+    background: var(--color-raise);
+    color: var(--color-text);
+  }
+
+  .read-toggle app-icon,
+  .reading-commits > summary app-icon {
+    transition: transform 0.15s;
+  }
+
+  .read-toggle app-icon.is-open,
+  .reading-commits[open] > summary app-icon {
+    transform: rotate(180deg);
+  }
+
+  .reading-profile {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    scroll-margin-top: 24px;
+  }
+
+  .reading-head,
+  .reading-entry-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .reading-name {
+    margin: 0;
+    font-size: clamp(32px, 3.4vw, 44px);
+    line-height: 1.05;
+    letter-spacing: -0.04em;
+    font-weight: 600;
+  }
+
+  .reading-name.is-blank {
+    color: var(--color-faint);
+  }
+
+  .reading-headline {
+    margin: 0;
+    max-width: 62ch;
+    font-size: 17px;
+    color: var(--color-text-2);
+  }
+
+  .reading-contact {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 22px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--color-text-2);
+  }
+
+  .reading-contact a {
+    color: var(--color-text-2);
+    text-decoration: none;
+  }
+
+  .reading-contact a:hover {
+    color: var(--color-text);
+  }
+
+  .reading-contact a.is-link,
+  .reading-link {
+    text-decoration: underline;
+    text-decoration-color: var(--color-edge-2);
+    text-underline-offset: 4px;
+  }
+
+  .reading-stats {
+    margin: 12px 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    border-block: 1px solid var(--color-rule);
+  }
+
+  .reading-stats > div {
+    flex: 1 1 104px;
+    display: flex;
+    flex-direction: column-reverse;
+    justify-content: flex-end;
+    gap: 2px;
+    padding: 16px 0;
+  }
+
+  .reading-stats dt {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--color-dim);
+  }
+
+  .reading-stats dd {
+    margin: 0;
+    font-size: 26px;
+    line-height: 1.1;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .reading-section {
+    display: flex;
+    flex-direction: column;
+    scroll-margin-top: 24px;
+  }
+
+  .reading-section-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .reading-section-head h2 {
+    margin: 0;
+    font-size: 22px;
+    line-height: 1.2;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  .reading-count {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--color-dim);
+  }
+
+  .reading-rule {
+    flex: 1;
+    height: 1px;
+    background: var(--color-rule);
+  }
+
+  .reading-summary {
+    margin: 14px 0 0;
+    max-width: 68ch;
+    font-size: 17px;
+    line-height: 1.7;
+    color: var(--color-text-2);
+  }
+
+  .reading-empty {
+    margin: 0;
+    padding: 22px 0;
+    font-size: 14px;
+    color: var(--color-dim);
+  }
+
+  .reading-entry,
+  .reading-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 32px;
+    padding: 30px 0;
+    border-bottom: 1px solid var(--color-line-2);
+    scroll-margin-top: 24px;
+  }
+
+  .reading-row {
+    padding: 18px 0;
+  }
+
+  /* wide enough for "Sep 2019 – Mar 2022" on one line */
+  .reading-when {
+    flex: 0 0 152px;
+    margin: 0;
+    padding-top: 5px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--color-text-2);
+  }
+
+  .reading-row .reading-when {
+    padding-top: 3px;
+  }
+
+  .reading-group {
+    color: var(--color-text);
+  }
+
+  .reading-body {
+    flex: 999 1 420px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .reading-entry-name {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .reading-entry-head .read-edit {
+    margin-top: -10px;
+  }
+
+  .reading-entry-title {
+    margin: 0;
+    font-size: 20px;
+    line-height: 1.3;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .reading-link {
+    align-self: flex-start;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--color-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .reading-entry-summary {
+    margin: 0;
+    max-width: 68ch;
+    font-size: 15.5px;
+    line-height: 1.6;
+    color: var(--color-muted);
+  }
+
+  .reading-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 12px;
+    margin: -6px 0;
+  }
+
+  .reading-more {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding-top: 6px;
+  }
+
+  .reading-highlights {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    max-width: 72ch;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .reading-highlights li {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--color-text-2);
+  }
+
+  .reading-n {
+    flex: 0 0 22px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-dim);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .reading-stack {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 16px;
+  }
+
+  .reading-inline {
+    flex: 1 1 320px;
+    min-width: 0;
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.9;
+    color: var(--color-muted);
+  }
+
+  .reading-inline.reading-skills {
+    flex: 999 1 420px;
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--color-text-2);
+  }
+
+  .reading-sep {
+    color: var(--color-edge-2);
+  }
+
+  .reading-commits {
+    border: 1px solid var(--color-line-2);
+    border-radius: 12px;
+    background: var(--color-panel);
+  }
+
+  .reading-commits > summary {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    list-style: none;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--color-muted);
+    cursor: pointer;
+  }
+
+  .reading-commits > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .reading-commits > summary > span {
+    flex: 1;
+  }
+
+  .reading-commits ol {
+    margin: 0;
+    padding: 4px 16px 14px;
+    list-style: none;
+  }
+
+  .reading-commits li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 14px;
+    padding: 8px 0;
+    border-top: 1px solid var(--color-line);
+    font-size: 14px;
+    line-height: 1.45;
+    color: var(--color-text-2);
+  }
+
+  .reading-commits li > :last-child {
+    flex: 1 1 260px;
+    min-width: 0;
+  }
+
+  .reading-details {
+    margin: 0;
+    padding-left: 18px;
+    max-width: 68ch;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    line-height: 1.6;
+    color: var(--color-text-2);
+  }
+
+  .reading-row .reading-details {
+    flex: 999 1 420px;
+    min-width: 0;
+  }
+
+  .reading-details li::marker {
+    color: var(--color-faint);
+  }
+
+  .reading-details .reading-link {
+    margin-left: 8px;
+  }
+
+  .reading-editing {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 24px 0 30px;
+    border-bottom: 1px solid var(--color-line-2);
+    scroll-margin-top: 24px;
+  }
+
+  .reading-editing-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  @media (max-width: 719px) {
+    .resume-read {
+      gap: 48px;
+    }
+
+    .reading-entry {
+      padding: 24px 0;
+    }
+
+    .reading-when {
+      flex-basis: 100%;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 4px 12px;
+      padding-top: 0;
+    }
+  }
+
   /* Only a resume's paper prints; everything else on the page is .no-print. */
   @media print {
     @page {

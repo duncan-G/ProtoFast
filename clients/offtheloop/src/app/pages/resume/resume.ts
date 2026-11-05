@@ -11,8 +11,8 @@ import { blankResume, Resume } from '../../loop/model/resume';
 import { Icon } from '../../shared/icon';
 import { Notes } from '../notes/notes';
 import { RunProgress } from '../shell/run-progress';
-import { ResumeEditor } from './resume-editor';
 import { ResumeImportSheet } from './resume-import-sheet';
+import { ResumeReader } from './resume-reader';
 import { ResumeReadSheet } from './resume-read-sheet';
 import { ResumeReviewSheet } from './resume-review-sheet';
 import { ResumeViews } from './resume-views';
@@ -27,8 +27,8 @@ import { TailoredResumePage } from './tailored-resume-page';
   imports: [
     Icon,
     Notes,
-    ResumeEditor,
     ResumeImportSheet,
+    ResumeReader,
     ResumeReadSheet,
     ResumeReviewSheet,
     ResumeViews,
@@ -42,26 +42,15 @@ import { TailoredResumePage } from './tailored-resume-page';
       <app-notes only="story"><app-resume-views current="stories" /></app-notes>
     } @else if (tailoredFor(); as applicationId) {
       <app-tailored-resume-page [applicationId]="applicationId" />
-    } @else {
-      <div class="mx-auto flex w-full max-w-[1120px] flex-col gap-8">
-        <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-          <app-resume-views current="resume" />
-          <div class="flex flex-wrap gap-2">
-            <button type="button" class="btn btn-sm" (click)="importing.set(true)">
-              <app-icon name="upload" [size]="14" />Build from git
-            </button>
-            <button type="button" class="btn btn-sm" (click)="reading.set(true)">
-              <app-icon name="file" [size]="14" />Read a resume
-            </button>
-          </div>
-        </div>
-        <p class="-mt-4 mb-0 max-w-[700px] text-[15px] text-[var(--color-muted)]">
-          Everything that could go on a resume, not the one you send. From a company’s page, the AI
-          tailors a resume to each job out of this and your stories.
-        </p>
-
+    } @else if (store.loaded()) {
+      <app-resume-reader
+        [resume]="general()"
+        [save]="saveGeneral"
+        [stories]="store.stories().length"
+      >
+        <app-resume-views readerTop current="resume" />
         @if (readRun(); as run) {
-          <div class="resume-run" role="status">
+          <div readerStatus class="resume-run" role="status">
             <app-icon name="file" [size]="16" />
             <div class="flex min-w-0 flex-1 flex-col gap-1.5">
               <span class="font-medium">{{ run.label }}</span>
@@ -97,34 +86,54 @@ import { TailoredResumePage } from './tailored-resume-page';
           </div>
         }
         @if (reviewError()) {
-          <p class="alert -mt-4" role="alert">{{ reviewError() }}</p>
+          <p readerStatus class="alert" role="alert">{{ reviewError() }}</p>
         }
 
-        @if (store.loaded()) {
-          <app-resume-editor [resume]="general()" [save]="saveGeneral" />
-
-          @if (tailored().length) {
-            <section aria-label="Tailored resumes" class="section-rule flex flex-col gap-2">
-              <h3 class="caption">tailored for</h3>
-              @for (item of tailored(); track item.resume.id) {
-                <a
-                  class="row-pick"
-                  routerLink="/app/resume"
-                  [queryParams]="{ for: item.applicationId }"
+        <section class="outline-part" aria-labelledby="resume-tailored">
+          <h2 id="resume-tailored" class="caption">tailored from this</h2>
+          @for (item of tailored(); track item.resume.id) {
+            <a
+              class="outline-tailored"
+              routerLink="/app/resume"
+              [queryParams]="{ for: item.applicationId }"
+            >
+              <app-icon name="resume" [size]="16" />
+              <span class="flex min-w-0 flex-col gap-0.5">
+                <span class="text-[14px] leading-[1.35] font-medium">{{ item.role }}</span>
+                <span class="text-[13px] text-[var(--color-muted)]"
+                  >{{ item.company }} · {{ item.updated }}</span
                 >
-                  <app-icon name="resume" [size]="16" />
-                  <span class="flex-1 truncate font-medium">{{ item.title }}</span>
-                  <span class="meta">{{ item.updated }}</span>
-                </a>
-              }
-            </section>
+              </span>
+            </a>
           }
-        } @else {
-          <p class="m-0 text-[var(--color-dim)]">Loading…</p>
-        }
-      </div>
-    }
+          <p>
+            {{
+              tailored().length
+                ? 'Tailor another from a company’s page.'
+                : 'Tailor one to a job from its company’s page.'
+            }}
+          </p>
+        </section>
 
+        <section class="outline-part" aria-labelledby="resume-add">
+          <h2 id="resume-add" class="caption">add to it</h2>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" class="btn" (click)="importing.set(true)">
+              <app-icon name="upload" [size]="14" />Build from git
+            </button>
+            <button type="button" class="btn" (click)="reading.set(true)">
+              <app-icon name="file" [size]="14" />Read a resume
+            </button>
+          </div>
+          <p>
+            Everything that could go on a resume, not the one you send. From a company’s page, the AI
+            tailors a resume to each job out of this and your stories.
+          </p>
+        </section>
+      </app-resume-reader>
+    } @else {
+      <p class="m-0 text-[var(--color-dim)]">Loading…</p>
+    }
     @if (importing()) {
       <app-resume-import (closed)="importing.set(false)" />
     }
@@ -170,7 +179,8 @@ export class ResumePage {
             {
               applicationId,
               resume,
-              title: [application.role || 'a role', application.company].join(' · '),
+              role: application.role || 'a role',
+              company: application.company,
               updated: shortDate(toDay(new Date(resume.lastModified * 1000))),
             },
           ]

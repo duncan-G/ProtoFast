@@ -1,81 +1,24 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
-import { FieldSpec, FieldsForm } from '../../editors/fields-form';
-import { LoopError } from '../../loop/errors';
+import { FieldsForm } from '../../editors/fields-form';
 import { Resume } from '../../loop/model/resume';
 import { ResumeGroup } from '../../loop/model/resume-group';
-import { ResumeLink } from '../../loop/model/resume-link';
 import { inOrder } from '../../loop/resume-text';
 import { Icon } from '../../shared/icon';
+import { BLANK_ENTRY, Entry, ENTRY_FIELDS, EntryKind, ResumeEntry } from './resume-entry';
 import {
-  BLANK_ENTRY,
-  Entry,
-  ENTRY_FIELDS,
-  entryChanges,
-  EntryKind,
-  ResumeEntry,
-} from './resume-entry';
+  addedEntry,
+  ENTRY_LISTS,
+  ENTRY_NOUNS,
+  entryChange,
+  HEAD_FIELDS,
+  headChanges,
+  headValue,
+  SUMMARY_FIELDS,
+  trimmedChanges,
+} from './resume-fields';
 import { ResumeGroups } from './resume-groups';
 
 type Section = 'head' | 'summary';
-
-type ListKey = 'experience' | 'projects' | 'education';
-
-const LISTS: Record<EntryKind, ListKey> = {
-  role: 'experience',
-  project: 'projects',
-  school: 'education',
-};
-
-const HEAD: readonly FieldSpec[] = [
-  { key: 'name', label: 'name', placeholder: 'Ada Park', look: 'lead', wide: true },
-  {
-    key: 'headline',
-    label: 'headline',
-    hint: 'one line under your name',
-    placeholder: 'Backend engineer · payments',
-    wide: true,
-  },
-  { key: 'email', label: 'email', placeholder: 'ada@example.com' },
-  { key: 'phone', label: 'phone', placeholder: '+1 555 0100' },
-  { key: 'location', label: 'based in', placeholder: 'Austin, TX' },
-  {
-    key: 'links',
-    label: 'links',
-    hint: 'one per line: label then address',
-    type: 'textarea',
-    look: 'mono',
-    placeholder: 'GitHub https://github.com/ada\nportfolio https://ada.dev',
-  },
-];
-
-const SUMMARY: readonly FieldSpec[] = [
-  {
-    key: 'summary',
-    label: 'summary',
-    hint: 'who you are as an engineer',
-    type: 'textarea',
-    placeholder: 'Backend engineer who…',
-  },
-];
-
-/** "GitHub https://github.com/ada" per line; a bare address takes its site as the label. */
-function readLinks(text: string): ResumeLink[] {
-  return text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const url = line.split(/\s+/).find((part) => /^https?:\/\/\S+$/i.test(part));
-      if (!url) {
-        throw new LoopError(`“${line}” has no web address starting https://.`);
-      }
-      const label = line
-        .replace(url, '')
-        .replace(/[\s:·—-]+$/, '')
-        .trim();
-      return { label: label || new URL(url).hostname.replace(/^www\./, ''), url };
-    });
-}
 
 /** A resume, every part edited where it's shown; each change saves the whole resume. */
 @Component({
@@ -234,15 +177,11 @@ export class ResumeEditor {
   readonly resume = input.required<Resume>();
   readonly save = input.required<(resume: Resume) => Promise<unknown>>();
 
-  protected readonly headFields = HEAD;
-  protected readonly summaryFields = SUMMARY;
+  protected readonly headFields = HEAD_FIELDS;
+  protected readonly summaryFields = SUMMARY_FIELDS;
   protected readonly entryFields = ENTRY_FIELDS;
   protected readonly blank = BLANK_ENTRY;
-  protected readonly nouns: Record<EntryKind, string> = {
-    role: 'job',
-    project: 'project',
-    school: 'school',
-  };
+  protected readonly nouns = ENTRY_NOUNS;
   protected readonly mainParts = [
     { kind: 'role', label: 'experience', noun: 'job', empty: 'No jobs yet.' },
     { kind: 'project', label: 'projects', noun: 'project', empty: 'No projects yet.' },
@@ -256,13 +195,10 @@ export class ResumeEditor {
     return [r.location, r.email, r.phone].filter(Boolean);
   });
 
-  protected readonly headValue = computed(() => {
-    const r = this.resume();
-    return { ...r, links: r.links.map((l) => `${l.label} ${l.url}`).join('\n') };
-  });
+  protected readonly headValue = computed(() => headValue(this.resume()));
 
   protected entries(kind: EntryKind): readonly Entry[] {
-    return this.resume()[LISTS[kind]];
+    return this.resume()[ENTRY_LISTS[kind]];
   }
 
   private change(change: Partial<Resume>): Promise<unknown> {
@@ -270,40 +206,20 @@ export class ResumeEditor {
   }
 
   protected readonly saveFields = (changes: Record<string, unknown>) =>
-    this.change(
-      Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, String(v ?? '').trim()])),
-    );
+    this.change(trimmedChanges(changes));
 
-  protected readonly saveHead = (changes: Record<string, unknown>) => {
-    const { links, ...fields } = changes;
-    return this.change({
-      ...Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, String(v ?? '').trim()])),
-      links: readLinks(String(links ?? '')),
-    });
-  };
+  protected readonly saveHead = (changes: Record<string, unknown>) =>
+    this.change(headChanges(changes));
 
   protected readonly saveSkills = (skills: ResumeGroup[]) => this.change({ skills });
 
   protected readonly saveExtras = (extras: ResumeGroup[]) => this.change({ extras });
 
   protected saveEntry(kind: EntryKind, index: number): (entry: Entry | null) => Promise<unknown> {
-    const key = LISTS[kind];
-    return (entry) => {
-      const list = [...this.resume()[key]] as Entry[];
-      if (entry) {
-        list[index] = entry;
-      } else {
-        list.splice(index, 1);
-      }
-      return this.change({ [key]: list } as Partial<Resume>);
-    };
+    return (entry) => this.change(entryChange(this.resume(), kind, index, entry));
   }
 
   protected addEntry(kind: EntryKind): (changes: Record<string, unknown>) => Promise<unknown> {
-    const key = LISTS[kind];
-    return (changes) => {
-      const entry = entryChanges(BLANK_ENTRY[kind](), changes);
-      return this.change({ [key]: [...this.resume()[key], entry] } as Partial<Resume>);
-    };
+    return (changes) => this.change(addedEntry(this.resume(), kind, changes));
   }
 }
