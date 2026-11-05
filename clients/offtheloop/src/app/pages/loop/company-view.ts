@@ -1,28 +1,33 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { FieldSpec, FieldsForm } from '../../editors/fields-form';
-import { ListField, ListSpec } from '../../editors/list-field';
-import { shortDate, today } from '../../loop/days';
+import { glanceLine, stageSegments } from '../../loop/application-glance';
+import { today } from '../../loop/days';
 import { messageOf } from '../../loop/errors';
 import { changesFrom, Finding } from '../../loop/findings';
 import { LoopRuns } from '../../loop/loop-runs';
 import { LoopStore } from '../../loop/loop-store';
 import { LoopTray } from '../../loop/loop-tray';
-import { plural, stageLabel } from '../../loop/loop-summary';
+import { plural } from '../../loop/loop-summary';
 import { Application } from '../../loop/model/application';
 import { Company } from '../../loop/model/company';
 import { isActive } from '../../loop/model/loop-run';
 import { STAGES } from '../../loop/model/stage';
 import { statusOf } from '../../loop/model/status';
-import { Figure } from '../../shared/figure';
 import { Icon } from '../../shared/icon';
+import { MenuItem, MoreMenu } from '../../shared/more-menu';
 import { StageDot } from '../../shared/stage-dot';
+import { ApplicationList } from './application-list';
 import { ApplicationView, SOURCE_FIELDS } from './application-view';
+import { CompanyAbout } from './company-about';
 import { CompanyNotes } from './company-notes';
-import { People } from './people';
+import { LearnedLog } from './learned-log';
 import { PostingReader } from './posting-reader';
 
-type Section = 'head' | 'business' | 'numbers';
+export type CompanyTab = 'applications' | 'company' | 'notes';
+
+/** From this many on, applications are picked from a list rather than from cards. */
+const MANY = 4;
 
 export const COMPANY_FIELDS: readonly FieldSpec[] = [
   {
@@ -47,31 +52,6 @@ const HEAD: readonly FieldSpec[] = [
   { key: 'location', label: 'based in', placeholder: 'Burbank, CA' },
 ];
 
-const BUSINESS: readonly FieldSpec[] = [
-  {
-    key: 'whatItDoes',
-    label: 'what it does',
-    hint: 'in plain words',
-    type: 'textarea',
-    placeholder: 'Runs card payments for online shops and pays them out the next day.',
-  },
-  {
-    key: 'howItMakesMoney',
-    label: 'how it makes money',
-    hint: 'who pays, for what',
-    type: 'textarea',
-    placeholder: 'Takes 2.9% + 30¢ of each payment; big shops pay a monthly fee instead.',
-  },
-];
-
-const NUMBERS: readonly FieldSpec[] = [
-  { key: 'revenue', label: 'revenue', placeholder: '$140M', look: 'figure' },
-  { key: 'growth', label: 'growth target', placeholder: '2× by ’27', look: 'figure' },
-  { key: 'headcount', label: 'people', placeholder: '~400', look: 'figure' },
-  { key: 'funding', label: 'funding', placeholder: 'Series C', look: 'figure' },
-  { key: 'lastRaised', label: 'last raised', placeholder: 'Mar 2025', look: 'figure' },
-];
-
 const NEW_APPLICATION: readonly FieldSpec[] = [
   {
     key: 'role',
@@ -92,151 +72,191 @@ const NEW_APPLICATION: readonly FieldSpec[] = [
   },
 ];
 
-const FIGURES = [
-  ['revenue', 'revenue'],
-  ['growth', 'growth target'],
-  ['headcount', 'people'],
-  ['funding', 'funding'],
-] as const;
-
-const LISTS = [
-  { key: 'competitors', label: 'competes with', placeholder: 'Stripe', look: 'tags' },
-  { key: 'concerns', label: 'concerns', placeholder: 'Layoffs in March', marker: '!' },
-  { key: 'values', label: 'values', placeholder: 'Default to writing' },
-  { key: 'practices', label: 'how it works', placeholder: 'On-call one week in six' },
-] as const satisfies readonly ListSpec<Company>[];
-
-/** A company: its applications beside what you know about it, each part edited in place. */
+/** A company: its applications, what you know about it, and its notes, a tab each. */
 @Component({
   selector: 'app-company-view',
   imports: [
+    ApplicationList,
     ApplicationView,
+    CompanyAbout,
     CompanyNotes,
     FieldsForm,
-    Figure,
     Icon,
-    ListField,
-    People,
+    LearnedLog,
+    MoreMenu,
     PostingReader,
     RouterLink,
     StageDot,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { class: 'dim-scope mx-auto flex w-full max-w-[1120px] flex-col gap-8' },
+  host: { class: 'dim-scope mx-auto flex w-full max-w-[1120px] flex-col gap-6' },
   template: `
     @let co = company();
-    <a
-      routerLink="/app/loop"
-      [queryParams]="{ id: null, application: null, note: null }"
-      queryParamsHandling="merge"
-      class="-mb-4 inline-flex min-h-[40px] items-center gap-1.5 self-start text-[14px] text-[var(--color-muted)] no-underline"
-      ><app-icon name="back" [size]="14" />The loop</a
-    >
-
-    @if (editing() === 'head') {
-      <app-fields-form
-        heading="company"
-        [fields]="headFields"
-        [value]="co"
-        [save]="saveChanges"
-        (closed)="editing.set(null)"
-      />
+    @if (view() === 'learned' && selected(); as app) {
+      <app-learned-log [application]="app" />
     } @else {
-      <header class="flex items-end justify-between gap-4">
-        <div class="min-w-0">
-          <h2
-            class="m-0 text-[clamp(28px,3.4vw,40px)] leading-[1.05] font-semibold tracking-[-0.045em]"
-          >
-            {{ co.name }}
-          </h2>
-          <div class="mt-2 flex flex-wrap items-baseline gap-x-5 gap-y-1">
-            @if (co.about) {
-              <p class="label m-0 text-[13px]">{{ co.about }}</p>
-            } @else {
-              <button type="button" class="btn-link" (click)="editing.set('head')">+ about</button>
-            }
-            @if (co.location) {
-              <p class="label m-0 inline-flex items-center gap-1.5 self-center text-[13px]">
-                <app-icon name="pin" [size]="13" />{{ co.location }}
-              </p>
-            } @else {
-              <button type="button" class="btn-link" (click)="editing.set('head')">
-                + based in
+      <a
+        routerLink="/app/loop"
+        [queryParams]="{ id: null, application: null, note: null, tab: null, view: null }"
+        queryParamsHandling="merge"
+        class="-mb-2 inline-flex min-h-[40px] items-center gap-1.5 self-start text-[14px] text-[var(--color-muted)] no-underline"
+        ><app-icon name="back" [size]="14" />The loop</a
+      >
+
+      @if (editing() === 'head') {
+        <app-fields-form
+          heading="company"
+          [fields]="headFields"
+          [value]="co"
+          [save]="saveChanges"
+          (closed)="editing.set(null)"
+        />
+      } @else {
+        <header class="company-head">
+          <div class="min-w-0">
+            <h1 class="company-name">{{ co.name }}</h1>
+            <div class="company-meta">
+              @if (co.about) {
+                <span>{{ about() }}</span>
+              }
+              @if (co.location) {
+                <span class="inline-flex items-center gap-1.5"
+                  ><app-icon name="pin" [size]="13" />{{ co.location }}</span
+                >
+              }
+              @if (!co.about || !co.location) {
+                <button type="button" class="btn-add min-h-8" (click)="editing.set('head')">
+                  <app-icon name="plus" [size]="11" [weight]="2" />{{
+                    co.about ? 'Where it’s based' : 'What it is'
+                  }}
+                </button>
+              }
+            </div>
+          </div>
+          <div class="card-actions">
+            @if (notApplied()) {
+              <button
+                type="button"
+                class="btn btn-icon btn-raised star-toggle"
+                aria-label="Star company"
+                title="Starred companies come first among those not applied for"
+                [attr.aria-pressed]="co.starred"
+                [disabled]="starring()"
+                (click)="toggleStar()"
+              >
+                <app-icon name="star" [size]="16" />
               </button>
             }
-          </div>
-        </div>
-        <div class="flex flex-none items-center gap-2">
-          @if (notApplied()) {
             <button
               type="button"
-              class="btn btn-icon star-toggle h-10 min-h-10 w-10"
-              aria-label="Star company"
-              title="Starred companies come first among those not applied for"
-              [attr.aria-pressed]="co.starred"
-              [disabled]="starring()"
-              (click)="toggleStar()"
+              class="btn btn-raised"
+              [disabled]="startingResearch()"
+              (click)="research()"
             >
-              <app-icon name="star" [size]="16" />
-            </button>
-          }
-          <button
-            type="button"
-            class="btn btn-sm"
-            [disabled]="startingResearch()"
-            (click)="research()"
-          >
-            @switch (researchState()) {
-              @case ('going') {
-                <span class="spinner h-3 w-3" aria-hidden="true"></span>Researching
-              }
-              @case ('done') {
-                <span class="research-ready" aria-hidden="true"></span>Review research
-              }
-              @default {
-                @if (startingResearch()) {
-                  <span class="spinner h-3 w-3" aria-hidden="true"></span>
-                } @else {
-                  <app-icon name="search" [size]="14" />
+              @switch (researchState()) {
+                @case ('going') {
+                  <span class="spinner h-3 w-3" aria-hidden="true"></span>Researching
                 }
-                Research
+                @case ('done') {
+                  <span class="research-ready" aria-hidden="true"></span>Review research
+                }
+                @default {
+                  @if (startingResearch()) {
+                    <span class="spinner h-3 w-3" aria-hidden="true"></span>
+                  } @else {
+                    <app-icon name="search" [size]="14" />
+                  }
+                  Research
+                }
               }
-            }
+            </button>
+            <button type="button" class="btn btn-raised" (click)="editing.set('head')">
+              <app-icon name="edit" [size]="14" />Edit company
+            </button>
+            <app-more-menu label="More company actions" [items]="menu()" />
+          </div>
+        </header>
+      }
+
+      @if (researchError() || starError() || error()) {
+        <p class="alert" role="alert">{{ researchError() || starError() || error() }}</p>
+      }
+      @if (confirmingDelete()) {
+        <div class="confirm-bar" role="alert">
+          <span>{{ deleteLine() }}</span>
+          <button type="button" class="btn btn-xs" (click)="confirmingDelete.set(false)">
+            Keep it
           </button>
           <button
             type="button"
-            class="btn btn-icon h-10 min-h-10 w-10"
-            aria-label="Edit company"
-            (click)="editing.set('head')"
+            class="btn btn-sm btn-danger"
+            [disabled]="busy()"
+            (click)="remove()"
           >
-            <app-icon name="edit" [size]="15" />
+            Delete
           </button>
         </div>
-      </header>
-    }
+      }
 
-    @if (researchError() || starError()) {
-      <p class="alert -mt-4" role="alert">{{ researchError() || starError() }}</p>
-    }
-
-    <div class="company-grid dim-scope">
-      <div class="dim-scope flex min-w-0 flex-col gap-10">
-        <section aria-label="Applications" class="dim-scope flex min-w-0 flex-col gap-3">
-          <div class="section-head">
-            <h3 class="caption">
-              {{ applications().length > 1 ? 'applications' : 'application' }}
-            </h3>
-            @if (applications().length) {
-              <div class="flex gap-4">
-                <button type="button" class="btn-link" (click)="readingPosting.set(true)">
-                  + from a posting
-                </button>
-                <button type="button" class="btn-link" (click)="adding.set(true)">
-                  + application
-                </button>
-              </div>
+      <div class="page-tabs">
+        <nav [attr.aria-label]="co.name">
+          <a
+            class="page-tab"
+            routerLink="/app/loop"
+            [queryParams]="{ tab: null }"
+            queryParamsHandling="merge"
+            [attr.aria-current]="tab() === 'applications' ? 'page' : null"
+          >
+            @if (applications().length === 1) {
+              <app-stage-dot [status]="statusOf(applications()[0])" />Application
+            } @else {
+              Applications
+              @if (applications().length) {
+                <span class="badge">{{ applications().length }}</span>
+              }
             }
+          </a>
+          <a
+            class="page-tab"
+            routerLink="/app/loop"
+            [queryParams]="{ tab: 'company' }"
+            queryParamsHandling="merge"
+            [attr.aria-current]="tab() === 'company' ? 'page' : null"
+            >Company</a
+          >
+          <a
+            class="page-tab"
+            routerLink="/app/loop"
+            [queryParams]="{ tab: 'notes' }"
+            queryParamsHandling="merge"
+            [attr.aria-current]="tab() === 'notes' ? 'page' : null"
+          >
+            Notes
+            @if (notes()) {
+              <span class="badge">{{ notes() }}</span>
+            }
+          </a>
+        </nav>
+        @if (tab() === 'applications' && applications().length) {
+          <div class="page-tabs-actions">
+            <button type="button" class="btn btn-xs" (click)="readingPosting.set(true)">
+              <app-icon name="search" [size]="13" />Read a posting
+            </button>
+            <button type="button" class="btn btn-xs" (click)="adding.set(true)">
+              <app-icon name="plus" [size]="12" [weight]="2" />New application
+            </button>
           </div>
+        }
+      </div>
+
+      @switch (tab()) {
+        @case ('company') {
+          <app-company-about [company]="co" />
+        }
+        @case ('notes') {
+          <app-company-notes class="card card-pad" [company]="co" />
+        }
+        @default {
           @if (readingPosting() || postingRun()) {
             <app-posting-reader
               [company]="co"
@@ -263,161 +283,113 @@ const LISTS = [
               (closed)="adding.set(false); fromPosting.set(null)"
             />
           }
-          @for (app of applications(); track app.id) {
-            @if (applications().length > 1) {
-              <a
-                class="row-pick"
-                routerLink="/app/loop"
-                [queryParams]="{ application: app.id }"
-                queryParamsHandling="merge"
-                [replaceUrl]="true"
-                [attr.aria-current]="app.id === selected()?.id"
-              >
-                <app-stage-dot [status]="statusOf(app)" />
-                <span class="flex-1 truncate font-medium">{{ app.role || 'role not set' }}</span>
-                <span class="meta w-[60px]">{{ stageLabel(app) }}</span>
-                <span class="meta w-[60px] text-right">{{
-                  app.appliedOn ? shortDate(app.appliedOn) : ''
-                }}</span>
-              </a>
-            }
-            @if (app.id === selected()?.id) {
-              <app-application-view
-                [application]="app"
-                [class.pb-6]="applications().length > 1"
-                [class.pt-2]="applications().length > 1"
-              />
-            }
-          } @empty {
+
+          @if (!applications().length) {
             @if (!readingPosting() && !postingRun()) {
-              <p class="m-0 text-[var(--color-dim)]">
-                No application yet.
-                <button
-                  type="button"
-                  class="btn-link text-[15px] text-[var(--color-accent)]"
-                  (click)="adding.set(true)"
-                >
-                  Add one</button
-                >, or
-                <button
-                  type="button"
-                  class="btn-link text-[15px] text-[var(--color-accent)]"
-                  (click)="readingPosting.set(true)"
-                >
-                  read its posting</button
-                >.
-              </p>
-            }
-          }
-        </section>
-
-        <app-company-notes class="section-rule" [company]="co" />
-      </div>
-
-      <aside class="card company-card dim-scope" [attr.aria-label]="'About ' + co.name">
-        <section aria-label="The business" class="flex flex-col gap-3.5">
-          @if (editing() === 'business') {
-            <app-fields-form
-              heading="the business"
-              [fields]="businessFields"
-              [value]="co"
-              [save]="saveChanges"
-              (closed)="editing.set(null)"
-            />
-          } @else {
-            <div class="section-head">
-              <h3 class="caption">the business</h3>
-              <button type="button" class="btn-link" (click)="editing.set('business')">edit</button>
-            </div>
-            @for (part of business(); track part.label) {
-              <div class="flex flex-col gap-1">
-                <h4 class="figure-label m-0 font-normal">{{ part.label }}</h4>
-                <p
-                  class="m-0 text-[15px] leading-[1.5]"
-                  [style.color]="part.text ? 'var(--color-text-2)' : 'var(--color-edge-2)'"
-                >
-                  {{ part.text || '—' }}
+              <section class="card card-pad items-start" aria-label="No application yet">
+                <h2 class="card-title">No application yet</h2>
+                <p class="quiet">
+                  Read the posting to fill in the job, or add the application by hand.
                 </p>
+                <div class="card-actions">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary"
+                    (click)="readingPosting.set(true)"
+                  >
+                    <app-icon name="search" [size]="14" />Read its posting
+                  </button>
+                  <button type="button" class="btn btn-sm btn-raised" (click)="adding.set(true)">
+                    Add by hand
+                  </button>
+                </div>
+              </section>
+            }
+          } @else if (!selected()) {
+            <app-application-list [applications]="applications()" />
+          } @else {
+            @if (stepper(); as step) {
+              <div class="app-stepper">
+                <a
+                  class="btn btn-xs"
+                  routerLink="/app/loop"
+                  [queryParams]="{ application: null }"
+                  queryParamsHandling="merge"
+                  ><app-icon name="back" [size]="13" />All
+                  {{ applications().length }} applications</a
+                >
+                <div class="flex items-center gap-2">
+                  <span class="text-[13px] text-[var(--color-muted)]">{{ step.label }}</span>
+                  @if (step.previous; as previous) {
+                    <a
+                      class="btn btn-icon btn-xs"
+                      routerLink="/app/loop"
+                      [queryParams]="{ application: previous.id }"
+                      queryParamsHandling="merge"
+                      [attr.aria-label]="'Previous: ' + previous.role"
+                      ><app-icon name="back" [size]="14"
+                    /></a>
+                  } @else {
+                    <button
+                      type="button"
+                      class="btn btn-icon btn-xs"
+                      disabled
+                      aria-label="Previous"
+                    >
+                      <app-icon name="back" [size]="14" />
+                    </button>
+                  }
+                  @if (step.next; as next) {
+                    <a
+                      class="btn btn-icon btn-xs"
+                      routerLink="/app/loop"
+                      [queryParams]="{ application: next.id }"
+                      queryParamsHandling="merge"
+                      [attr.aria-label]="'Next: ' + next.role"
+                      ><app-icon name="next" [size]="14"
+                    /></a>
+                  } @else {
+                    <button type="button" class="btn btn-icon btn-xs" disabled aria-label="Next">
+                      <app-icon name="next" [size]="14" />
+                    </button>
+                  }
+                </div>
+              </div>
+            } @else if (applications().length > 1) {
+              <div class="app-picks" role="group" aria-label="Pick an application">
+                @for (pick of picks(); track pick.id) {
+                  <a
+                    class="app-pick"
+                    routerLink="/app/loop"
+                    [queryParams]="{ application: pick.id }"
+                    queryParamsHandling="merge"
+                    [replaceUrl]="true"
+                    [attr.aria-current]="pick.id === selected()?.id"
+                    [attr.data-closed]="pick.closed"
+                  >
+                    <span class="app-pick-role">{{ pick.role }}</span>
+                    <span class="app-pick-line"
+                      ><app-stage-dot [status]="pick.status" />{{ pick.line }}</span
+                    >
+                    <span class="mini-stages" aria-hidden="true">
+                      @for (seg of pick.segments; track $index) {
+                        <span [style.background]="seg"></span>
+                      }
+                    </span>
+                  </a>
+                }
               </div>
             }
-          }
-        </section>
-
-        <section aria-label="Company numbers" class="card-rule flex flex-col gap-3.5">
-          @if (editing() === 'numbers') {
-            <app-fields-form
-              heading="numbers"
-              [fields]="numberFields"
-              [value]="co"
-              [save]="saveChanges"
-              (closed)="editing.set(null)"
-            />
-          } @else {
-            <div class="section-head">
-              <h3 class="caption">numbers</h3>
-              <button type="button" class="btn-link" (click)="editing.set('numbers')">edit</button>
-            </div>
-            <div class="grid grid-cols-2 gap-x-5 gap-y-[18px]">
-              @for (figure of figures(); track figure.label) {
-                <app-figure small [value]="figure.value" [label]="figure.label" />
+            @if (selected(); as app) {
+              <!-- One view per application, so a panel open on one never shows on the next. -->
+              @for (key of [app.id]; track key) {
+                <app-application-view [application]="app" />
               }
-            </div>
+            }
           }
-        </section>
-
-        <app-people [company]="co" />
-
-        <div class="card-rule flex flex-col gap-6">
-          @for (list of aboutLists; track list.key) {
-            <app-list-field
-              [label]="list.label"
-              [items]="co[list.key]"
-              [placeholder]="list.placeholder"
-              [look]="list.look"
-              [marker]="list.marker"
-              [save]="list.save"
-            />
-          }
-        </div>
-
-        <div class="card-rule flex flex-col gap-6">
-          @for (list of cultureLists; track list.key) {
-            <app-list-field
-              [label]="list.label"
-              [items]="co[list.key]"
-              [placeholder]="list.placeholder"
-              [look]="list.look"
-              [marker]="list.marker"
-              [save]="list.save"
-            />
-          }
-        </div>
-
-        @if (error()) {
-          <p class="alert" role="alert">{{ error() }}</p>
         }
-        <div class="flex flex-wrap items-center gap-2.5">
-          @if (confirmingDelete()) {
-            <span class="text-[13px] text-[var(--color-muted)]">{{ deleteLine() }}</span>
-            <button
-              type="button"
-              class="btn btn-sm btn-danger"
-              [disabled]="busy()"
-              (click)="remove()"
-            >
-              Delete
-            </button>
-            <button type="button" class="btn-link" (click)="confirmingDelete.set(false)">
-              keep
-            </button>
-          } @else {
-            <button type="button" class="btn-link" (click)="confirmingDelete.set(true)">
-              delete company
-            </button>
-          }
-        </div>
-      </aside>
-    </div>
+      }
+    }
   `,
 })
 export class CompanyView {
@@ -427,15 +399,14 @@ export class CompanyView {
   private readonly router = inject(Router);
 
   readonly company = input.required<Company>();
-  /** The application to open; the lead one when unset or gone. */
+  /** The application to open; the lead one when unset or gone, unless there are many. */
   readonly applicationId = input<string | null>(null);
+  readonly tab = input<CompanyTab>('applications');
+  /** 'learned' shows the open application's log of what was learned in place of the page. */
+  readonly view = input<string | null>(null);
 
   protected readonly statusOf = statusOf;
-  protected readonly stageLabel = stageLabel;
-  protected readonly shortDate = shortDate;
   protected readonly headFields = HEAD;
-  protected readonly businessFields = BUSINESS;
-  protected readonly numberFields = NUMBERS;
   protected readonly newApplicationFields = NEW_APPLICATION;
   protected readonly blankApplication = {
     role: '',
@@ -444,7 +415,7 @@ export class CompanyView {
     sourceDetail: '',
     stage: 'applied',
   };
-  protected readonly editing = signal<Section | null>(null);
+  protected readonly editing = signal<'head' | null>(null);
   protected readonly adding = signal(false);
   protected readonly startingResearch = signal(false);
   protected readonly researchError = signal('');
@@ -519,15 +490,6 @@ export class CompanyView {
     });
   };
 
-  private readonly lists = LISTS.map((list) => ({
-    look: 'rows' as const,
-    marker: '·' as const,
-    ...list,
-    save: (items: string[]) => this.saveChanges({ [list.key]: items }),
-  }));
-  protected readonly aboutLists = this.lists.slice(0, 2);
-  protected readonly cultureLists = this.lists.slice(2);
-
   protected readonly applications = computed(() =>
     this.store.applications().filter((a) => a.companyId === this.company().id),
   );
@@ -550,27 +512,58 @@ export class CompanyView {
     }
   }
 
+  /** Many applications open on their list instead. */
   protected readonly selected = computed(() => {
     const id = this.applicationId();
     const list = this.applications();
-    return list.find((a) => a.id === id) ?? list[0] ?? null;
+    const picked = list.find((a) => a.id === id);
+    return picked ?? (list.length >= MANY ? null : (list[0] ?? null));
   });
 
-  protected readonly business = computed(() => {
-    const co = this.company();
-    return [
-      { label: 'what it does', text: co.whatItDoes },
-      { label: 'how it makes money', text: co.howItMakesMoney },
-    ];
-  });
-
-  protected readonly figures = computed(() => {
-    const co = this.company();
-    return FIGURES.map(([key, label]) => ({
-      label: key === 'funding' && co.lastRaised ? `${label} · ${co.lastRaised}` : label,
-      value: co[key],
+  protected readonly picks = computed(() => {
+    const now = this.store.today();
+    return this.applications().map((app) => ({
+      id: app.id,
+      role: app.role || 'Role not set',
+      closed: app.closed,
+      status: statusOf(app),
+      line: glanceLine(app, now),
+      segments: stageSegments(app),
     }));
   });
+
+  /** With many, step through the open ones, or the closed ones, without the list. */
+  protected readonly stepper = computed(() => {
+    const app = this.selected();
+    const all = this.applications();
+    if (!app || all.length < MANY) {
+      return null;
+    }
+    const kin = all.filter((other) => other.closed === app.closed);
+    const at = kin.findIndex((other) => other.id === app.id);
+    const near = (i: number) => {
+      const other = kin[i];
+      return other ? { id: other.id, role: other.role || 'Role not set' } : null;
+    };
+    return {
+      label: `${at + 1} of ${kin.length} ${app.closed ? 'closed' : 'open'}`,
+      previous: near(at - 1),
+      next: near(at + 1),
+    };
+  });
+
+  protected readonly about = computed(() => {
+    const about = this.company().about;
+    return about.charAt(0).toUpperCase() + about.slice(1);
+  });
+
+  protected readonly notes = computed(
+    () => this.store.notes().filter((note) => note.companyId === this.company().id).length,
+  );
+
+  protected readonly menu = computed((): MenuItem[] => [
+    { label: 'Delete company', danger: true, run: () => this.confirmingDelete.set(true) },
+  ]);
 
   protected readonly deleteLine = computed(() => {
     const { id, name } = this.company();

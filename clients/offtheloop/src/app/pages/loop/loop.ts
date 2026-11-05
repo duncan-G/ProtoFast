@@ -23,7 +23,7 @@ import { Icon } from '../../shared/icon';
 import { riseIn } from '../../shared/rise-in';
 import { StageDot } from '../../shared/stage-dot';
 import { passes, StageFilter, StatusFilter } from '../../shared/stage-filter';
-import { COMPANY_FIELDS, CompanyView } from './company-view';
+import { COMPANY_FIELDS, CompanyTab, CompanyView } from './company-view';
 
 /** The loop: the companies in sections by status, and one company when picked. */
 @Component({
@@ -36,7 +36,12 @@ import { COMPANY_FIELDS, CompanyView } from './company-view';
         @if (store.companiesById().get(id); as company) {
           <!-- One view per company, so a panel open on one never shows on the next. -->
           @for (key of [id]; track key) {
-            <app-company-view [company]="company" [applicationId]="applicationParam()" />
+            <app-company-view
+              [company]="company"
+              [applicationId]="applicationParam()"
+              [tab]="tabParam()"
+              [view]="viewParam()"
+            />
           }
         } @else {
           <p class="m-0 py-3.5 text-[var(--color-dim)]">
@@ -199,6 +204,11 @@ export class Loop {
 
   protected readonly picked = computed(() => this.params().get('id'));
   protected readonly applicationParam = computed(() => this.params().get('application'));
+  protected readonly viewParam = computed(() => this.params().get('view'));
+  protected readonly tabParam = computed((): CompanyTab => {
+    const tab = this.params().get('tab');
+    return tab === 'company' || tab === 'notes' ? tab : 'applications';
+  });
   protected readonly status = computed(() => this.params().get('status') as StatusFilter | null);
   protected readonly day = computed(() => searchDay(this.store.applications(), this.store.today()));
   protected readonly offers = computed(() => openOffers(this.store.applications()).length);
@@ -281,7 +291,7 @@ export class Loop {
   protected setStatus(status: StatusFilter | null): void {
     void this.router.navigate([], {
       relativeTo: this.route,
-      queryParams: { status, id: null, application: null, note: null },
+      queryParams: { status, id: null, application: null, note: null, tab: null, view: null },
       queryParamsHandling: 'merge',
       replaceUrl: true,
     });

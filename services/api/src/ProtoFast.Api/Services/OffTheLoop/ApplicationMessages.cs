@@ -4,6 +4,8 @@ using ApplicationRecord = ProtoFast.Data.OffTheLoop.Entities.Application;
 using ApplicationSourceRecord = ProtoFast.Data.OffTheLoop.Entities.ApplicationSource;
 using ApplicationStageRecord = ProtoFast.Data.OffTheLoop.Entities.ApplicationStage;
 using ArrangementRecord = ProtoFast.Data.OffTheLoop.Entities.WorkArrangement;
+using AskedQuestionRecord = ProtoFast.Data.OffTheLoop.Entities.AskedQuestion;
+using LearningRecord = ProtoFast.Data.OffTheLoop.Entities.Learning;
 using RoundRecord = ProtoFast.Data.OffTheLoop.Entities.Round;
 using RoundStateRecord = ProtoFast.Data.OffTheLoop.Entities.RoundState;
 
@@ -38,7 +40,6 @@ public static class ApplicationMessages
             Arrangement = ToMessage(application.Arrangement),
             Location = application.Location,
             Hours = application.Hours,
-            Learned = application.Learned,
             LastModifiedUnixSeconds = LoopText.UnixSeconds(application.DateLastModified),
             ResumeId = application.ResumeId?.ToString() ?? "",
             CvId = application.CvId?.ToString() ?? "",
@@ -63,6 +64,8 @@ public static class ApplicationMessages
         message.Stack.AddRange(application.Stack);
         message.Benefits.AddRange(application.Benefits);
         message.Rounds.AddRange(application.Rounds.Select(r => new Round { Label = r.Label, State = ToMessage(r.State) }));
+        message.Asked.AddRange(application.Asked.Select(a => new AskedQuestion { Question = a.Question, Answer = a.Answer }));
+        message.Learnings.AddRange(application.Learnings.Select(ToMessage));
         return message;
     }
 
@@ -80,6 +83,33 @@ public static class ApplicationMessages
         if (rounds.Count > MaxRounds)
         {
             throw LoopErrors.Invalid($"A process can have at most {MaxRounds} rounds.");
+        }
+
+        var asked = message.Asked
+            .Select(a => new AskedQuestionRecord
+            {
+                Question = LoopText.Optional(a.Question, OffTheLoopLimits.Line, "A question asked"),
+                Answer = LoopText.Optional(a.Answer, OffTheLoopLimits.Line, "Their answer"),
+            })
+            .Where(a => a.Question.Length > 0)
+            .ToList();
+        if (asked.Count > OffTheLoopLimits.ListItems)
+        {
+            throw LoopErrors.Invalid($"Questions asked can have at most {OffTheLoopLimits.ListItems} entries.");
+        }
+
+        var learnings = message.Learnings
+            .Select(l => new LearningRecord
+            {
+                Text = LoopText.Optional(l.Text, OffTheLoopLimits.Text, "What you learned"),
+                Round = LoopText.Optional(l.Round, OffTheLoopLimits.Label, "The round it came from"),
+                On = l.HasOn ? LoopText.OptionalDay(l.On, "The day you learned it") : null,
+            })
+            .Where(l => l.Text.Length > 0)
+            .ToList();
+        if (learnings.Count > OffTheLoopLimits.Learnings)
+        {
+            throw LoopErrors.Invalid($"What you learned can have at most {OffTheLoopLimits.Learnings} entries.");
         }
 
         return new ApplicationRecord
@@ -115,7 +145,8 @@ public static class ApplicationMessages
             SponsorsVisa = message.HasSponsorsVisa ? message.SponsorsVisa : null,
             Benefits = LoopText.Items(message.Benefits, OffTheLoopLimits.Line, "Benefits"),
             Rounds = rounds,
-            Learned = LoopText.Optional(message.Learned, OffTheLoopLimits.Text, "What you learned"),
+            Asked = asked,
+            Learnings = learnings,
         };
     }
 
@@ -150,7 +181,19 @@ public static class ApplicationMessages
         target.SponsorsVisa = source.SponsorsVisa;
         target.Benefits = source.Benefits;
         target.Rounds = source.Rounds;
-        target.Learned = source.Learned;
+        target.Asked = source.Asked;
+        target.Learnings = source.Learnings;
+    }
+
+    private static Learning ToMessage(LearningRecord learning)
+    {
+        var message = new Learning { Text = learning.Text, Round = learning.Round };
+        if (learning.On is { } on)
+        {
+            message.On = LoopText.Format(on);
+        }
+
+        return message;
     }
 
     private static Guid? DocumentOf(string id, string notFound) =>

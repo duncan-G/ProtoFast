@@ -54,8 +54,11 @@ public sealed class Application : IDateStamped
 
     public List<string> Wants { get; set; } = [];
 
-    /// <summary>Questions to ask them.</summary>
+    /// <summary>Questions still to ask them.</summary>
     public List<string> Questions { get; set; } = [];
+
+    /// <summary>Questions put to them, moved here from <see cref="Questions"/> once asked.</summary>
+    public List<AskedQuestion> Asked { get; set; } = [];
 
     public string Team { get; set; } = "";
 
@@ -77,7 +80,8 @@ public sealed class Application : IDateStamped
 
     public List<Round> Rounds { get; set; } = [];
 
-    public string Learned { get; set; } = "";
+    /// <summary>Oldest first.</summary>
+    public List<Learning> Learnings { get; set; } = [];
 
     public DateTime DateCreated { get; set; }
 

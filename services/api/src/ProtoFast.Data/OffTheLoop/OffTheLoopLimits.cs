@@ -26,6 +26,9 @@ public static class OffTheLoopLimits
 
     public const int ListItems = 30;
 
+    /// <summary>Things learned on one application.</summary>
+    public const int Learnings = 200;
+
     /// <summary>Jobs, projects or schools on one resume.</summary>
     public const int ResumeEntries = 50;
 }

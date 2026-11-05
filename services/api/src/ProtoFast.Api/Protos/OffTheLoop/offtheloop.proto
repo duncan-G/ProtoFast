@@ -231,6 +231,20 @@ message Round {
     RoundState state = 2;
 }
 
+// A question put to the company, with what they said.
+message AskedQuestion {
+    string question = 1;
+    string answer = 2;
+}
+
+// One thing learned along the way.
+message Learning {
+    string text = 1;
+    // The round it came from, by name; empty when it came from none.
+    string round = 2;
+    optional string on = 3;
+}
+
 // Someone at the company.
 message Contact {
     string name = 1;
@@ -299,7 +313,7 @@ message Application {
     // Equity, bonus, vesting, sign-on.
     string offer_terms = 18;
     repeated string wants = 19;
-    // Questions to ask them.
+    // Questions still to ask them.
     repeated string questions = 20;
     string team = 21;
     string reports_to = 22;
@@ -313,12 +327,17 @@ message Application {
     optional bool sponsors_visa = 27;
     repeated string benefits = 28;
     repeated Round rounds = 29;
-    string learned = 30;
+    reserved 30;
+    reserved "learned";
     int64 last_modified_unix_seconds = 31;
     // One of the caller's uploaded resumes, or empty.
     string resume_id = 32;
     // One of the caller's uploaded CVs, or empty.
     string cv_id = 33;
+    // Questions put to them, moved out of questions once asked.
+    repeated AskedQuestion asked = 34;
+    // Oldest first.
+    repeated Learning learnings = 35;
 }
 
 // The id is ignored on create, required on update.

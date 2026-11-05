@@ -77,12 +77,6 @@ namespace ProtoFast.Data.OffTheLoop.Migrations
                         .HasColumnType("character varying(80)")
                         .HasColumnName("hours");
 
-                    b.Property<string>("Learned")
-                        .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)")
-                        .HasColumnName("learned");
-
                     b.Property<string>("Location")
                         .IsRequired()
                         .HasMaxLength(80)
@@ -783,6 +777,60 @@ namespace ProtoFast.Data.OffTheLoop.Migrations
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_applications_documents_resume_id");
 
+                    b.OwnsMany("ProtoFast.Data.OffTheLoop.Entities.AskedQuestion", "Asked", b1 =>
+                        {
+                            b1.Property<Guid>("ApplicationId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<string>("Answer")
+                                .IsRequired();
+
+                            b1.Property<string>("Question")
+                                .IsRequired();
+
+                            b1.HasKey("ApplicationId", "__synthesizedOrdinal");
+
+                            b1.ToTable("applications", "loop");
+
+                            b1
+                                .ToJson("asked")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ApplicationId")
+                                .HasConstraintName("fk_applications_applications_application_id");
+                        });
+
+                    b.OwnsMany("ProtoFast.Data.OffTheLoop.Entities.Learning", "Learnings", b1 =>
+                        {
+                            b1.Property<Guid>("ApplicationId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<DateOnly?>("On");
+
+                            b1.Property<string>("Round")
+                                .IsRequired();
+
+                            b1.Property<string>("Text")
+                                .IsRequired();
+
+                            b1.HasKey("ApplicationId", "__synthesizedOrdinal");
+
+                            b1.ToTable("applications", "loop");
+
+                            b1
+                                .ToJson("learnings")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ApplicationId")
+                                .HasConstraintName("fk_applications_applications_application_id");
+                        });
+
                     b.OwnsMany("ProtoFast.Data.OffTheLoop.Entities.Round", "Rounds", b1 =>
                         {
                             b1.Property<Guid>("ApplicationId");
@@ -809,7 +857,11 @@ namespace ProtoFast.Data.OffTheLoop.Migrations
                                 .HasConstraintName("fk_applications_applications_application_id");
                         });
 
+                    b.Navigation("Asked");
+
                     b.Navigation("Company");
+
+                    b.Navigation("Learnings");
 
                     b.Navigation("Rounds");
                 });

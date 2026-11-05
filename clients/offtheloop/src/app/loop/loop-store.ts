@@ -187,6 +187,7 @@ export class LoopStore {
       offerTerms: '',
       wants: [],
       questions: [],
+      asked: [],
       team: '',
       reportsTo: '',
       stack: [],
@@ -196,7 +197,7 @@ export class LoopStore {
       sponsorsVisa: null,
       benefits: [],
       rounds: [],
-      learned: '',
+      learnings: [],
       lastModified: 0,
       ...fields,
     });

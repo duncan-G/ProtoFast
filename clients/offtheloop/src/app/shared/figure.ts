@@ -6,10 +6,12 @@ import {
   input,
 } from '@angular/core';
 
-/** "$8.4B (FY2025)" is the figure $8.4B, with FY2025 as what it counts. */
+/** "$8.4B (FY2025)" or "$8.4B [FY2025]" is the figure $8.4B, with FY2025 as what it counts. */
 export function figureParts(value: string): { figure: string; context: string } {
-  const match = /^(.*?\S)\s*\(([^()]+)\)$/.exec(value.trim());
-  return match ? { figure: match[1], context: match[2] } : { figure: value.trim(), context: '' };
+  const match = /^(.*?\S)\s*(?:\(([^()]+)\)|\[([^[\]]+)\])$/.exec(value.trim());
+  return match
+    ? { figure: match[1], context: match[2] ?? match[3] }
+    : { figure: value.trim(), context: '' };
 }
 
 /** A figure over its label; bracketed context moves down beside the label instead of crowding it. */

@@ -1,4 +1,6 @@
 import { Arrangement } from './arrangement';
+import { AskedQuestion } from './asked-question';
+import { Learning } from './learning';
 import { Round } from './round';
 import { Source } from './source';
 import { Stage } from './stage';
@@ -33,8 +35,10 @@ export interface Application {
   /** Equity, bonus, vesting, sign-on. */
   offerTerms: string;
   wants: string[];
-  /** Questions to ask them. */
+  /** Questions still to ask them. */
   questions: string[];
+  /** Questions put to them, moved out of questions once asked. */
+  asked: AskedQuestion[];
   team: string;
   reportsTo: string;
   stack: string[];
@@ -46,7 +50,8 @@ export interface Application {
   sponsorsVisa: boolean | null;
   benefits: string[];
   rounds: Round[];
-  learned: string;
+  /** Oldest first. */
+  learnings: Learning[];
   /** Unix seconds, as the server last sent it; ignored on writes. */
   lastModified: number;
 }

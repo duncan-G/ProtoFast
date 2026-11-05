@@ -16,52 +16,71 @@ import { messageOf } from '../../loop/errors';
 import { LoopStore } from '../../loop/loop-store';
 import { initials } from '../../loop/loop-summary';
 import { Company } from '../../loop/model/company';
+import { Icon } from '../../shared/icon';
 
-/** The people at a company: click one to change them, "+ person" to add one, both in place. */
+/** The people at a company, each changed or added in place. */
 @Component({
   selector: 'app-people',
-  imports: [DateField, FormsModule, NgTemplateOutlet],
+  imports: [DateField, FormsModule, Icon, NgTemplateOutlet],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { class: 'dim-scope flex flex-col', role: 'group', 'aria-label': 'People' },
+  host: { class: 'card card-pad dim-scope gap-0', role: 'region', 'aria-label': 'People' },
   template: `
-    <h3 class="caption mb-1.5">people</h3>
+    <div class="card-head mb-1">
+      <h3 class="card-title">
+        People
+        @if (company().contacts.length) {
+          <span class="badge">{{ company().contacts.length }}</span>
+        }
+      </h3>
+    </div>
     @for (person of company().contacts; track $index; let i = $index) {
       @if (editing() === i) {
         <ng-container *ngTemplateOutlet="form" />
       } @else {
-        <button
-          type="button"
-          class="flex w-full items-start gap-3 border-0 bg-transparent px-0 py-2 text-left"
-          [attr.aria-label]="'Edit ' + person.name"
-          (click)="edit(i)"
-        >
+        <div class="flex items-start gap-3 border-b border-[var(--color-line)] py-2.5">
           <span
-            class="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-full bg-[var(--color-line)] text-[12.5px] font-semibold text-[var(--color-muted)]"
+            class="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-[var(--color-line)] font-mono text-[12px] font-medium text-[var(--color-text-2)]"
             aria-hidden="true"
             >{{ initials(person.name) }}</span
           >
           <span class="flex min-w-0 flex-1 flex-col gap-px">
             <span class="flex items-baseline justify-between gap-2">
-              <span class="truncate font-medium text-[var(--color-text)]">{{ person.name }}</span>
+              <span class="truncate text-[14.5px] font-medium text-[var(--color-text)]">{{
+                person.name
+              }}</span>
               @if (person.metOn) {
                 <span class="meta text-[11.5px]">{{ shortDate(person.metOn) }}</span>
               }
             </span>
             @if (person.role) {
-              <span class="mono text-[11.5px] text-[var(--color-dim)]">{{ person.role }}</span>
+              <span class="text-[12.5px] text-[var(--color-dim)]">{{ person.role }}</span>
             }
             @if (person.note) {
               <span class="mt-0.5 text-[13.5px] text-[var(--color-muted)]">{{ person.note }}</span>
             }
           </span>
-        </button>
+          <button
+            type="button"
+            class="btn btn-icon btn-xs h-8 min-h-8 w-8 flex-none"
+            [attr.aria-label]="'Edit ' + person.name"
+            (click)="edit(i)"
+          >
+            <app-icon name="edit" [size]="13" />
+          </button>
+        </div>
+      }
+    } @empty {
+      @if (editing() !== 'new') {
+        <p class="quiet mb-2">
+          Nobody yet. Add the recruiter, the hiring manager, who referred you.
+        </p>
       }
     }
     @if (editing() === 'new') {
       <ng-container *ngTemplateOutlet="form" />
     } @else {
-      <button type="button" class="btn-link min-h-[40px] self-start" (click)="edit('new')">
-        + person
+      <button type="button" class="btn-add mt-3 self-start" (click)="edit('new')">
+        <app-icon name="plus" [size]="11" [weight]="2" />Add person
       </button>
     }
 

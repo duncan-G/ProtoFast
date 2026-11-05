@@ -2,6 +2,7 @@ import {
   afterNextRender,
   ChangeDetectionStrategy,
   Component,
+  computed,
   ElementRef,
   inject,
   Injector,
@@ -31,17 +32,21 @@ export interface ListSpec<T> {
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'flex min-w-0 flex-col', role: 'group', '[attr.aria-label]': 'label()' },
   template: `
-    <h3 class="caption mb-1.5">
-      {{ label() }}
-      @if (items().length) {
-        <span class="count">{{ items().length }}</span>
-      }
-    </h3>
+    @if (heading()) {
+      <h3 class="caption mb-1.5">
+        {{ label() }}
+        @if (items().length) {
+          <span class="count">{{ items().length }}</span>
+        }
+      </h3>
+    }
     @if (look() === 'tags') {
       <div class="tags">
-        @for (item of items(); track $index; let i = $index) {
+        @for (row of rows(); track row.at) {
+          @let item = row.item;
+          @let i = row.at;
           @if (editing() === i) {
-            <form class="tag tag-editing" (ngSubmit)="commit()" (keydown.escape)="stop()">
+            <form class="tag tag-editing" (ngSubmit)="commit()" (keydown.escape)="stop($event)">
               <label class="sr-only" [for]="inputId">Edit {{ item }}</label>
               <input
                 class="tag-input"
@@ -81,6 +86,7 @@ export interface ListSpec<T> {
             name="fresh"
             autocomplete="off"
             placeholder="add"
+            [attr.autofocus]="focusAdd() ? '' : null"
             [id]="inputId + '-add'"
             [(ngModel)]="fresh"
           />
@@ -88,9 +94,11 @@ export interface ListSpec<T> {
       </div>
     } @else {
       <div class="rows" [class.rows-split]="items().length > splitAfter">
-        @for (item of items(); track $index; let i = $index) {
+        @for (row of rows(); track row.at) {
+          @let item = row.item;
+          @let i = row.at;
           @if (editing() === i) {
-            <form class="item" (ngSubmit)="commit()" (keydown.escape)="stop()">
+            <form class="item" (ngSubmit)="commit()" (keydown.escape)="stop($event)">
               <span class="list-marker" [attr.data-marker]="marker()" aria-hidden="true">{{
                 marker() === '·' ? '' : marker()
               }}</span>
@@ -138,6 +146,7 @@ export interface ListSpec<T> {
           name="fresh"
           autocomplete="off"
           [placeholder]="placeholder() ? 'add, e.g. ' + placeholder() : 'add, then ↵'"
+          [attr.autofocus]="focusAdd() ? '' : null"
           [id]="inputId + '-add'"
           [(ngModel)]="fresh"
         />
@@ -159,10 +168,21 @@ export class ListField {
   readonly look = input<'rows' | 'tags'>('rows');
   readonly marker = input<ListMarker>('·');
   readonly save = input.required<(items: string[]) => Promise<unknown>>();
+  readonly heading = input(true);
+  /** Shows only the entries holding it, case aside. */
+  readonly query = input('');
+  /** For a sheet opened to add: the add row takes the focus. */
+  readonly focusAdd = input(false);
 
   /** Longer lists flow into columns where there's room for two. */
   protected readonly splitAfter = 5;
   protected readonly inputId = `list-entry-${ListField.next++}`;
+  protected readonly rows = computed(() => {
+    const query = this.query().trim().toLowerCase();
+    return this.items()
+      .map((item, at) => ({ item, at }))
+      .filter((row) => !query || row.item.toLowerCase().includes(query));
+  });
   protected readonly editing = signal<number | null>(null);
   protected readonly busy = signal(false);
   protected readonly error = signal('');
@@ -179,7 +199,10 @@ export class ListField {
     );
   }
 
-  protected stop(): void {
+  /** In a sheet, Escape closes the entry being edited, not the sheet. */
+  protected stop(event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
     this.editing.set(null);
     this.error.set('');
   }
